@@ -27,6 +27,8 @@ Desk has a code editing widget which is aware that it is in desk and has access 
 
 Desk has a console widget which hosts bash so that it can run claude.
 
+![Desk screenshot](inadvisiable-adventures-desk-screenshot.png)
+
 ## Development setup
 
 ```
