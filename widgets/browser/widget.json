@@ -1,0 +1,7 @@
+{
+  "name": "Browser",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": [],
+  "default_size": { "width": 900, "height": 650 }
+}

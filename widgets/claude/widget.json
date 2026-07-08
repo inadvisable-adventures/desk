@@ -1,0 +1,7 @@
+{
+  "name": "Claude",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": [],
+  "default_size": { "width": 720, "height": 420 }
+}

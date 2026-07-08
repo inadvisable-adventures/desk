@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "desk"
+version = "0.0.1"
+description = "An environment for interacting with coding agents via a dynamic UX."
+requires-python = ">=3.10"
+dependencies = [
+    "PyQt6",
+    "PyQt6-WebEngine",
+    "fastapi",
+    "uvicorn[standard]",
+    "watchdog",
+    "websockets",
+    "pyte",
+    "PyQt6-QScintilla",
+]
+
+[project.scripts]
+desk = "desk.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/desk"]

@@ -1,0 +1,7 @@
+{
+  "name": "Scratch",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": [],
+  "default_size": { "width": 360, "height": 320 }
+}

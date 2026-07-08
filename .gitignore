@@ -1,0 +1,22 @@
+**/__pycache__/
+**/*.pyc
+**/.venv/
+
+**/build/
+**/dist/
+**/node_modules/
+
+**/*.egg-info/
+
+# MacOS
+**/.DS_Store
+
+# Vim
+**/*.swp
+**/*.swo
+
+# Desk state files (see design-docs/architecture.md's Desk Model) —
+# generated per-directory session state, not project source.
+**/*.desk
+
+.desk_temp/

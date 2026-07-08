@@ -1,0 +1,446 @@
+import math
+
+from PyQt6.QtCore import QEvent, QPointF, Qt, QTimer, pyqtSignal
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWidgets import (
+    QAbstractScrollArea,
+    QGraphicsProxyWidget,
+    QGraphicsScene,
+    QGraphicsView,
+    QWidget,
+)
+
+from desk.shell.desk_picker import DeskPicker
+from desk.shell.temp_ui_notifications import TempUiNotificationStack
+from desk.shell.widget_frame import (
+    MIN_HEIGHT,
+    MIN_WIDTH,
+    WidgetFrame,
+    _CloseButton,
+    _ResizeHandle,
+    _TitleBar,
+)
+from desk.shell.widget_spawn_menu import WidgetSpawnMenu
+from desk.shell.zoom_control import ZoomControl
+from desk.widgets import WidgetInfo
+
+MIN_SCALE = 0.1
+MAX_SCALE = 4.0
+DEFAULT_WIDGET_SIZE = (680, 520)
+WHEEL_ZOOM_SENSITIVITY = 0.0025
+FIT_MARGIN_FRACTION = 0.001  # 0.1%, per design-docs/widget-ux.md
+ZOOM_CONTROL_MARGIN = 12
+DESK_PICKER_MARGIN = 12
+TEMP_UI_NOTIFICATIONS_MARGIN = 12
+SCALE_EPSILON = 1e-6
+
+# A large, fixed bound for the "infinite" canvas. Without this,
+# QGraphicsView derives its scene rect from the current items' bounding
+# box, which clamps centerOn() to wherever widgets currently are —
+# breaking Desk pan-state restoration for any point not near that box.
+CANVAS_BOUNDS = 100_000
+
+
+class WorkspaceView(QGraphicsView):
+    """The native Workspace Canvas: a pannable/zoomable Qt surface hosting
+    widgets as QGraphicsProxyWidget items. Replaces the previous
+    browser-based Workspace SPA — see design-docs/architecture.md.
+
+    Widget chrome stays a constant on-screen size regardless of zoom (see
+    WidgetFrame.set_view_scale); only widget content zooms/pans with the
+    view. See design-docs/widget-ux.md."""
+
+    widget_add_requested = pyqtSignal(str, QPointF)  # widget_id, scene pos
+    widget_close_requested = pyqtSignal(WidgetFrame)
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(QGraphicsScene(parent), parent)
+        self.setSceneRect(-CANVAS_BOUNDS, -CANVAS_BOUNDS, 2 * CANVAS_BOUNDS, 2 * CANVAS_BOUNDS)
+        self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self._scale = 1.0
+        self._frames: list[WidgetFrame] = []
+        self._widget_catalog: dict[str, WidgetInfo] = {}
+
+        self._drag_frame: WidgetFrame | None = None
+        self._drag_edge: str | None = None
+        self._drag_last_pos: QPointF | None = None
+        self._close_press_frame: WidgetFrame | None = None
+        self._forwarding_wheel = False
+
+        self.zoom_control = ZoomControl(self.viewport())
+        self.zoom_control.fit_requested.connect(self.zoom_to_fit)
+        self.zoom_control.reset_requested.connect(self.reset_zoom)
+        self.zoom_control.zoom_changed.connect(self._apply_zoom_centered)
+        self.zoom_control.hide()
+        self._position_zoom_control()
+
+        self.desk_picker = DeskPicker(self.viewport())
+        self._position_desk_picker()
+
+        self.temp_ui_notifications = TempUiNotificationStack(self.viewport())
+        self._position_temp_ui_notifications()
+
+    def add_widget(
+        self,
+        content: QWidget,
+        title: str,
+        pos: tuple[float, float] = (0, 0),
+        size: tuple[int, int] | None = None,
+        instance_id: str | None = None,
+    ) -> QGraphicsProxyWidget:
+        """Wraps content in the common widget chrome (see
+        design-docs/widget-ux.md) and places it on the canvas."""
+        frame = WidgetFrame(title, content, instance_id=instance_id)
+        frame.resize(*(size or DEFAULT_WIDGET_SIZE))
+        frame.set_view_scale(self._scale)
+        proxy = self.scene().addWidget(frame)
+        proxy.setPos(*pos)
+        self._frames.append(frame)
+        return proxy
+
+    def set_widget_catalog(self, catalog: dict[str, WidgetInfo]) -> None:
+        """Registers the discovered widget types offered by the right-click
+        add-widget menu (see contextMenuEvent). The view otherwise has no
+        reason to know about the wider widget catalog — this is the only
+        piece of that knowledge it needs. See design-docs/widget-ux.md."""
+        self._widget_catalog = catalog
+
+    def contextMenuEvent(self, event) -> None:
+        names = {widget_id: info.name for widget_id, info in self._widget_catalog.items()}
+        scene_pos = self.mapToScene(event.pos())
+        menu = WidgetSpawnMenu(names, self)
+        menu.widget_chosen.connect(
+            lambda widget_id: self.widget_add_requested.emit(widget_id, scene_pos)
+        )
+        menu.move(event.globalPos())
+        menu.show()
+
+    def clear_widgets(self) -> None:
+        """Removes every placed widget from the canvas (used when switching
+        to a different Desk — see desk.shell.window.DeskWindow)."""
+        for frame in self._frames:
+            proxy = frame.graphicsProxyWidget()
+            if proxy is not None:
+                self.scene().removeItem(proxy)
+        self._frames = []
+
+    def remove_widget(self, frame: WidgetFrame) -> None:
+        """Removes a single widget from the canvas (used by the close
+        button — see desk.shell.window.DeskWindow). Unlike clear_widgets,
+        explicitly deleteLater()s the frame: a widget like the Console
+        widget depends on its destroyed signal actually firing to clean up
+        its PTY/subprocess (see LEARNINGS.md), which needs a real
+        deleteLater() in a running event loop."""
+        proxy = frame.graphicsProxyWidget()
+        if proxy is not None:
+            self.scene().removeItem(proxy)
+        if frame in self._frames:
+            self._frames.remove(frame)
+        frame.deleteLater()
+
+    def get_view_state(self) -> tuple[float, float, float]:
+        """Returns (scene_x, scene_y, scale) for the point currently
+        centered in the viewport, for Desk.pan_x/pan_y/scale."""
+        center = self.mapToScene(self.viewport().rect().center())
+        return center.x(), center.y(), self._scale
+
+    def set_view_state(self, pan_x: float, pan_y: float, scale: float) -> None:
+        self._rescale(scale)
+        self.centerOn(QPointF(pan_x, pan_y))
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._position_zoom_control()
+        self._position_desk_picker()
+        self._position_temp_ui_notifications()
+
+    def scrollContentsBy(self, dx: int, dy: int) -> None:
+        """Panning (and, less obviously, zoom operations that re-center the
+        view -- zoom_to_fit/reset_zoom) drift the Desk picker/zoom control
+        away from their pinned corners (TODO 82d66c0) for a precise,
+        confirmed reason: QAbstractScrollArea (which QGraphicsView is)
+        implements fast scrolling via QWidget.scroll(dx, dy) on the
+        viewport, and QWidget.scroll() also moves any child widget whose
+        geometry lies fully inside the scrolled area by that same delta --
+        the Desk picker/zoom control are exactly that, plain QWidget
+        children of self.viewport(), not scene items. This is very likely
+        the same actual mechanism behind TODO 4adfcad/TODO 1f9bd34's
+        resize-time drift too (the very first resize already fires this
+        with nonzero deltas, given the huge/infinite scene rect), though
+        that fix (reassert via resizeEvent, deferred with
+        QTimer.singleShot(0, ...) since a synchronous reassertion there was
+        confirmed too early) is left as-is -- it's still independently
+        needed since the zoom control's target position depends on the
+        viewport's current width/height. Reasserting synchronously here
+        (unlike resizeEvent) is confirmed to stick with no further drift --
+        this callback *is* the mechanism doing the moving, not a step
+        ahead of some later pass. See plans/fix-hover-ui-scroll-zoom-drift.md.
+
+        Guarded with hasattr: QGraphicsView.__init__ itself can invoke
+        scrollContentsBy during its own internal setup, before this
+        subclass's __init__ has constructed desk_picker/zoom_control yet."""
+        super().scrollContentsBy(dx, dy)
+        if hasattr(self, "desk_picker"):
+            self._position_desk_picker()
+        if hasattr(self, "zoom_control"):
+            self._position_zoom_control()
+        if hasattr(self, "temp_ui_notifications"):
+            self._position_temp_ui_notifications()
+
+    def _position_desk_picker(self) -> None:
+        """Reasserts the Desk picker's fixed top-left position -- a
+        recurring internal Qt layout pass (plausibly QGraphicsView's own
+        scrollbar/viewport geometry recalculation) silently displaces this
+        manually-positioned, non-layout-managed child widget on every
+        resize, including the first one at initial .show() (confirmed
+        directly; see plans/fix-desk-picker-positioning.md). Deferred via
+        singleShot(0) rather than reasserted synchronously inline:
+        confirmed directly that Qt's own displacement happens as a
+        *separate, later* queued layout pass within the same event-loop
+        iteration, so a synchronous reassertion at the end of resizeEvent
+        still gets overwritten afterward -- scheduling this to run after
+        anything else queued during the same iteration is what actually
+        sticks."""
+        QTimer.singleShot(0, lambda: self.desk_picker.move(DESK_PICKER_MARGIN, DESK_PICKER_MARGIN))
+
+    def _position_temp_ui_notifications(self) -> None:
+        """Same reasoning/shape as _position_zoom_control (top-right
+        anchor instead of bottom-right) -- also needs the scrollContentsBy
+        treatment below, since it's the same kind of manually-positioned
+        viewport child (see TODO 82d66c0)."""
+
+        def _apply() -> None:
+            hint = self.temp_ui_notifications.sizeHint()
+            x = self.viewport().width() - hint.width() - TEMP_UI_NOTIFICATIONS_MARGIN
+            self.temp_ui_notifications.move(max(0, x), TEMP_UI_NOTIFICATIONS_MARGIN)
+            self.temp_ui_notifications.resize(hint)
+
+        QTimer.singleShot(0, _apply)
+
+    def notify_temp_ui(self, path, text: str, on_clicked) -> None:
+        """Adds/replaces a temp-UI notification and immediately
+        repositions the stack, since its size (and therefore its
+        top-right-anchored x) changes with its content -- see
+        desk.shell.temp_ui_notifications.TempUiNotificationStack.notify."""
+        self.temp_ui_notifications.notify(path, text, on_clicked)
+        self._position_temp_ui_notifications()
+
+    def _position_zoom_control(self) -> None:
+        """Deferred via singleShot(0), same reasoning and same confirmed
+        bug as _position_desk_picker: the control starts hidden and only
+        becomes visible later (the first time zoom leaves 1.0x), so its
+        first real visible position isn't confirmed correct until that
+        moment -- confirmed directly that it's stale then without this
+        deferral, for the identical reason the Desk picker was. See
+        plans/fix-zoom-control-positioning.md."""
+
+        def _apply() -> None:
+            hint = self.zoom_control.sizeHint()
+            x = self.viewport().width() - hint.width() - ZOOM_CONTROL_MARGIN
+            y = self.viewport().height() - hint.height() - ZOOM_CONTROL_MARGIN
+            self.zoom_control.move(max(0, x), max(0, y))
+            self.zoom_control.resize(hint)
+
+        QTimer.singleShot(0, _apply)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            hit = self._hit_test_chrome(event.position())
+            if hit is not None:
+                frame, edge = hit
+                if edge == "close":
+                    self._close_press_frame = frame
+                    event.accept()
+                    return
+                self._drag_frame, self._drag_edge = hit
+                self._drag_last_pos = event.position()
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._drag_frame is not None:
+            current = event.position()
+            dx = (current.x() - self._drag_last_pos.x()) / self._scale
+            dy = (current.y() - self._drag_last_pos.y()) / self._scale
+            self._drag_last_pos = current
+            proxy = self._drag_frame.graphicsProxyWidget()
+            if proxy is not None:
+                self._apply_drag(proxy, self._drag_edge, dx, dy)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if self._close_press_frame is not None:
+            frame = self._close_press_frame
+            self._close_press_frame = None
+            hit = self._hit_test_chrome(event.position())
+            if hit is not None and hit[0] is frame and hit[1] == "close":
+                self.widget_close_requested.emit(frame)
+            event.accept()
+            return
+        if self._drag_frame is not None:
+            self._drag_frame = None
+            self._drag_edge = None
+            self._drag_last_pos = None
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def _hit_test_chrome(self, view_pos: QPointF) -> tuple[WidgetFrame, str | None] | None:
+        """Determines whether a press at this viewport position landed on a
+        widget's titlebar or a resize handle. Done here (not in the chrome
+        widgets' own mouse events) deliberately — see
+        design-docs/widget-ux.md."""
+        item = self.itemAt(view_pos.toPoint())
+        if not isinstance(item, QGraphicsProxyWidget):
+            return None
+        frame = item.widget()
+        if not isinstance(frame, WidgetFrame):
+            return None
+
+        scene_pos = self.mapToScene(view_pos.toPoint())
+        local_point = (scene_pos - item.pos()).toPoint()
+        child = frame.childAt(local_point)
+        while child is not None and not isinstance(child, (_CloseButton, _TitleBar, _ResizeHandle)):
+            child = child.parentWidget()
+
+        if isinstance(child, _CloseButton):
+            return frame, "close"
+        if isinstance(child, _TitleBar):
+            return frame, None
+        if isinstance(child, _ResizeHandle):
+            return frame, child.edge
+        return None
+
+    @staticmethod
+    def _apply_drag(proxy: QGraphicsProxyWidget, edge: str | None, dx: float, dy: float) -> None:
+        if edge is None:
+            proxy.moveBy(dx, dy)
+            return
+        size = proxy.size()
+        width, height = size.width(), size.height()
+        if edge == "right":
+            proxy.resize(max(MIN_WIDTH, width + dx), height)
+        elif edge == "bottom":
+            proxy.resize(width, max(MIN_HEIGHT, height + dy))
+        elif edge == "left":
+            new_width = max(MIN_WIDTH, width - dx)
+            proxy.resize(new_width, height)
+            proxy.moveBy(width - new_width, 0)
+
+    def wheelEvent(self, event) -> None:
+        if self._scrollable_at(event.position()):
+            if self._forwarding_wheel:
+                # Re-entrant delivery: an embedded QWebEngineView bounces a
+                # wheel event it couldn't consume (a non-scrollable page, or
+                # one already at its scroll limit) back up to its parent
+                # chain, which reaches this handler again while we're still
+                # inside the super().wheelEvent() call below. Re-forwarding
+                # would recurse until the stack overflows; zooming on a
+                # bounce-back would be wrong too -- so just stop here. See
+                # TODO c44e88f.
+                return
+            # Let Qt's normal scene-forwarding deliver the event to the
+            # embedded widget so it can scroll its own content, instead of
+            # this view treating it as a canvas zoom gesture -- see
+            # plans/todo-widget-scrollable.md.
+            self._forwarding_wheel = True
+            try:
+                super().wheelEvent(event)
+            finally:
+                self._forwarding_wheel = False
+            return
+        delta = event.pixelDelta().y()
+        if delta == 0:
+            delta = event.angleDelta().y() / 8
+        factor = math.exp(delta * WHEEL_ZOOM_SENSITIVITY)
+        self._apply_zoom(factor)
+
+    def _scrollable_at(self, view_pos: QPointF) -> bool:
+        """Whether a wheel event at this viewport position should scroll an
+        embedded widget's own content rather than zoom the canvas -- true
+        when the cursor is over (or inside) a QAbstractScrollArea (what
+        every scrollable Qt widget -- QListWidget, QScrollArea, QTextEdit,
+        ... -- is built on) or a QWebEngineView (the browser and
+        kind:"html" widgets, which are *not* scroll areas but scroll their
+        own page content -- TODO c44e88f). Same hit-testing shape as
+        _hit_test_chrome."""
+        item = self.itemAt(view_pos.toPoint())
+        if not isinstance(item, QGraphicsProxyWidget):
+            return False
+        frame = item.widget()
+        if frame is None:
+            return False
+
+        scene_pos = self.mapToScene(view_pos.toPoint())
+        local_point = (scene_pos - item.pos()).toPoint()
+        child = frame.childAt(local_point)
+        while child is not None:
+            if isinstance(child, (QAbstractScrollArea, QWebEngineView)):
+                return True
+            child = child.parentWidget()
+        return False
+
+    def event(self, event) -> bool:
+        if event.type() == QEvent.Type.NativeGesture:
+            if event.gestureType() == Qt.NativeGestureType.ZoomNativeGesture:
+                self._apply_zoom(1.0 + event.value())
+                return True
+        return super().event(event)
+
+    def zoom_to_fit(self) -> None:
+        rect = self.scene().itemsBoundingRect()
+        if rect.isEmpty():
+            return
+        margin_x = rect.width() * FIT_MARGIN_FRACTION
+        margin_y = rect.height() * FIT_MARGIN_FRACTION
+        rect = rect.adjusted(-margin_x, -margin_y, margin_x, margin_y)
+
+        previous_anchor = self.transformationAnchor()
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        try:
+            self.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
+            raw_scale = self.transform().m11()
+            clamped_scale = max(MIN_SCALE, min(MAX_SCALE, raw_scale))
+            if clamped_scale != raw_scale:
+                correction = clamped_scale / raw_scale
+                self.scale(correction, correction)
+            self._scale = clamped_scale
+        finally:
+            self.setTransformationAnchor(previous_anchor)
+        self._on_scale_changed()
+
+    def reset_zoom(self) -> None:
+        self._apply_zoom_centered(1.0)
+
+    def _apply_zoom(self, factor: float) -> None:
+        """Wheel/pinch: relative factor, anchored under the cursor."""
+        self._rescale(self._scale * factor)
+
+    def _apply_zoom_centered(self, target_scale: float) -> None:
+        """HUD-triggered (slider/reset): absolute target, anchored at the
+        view center rather than wherever the cursor happens to be over the
+        HUD itself."""
+        previous_anchor = self.transformationAnchor()
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        try:
+            self._rescale(target_scale)
+        finally:
+            self.setTransformationAnchor(previous_anchor)
+
+    def _rescale(self, target_scale: float) -> None:
+        new_scale = max(MIN_SCALE, min(MAX_SCALE, target_scale))
+        factor = new_scale / self._scale
+        if factor != 1.0:
+            self.scale(factor, factor)
+            self._scale = new_scale
+            self._on_scale_changed()
+
+    def _on_scale_changed(self) -> None:
+        for frame in self._frames:
+            frame.set_view_scale(self._scale)
+        self.zoom_control.set_zoom(self._scale)
+        self.zoom_control.setVisible(abs(self._scale - 1.0) > SCALE_EPSILON)

@@ -1,0 +1,646 @@
+# Desk — Architecture & Design
+
+## Overview
+
+Desk is a Python desktop application, built on PyQt6. The zoomable/pannable
+workspace itself — the "canvas" — is a native Python/Qt surface (a
+`QGraphicsView`/`QGraphicsScene`), not a web page.
+
+**Widgets are written in Python and render directly in the app as native Qt
+widgets.** Since Desk is already a Qt application, the default way to build
+and display a widget is a normal Qt pattern: a widget module exposes a
+`build() -> QWidget`, the Desk Shell imports it directly and places the
+resulting `QWidget` on the canvas (via `QGraphicsProxyWidget`) — no HTTP,
+no local server, no browser involved for this default path at all.
+
+A second, non-default widget kind exists for cases where a Desk *user*
+wants a richer, custom SPA-based widget: such a widget is backed by its own
+embedded Chromium browser (via QtWebEngine), pointed at a local webserver
+that is part of the Desk process. This Chromium Widget mechanism is meant
+more for what Desk users build than for Desk's own development — building
+and running Desk (`pip install -e .`, `python -m desk`) never requires
+Node, `npm`, or `tsc`; Desk is still able to run those tools on behalf of a
+widget that needs them, but that's opt-in per-widget, not baseline. Browser
+-side widget code that does exist follows the conventions in `CLAUDE.md`
+(TypeScript in strict mode, minimal dependencies/bespoke solutions over
+frameworks, `<template>`/`<slot>` over inline HTML in web components).
+
+Both widget kinds can be dynamically reloaded without restarting the app —
+edit a widget's source and see the change live, whether it's a native Qt
+widget getting rebuilt or a Chromium widget's page reloading.
+
+Two widgets are first-class citizens of Desk itself:
+
+- A **code editor widget** (`QScintilla`-based) for opening, editing, and
+  saving files. Full Desk-awareness — knowing it's running inside Desk and
+  calling back into Desk's own APIs (workspace state, other widgets) — is
+  aspirational; today it's a self-contained editor with plain file-dialog
+  I/O and no automatic knowledge of the current Desk's directory (see
+  [Components](#components) and `plans/code-editor-widget.md`).
+- A **console widget** that hosts a real shell (bash), so that the user can
+  run arbitrary commands — most importantly, launch `claude` (Claude Code)
+  and interact with coding agents.
+
+(Both ended up native-Qt rather than Chromium-based — see [Key Design
+Decisions](#key-design-decisions--tradeoffs).)
+
+This document describes the system's components, how they fit together, the
+key design decisions behind that structure, and the tradeoffs considered.
+
+## Goals
+
+- A native-feeling desktop app (single window, native menus/shortcuts,
+  native pan/zoom) whose default widgets are also native — Python code that
+  builds and returns a `QWidget`, following ordinary Qt patterns, with no
+  local server or browser involved.
+- A workspace metaphor: an infinite pannable/zoomable 2D canvas holding
+  widgets, similar to a whiteboard or node-graph editor — implemented
+  natively in Qt.
+- Widgets are dynamically loaded and can be reloaded in place (no full app
+  restart) while iterating on them — for native Qt widgets, this means
+  rebuilding the widget from freshly-reloaded source; for Chromium widgets,
+  reloading the page.
+- Python is the preferred/default widget language. HTML/CSS/TypeScript is
+  available for a Desk user who wants a rich, custom SPA-based widget, via
+  the same Chromium Widget/Local Web Server mechanism, but is not the
+  default and is not needed for Desk's own baseline operation.
+- Desk itself builds and runs with only Python tooling — no Node/npm/tsc
+  required for baseline operation (see Overview).
+- A code editor widget and a console/terminal widget are built in, and both
+  are aware they're running inside Desk (they can query/drive Desk, not just
+  render inertly inside it).
+- The console widget can run a real shell so the primary coding-agent
+  workflow — running `claude` in a terminal — works exactly as it would in
+  any terminal emulator.
+
+## Non-Goals (for now)
+
+- Multi-user / remote collaboration. Desk is a local, single-user desktop
+  tool. The local webserver (used only for Chromium/HTML widgets) binds to
+  loopback only.
+- A plugin marketplace or remote widget distribution. Widgets are loaded
+  from the local filesystem.
+- Mobile or web-hosted deployment. Desk is a native desktop shell.
+- Sandboxing against actively malicious widgets. Widgets are trusted local
+  code (the same trust level as any other script the user runs) — native
+  Python widgets in particular run directly in the Shell process with no
+  isolation boundary at all (see
+  [Security Considerations](#security-considerations)).
+
+## System Architecture
+
+```
+┌───────────────────────────────────────────────────────────────────────┐
+│ Desk Shell (PyQt6 process)                                            │
+│                                                                         │
+│  ┌───────────────────────────────────────────────┐  ┌───────────────┐ │
+│  │ QMainWindow                                     │  │ Local Web     │ │
+│  │  └─ WorkspaceView (QGraphicsView/Scene, native  │  │ Server        │ │
+│  │     pan/zoom — the Workspace Canvas)            │  │ (in-proc,     │ │
+│  │                                                   │  │  Python) —    │ │
+│  │   ┌───────────────┐  ┌───────────────┐          │  │  only for     │ │
+│  │   │ PythonWidgetHost│  │ ChromiumWidget │  ...    │◄─┤  kind:"html"  │ │
+│  │   │ (QWidget built  │  │ (QWebEngineView│         │  │  widgets:     │ │
+│  │   │  by the widget's│  │  in a          │         │  │  - static     │ │
+│  │   │  build(), in a  │  │  QGraphicsProxy│         │  │    assets     │ │
+│  │   │  QGraphicsProxy │  │  Widget item), │         │  │  - REST API   │ │
+│  │   │  Widget item);  │  │  loads its SPA │         │  │  - WebSocket  │ │
+│  │   │  imported &     │  │  from the      │         │  │    API        │ │
+│  │   │  called         │  │  Local Web     │         │  │  - PTY        │ │
+│  │   │  directly, no   │  │  Server        │         │  │    session    │ │
+│  │   │  HTTP/server    │  │                │         │  │    manager    │ │
+│  │   └───────────────┘  └───────────────┘          │  └───────────────┘ │
+│  │           ▲                   ▲                   │          ▲        │
+│  │           └───────────────────┴── HotReloadBroker ─┼──────────┘        │
+│  │              (in-process Qt signal, thread-safe:    │                  │
+│  │               watcher thread → GUI thread)          │                  │
+│  └───────────────────────────────────────────────────┘                  │
+│                                                                         │
+│  WidgetWatcher (watchdog, background thread) watches widgets/ and       │
+│  feeds the HotReloadBroker for both widget kinds.                       │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+Native Python widgets never touch the Local Web Server or HTTP at all —
+they're imported and instantiated directly by the Shell. Only `kind:
+"html"` Chromium widgets go through it, for static asset serving and the
+Desk Bridge API.
+
+### Components
+
+1. **Desk Shell** — the PyQt6 process. Owns the `QMainWindow`, the native
+   Workspace Canvas, application lifecycle (startup/shutdown), native OS
+   integration (menu bar, tray icon, global shortcuts, file dialogs). Also
+   directly discovers and loads `kind: "python"` widgets (no server
+   involved for those) and starts the Local Web Server (for `kind: "html"`
+   widgets and the Bridge API).
+2. **Local Web Server** — an in-process, part-of-Desk FastAPI + uvicorn
+   server (Python) bound to `127.0.0.1` on an OS-assigned port. Serves only
+   `kind: "html"` widgets' static SPA assets, and exposes the Desk Bridge
+   API (REST for request/response calls, WebSocket for streaming/events:
+   PTY I/O, workspace state sync). It has nothing to do with `kind:
+   "python"` widgets.
+3. **Workspace Canvas** — a native `QGraphicsView`/`QGraphicsScene` owned by
+   the Desk Shell, implementing the pannable/zoomable surface directly in
+   Qt (drag-to-pan, wheel-scroll/trackpad-pinch-to-zoom via view
+   transforms, plus a small screen-space zoom control HUD) — no web page
+   involved. Widgets of either kind are placed on it as
+   `QGraphicsProxyWidget` items, wrapped in the common drag/resize chrome
+   specified in `design-docs/widget-ux.md`, which also covers zoom
+   input handling and why widget chrome stays a constant screen size
+   while content zooms with the view.
+4. **Python Widget Host** — the default, preferred building block: given a
+   widget directory with a `widget.py` exposing `build() -> QWidget`,
+   imports that module and calls `build()` directly (no subprocess, no
+   HTTP), embedding the resulting `QWidget` on the canvas. On hot reload,
+   re-imports the module fresh and swaps in a newly-built widget in place.
+5. **Chromium Widget** — the building block for an SPA-based widget: a
+   `QWebEngineView` (embedded on the canvas via `QGraphicsProxyWidget`) that
+   loads that widget's URL from the Local Web Server. This exists for Desk
+   users who want a custom, rich SPA widget — not the default path.
+6. **Hot Reload Broker** — an in-process publish/subscribe point (a
+   `QObject` with a Qt signal) connecting the `WidgetWatcher`'s background
+   thread to the specific widget host (of either kind) on the GUI thread
+   whose source changed, using Qt's thread-safe signal delivery.
+7. **Widget Framework** — the manifest format, discovery/loading, and
+   lifecycle (mount/unmount/reload) for widgets in general, built on top of
+   the Python Widget Host (default) and Chromium Widget (for HTML/TS
+   widgets) (see [Widget Model](#widget-model)).
+8. **Desk Bridge API** — the capability-scoped interface *Chromium* widgets
+   use to talk to Desk: read workspace state, read/write files, open/close
+   other widget instances, introspect its own manifest. Implemented as
+   REST endpoints on the Local Web Server (no WebSocket channel yet — see
+   [Desk Bridge API](#desk-bridge-api)), wrapped by a small plain-JS client
+   library injected into every Chromium Widget's page. Native Python
+   widgets don't need this — they can just import Desk's own Python
+   modules directly, in-process (see [Key Design
+   Decisions](#key-design-decisions--tradeoffs)).
+9. **Code Editor Widget** — a built-in `kind: "python"` widget (a
+   `QScintilla`-based editor, not Chromium/Monaco — resolved; see Key
+   Design Decisions) providing open/edit/save for a single file, with
+   syntax highlighting selected by file extension. File I/O goes through a
+   plain `QFileDialog`, not automatic Desk-directory awareness — at the
+   time this widget was built, no `python` widget had a way to learn the
+   current Desk's directory; `desk.shell.current_context` (see item 11's
+   TODO Widget) since closed that specific gap, but this widget hasn't
+   been revisited to use it (see `plans/code-editor-widget.md`).
+10. **Console Widget** — a built-in `kind: "python"` widget (a
+    `QPlainTextEdit`-based terminal over a real PTY running `bash`, not
+    Chromium/`xterm.js` — resolved; see Key Design Decisions) so the user
+    can run anything a terminal can run, including `claude`. Real ANSI/
+    VT100 interpretation via `pyte` (cursor position, screen-buffer state,
+    color/attributes) renders the actual current terminal screen, so
+    full-screen, redraw-in-place programs (`claude`'s own interface
+    included) display correctly — not the regex-stripped/append-only
+    approach an earlier version of this doc described, which broke
+    exactly that case.
+11. **TODO Widget** — a built-in `kind: "python"` widget
+    (`widgets/todo/`) that reads the nearest `TODO.md` relative to the
+    current Desk's directory (via `desk.shell.current_context` — a
+    minimal, signal-free get/set pair; see `plans/todo-widget.md` for why
+    that's enough for now) and shows it as a filterable
+    (complete/incomplete/pending/superseded), drag-and-drop-reorderable
+    list, with a hovering add-item dialog (matching `WidgetSpawnMenu`'s
+    `Popup` pattern). Both reordering and adding write the file and commit
+    it via real `git` operations scoped to the target file's own
+    repository (skipped, not an error, if it isn't one) —
+    reprioritization debounces its commit (1 minute of inactivity, or an
+    add arriving first, which folds both changes into one commit).
+    Parsing/rendering (`desk.todo_file`) and id generation
+    (`desk.todo_ids`, also used by `scripts/todo_item_ids.py`) are shared,
+    reusable modules, not widget-internal code.
+12. **Claude Widget** — a built-in `kind: "python"` widget
+    (`widgets/claude/`) that spawns the same real-PTY/`pyte` terminal
+    mechanism as the Console Widget, then types an `exec claude …`
+    invocation into the freshly-spawned shell: the shell's own startup/
+    profile — `PATH`, aliases, `nvm`, etc. — loads first (same as a user
+    launching it from a real terminal), then `exec` replaces the shell
+    with `claude` in the same PTY process, so **quitting claude ends the
+    PTY and the widget closes itself** rather than dropping back to a
+    shell (TODO 5ddbef0, via a `TerminalWidget.process_exited` signal the
+    DeskWindow binding uses to remove the frame). If `claude` isn't
+    found, bash's `exec` fails and the interactive shell stays usable, so
+    a missing `claude` still doesn't leave a dead pane. The
+    initial prompt tells `claude` it's running inside Desk and points it
+    at the current Desk's `.desk_temp/desk-temporary-ui.md` (via
+    `desk.shell.current_context`, falling back to a plain relative-path
+    description if no current Desk directory is known yet). The shared
+    PTY/`pyte` machinery itself (`TerminalWidget`) was extracted out of
+    `widgets/console/widget.py` into `desk.terminal_widget` for this
+    reuse — widget directories can't import each other directly, so
+    shared widget logic lives in `desk.` proper, the same pattern as
+    `desk.todo_file`/`desk.temp_ui`. See `plans/claude-widget.md`.
+    **Session persistence/resume (TODO 1d7331b):** the widget's Desk
+    `instance_id` is generated as a full UUID and doubles as its claude
+    `--session-id` (the same instance_id-as-durable-identity pattern the
+    Temporary UI widgets use). A fresh placement launches `claude
+    --session-id <instance_id> "<prompt>"`; a widget restored from a
+    saved Desk (same `instance_id`) instead launches `claude --resume
+    <instance_id>` with no prompt, reconnecting to the same
+    conversation. The launch is issued by `DeskWindow._bind_claude_widget`
+    post-build (which knows the instance_id and whether it's a restore),
+    not by `build()` itself. See `plans/claude-widget-session-resume.md`.
+13. **Git Status Widget** — a built-in `kind: "python"` widget
+    (`widgets/git_status/`) showing the current Desk directory's git
+    status (resolved via `desk.shell.current_context` +
+    `desk.git_utils.find_git_root`, same as the TODO/Code Editor
+    widgets). Deliberately polls (`QTimer`, a few seconds) rather than
+    watching the working tree with `watchdog` — almost any change
+    anywhere in a repo can affect `git status`, making a precise watcher
+    both complex and the compute burden the feature explicitly needs to
+    avoid. The actual `git status`/branch subprocess calls run on a
+    background thread (never the GUI thread, same reasoning as the TODO
+    widget's own git-commit thread — see `LEARNINGS.md`), skip entirely
+    while the widget isn't visible, and only trigger a redraw when the
+    output actually changed since the last poll. See
+    `plans/git-status-widget.md`.
+14. **Markdown Widget** — a built-in `kind: "python"` widget
+    (`widgets/markdown/`) that renders a chosen Markdown file via Qt's
+    native `QTextBrowser.setMarkdown()` (no Markdown-library dependency)
+    and auto-reloads it when the file changes on disk. File watching goes
+    through `desk.file_watch.SingleFileWatcher` — a reusable single-file
+    watcher extracted from the TODO widget's own watcher so its two
+    watchdog gotchas (FSEvents reports symlink-resolved paths; an atomic
+    write lands as a `FileMovedEvent`/`dest_path`) live in one place; see
+    `LEARNINGS.md`. The file is picked via an editor-style "Open" button
+    seeded from the current Desk directory (`desk.shell.current_context`)
+    and, like the Code Editor, is not persisted across a reload (the
+    widget contract has no per-instance state payload yet — see
+    `PARKINGLOT.md`). See `plans/markdown-renderer-widget.md`.
+15. **Sheet Widget** — a built-in `kind: "python"` widget
+    (`widgets/sheet/`): a basic `QTableWidget`-backed spreadsheet with
+    interactively resizable rows/columns, word-wrapped/clipped cells,
+    all entries left-aligned and vertically centered (via each item's
+    `textAlignment` plus a `setItemPrototype` so user-typed cells
+    inherit it), and Add/Delete row & column controls. It serializes
+    to/from **TSV** (tab-joined columns, newline-joined rows; ragged
+    rows padded on load) through an editor-style Open/Save/Save As
+    toolbar seeded from the current Desk directory. Like the Code
+    Editor/Markdown widgets, the open file isn't persisted across a
+    reload (no per-instance state payload — see `PARKINGLOT.md`); a `•`
+    dirty marker flags unsaved edits. See `plans/sheet-widget.md`.
+
+### Widget Model
+
+See `design-docs/widget-ux.md` for the interactive chrome (titlebar/drag,
+resize handles) every widget gets on the canvas, regardless of kind — this
+section covers what a widget *is* and how its content is built/served, not
+the frame around it.
+
+Desk widgets, regardless of implementation language, are defined by a
+**manifest** (`widget.json`) in a directory (implemented in
+`desk.widgets.discover_widgets`/`WidgetInfo`):
+
+```json
+{
+  "name": "Console",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": ["pty.spawn", "workspace.read"],
+  "default_size": { "width": 640, "height": 400 }
+}
+```
+
+- `kind` is **required** (`"python"` or `"html"`); everything else is
+  optional and defaults sensibly (`name` → the widget's directory name,
+  `entry` → `widget.py`/`index.html` depending on `kind`, `capabilities` →
+  `[]`, `default_size` → `None`, meaning the canvas's own default). A
+  directory with no `widget.json` at all is simply not discovered as a
+  widget.
+- There is deliberately **no `id` field**: a widget's id is always its
+  directory name, never manifest-declared — see
+  [Key Design Decisions](#key-design-decisions--tradeoffs) for why.
+
+- **`kind: "python"`** (the preferred/default kind) widgets ship a Python
+  module (`widget.py`, or whatever `entry` names) exposing a `build() ->
+  QWidget` function. The Desk Shell imports it directly and calls
+  `build()` in-process, on the GUI thread, embedding the returned
+  `QWidget` on the canvas via a `PythonWidgetHost`/`QGraphicsProxyWidget`
+  — no local server, no HTTP, nothing beyond Python and Qt. This is what
+  Desk's own shipped example widget (`widgets/demo/`) uses, so `python -m
+  desk` never needs Node/npm/tsc, and never round-trips through a browser
+  for something Qt already renders natively.
+- **`kind: "html"`** widgets ship their own `index.html`/TS(compiled
+  JS)/CSS, for a Desk user who wants a richer, custom SPA-based widget.
+  Each gets its own `ChromiumWidget` pointed at that widget's URL, served as
+  static assets from the Local Web Server (e.g.
+  `/widgets/com.desk.console/index.html`). Building such a widget (if it
+  uses TypeScript, as `CLAUDE.md` requires for browser code) is the widget
+  author's own build step — Desk itself doesn't need it built to run.
+  `entry` is currently only honored for `python`-kind widgets — `html`-kind
+  serving uses `StaticFiles(..., html=True)`, which always serves
+  `index.html` specifically; a custom `entry` for `html`-kind isn't
+  supported yet.
+
+Widgets declare **capabilities** in their manifest; the Desk Bridge only
+grants the Bridge API surface a `kind: "html"` widget actually declared
+(see [Security Considerations](#security-considerations)) — `kind:
+"python"` widgets don't go through the Bridge API at all, since they can
+just import whatever Desk-internal Python they need directly.
+Capabilities stored on `WidgetInfo` are now enforced by the Bridge API —
+see [Desk Bridge API](#desk-bridge-api).
+
+### Hot Reload
+
+A single `WidgetWatcher` (via `watchdog`) watches the whole widgets
+directory on a background thread, regardless of widget kind. On a change:
+
+1. The watcher thread determines which widget id the changed path belongs
+   to and emits it through the **Hot Reload Broker** — a `QObject` with a
+   Qt signal. Qt signal emission is thread-safe: because the broker and the
+   widget host instances live on the GUI thread, Qt automatically queues
+   the delivery onto that thread regardless of which thread emitted it.
+2. For a `python` widget: its `PythonWidgetHost` re-imports `widget.py`
+   fresh, calls `build()` again, and swaps the newly-built `QWidget` in
+   for the old one (removing/deleting the old one). There is deliberately
+   no caching of the loaded module, so this always reflects the latest
+   source.
+3. For an `html` widget: its `ChromiumWidget` calls
+   `QWebEngineView.reload()` — no browser-side WebSocket listener or
+   `widget.reload` protocol message is needed, since the "thing doing the
+   reloading" is native Qt code, not JS running inside the page. (The
+   Bridge API's WebSocket channel is still used for browser-initiated
+   streaming, e.g. PTY I/O — just not for this.)
+
+Discovery itself is also live, not just already-open instances' source:
+`DeskWindow` re-runs `discover_widgets()` on every `widget_changed` event
+(the same signal driving per-instance reload above) and refreshes the
+widget catalog (the add-widget menu, and what `widget_id`s it recognizes).
+A widget directory added, removed, or whose `widget.json` changes while
+Desk is already running takes effect without a restart — see
+`plans/generalized-hot-reload.md`.
+
+### Desk Model
+
+A **Desk** is a named set of widget instances together with their state
+(each widget's canvas position/size) and the canvas's own pan/zoom, tied to
+a directory on disk. Implemented in `desk.desks` (`Desk`, `WidgetState`,
+`load_desk`/`save_desk`) and `desk.shell.window.DeskWindow` (which owns the
+single currently-open `Desk` for the window — only one window exists for
+now, and it can only have one Desk open at a time).
+
+- **File format**: a `.desk` file (JSON) — `{"widgets": [{"widget_id",
+  "x", "y", "width", "height"}, ...], "pan_x", "pan_y", "scale"}`. A Desk's
+  **name is its file's stem** (e.g. `my-project.desk` → "my-project").
+- **Directory association**: by default a Desk's file lives in its
+  associated directory (`Desk.directory == Desk.path.parent`); on launch,
+  Desk looks for existing `*.desk` files in the current working directory
+  (most-recently-modified first) or falls back to `<cwd>/default.desk` (a
+  path that may not exist yet — treated as a brand-new, empty Desk, which
+  falls back to placing one instance of every discovered widget, matching
+  pre-Desk behavior, so a fresh directory still shows the demo widget out
+  of the box).
+- **Saving**: on quit, and immediately before switching to a different
+  Desk or changing the current Desk's directory (so switching can never
+  silently lose layout changes) — not continuously/debounced on every
+  drag, for now.
+- **Recently-used list**: a small global (not per-directory) MRU of
+  opened `.desk` file paths, in `~/.desk/recent_desks.json`
+  (`desk.recent_desks`), capped at 10 entries, deduped/moved-to-front on
+  reopen, filtering out entries whose file no longer exists.
+- **Top-left picker UX**: see `design-docs/widget-ux.md`'s Desk Picker
+  section for the `DeskPicker` HUD (collapsed half-alpha name label,
+  expanding on hover to an MRU dropdown + directory-picker button) and its
+  confirm-then-always-save-first switching behavior.
+- **Explicitly decoupled (for now)**: the widget *catalog* (available
+  widget **types**, from `DEFAULT_WIDGETS_DIR`) is not scoped to a Desk's
+  directory — a Desk only affects which widget *instances* are placed and
+  where, not which types are available to place. Whether widget discovery
+  itself should become directory-scoped (e.g. a per-project `widgets/`
+  folder) is an open question for a future item.
+
+## Desk Bridge API
+
+For **`kind: "html"`** widgets only, exposed as `window.desk.*` (a plain-JS
+client — see Key Design Decisions for why not TypeScript/built — injected
+into each Chromium Widget's page via a `QWebEngineScript` at
+`DocumentCreation`, talking to the Local Web Server over REST) —
+`python`-kind widgets don't need this, see [Widget Model](#widget-model):
+
+| Call | Purpose | Capability |
+|---|---|---|
+| `desk.workspace.getState()` | Read the current Desk's live widget layout | `workspace` |
+| `desk.fs.readFile(path)` / `writeFile(path, contents)` | Filesystem access | `fs` |
+| `desk.widgets.list()` / `open(widgetId, opts)` / `close(instanceId)` | Manage widget instances | `widgets` |
+| `desk.self.getManifest()` | A widget introspecting its own manifest | none |
+
+Each call (other than `self.getManifest`, not privileged) is checked
+against the calling widget's declared `capabilities` — coarse,
+resource-level strings (`"workspace"`, `"fs"`, `"widgets"`), not one per
+method; see `plans/desk-bridge-api.md`'s Key Design Decisions. The caller
+identifies itself via an `X-Desk-Widget-Id` header the injected client
+library attaches automatically.
+
+`workspace.getState`/`widgets.open`/`widgets.close` touch live
+`DeskWindow`/`WorkspaceView` state, which is GUI-thread-owned while these
+routes run on the Local Web Server's background thread; `desk.shell.bridge
+.GuiBridge` provides a synchronous cross-thread call (emits a Qt signal,
+thread-safe like `HotReloadBroker`, then blocks only the calling thread —
+offloaded to an executor so the asyncio loop isn't stalled — until the GUI
+thread has run the callable and produced a result). `fs.*`/`widgets.list`/
+`self.getManifest` don't need this at all — plain filesystem/manifest
+reads served directly from the request thread.
+
+`widgets.close(instanceId)` needed real per-instance identity, which
+nothing in the codebase had before this — `WidgetState`/`WidgetFrame` now
+carry a short `instance_id` (generated at placement time, persisted,
+backward-compatible with `.desk` files saved before it existed).
+
+**No WebSocket/push channel yet** (`onStateChange()`-style
+subscriptions) — deferred; see `plans/desk-bridge-api.md`'s Scope section.
+None of the implemented calls are inherently streaming, and the strongest
+originally-cited case (a Chromium-hosted Console widget streaming PTY
+output) is moot now that the Console widget resolved native-Qt.
+
+## Security Considerations
+
+- The Local Web Server (used only for `kind: "html"` widgets) binds to
+  `127.0.0.1` only and uses an unpredictable, per-launch port plus a
+  per-launch token required on all requests, so other local
+  processes/browser tabs can't drive Desk.
+- `kind: "python"` widgets run directly in the Shell's own process, on the
+  GUI thread, with no isolation boundary at all — the same trust level as
+  any other Python script the user runs, and stronger integration than a
+  Chromium widget gets (direct access to Desk's own Python objects, not
+  just an HTTP API). There is no sandboxing for these; a misbehaving Python
+  widget can affect the whole app (freeze the GUI thread, crash the
+  process). This is an accepted tradeoff (see
+  [Key Design Decisions](#key-design-decisions--tradeoffs)) since it's the
+  same trust model as running any local script directly.
+- `kind: "html"` widgets are each their own `QWebEngineView` (its own
+  Chromium renderer process), giving them isolation from each other and
+  from the Shell process by construction.
+- The Bridge API is capability-scoped per the widget's manifest; a `html`
+  widget that hasn't declared `pty.spawn` cannot spawn shell processes,
+  even though the underlying backend can.
+- The Console widget, if Chromium-hosted, is an intentional, explicit "full
+  shell access" escape hatch (that's its purpose — running `claude` and
+  other CLIs) and is a built-in widget, not something arbitrary third-party
+  widgets get by default.
+
+## Key Design Decisions & Tradeoffs
+
+- **PyQt6 + QtWebEngine (Chromium) instead of Electron.** Keeps the app
+  backend in Python (matching the rest of the intended ecosystem — spawning
+  `claude`, local file/process access, etc.) while still getting a modern
+  rendering engine for the UI, for the cases that do want a browser.
+  Tradeoff: QtWebEngine ships its own Chromium build (larger install size,
+  separate update cadence from system browsers), and PyQt6 licensing
+  (GPL/commercial) should be confirmed against Desk's intended distribution
+  model.
+- **A native (Qt) Workspace Canvas, not a browser-hosted one.** Qt's
+  `QGraphicsView`/`QGraphicsScene` provides pan/zoom natively with no extra
+  dependencies, and `QGraphicsProxyWidget` is Qt's documented mechanism for
+  embedding real widgets (of either kind) as scene items — no need to build
+  and maintain a bespoke bundler-based SPA just to get pan/zoom, which also
+  cuts against `CLAUDE.md`'s "avoid adding dependencies, prefer bespoke
+  solutions" guidance.
+- **`python`-kind widgets render as native `QWidget`s built directly by the
+  Shell, not via a local HTTP server + Chromium view.** (This reverses an
+  earlier version of this document, which routed *all* widgets — including
+  Python ones — through a `ChromiumWidget` for a uniform rendering model.)
+  Since Desk is already a Qt application, adding an HTTP round-trip and a
+  full browser engine just to display Python-generated content was
+  unnecessary machinery for something Qt already does natively and more
+  directly: a widget module returns a `QWidget`, the Shell embeds it. This
+  also means `python` widgets get direct, in-process access to any of
+  Desk's own Python code they want to import, with no Bridge API needed at
+  all for them. Tradeoff: no HTTP/process isolation boundary for `python`
+  widgets (see Security Considerations) — accepted because they're trusted
+  local code with the same trust level as any script run directly. Chromium
+  is reserved for `kind: "html"` widgets (a Desk user's own custom SPA).
+  Both built-in editor-style widgets ended up native-Qt in practice: the
+  Console widget uses a `QPlainTextEdit`/`pyte` terminal, and the Code
+  Editor widget uses `QScintilla`, rather than `xterm.js`/Monaco.
+- **Hot reload for `python` widgets means "rebuild," not "refresh."** There
+  is no way to "hot patch" an arbitrary already-constructed `QWidget` tree
+  in place, so reload means: re-import the module fresh (no caching) and
+  call `build()` again, then swap the new `QWidget` in for the old one.
+  This mirrors the "always re-execute fresh, no cache invalidation" pattern
+  used previously and gives correct behavior at the cost of full widget
+  state being reset on every edit (no preservation of, e.g., scroll
+  position or in-widget state across a reload) — acceptable for now; worth
+  revisiting if that gets annoying in practice.
+- **Hot reload delivered via an in-process Qt signal (Hot Reload Broker),
+  not a WebSocket message to the browser.** For `html` widgets specifically,
+  since the thing that needs to react to a widget's source changing is
+  native Qt code (call `QWebEngineView.reload()`), routing the notification
+  through Qt's own thread-safe signal/slot mechanism is simpler and more
+  direct than round-tripping through a WebSocket into browser JS that would
+  then have needed some way to reload its own page. The Bridge API's
+  WebSocket channel remains for genuinely browser-initiated streaming (e.g.
+  PTY I/O for a Chromium-hosted Console widget).
+- **REST + WebSocket bridge instead of `QWebChannel`, for `html` widgets.**
+  `QWebChannel` (Qt's built-in JS↔Python bridge) is a natural first thought,
+  but ties the Bridge API to being inside QtWebEngine specifically. An
+  HTTP/WebSocket API keeps the same widget SPAs testable in a normal
+  browser during development and doesn't preclude adding a `QWebChannel`
+  transport later if needed. (Moot for `python` widgets, which don't use
+  the Bridge API at all.)
+- **PTY-backed console, not a fake/emulated shell.** Whichever way the
+  console widget ends up implemented, its entire purpose is to run `claude`
+  and other real CLI tools exactly as a terminal would, so it must be a
+  genuine PTY (`bash` as a real subprocess), not a restricted or emulated
+  command runner.
+- **Console widget is native-Qt (`kind: "python"`), not Chromium/`xterm
+  .js`.** This is a *built-in, always-shipped* widget, unlike a
+  Chromium/`html`-kind widget which is opt-in and something a Desk user
+  chooses to add. Pulling in `xterm.js` (and therefore Node/npm/tsc) for
+  a core, always-present part of Desk would reintroduce exactly the
+  build-tooling dependency the earlier "prefer Python, no build step"
+  pivot (see the `python`-kind decision above) deliberately moved away
+  from. A plain `QSocketNotifier`-driven `QPlainTextEdit` over a real PTY
+  needs nothing beyond the standard library's `pty` module.
+- **Real ANSI/VT100 interpretation via `pyte`, not regex-stripped escape
+  sequences.** Reverses an earlier version of this decision, which
+  stripped escape sequences instead of interpreting them specifically to
+  avoid a third-party dependency, accepting that full-screen TUI programs
+  wouldn't render correctly as a stated tradeoff. That tradeoff turned out
+  to be unacceptable: the concrete evidence (a screenshot of `claude`
+  itself producing garbled, overlapping, cursor-less output) is that the
+  widget's own explicitly-stated core purpose — running `claude` — is
+  what breaks, not some secondary case. Real terminal emulation (cursor
+  position, screen-buffer state, color/attribute tracking) is also deep,
+  well-trodden territory where a small, focused, pure-Python library
+  written for exactly this (`pyte`, LGPLv3, no C extensions) is a better
+  bet than a hand-rolled partial VT100 parser accumulating its own subtle
+  bugs. `CLAUDE.md`'s "prefer bespoke solutions" is about avoiding
+  *unnecessary* dependencies, not refusing a necessary one once a bespoke
+  attempt has concretely failed at the feature's stated purpose.
+- **Code Editor widget is native-Qt (`QScintilla`), not Chromium/Monaco.**
+  Same reasoning as the Console widget: a *built-in, always-shipped* widget
+  pulling in Node/npm/tsc for Monaco would reintroduce the build-tooling
+  dependency the "prefer Python, no build step" pivot moved away from, for
+  a widget a plain native text-editing component handles well. No
+  automatic Desk-directory awareness yet either — no `python` widget has a
+  way to learn the current Desk's directory today, and building one-off
+  plumbing just for this widget would preempt the Desk Bridge API's more
+  general solution to the same problem; see `plans/code-editor-widget.md`.
+- **Widget id is always the directory name, never read from the
+  manifest.** `WidgetWatcher` computes a changed widget's id from the
+  first path component under `widgets_dir` (i.e. the directory name) — if
+  a manifest's `id` could differ from its directory name, the watcher's
+  emitted id and `discover_widgets`'s map key would disagree and hot
+  reload would silently never match for that widget. Simplest correct
+  choice: don't support a manifest-declared `id` at all; the directory
+  name is the identity, full stop. Could be revisited if the watcher were
+  changed to resolve ids some other way, but there's no need for that yet.
+- **Manifest required, no fallback to inferring `kind` from which file
+  exists.** Maintaining two parallel discovery mechanisms (manifest, and
+  the old "infer from `widget.py`/`index.html` presence") indefinitely
+  would be more surface area for no real benefit, especially since Desk
+  only ships one widget of its own. `widget.json` is now the one source of
+  truth for a directory to be treated as a widget at all.
+- **Bridge API client library is plain JS, not TypeScript, not built by
+  `tsc`.** Same reasoning as the Console/Editor widgets: this is built-in,
+  always-shipped Desk infrastructure every `html` widget gets
+  unconditionally, not a Desk user's own custom widget code. `CLAUDE.md`'s
+  "always use TypeScript in strict mode" is about the latter.
+- **A synchronous cross-thread call (`GuiBridge`), not a fire-and-forget
+  signal, for Bridge routes that touch live `DeskWindow` state.**
+  `HotReloadBroker`'s existing pattern (Qt signal, thread-safe emission)
+  is fire-and-forget — fine for "a file changed," wrong for "get me the
+  current workspace state and give it back as an HTTP response," which
+  needs an actual return value. `GuiBridge.call(fn)` blocks only the
+  calling (background) thread — offloaded to an executor so it doesn't
+  stall the asyncio event loop other requests are being served on — until
+  the GUI thread has run `fn` and produced a result.
+- **Coarse, resource-level Bridge capabilities (`"workspace"`, `"fs"`,
+  `"widgets"`), not one per method.** Matches the level of detail
+  `WidgetInfo.capabilities` (a flat `list[str]`) already implies; splitting
+  further (e.g. `fs:read` vs `fs:write`) is a small, additive change later
+  if a concrete widget actually needs the finer grain.
+- **No WebSocket/push channel in the Bridge API yet.** See [Desk Bridge
+  API](#desk-bridge-api) — deferred, not abandoned.
+- **Minimal, additive `instance_id` on `WidgetState`/`WidgetFrame`, not a
+  broader Desk-persistence redesign.** Only what
+  `widgets.close(instanceId)` actually requires to be implementable at
+  all — this codebase never had per-instance widget identity before (only
+  per-*type*), and the Bridge API sketch's own naming already anticipated
+  needing it.
+
+## Open Questions
+
+- Whether `kind: "html"` widget SPAs should use a JS framework at all — per
+  `CLAUDE.md`'s preference for bespoke solutions over added dependencies,
+  the default is plain (strict) TypeScript with no framework/bundler unless
+  a specific widget's complexity clearly justifies one.
+- Distribution/packaging target (PyInstaller app bundle, pip-installable
+  CLI, etc.) and platform scope (macOS-only first, or cross-platform from
+  day one)?
+- Exact workspace persistence location/format versioning strategy as the
+  schema evolves.
+
+These are tracked as they come up; see `QUESTIONS.md` for anything currently
+blocking a TODO item.
+
+## Future Work
+
+- Multi-window support (popping a widget out to its own OS window).
+- A widget marketplace/registry for sharing widgets beyond the local
+  filesystem.
+- Richer inter-widget communication (pub/sub bus beyond direct Bridge calls
+  or direct Python imports).
+- Preserving a `python` widget's internal state across a hot-reload rebuild
+  (currently every rebuild is a full fresh `QWidget`, with no state
+  carried over).
