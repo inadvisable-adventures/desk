@@ -23,9 +23,11 @@ for Desk's own development — building and running Desk itself never
 requires Node/npm/tsc, though Desk can still run those tools on behalf of a
 widget that needs them.
 
-Desk has a code editing widget which is aware that it is in desk and has access to the Desk.
+Desk has a code editing widget which is aware that it is in Desk and has access to the Desk.
 
-Desk has a console widget which hosts bash so that it can run claude.
+Desk has a console widget which hosts bash so that it can run Claude CLI, 
+and it has a protocol (including instructions to Claude) for interacting
+with the Desk user.
 
 ![Desk screenshot](inadvisiable-adventures-desk-screenshot.png)
 
