@@ -1289,3 +1289,4 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    `plans/fix-desk-picker-segfault.md`.
    [planned: fix-desk-picker-segfault.md]
 c7d6e4d. Implement an SVG-rendering widget.
+a76e723. Implement a markdown viewer widget (markdown_ex) which can show embedded SVGs as well as mermaid diagrams, with folding support and a TOC treeview on the left-hand-side.
