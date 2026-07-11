@@ -212,3 +212,33 @@ If a widget kind (`build() -> QWidget`, embedded via `PythonWidgetHost`/`WidgetF
 TODO c44e88f: making the browser widget's page scroll meant letting `WorkspaceView.wheelEvent` forward wheel events to the embedded `QWebEngineView` (via `super().wheelEvent(event)`) instead of treating them as a canvas zoom. That worked — but *intermittently* crashed with `RecursionError: maximum recursion depth exceeded`, right back at the top of `wheelEvent`. The cause: when `QtWebEngine` receives a wheel event its page can't consume (a non-scrollable page — `about:blank` — or one already at its scroll limit), it *propagates the unconsumed event back up the parent widget chain* (Chromium-style scroll chaining). That bounced event travels up through the `QGraphicsProxyWidget`/viewport and re-enters `WorkspaceView.wheelEvent` **synchronously, while the original `super().wheelEvent(event)` call is still on the stack** — which sees the cursor still over the web view, forwards again, bounces again, and recurses until the stack overflows. It's timing-dependent (hence intermittent): it only bounces when the page genuinely has nothing to scroll at that moment, which for a `QWebEngineView` depends on async page-load/compositor state.
 
 The fix is a re-entrancy guard: set a flag around the `super().wheelEvent()` forward, and if `wheelEvent` is re-entered while that flag is set, just return (don't re-forward, and don't fall through to the zoom branch either — zooming on a bounce-back would be wrong). This also harmlessly covers the analogous case of a `QAbstractScrollArea` bouncing a wheel event at its scroll boundary. The general lesson: any time you forward an input event from a container into an embedded child that might *not* consume it, assume it can bubble straight back into your handler on the same stack — guard against synchronous re-entry rather than trusting the child to swallow it.
+
+## A `QTreeWidgetItem` (or other PyQt-wrapped C++ object)'s `id()` is not a stable dict key across separate accesses
+
+Building the Markdown (Extended) widget's TOC (TODO `a76e723`), the first
+attempt mapped each `QTreeWidgetItem` to its corresponding `_SectionWidget`
+via a plain Python dict keyed on `id(toc_item)`, populated once right after
+creating each item. Clicking a TOC entry later (via the `itemClicked`
+signal, or any other fresh call like `tree.topLevelItem(i)`/`item.child(i)`)
+looked up `id(item)` again — and the lookup silently missed, because PyQt/
+sip does not guarantee the *same Python wrapper object* is returned for
+repeated accesses to the same underlying C++ `QTreeWidgetItem`. If nothing
+else keeps the original Python wrapper alive, a later access can produce a
+newly-allocated wrapper with a different `id()` (or even, per CPython's
+`id()`-reuse-after-`free()` behavior, a coincidentally *matching* one for
+the wrong object) — either way, `id()`-as-dict-key is not trustworthy here.
+
+This was caught by an actual test (clicking a nested TOC entry after
+collapsing its ancestor section was supposed to re-expand the ancestor; it
+silently didn't), not by inspection — the bug produces no error, just a
+lookup that returns `None`/wrong-value some of the time.
+
+The fix: don't shadow Qt object identity with a side dict at all. Use the
+item's own storage — `item.setData(column, Qt.ItemDataRole.UserRole,
+python_object)` / `item.data(column, Qt.ItemDataRole.UserRole)` — which
+PyQt keeps attached to the real C++ object regardless of which Python
+wrapper is currently referencing it. General lesson: for any Qt item type
+that supports `setData`/`data` (tree/list/table items, model indexes),
+prefer that over a Python-side `id()`-keyed lookup table whenever the same
+logical item might be accessed through more than one code path (a signal
+callback vs. a direct `.child()`/`.item()` walk, for instance).

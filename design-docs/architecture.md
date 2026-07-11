@@ -279,6 +279,26 @@ Desk Bridge API.
     Editor/Markdown widgets, the open file isn't persisted across a
     reload (no per-instance state payload — see `PARKINGLOT.md`); a `•`
     dirty marker flags unsaved edits. See `plans/sheet-widget.md`.
+16. **Markdown (Extended) Widget** — a built-in `kind: "python"` widget
+    (`widgets/markdown_ex/`), separate from the plain Markdown Widget:
+    a left-hand TOC `QTreeWidget` plus a foldable, heading-nested
+    section view of the rendered document, with inline Mermaid diagram
+    rendering. The raw Markdown is split (fence-aware, so a `#` inside
+    a code block is never mistaken for a heading) into heading/text/
+    ```mermaid blocks; each text chunk is fed to its own auto-height
+    `QTextBrowser.setMarkdown()` (reusing Qt's native Markdown/image/
+    indirect-SVG handling for free, same as the plain Markdown Widget
+    — see `qtextbrowser-images-svg-controls.md`), and each `mermaid`
+    fence is rendered by `desk.mermaid.MermaidDiagramWidget`. Folding
+    and the TOC are pure native-Qt composition (nested `QToolButton`
+    disclosure sections) — no HTML/JS involved anywhere in this widget.
+    `desk.mermaid` is a **bespoke, intentionally partial** Mermaid
+    parser/layout/`QGraphicsScene` renderer (flowchart basic shapes +
+    flat state diagrams only) rather than a vendored `mermaid.js` —
+    per `CLAUDE.md`'s dependency aversion and direct user direction;
+    any other diagram type or unparseable source falls back to showing
+    the raw fenced source as plain text instead of erroring. See
+    `plans/markdown-ex-widget.md`.
 
 ### Widget Model
 

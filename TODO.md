@@ -1025,9 +1025,9 @@ c8e3b28. COMPLETED: need to give focus to text boxes when we pop them up,
    regression with a real placed `todo` widget shows both labels
    correctly side by side.
    [planned: todo-widget-last-updated-timestamp.md]
-a76e723. Implement a markdown viewer widget (markdown_ex) which can show
-   embedded SVGs as well as mermaid diagrams, with folding support and a
-   TOC treeview on the left-hand-side.
+a76e723. COMPLETED: Implement a markdown viewer widget (markdown_ex)
+   which can show embedded SVGs as well as mermaid diagrams, with
+   folding support and a TOC treeview on the left-hand-side.
    [planned: markdown-ex-widget.md]
 5a2f5b9. COMPLETED: Bug: the TODO widget's file parsing doesn't seem to
    work for e.g. world-timelines/TODO.md -- needs investigation into why

@@ -1,4 +1,4 @@
-# Markdown (Extended) widget — `markdown_ex`
+# Markdown (Extended) widget — `markdown_ex` (COMPLETED)
 
 TODO `a76e723`.
 
@@ -163,4 +163,47 @@ Headless, no browser needed (pure Qt widgets):
 
 ## Status
 
-Not yet implemented.
+**Completed.** Implemented as described above:
+
+- `src/desk/mermaid.py`: parser verified against flowcharts covering all
+  4 supported shapes, all 4 edge styles, piped edge labels, and
+  multi-node chains; state diagrams covering `[*]` start/end, labeled
+  transitions, state descriptions, and a skipped composite block
+  (confirmed its contents don't leak into the parsed graph); an
+  unsupported diagram type (`sequenceDiagram`) and garbage input both
+  correctly raise `MermaidParseError`. `layout()` verified on a linear
+  chain, a branch/merge diamond, and an intentional 3-node cycle (the
+  cycle-fallback ranking terminates and produces a reasonable, non
+  -overlapping layout). `MermaidDiagramWidget` verified headless
+  (offscreen `QApplication`): real scenes built for both diagram kinds
+  (including the self-loop edge-routing path), and the plain-text
+  fallback for unsupported source, with no exceptions in any case.
+- `widgets/markdown_ex/`: verified `_split_blocks`/`_build_sections`
+  against a real document (nested headings, an interleaved code fence,
+  and two `mermaid` fences, one supported/one not) — correct block
+  typing and section nesting. Verified the full widget end-to-end via
+  the real widget-loading files: `desk.widgets.discover_widgets` picks
+  up the manifest correctly, and `desk.shell.python_widget
+  .PythonWidgetHost` (the exact class `DeskWindow._place_widget` uses
+  for every `kind: "python"` widget) builds a real `MarkdownExWidget`,
+  opens a file, populates the TOC to match the heading structure, and
+  correctly reloads (TOC updates) on an external file edit via the
+  file watcher. Also directly verified TOC-click behavior: clicking a
+  nested entry re-expands a collapsed ancestor section (this caught a
+  real bug — see the `LEARNINGS.md` entry on `QTreeWidgetItem`/`id()`
+  — since fixed to use `QTreeWidgetItem.setData`/`.data()` instead of
+  an `id()`-keyed side dict).
+- **Skipped**: constructing a full, literal `DeskWindow` (rather than
+  `PythonWidgetHost` directly) hit an unrelated stall in this
+  environment during `WorkspaceView`/`canvas.py` construction —
+  plausibly first-time offscreen `QtWebEngine` startup cost pulled in
+  transitively by that module, not something `markdown_ex` itself
+  triggers (`kind: "python"` widgets never touch `QWebEngineView`/
+  `ChromiumWidget`/`ServerHandle` at all — see `window.py`'s
+  `_place_widget`). Not investigated further since it's orthogonal to
+  this item; `PythonWidgetHost` (the actual per-widget mechanism
+  `DeskWindow` delegates to) was verified directly instead, and manifest
+  discovery was verified separately with no `DeskWindow`/Qt involved at
+  all.
+- `design-docs/architecture.md` gained a Markdown (Extended) Widget
+  entry; `LEARNINGS.md` gained the `QTreeWidgetItem`/`id()` entry.
