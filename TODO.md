@@ -1280,6 +1280,7 @@ b927389. COMPLETED: Add a tree-view project directory/file explorer
    instance of the Editor widget.
    [planned: file-explorer-widget.md]
 c7d6e4d. Implement an SVG-rendering widget.
+   [planned: svg-viewer-widget.md]
 b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    Console output before the crash: `python -m desk` started normally,
    discovered widgets `browser`, `claude`, `console`, `demo`, `editor`,
