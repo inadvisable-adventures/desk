@@ -1025,29 +1025,7 @@ c8e3b28. COMPLETED: need to give focus to text boxes when we pop them up,
    regression with a real placed `todo` widget shows both labels
    correctly side by side.
    [planned: todo-widget-last-updated-timestamp.md]
-b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
-   Console output before the crash: `python -m desk` started normally,
-   discovered widgets `browser`, `claude`, `console`, `demo`, `editor`,
-   `git_status`, `lightning_round`, `question`, `scratch`, `todo`, opened
-   `~/desk/test.desk` -- then `Segmentation fault:
-   11` with no Python traceback at all (a real OS-level crash, not a
-   caught/logged exception). Needs investigation: no traceback means the fault
-   is likely inside Qt/PyQt or a C extension, not plain Python -- reproduce
-   the exact picker interaction that triggered it (name click vs. directory
-   click vs. hover), and check for any known-fragile native code path (e.g.
-   LEARNINGS.md's QNativeGestureEvent segfault note) that could plausibly be
-   involved.
-
-   Investigated via code review: ruled out the QNativeGestureEvent note
-   as a direct cause (Desk only reads native gesture events, never
-   constructs them); reviewed desk_picker.py/canvas.py for other fragile
-   patterns (nothing else found); confirmed this is a different, more
-   severe symptom than TODO c8f6fb3's already-fixed `_DeskListPopup`
-   crash (that one raised a catchable `RuntimeError` with a full
-   traceback; this is a true segfault with none). Blocked on a specific
-   reproduction -- see `QUESTIONS.md` and
-   `plans/fix-desk-picker-segfault.md`.
-   [planned: fix-desk-picker-segfault.md]
+b927389. Add a tree-view project directory/file explorer widget. Add a search/filter textbox at the top which temporarily hides everything but the tree-paths to the results and the results themselves, e.g. if searching for "foo" in a directory with a structure like (a (b ...) (c (foo) ...) (d ...)), then a -> c -> foo would show, not b or d. clearing the search should restore the view but the current file should remain selected. if a user double-clicks on a filename or hits enter while a filename is selected, open the file in a new instance of the Editor widget.
 5a2f5b9. COMPLETED: Bug: the TODO widget's file parsing doesn't seem to
    work for e.g. world-timelines/TODO.md -- needs investigation into why
    that particular file fails to parse/display correctly (format
@@ -1287,4 +1265,27 @@ b25412e. COMPLETED: if there is a plan listed in a todo item, detect that
    are easily swapped for the toolbar/context-menu or the editor later
    (see plan).
    [planned: todo-open-plan-button.md]
-b927389. Add a tree-view project directory/file explorer widget. Add a search/filter textbox at the top which temporarily hides everything but the tree-paths to the results and the results themselves, e.g. if searching for "foo" in a directory with a structure like (a (b ...) (c (foo) ...) (d ...)), then a -> c -> foo would show, not b or d. clearing the search should restore the view but the current file should remain selected. if a user double-clicks on a filename or hits enter while a filename is selected, open the file in a new instance of the Editor widget.
+b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
+   Console output before the crash: `python -m desk` started normally,
+   discovered widgets `browser`, `claude`, `console`, `demo`, `editor`,
+   `git_status`, `lightning_round`, `question`, `scratch`, `todo`, opened
+   `~/desk/test.desk` -- then `Segmentation fault:
+   11` with no Python traceback at all (a real OS-level crash, not a
+   caught/logged exception). Needs investigation: no traceback means the fault
+   is likely inside Qt/PyQt or a C extension, not plain Python -- reproduce
+   the exact picker interaction that triggered it (name click vs. directory
+   click vs. hover), and check for any known-fragile native code path (e.g.
+   LEARNINGS.md's QNativeGestureEvent segfault note) that could plausibly be
+   involved.
+
+   Investigated via code review: ruled out the QNativeGestureEvent note
+   as a direct cause (Desk only reads native gesture events, never
+   constructs them); reviewed desk_picker.py/canvas.py for other fragile
+   patterns (nothing else found); confirmed this is a different, more
+   severe symptom than TODO c8f6fb3's already-fixed `_DeskListPopup`
+   crash (that one raised a catchable `RuntimeError` with a full
+   traceback; this is a true segfault with none). Blocked on a specific
+   reproduction -- see `QUESTIONS.md` and
+   `plans/fix-desk-picker-segfault.md`.
+   [planned: fix-desk-picker-segfault.md]
+c7d6e4d. Implement an SVG-rendering widget.
