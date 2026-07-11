@@ -1025,7 +1025,7 @@ c8e3b28. COMPLETED: need to give focus to text boxes when we pop them up,
    regression with a real placed `todo` widget shows both labels
    correctly side by side.
    [planned: todo-widget-last-updated-timestamp.md]
-b927389. Add a tree-view project directory/file explorer widget. Add a search/filter textbox at the top which temporarily hides everything but the tree-paths to the results and the results themselves, e.g. if searching for "foo" in a directory with a structure like (a (b ...) (c (foo) ...) (d ...)), then a -> c -> foo would show, not b or d. clearing the search should restore the view but the current file should remain selected. if a user double-clicks on a filename or hits enter while a filename is selected, open the file in a new instance of the Editor widget.
+a76e723. Implement a markdown viewer widget (markdown_ex) which can show embedded SVGs as well as mermaid diagrams, with folding support and a TOC treeview on the left-hand-side.
 5a2f5b9. COMPLETED: Bug: the TODO widget's file parsing doesn't seem to
    work for e.g. world-timelines/TODO.md -- needs investigation into why
    that particular file fails to parse/display correctly (format
@@ -1265,6 +1265,8 @@ b25412e. COMPLETED: if there is a plan listed in a todo item, detect that
    are easily swapped for the toolbar/context-menu or the editor later
    (see plan).
    [planned: todo-open-plan-button.md]
+b927389. Add a tree-view project directory/file explorer widget. Add a search/filter textbox at the top which temporarily hides everything but the tree-paths to the results and the results themselves, e.g. if searching for "foo" in a directory with a structure like (a (b ...) (c (foo) ...) (d ...)), then a -> c -> foo would show, not b or d. clearing the search should restore the view but the current file should remain selected. if a user double-clicks on a filename or hits enter while a filename is selected, open the file in a new instance of the Editor widget.
+c7d6e4d. Implement an SVG-rendering widget.
 b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    Console output before the crash: `python -m desk` started normally,
    discovered widgets `browser`, `claude`, `console`, `demo`, `editor`,
@@ -1288,5 +1290,3 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    reproduction -- see `QUESTIONS.md` and
    `plans/fix-desk-picker-segfault.md`.
    [planned: fix-desk-picker-segfault.md]
-c7d6e4d. Implement an SVG-rendering widget.
-a76e723. Implement a markdown viewer widget (markdown_ex) which can show embedded SVGs as well as mermaid diagrams, with folding support and a TOC treeview on the left-hand-side.
