@@ -209,3 +209,36 @@ Headless, against a real temp directory tree (mirroring the TODO's own
   correctly on top of `QFileSystemModel`'s lazy loading (plus the
   stale-`QModelIndex`-after-filter-change segfault hit while
   confirming that).
+
+### Follow-up fixes (post-completion, user-reported)
+
+- **Hidden files not shown.** `QFileSystemModel`'s default filter
+  omits `QDir.Filter.Hidden`, so dotfiles/dotdirs (e.g. `.git`) never
+  appeared in normal browsing. Fixed by setting an explicit filter
+  (`AllEntries | AllDirs | Hidden | NoDotAndDotDot`). `_build_search_model`'s
+  search-mode walk was already showing hidden entries (`Path.iterdir()`
+  doesn't hide dotfiles) except those in `SKIP_DIRS` — unaffected,
+  `.git` still deliberately excluded from search results as a
+  performance guard, not a visibility policy.
+- **Branch/disclosure arrows scaling oddly and not always responding to
+  clicks.** Couldn't be reproduced visually in this headless
+  environment (`QT_QPA_PLATFORM=offscreen` uses Qt's software
+  rendering, not the real macOS `QMacStyle` the running app actually
+  uses) — root-caused by inspection instead: this is a `QTreeView`
+  embedded in the Workspace Canvas's `QGraphicsProxyWidget`, and Qt's
+  own click-to-toggle hit-testing is computed purely from indentation
+  geometry, independent of whatever the native style actually paints
+  for the arrow — so a native-style rendering quirk under
+  proxy-widget-compositing-at-zoom (see the new `LEARNINGS.md` entry)
+  could visually desync the drawn arrow from its real, still-correct
+  hit region. Fixed by adding `_FileTreeView(QTreeView)` overriding
+  `drawBranches` to paint a simple `QPainter`-drawn triangle ourselves,
+  positioned within the exact same indentation rect Qt's hit-testing
+  already uses — guaranteeing the visible arrow and the clickable
+  region can never drift apart, regardless of the native-rendering
+  root cause. Verified: custom arrows render correctly (screenshot);
+  hidden dotfiles/dotdirs show up in the tree; a real click routed
+  through a `WorkspaceView` at a 1.75x zoom (via
+  `QGraphicsProxyWidget`-forwarded coordinates, not calling the tree
+  directly) correctly toggles expand state; the search-mode skip-list
+  and all prior functional tests still pass unchanged.

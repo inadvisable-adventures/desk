@@ -303,3 +303,41 @@ necessarily do the display-fitting work you'd assume from the name —
 check what it actually paints into (its full rect vs. something aspect
 -aware) before trusting it for anything other than a full-bleed, exact
 -aspect-match use case.
+
+## A native-style-drawn control (e.g. `QTreeView`'s branch/disclosure arrow) can visually desync from its own click hit-region once embedded in a zoomed `QGraphicsProxyWidget`
+
+Reported against the File Explorer widget (TODO `b927389`): the
+expand/collapse arrows appeared to scale independently from the rest of
+the tree, and clicking them didn't always work. Couldn't reproduce the
+visual symptom directly in this headless environment —
+`QT_QPA_PLATFORM=offscreen` renders with Qt's own software style, not
+the real platform style (`QMacStyle` on macOS, which is what the actual
+running app uses) — so this was root-caused by reasoning from what's
+already documented rather than by seeing the glitch: `QTreeView`'s
+click-to-toggle hit-testing is computed purely from `indentation()`/row
+geometry, entirely independent of what the active style actually paints
+for the arrow. If a native style's own drawing doesn't composite
+correctly through `QGraphicsProxyWidget`'s offscreen-buffer-then-blit
+pipeline at a non-1.0 view scale (a plausible sibling of this file's
+existing note on embedded-widget mouse coordinates being unreliable
+under zoom), the *visible* arrow can end up drawn somewhere slightly
+different from the *real* (still entirely correct) clickable region —
+so a click that looks like it landed on the arrow misses, while the
+underlying toggle mechanism itself was never actually broken.
+
+Fix: don't rely on the native style for this element at all inside an
+embedded/zoomable context — override `QTreeView.drawBranches` and paint
+a simple indicator with plain `QPainter` calls, positioned within the
+exact same indentation rect Qt's own hit-testing already uses. This
+can't drift from the hit region because it's now derived from the same
+geometry, and plain `QPainter` drawing (unlike native style painting)
+reliably respects whatever transform the enclosing view applies. See
+`widgets/file_explorer/widget.py`'s `_FileTreeView`. General lesson:
+if a *native-platform-style-painted* element (checkboxes, disclosure
+triangles, radio buttons — anything a style plugin draws rather than
+plain `QPainter` primitives) behaves oddly only when embedded in a
+`QGraphicsProxyWidget` and/or at non-unity zoom, suspect the native
+paint path itself before assuming the interaction/event-handling logic
+is at fault — and note that this category of bug may not reproduce
+under the offscreen platform, since that skips the real native style
+entirely.

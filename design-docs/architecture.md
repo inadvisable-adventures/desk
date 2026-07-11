@@ -300,9 +300,11 @@ Desk Bridge API.
     the raw fenced source as plain text instead of erroring. See
     `plans/markdown-ex-widget.md`.
 17. **File Explorer Widget** — a built-in `kind: "python"` widget
-    (`widgets/file_explorer/`): a `QTreeView` browsing the current
-    Desk directory via a plain `QFileSystemModel` (lazy per-directory
-    loading, Name column only). A search box swaps that out for a
+    (`widgets/file_explorer/`): a `_FileTreeView` (`QTreeView`
+    subclass; see below) browsing the current Desk directory via a
+    `QFileSystemModel` (lazy per-directory loading, Name column only,
+    filtered to include hidden dotfiles/dotdirs — `QFileSystemModel`'s
+    own default filter omits them). A search box swaps that out for a
     bespoke, synchronous search-results `QStandardItemModel` (a
     skip-listed — `.git`/`__pycache__`/`node_modules`/`.venv`/`build`/
     `dist` — recursive walk keeping only matches and the ancestor
@@ -317,8 +319,13 @@ Desk Bridge API.
     `current_context`'s widget-opener hook (same mechanism the TODO
     widget's "open plan" button uses) — which required adding a public
     `EditorWidget.set_file()` (previously only a private `_load_file`)
-    matching `MarkdownWidget`/`MarkdownExWidget`'s own `set_file`. See
-    `plans/file-explorer-widget.md`.
+    matching `MarkdownWidget`/`MarkdownExWidget`'s own `set_file`.
+    `_FileTreeView` overrides `drawBranches` to paint its own simple
+    expand/collapse arrow rather than relying on the native platform
+    style — a native-style-drawn branch indicator was found to
+    visually desync from its own (otherwise-correct) click hit-region
+    once embedded in the Workspace Canvas's `QGraphicsProxyWidget` at
+    non-1.0 zoom; see `LEARNINGS.md`. See `plans/file-explorer-widget.md`.
 18. **SVG Viewer Widget** — a built-in `kind: "python"` widget
     (`widgets/svg_viewer/`), same shape as the plain Markdown widget
     (Open button seeded from the current Desk directory, `SingleFileWatcher`
