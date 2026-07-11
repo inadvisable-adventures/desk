@@ -279,3 +279,27 @@ filtering mechanism that needs to know about the *whole* tree to decide
 what's visible — recursive filtering over it needs either an eager
 pre-walk (as done here) or a background thread that populates ahead of
 the filter, not just flipping a boolean on the proxy.
+
+## `QSvgWidget` stretches an SVG non-uniformly to fill its rect — it does not preserve aspect ratio
+
+Building the SVG Viewer widget (TODO `c7d6e4d`), the obvious starting
+point was `PyQt6.QtSvgWidgets.QSvgWidget` — it sounds like (and is
+documented as) "a widget that displays an SVG." Confirmed directly,
+headlessly: loading a simple 100×100 SVG containing a centered circle
+into a `QSvgWidget` resized to 400×100 renders the circle as a
+~300px-wide ellipse, not a circle — `QSvgWidget`'s `paintEvent` renders
+the SVG into its *entire* widget rect with no attempt to preserve the
+source's aspect ratio, so any widget size that doesn't match the SVG's
+own aspect ratio visibly distorts the content.
+
+Fix: don't use `QSvgWidget` for anything where the widget's aspect
+ratio might not match the SVG's own — use a bare `QSvgRenderer`
+directly and render into a manually computed, letterboxed `QRectF`
+(scaled to fit within the widget, centered on whichever axis has
+slack) instead of the widget's raw `rect()`. See
+`widgets/svg_viewer/widget.py`'s `_fit_rect`/`_AspectSvgView`. General
+lesson: a Qt convenience widget named after "displaying X" doesn't
+necessarily do the display-fitting work you'd assume from the name —
+check what it actually paints into (its full rect vs. something aspect
+-aware) before trusting it for anything other than a full-bleed, exact
+-aspect-match use case.

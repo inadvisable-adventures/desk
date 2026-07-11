@@ -1,0 +1,7 @@
+{
+  "name": "SVG Viewer",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": [],
+  "default_size": { "width": 480, "height": 480 }
+}

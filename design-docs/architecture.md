@@ -319,6 +319,18 @@ Desk Bridge API.
     `EditorWidget.set_file()` (previously only a private `_load_file`)
     matching `MarkdownWidget`/`MarkdownExWidget`'s own `set_file`. See
     `plans/file-explorer-widget.md`.
+18. **SVG Viewer Widget** — a built-in `kind: "python"` widget
+    (`widgets/svg_viewer/`), same shape as the plain Markdown widget
+    (Open button seeded from the current Desk directory, `SingleFileWatcher`
+    -driven live reload, a `set_file(path)` for programmatic opening):
+    displays a single SVG file scaled to fit the widget with aspect
+    ratio preserved. Uses `QtSvg`'s bare `QSvgRenderer` rendered into a
+    manually letterboxed target rect (`_fit_rect`), **not** the stock
+    `QSvgWidget` — confirmed directly that `QSvgWidget` stretches
+    non-uniformly to fill its whole rect regardless of the SVG's own
+    aspect ratio (a circle came out as a wide ellipse). An invalid/
+    unparseable SVG shows a message instead of crashing or leaving a
+    blank canvas. See `plans/svg-viewer-widget.md`.
 
 ### Widget Model
 

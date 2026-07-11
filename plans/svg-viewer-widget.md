@@ -1,4 +1,4 @@
-# SVG Viewer widget
+# SVG Viewer widget (COMPLETED)
 
 TODO `c7d6e4d`.
 
@@ -108,4 +108,31 @@ Headless (no browser needed):
 
 ## Status
 
-Not yet implemented.
+**Completed.** Implemented and verified headlessly as described above:
+
+- `_fit_rect`: wide-container/square-content and tall-container/
+  square-content both letterbox correctly (centered, exact fit on the
+  constraining axis), a matching-aspect case fills exactly with no
+  letterbox, and a zero-size content edge case falls back to filling
+  the container without dividing by zero.
+- `_AspectSvgView`: a real headless render confirmed the aspect-
+  preservation fix works (the test circle's red span came out ~77px
+  wide in a 400×100 widget, not ~300px as the stock `QSvgWidget`
+  produced during planning); an invalid SVG's `load()` returns `False`,
+  `is_valid()` is `False`, and `paintEvent` doesn't raise.
+- `SvgViewerWidget`: placeholder text before any file is opened;
+  `set_file` on a real temp SVG renders it and updates the label; the
+  file watcher correctly picks up an external edit (verified via
+  `QSvgRenderer.elementExists` before/after replacing the file's
+  content on disk, swapping which element is present); a deleted file
+  and an invalid-content file both show a message instead of crashing.
+- Real widget-loading path: `desk.widgets.discover_widgets` picks up
+  the manifest; `desk.shell.python_widget.PythonWidgetHost` builds a
+  real `SvgViewerWidget` (a literal `DeskWindow` construction skipped
+  for the same pre-existing, unrelated reason noted in
+  `plans/markdown-ex-widget.md`/`plans/file-explorer-widget.md`).
+- `design-docs/architecture.md` gained an SVG Viewer Widget entry;
+  `LEARNINGS.md` gained an entry on `QSvgWidget`'s non-aspect
+  -preserving stretch behavior; `PARKINGLOT.md` gained the two notes
+  scoped out above (in-widget zoom/pan, wiring other widgets' `.svg`
+  results here).

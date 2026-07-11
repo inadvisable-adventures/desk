@@ -1279,7 +1279,7 @@ b927389. COMPLETED: Add a tree-view project directory/file explorer
    or hits enter while a filename is selected, open the file in a new
    instance of the Editor widget.
    [planned: file-explorer-widget.md]
-c7d6e4d. Implement an SVG-rendering widget.
+c7d6e4d. COMPLETED: Implement an SVG-rendering widget.
    [planned: svg-viewer-widget.md]
 b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    Console output before the crash: `python -m desk` started normally,

@@ -353,3 +353,23 @@ This file captures thoughts and TODO items that arise during work on other thing
   suppression, or by having the TODO widget layer that on top of the
   shared watcher — so there's one single-file watcher implementation
   instead of two.
+
+- **In-widget zoom/pan for the SVG Viewer**
+
+  TODO c7d6e4d's SVG Viewer widget (`widgets/svg_viewer/`) only fits
+  the SVG to the widget's own size (aspect-preserved). For a large or
+  detailed diagram, independent zoom/pan within the widget (distinct
+  from the Workspace Canvas's own zoom of the whole widget frame) would
+  help; out of scope for that item, worth its own TODO if it comes up.
+
+- **Wire `.svg` results in the File Explorer / Markdown (Extended)
+  widgets to open in the SVG Viewer**
+
+  Right now the File Explorer (TODO b927389) always opens a selected
+  file in a new Editor widget instance regardless of extension, and the
+  Markdown (Extended) widget (TODO a76e723) renders embedded images
+  (including SVG) via `QTextBrowser`'s own native/indirect handling,
+  not the new SVG Viewer widget (TODO c7d6e4d, built after both of
+  those). Neither was asked to integrate with it. Worth revisiting once
+  there's an actual need (e.g. double-clicking a `.svg` in the explorer
+  opening a real vector view instead of raw XML in the Editor).
