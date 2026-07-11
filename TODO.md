@@ -1268,9 +1268,10 @@ b25412e. COMPLETED: if there is a plan listed in a todo item, detect that
    are easily swapped for the toolbar/context-menu or the editor later
    (see plan).
    [planned: todo-open-plan-button.md]
-b927389. Add a tree-view project directory/file explorer widget. Add a
-   search/filter textbox at the top which temporarily hides everything
-   but the tree-paths to the results and the results themselves, e.g.
+b927389. COMPLETED: Add a tree-view project directory/file explorer
+   widget. Add a search/filter textbox at the top which temporarily
+   hides everything but the tree-paths to the results and the results
+   themselves, e.g.
    if searching for "foo" in a directory with a structure like (a (b
    ...) (c (foo) ...) (d ...)), then a -> c -> foo would show, not b
    or d. clearing the search should restore the view but the current

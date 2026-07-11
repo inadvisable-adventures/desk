@@ -1,4 +1,4 @@
-# File Explorer widget
+# File Explorer widget (COMPLETED)
 
 TODO `b927389`.
 
@@ -171,4 +171,41 @@ Headless, against a real temp directory tree (mirroring the TODO's own
 
 ## Status
 
-Not yet implemented.
+**Completed.** Implemented and verified headlessly as described above:
+
+- Normal browse mode: root correctly seeded from
+  `current_context.get_current_desk_directory()`; `QFileSystemModel`
+  rooted and lazily populated (confirmed row counts after
+  `processEvents()`).
+- Search mode: confirmed against a real temp tree matching the TODO's
+  own worked example (`a -> c -> foo.txt` shown, `b`/`d` excluded), and
+  confirmed the skip-list excludes a matching entry under `.git`
+  entirely.
+- Opening: both Return-on-selected-row and double-click correctly call
+  the widget-opener with `"editor"` and `set_file` the right path
+  (verified with a fake opener, matching the TODO widget's own
+  precedent); the same actions on a directory row are a no-op.
+- Selection survives a search round-trip: verified with *real* Qt
+  selection-change signals (not a manually-set field) — select a file,
+  search, clear, confirm the same file is reselected. Also verified the
+  degrade-gracefully case: a selected file deleted while a search is
+  active leaves nothing selected on clear, no crash.
+- `EditorWidget.set_file`: exercised as part of the open-action tests
+  above (the opened Editor's `_current_path` matched exactly).
+- Root-switching logic (the "Open Folder" button's state changes,
+  minus the modal dialog itself, which can't be driven headlessly —
+  same as every other widget's Open button in this codebase) verified
+  directly.
+- Real widget-loading path: `desk.widgets.discover_widgets` picks up
+  the manifest correctly; `desk.shell.python_widget.PythonWidgetHost`
+  builds a real `FileExplorerWidget`. A literal `DeskWindow`
+  construction was skipped for the same reason noted in
+  `plans/markdown-ex-widget.md` (an unrelated, pre-existing offscreen
+  `QtWebEngine`-adjacent stall in this environment, orthogonal to
+  `kind: "python"` widgets).
+- `design-docs/architecture.md` gained a File Explorer Widget entry;
+  `LEARNINGS.md` gained an entry on
+  `QSortFilterProxyModel.setRecursiveFilteringEnabled` not working
+  correctly on top of `QFileSystemModel`'s lazy loading (plus the
+  stale-`QModelIndex`-after-filter-change segfault hit while
+  confirming that).

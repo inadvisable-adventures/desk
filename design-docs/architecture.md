@@ -299,6 +299,26 @@ Desk Bridge API.
     any other diagram type or unparseable source falls back to showing
     the raw fenced source as plain text instead of erroring. See
     `plans/markdown-ex-widget.md`.
+17. **File Explorer Widget** — a built-in `kind: "python"` widget
+    (`widgets/file_explorer/`): a `QTreeView` browsing the current
+    Desk directory via a plain `QFileSystemModel` (lazy per-directory
+    loading, Name column only). A search box swaps that out for a
+    bespoke, synchronous search-results `QStandardItemModel` (a
+    skip-listed — `.git`/`__pycache__`/`node_modules`/`.venv`/`build`/
+    `dist` — recursive walk keeping only matches and the ancestor
+    directories leading to one, `expandAll()`ed) while non-empty,
+    debounced via `QTimer`; clearing it restores the `QFileSystemModel`
+    and re-selects whatever file was last selected. **Not** built on
+    `QSortFilterProxyModel.setRecursiveFilteringEnabled` — confirmed
+    directly that Qt's own recursive filtering only sees data
+    `QFileSystemModel` has already lazily loaded, silently missing
+    matches in never-expanded branches. Double-click or Return on a
+    file row opens it in a **new** Editor widget instance via
+    `current_context`'s widget-opener hook (same mechanism the TODO
+    widget's "open plan" button uses) — which required adding a public
+    `EditorWidget.set_file()` (previously only a private `_load_file`)
+    matching `MarkdownWidget`/`MarkdownExWidget`'s own `set_file`. See
+    `plans/file-explorer-widget.md`.
 
 ### Widget Model
 

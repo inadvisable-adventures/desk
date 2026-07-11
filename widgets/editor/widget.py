@@ -115,6 +115,15 @@ class EditorWidget(QWidget):
         self._apply_lexer(path)
         self._update_label()
 
+    def set_file(self, path: Path) -> None:
+        """Public so other widgets (e.g. the File Explorer, TODO
+        b927389) can open a file here programmatically -- matching
+        MarkdownWidget/MarkdownExWidget's own set_file. Unlike the
+        Open-button flow this doesn't confirm unsaved changes first:
+        callers always get a freshly-placed instance with nothing to
+        lose."""
+        self._load_file(path)
+
     def _save_file(self) -> bool:
         if self._current_path is None:
             return self._save_file_as()

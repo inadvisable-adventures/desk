@@ -242,3 +242,40 @@ that supports `setData`/`data` (tree/list/table items, model indexes),
 prefer that over a Python-side `id()`-keyed lookup table whenever the same
 logical item might be accessed through more than one code path (a signal
 callback vs. a direct `.child()`/`.item()` walk, for instance).
+
+## `QSortFilterProxyModel.setRecursiveFilteringEnabled` silently misses matches in unexpanded `QFileSystemModel` branches
+
+Building the File Explorer widget's search box (TODO `b927389`), the
+obvious approach was `QFileSystemModel` + `QSortFilterProxyModel` with
+`setRecursiveFilteringEnabled(True)` (the documented, built-in Qt
+mechanism for "keep a row visible if any descendant matches the
+filter"). Confirmed directly, against a real temp directory tree, that
+this does not work correctly on top of `QFileSystemModel`: a match
+several levels deep in a directory that has never been expanded in a
+view (and so never lazily fetched by the model) is invisible to the
+recursive filter — it can only "recurse into" rows the model has
+already materialized, not force-load undiscovered ones just to check
+them. A fresh search against a never-browsed subtree silently returns
+nothing, with no error.
+
+Separately (and more dangerously) hit a real crash chasing this down:
+holding a plain `QModelIndex` captured *before* calling
+`setFilterFixedString(...)` and then reusing it afterward segfaults —
+`QSortFilterProxyModel` invalidates its internal index mapping on a
+filter change, so an old `QModelIndex` into it is a dangling reference,
+not just "stale data." Always re-fetch (`model.mapFromSource(...)` /
+`model.index(...)`) a fresh index *after* any model-invalidating change
+rather than reusing one obtained beforehand.
+
+The fix here was to stop trying to make Qt's built-in recursive
+filtering work at all: a bespoke, synchronous `Path.iterdir()` walk
+(building a small `QStandardItemModel` containing only matches and
+their ancestor chain) swapped onto the tree view in place of
+`QFileSystemModel` while a search is active. See
+`plans/file-explorer-widget.md` and `widgets/file_explorer/widget.py`'s
+`_build_search_model`. General lesson: `QFileSystemModel`'s laziness
+(by design, for scalability) is fundamentally in tension with any
+filtering mechanism that needs to know about the *whole* tree to decide
+what's visible — recursive filtering over it needs either an eager
+pre-walk (as done here) or a background thread that populates ahead of
+the filter, not just flipping a boolean on the proxy.
