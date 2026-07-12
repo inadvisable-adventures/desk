@@ -43,6 +43,10 @@ CLAUDE_WIDGET_ID = "claude"
 QUESTIONS_WIDGET_ID = "questions"
 SVG_VIEWER_WIDGET_ID = "svg_viewer"
 EDITOR_WIDGET_ID = "editor"
+CRASH_LOG_WIDGET_ID = "crash_log"
+# TODO 7f51230: crash logs now live in .desk_temp/DESK-CRASH-*.log --
+# matches desk.crash_handler's own filename convention.
+CRASH_LOG_GLOB = "DESK-CRASH-*.log"
 
 # Which widget kind opens a dropped file (TODO 5915ac2), by extension --
 # only these three widget kinds currently expose set_file. Everything not
@@ -156,6 +160,7 @@ class DeskWindow(QMainWindow):
         current_context.set_widget_opener(self.open_widget_content)
         current_context.set_temp_ui_write_recorder(self._temp_ui_manager.record_own_write)
         self._provision_temp_ui()
+        self._open_crash_log_widgets()
 
     def _load_desk_widgets(self, desk: Desk) -> None:
         if desk.widgets:
@@ -180,6 +185,14 @@ class DeskWindow(QMainWindow):
                     # every widget kind relies on. See
                     # plans/temporary-ui.md/plans/lightning-round-tempui.md.
                     self._bind_temp_ui_widget(frame, desk.directory, state.instance_id)
+                if state.widget_id == CRASH_LOG_WIDGET_ID:
+                    # Same "instance_id equals source filename"
+                    # reconnection idea as the tempui widgets above, just
+                    # keyed by the crash log's own filename rather than a
+                    # DSL-detected uuid (TODO 7f51230) -- lets a Crash Log
+                    # widget the user left open survive a restart without
+                    # _open_crash_log_widgets treating it as new.
+                    self._bind_crash_log_widget(frame, desk.directory, state.instance_id)
                 self._bind_widget_local_storage(frame, state.state)
         else:
             self._seed_new_desk_widgets(desk)
@@ -334,6 +347,52 @@ class DeskWindow(QMainWindow):
         content = frame.content.current
         if content is not None:
             self._bind_temp_ui_content(content, directory / TEMP_UI_DIRNAME / uuid_str, directory)
+
+    def _bind_crash_log_widget(self, frame: WidgetFrame, directory: Path, filename: str) -> None:
+        """Points a Crash Log widget instance at its log file (TODO
+        7f51230) -- used both by _open_crash_log_widgets (fresh
+        placement) and _load_desk_widgets' restore path, same "one
+        place decides the binding" shape as _bind_temp_ui_content.
+        Also wires the widget's `dismissed` signal (emitted after the
+        user confirms deleting the log file) to actually remove this
+        frame, mirroring how the Claude widget's `process_exited`
+        signal already triggers close_widget_by_instance_id."""
+        if not isinstance(frame.content, PythonWidgetHost):
+            return
+        content = frame.content.current
+        if content is None:
+            return
+        if hasattr(content, "set_file"):
+            content.set_file(directory / TEMP_UI_DIRNAME / filename)
+        if hasattr(content, "dismissed"):
+            instance_id = frame.instance_id
+            content.dismissed.connect(lambda: self.close_widget_by_instance_id(instance_id))
+
+    def _open_crash_log_widgets(self) -> None:
+        """On app startup (TODO 7f51230), opens a fresh Crash Log widget
+        for every `.desk_temp/DESK-CRASH-*.log` file that isn't already
+        covered by a restored frame (find_frame_by_instance_id, keyed by
+        the log's own filename -- see _bind_crash_log_widget). Scoped to
+        startup only, not re-run on every desk switch. Leaving a widget
+        open persists it like any other placed widget (_capture_desk_state
+        saves every current frame); closing it without deleting the file
+        means it reopens next startup -- deliberate, see
+        plans/crash-log-widget.md."""
+        directory = self.current_desk.directory
+        temp_dir = directory / TEMP_UI_DIRNAME
+        if not temp_dir.is_dir():
+            return
+        widget = self._widgets.get(CRASH_LOG_WIDGET_ID)
+        if widget is None:
+            return
+        for index, path in enumerate(sorted(temp_dir.glob(CRASH_LOG_GLOB))):
+            if self.find_frame_by_instance_id(path.name) is not None:
+                continue
+            pos = (index * WIDGET_SPACING, WIDGET_SPACING)
+            frame = self._place_widget(
+                CRASH_LOG_WIDGET_ID, widget, pos, widget.default_size, instance_id=path.name
+            )
+            self._bind_crash_log_widget(frame, directory, path.name)
 
     def _bind_widget_local_storage(self, frame: WidgetFrame, data: dict) -> None:
         """Restores a widget's "widget-local storage" (TODO fb76057) --

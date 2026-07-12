@@ -1296,7 +1296,7 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    click vs. hover), and check for any known-fragile native code path (e.g.
    LEARNINGS.md's QNativeGestureEvent segfault note) that could plausibly be
    involved.
-7f51230. Store crash logs in the current active project directory's
+7f51230. COMPLETED: Store crash logs in the current active project directory's
    `.desk_temp` folder instead of the project directory itself. On
    startup, if there are any crash logs present, open a new Crash Log
    widget for each one. The Crash Log widget reads a crash log and has

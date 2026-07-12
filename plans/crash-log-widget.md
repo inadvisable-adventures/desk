@@ -1,4 +1,4 @@
-# Crash logs move to .desk_temp/, auto-open as a Crash Log widget
+# Crash logs move to .desk_temp/, auto-open as a Crash Log widget (COMPLETED)
 
 TODO `7f51230`.
 
@@ -108,4 +108,38 @@ files):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `_log_path()` in `src/desk/crash_handler.py`
+writes under `.desk_temp/`, creating it if needed; new
+`widgets/crash_log/widget.py` (`CrashLogWidget`,
+`sanitize_crash_log`) and `widgets/crash_log/widget.json`;
+`CRASH_LOG_WIDGET_ID`/`CRASH_LOG_GLOB`, `_bind_crash_log_widget`,
+`_open_crash_log_widgets` (called once in `__init__`, after
+`_provision_temp_ui`), and a restore branch in `_load_desk_widgets`,
+all in `src/desk/shell/window.py`. Also adds a new Crash Log Widget
+entry (item 21) to `design-docs/architecture.md`.
+
+Verified headlessly (`QT_QPA_PLATFORM=offscreen`, real `QApplication`,
+real files): `_log_path()` resolves under `.desk_temp/` and creates it;
+`sanitize_crash_log` correctly truncates paths containing `src`/`.venv`
+segments, leaves paths with neither unchanged, and is idempotent;
+`CrashLogWidget.set_file` loads the raw text, Sanitize only changes
+the displayed text (file on disk stays untouched), Delete Log File
+(confirmed) deletes the file and emits `dismissed`, and a cancelled
+confirmation does neither. `DeskWindow._open_crash_log_widgets`/
+`_bind_crash_log_widget` (unbound methods on a fake double, the
+established pattern for `DeskWindow`-dependent logic): a fresh crash
+log gets a new widget bound to its file; a crash log already covered
+by a restored frame (simulating a previous-session desk save) is not
+duplicated; `_bind_crash_log_widget` wires `dismissed` to
+`close_widget_by_instance_id` correctly.
+
+Regression-checked: re-ran every other verification script from this
+session (tempui-live-refresh, Questions-notification, drag-and-drop,
+new-Desk-seeding, paste-clipboard-routing, `WidgetSpawnMenu`
+grouping/keyboard-nav, MRU-file-existence) -- all still pass
+unaffected.
+
+No `LEARNINGS.md` entry needed -- nothing surprising here, just new
+application logic built from already-established patterns (tempui
+-style instance_id reconnection, the Claude widget's dismiss-signal
+wiring, the fake-double `DeskWindow` test pattern).

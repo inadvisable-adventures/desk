@@ -422,6 +422,25 @@ Desk Bridge API.
     `.desk_temp/`) now tells any agent to write open-ended questions for
     the user into `QUESTIONS.md` rather than the tempui DSL. See
     `plans/questions-notification-routing.md`.
+21. **Crash Log Widget** — a built-in `kind: "python"` widget
+    (`widgets/crash_log/`). `desk.crash_handler`'s global
+    `sys.excepthook` (TODO `95f7ce9`) writes each uncaught exception's
+    traceback to `.desk_temp/DESK-CRASH-<timestamp>.log` (TODO
+    `7f51230`; previously the project directory itself), creating
+    `.desk_temp` if needed with no consent prompt (crash logging is a
+    non-negotiable diagnostic concern, unlike `TempUiManager`'s own
+    creation of the same directory). On startup, `DeskWindow` opens a
+    fresh Crash Log widget for every such file not already covered by
+    a restored frame (the same "instance_id equals source filename"
+    reconnection idea the tempui widgets use, keyed by the log's own
+    filename) — leaving one open persists it like any other placed
+    widget; closing it without deleting the file means it reopens next
+    startup. The widget shows the log's raw text with a **Sanitize**
+    button (strips an absolute path's OS/user-specific prefix down to
+    its first `src` or `.venv` segment, transforming only the
+    *displayed* text, never the file on disk) and a **Delete Log
+    File** button (confirmed; deletes the file and closes the widget).
+    See `plans/crash-log-widget.md`.
 
 ### Widget Model
 
