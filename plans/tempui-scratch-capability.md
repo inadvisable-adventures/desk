@@ -1,4 +1,4 @@
-# Scratch tempui capability
+# Scratch tempui capability (COMPLETED)
 
 TODO `f8d9cec`.
 
@@ -95,4 +95,20 @@ Headless (`QT_QPA_PLATFORM=offscreen`, real `QApplication`, no mocks):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `SCRATCH_KEYWORD`, `parse_scratch()`,
+`detect_temp_ui_kind`'s new `"scratch"` return, and the new
+`DOC_TEMPLATE` section (with the disambiguation note) in `src/desk
+/temp_ui.py`; `SCRATCH_WIDGET_ID`, `TEMP_UI_WIDGET_IDS`,
+`_temp_ui_widget_id_for`, `_bind_temp_ui_content`, and `_notify_temp_ui`
+in `src/desk/shell/window.py`.
+
+All headless verification steps above passed, including exercising the
+real (unbound, since neither touches `self`) `DeskWindow
+._temp_ui_widget_id_for` and `DeskWindow._bind_temp_ui_content` methods
+directly against a real `ScratchWidget` instance and a real temp file
+-- not just the standalone `desk.temp_ui` parsing functions in
+isolation.
+
+No `LEARNINGS.md` entry needed -- this followed an existing, already
+-documented pattern (`OpenMarkdown`'s shape) exactly, nothing
+surprising turned up.

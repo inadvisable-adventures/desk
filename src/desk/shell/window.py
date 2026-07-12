@@ -20,6 +20,7 @@ from desk.temp_ui import (
     detect_temp_ui_kind,
     parse_lightning_round,
     parse_open_markdown,
+    parse_scratch,
     parse_temp_ui,
 )
 from desk.widgets import WidgetInfo, discover_widgets
@@ -27,16 +28,22 @@ from desk.widgets import WidgetInfo, discover_widgets
 QUESTION_WIDGET_ID = "question"
 LIGHTNING_ROUND_WIDGET_ID = "lightning_round"
 MARKDOWN_EX_WIDGET_ID = "markdown_ex"
+SCRATCH_WIDGET_ID = "scratch"
 CLAUDE_WIDGET_ID = "claude"
 # Every widget kind that renders a TempUI file (TODO a02b001/TODO
-# 11aeb43/TODO 42dd260) and needs the same instance_id-equals-source
-# -file-uuid reconnection handling -- see
+# 11aeb43/TODO 42dd260/TODO f8d9cec) and needs the same instance_id
+# -equals-source-file-uuid reconnection handling -- see
 # _load_desk_widgets/_bind_temp_ui_widget. A manually-placed
-# markdown_ex instance's restore is a safe no-op under this (see
+# markdown_ex/scratch instance's restore is a safe no-op under this (see
 # _bind_temp_ui_content): its instance_id won't match any real
 # .desk_temp/ filename, so it just falls through unchanged, same as
 # its existing no-persistence-across-reload behavior.
-TEMP_UI_WIDGET_IDS = {QUESTION_WIDGET_ID, LIGHTNING_ROUND_WIDGET_ID, MARKDOWN_EX_WIDGET_ID}
+TEMP_UI_WIDGET_IDS = {
+    QUESTION_WIDGET_ID,
+    LIGHTNING_ROUND_WIDGET_ID,
+    MARKDOWN_EX_WIDGET_ID,
+    SCRATCH_WIDGET_ID,
+}
 
 WIDGET_SPACING = 700
 
@@ -262,10 +269,12 @@ class DeskWindow(QMainWindow):
         render the tempui file itself (set_source_file); OpenMarkdown
         instead parses out its *target* Markdown path and opens that
         (set_file), since it's a pure fire-and-forget viewer action
-        with no answer to render back into the tempui file. Shared by
-        both the notification-click path (_activate_temp_ui) and the
-        Desk-reload restore path (_bind_temp_ui_widget) so there's one
-        place deciding which method gets which path."""
+        with no answer to render back into the tempui file. Scratch
+        (TODO f8d9cec) is the same fire-and-forget shape as OpenMarkdown,
+        just seeding a label + initial body text instead of a path.
+        Shared by both the notification-click path (_activate_temp_ui)
+        and the Desk-reload restore path (_bind_temp_ui_widget) so
+        there's one place deciding which method gets which path."""
         try:
             kind = detect_temp_ui_kind(tempui_path.read_text())
         except OSError:
@@ -276,6 +285,17 @@ class DeskWindow(QMainWindow):
             target = self._resolve_open_markdown_target(tempui_path, directory)
             if target is not None:
                 content.set_file(target)
+        elif kind == "scratch":
+            if not hasattr(content, "set_label"):
+                return
+            try:
+                parsed = parse_scratch(tempui_path.read_text())
+            except OSError:
+                parsed = None
+            if parsed is not None:
+                label, body = parsed
+                content.set_label(label)
+                content.body.setPlainText(body)
         elif hasattr(content, "set_source_file"):
             content.set_source_file(tempui_path)
 
@@ -468,6 +488,10 @@ class DeskWindow(QMainWindow):
                 target = parse_open_markdown(content_text)
                 if target:
                     text = f"Open {target}"
+            elif kind == "scratch":
+                parsed = parse_scratch(content_text)
+                if parsed and parsed[0]:
+                    text = f"Scratch: {parsed[0]}"
             else:
                 doc = parse_temp_ui(content_text)
                 if doc.question:
@@ -491,6 +515,8 @@ class DeskWindow(QMainWindow):
             return LIGHTNING_ROUND_WIDGET_ID
         if kind == "open_markdown":
             return MARKDOWN_EX_WIDGET_ID
+        if kind == "scratch":
+            return SCRATCH_WIDGET_ID
         return QUESTION_WIDGET_ID
 
     def _activate_temp_ui(self, path: Path) -> None:

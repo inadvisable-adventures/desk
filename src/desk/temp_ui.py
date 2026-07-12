@@ -124,6 +124,30 @@ OpenMarkdown ./diagrams.md
 Clicking the notification opens `path` in a new Markdown (Extended)
 widget instance, centered in the current view.
 
+## The TempUI DSL: Scratch
+
+For giving Desk arbitrary free-form notes to show in a Scratch widget —
+a fire-and-forget instruction, not a question: there is no `Answer`
+line, and Desk never writes back to this file.
+
+- The first line is `Scratch <label>` — `label` becomes the widget's
+  title (`Scratch: <label>`).
+- Every line after that, verbatim, becomes the widget's initial body
+  text (not further parsed — write whatever you want here).
+
+Example:
+
+```
+Scratch Investigation notes
+Found the bug in file_watch.py line 42.
+Still need to check the TempUiManager path.
+```
+
+If the user says "scratch" in conversation, this capability is almost
+certainly what's meant — not some other, more generic sense of the
+word — unless a clearly more pressing local meaning has already been
+established earlier in the current conversation.
+
 This file (`desk-temporary-ui.md`) is itself ignored by the file
 watcher — its name isn't a UUID, so it's never mistaken for a temp UI
 file.
@@ -139,6 +163,7 @@ class TempUiDocument:
 
 LIGHTNING_ROUND_KEYWORD = "LightningRound"
 OPEN_MARKDOWN_KEYWORD = "OpenMarkdown"
+SCRATCH_KEYWORD = "Scratch"
 UNANSWERED = "unanswered"
 
 
@@ -157,11 +182,11 @@ class LightningRoundDocument:
 
 
 def detect_temp_ui_kind(text: str) -> str:
-    """"question" (the original, default type), "lightning_round", or
-    "open_markdown", read from the first non-blank line's keyword --
-    lets a caller that's seeing a temp-ui file for the first time (a
-    notification, a saved Desk's widget state) know which widget kind
-    to place without assuming "question"."""
+    """"question" (the original, default type), "lightning_round",
+    "open_markdown", or "scratch", read from the first non-blank line's
+    keyword -- lets a caller that's seeing a temp-ui file for the first
+    time (a notification, a saved Desk's widget state) know which
+    widget kind to place without assuming "question"."""
     for line in text.splitlines():
         if line.strip():
             keyword = line.split(None, 1)[0]
@@ -169,6 +194,8 @@ def detect_temp_ui_kind(text: str) -> str:
                 return "lightning_round"
             if keyword == OPEN_MARKDOWN_KEYWORD:
                 return "open_markdown"
+            if keyword == SCRATCH_KEYWORD:
+                return "scratch"
             return "question"
     return "question"
 
@@ -187,6 +214,22 @@ def parse_open_markdown(text: str) -> str | None:
             return parts[1].strip()
         return None
     return None
+
+
+def parse_scratch(text: str) -> tuple[str, str] | None:
+    """Extracts `(label, body)` from a Scratch temp-UI file: the first
+    line is `Scratch <label>`; every line after it, verbatim (not
+    further parsed), is the initial body text. Returns None if the file
+    doesn't actually start with the Scratch keyword."""
+    lines = text.splitlines()
+    if not lines:
+        return None
+    parts = lines[0].split(None, 1)
+    if not parts or parts[0] != SCRATCH_KEYWORD:
+        return None
+    label = parts[1].strip() if len(parts) > 1 else ""
+    body = "\n".join(lines[1:])
+    return label, body
 
 
 def is_temp_ui_filename(name: str) -> bool:
