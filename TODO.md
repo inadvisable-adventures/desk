@@ -1456,6 +1456,11 @@ f668aef. COMPLETED: Make the Question widget live-refresh when its tempui file i
 6fbae42. COMPLETED: Make the Markdown tempui-bound content widget (TODO 9743419)
    actually live-refresh as originally described (resolved by TODO
    67ab2df's general solution).
+cb2790d. When creating a new Desk, don't add all of the widgets to it --
+   just open a markdown viewer of the README.md file if there is one
+   for the project, or else add a Scratch widget with content for a
+   basic readme that has a "# [desk name] README" at the top followed
+   by a section called "## What this project is about or exploring...".
 7a086ba. Add a Questions widget that works similarly to the TODO
    widget, but for managing QUESTIONS.md.
 a801180. Add to the tempui instructions to always use QUESTIONS.md for
@@ -1485,11 +1490,6 @@ a801180. Add to the tempui instructions to always use QUESTIONS.md for
    on TODO 96013cf/858752b's rename(s) actually happening first, and on
    resolving which widget "the new markdown widget" refers to.)
    [planned: audit-old-basic-markdown-widget-usage.md]
-cb2790d. When creating a new Desk, don't add all of the widgets to it --
-   just open a markdown viewer of the README.md file if there is one
-   for the project, or else add a Scratch widget with content for a
-   basic readme that has a "# [desk name] README" at the top followed
-   by a section called "## What this project is about or exploring...".
 5915ac2. Drag and drop files into Desk should cause them to be opened
    as external.
 f74945e. Add a "paste" item to the top of the widget menu if there is
