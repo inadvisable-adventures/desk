@@ -1449,16 +1449,16 @@ a801180. Add to the tempui instructions to always use QUESTIONS.md for
    of the plan. Mark that widget as deprecated and confirm that it
    shows up in the deprecated group in the widget-add context menu
    (depends on TODO ed483e2's active/deprecated grouping existing).
-858752b. Rename the current markdown_ex widget (`widgets/markdown_ex/`)
-   as `markdown_old_basic`, and add a timestamped note near the top of
-   relevant plans that this rename was done, but don't change the rest
-   of the plan.
-   NOTE (added when this item was recorded, not by the user): this
-   names the *same* target, `markdown_old_basic`, as TODO 96013cf,
-   which renames a *different* widget (`widgets/markdown/`) -- two
-   widgets can't both take that name. Flagged here verbatim as given;
-   needs the user's clarification before either rename is implemented
-   (see QUESTIONS.md).
+   [planned: markdown-widget-identity-swap.md]
+858752b. RESOLVED (see QUESTIONS.md): rename the current markdown_ex
+   widget (`widgets/markdown_ex/`) as `markdown` -- not
+   `markdown_old_basic` as originally (conflictingly) written; the
+   user clarified markdown_ex becomes the new default "markdown"
+   widget while the plain widget (TODO 96013cf) becomes the deprecated
+   `markdown_old_basic`, replacing it. Add a timestamped note near the
+   top of relevant plans that this rename was done, but don't change
+   the rest of the plan.
+   [planned: markdown-widget-identity-swap.md]
 17ac2a8. Check for places in the code where the old basic markdown
    widget is being used, and add to QUESTIONS.md about whether or not
    they should be updated to point to the new markdown widget. (Depends
