@@ -1,4 +1,4 @@
-# Swap markdown widget identities: markdown -> markdown_old_basic, markdown_ex -> markdown
+# Swap markdown widget identities: markdown -> markdown_old_basic, markdown_ex -> markdown (COMPLETED)
 
 TODO `96013cf` and `858752b`.
 
@@ -92,4 +92,35 @@ Headless (`QT_QPA_PLATFORM=offscreen`, real `QApplication`, no mocks):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `git mv widgets/markdown widgets/markdown_old_basic`
+then `git mv widgets/markdown_ex widgets/markdown` (order matters,
+done in that sequence); both `widget.json`s updated (`name`,
+`deprecated: true` on the old-basic one); the internal class renamed
+`MarkdownExWidget` -> `MarkdownWidget` in the new `widgets/markdown/`;
+`window.py`'s `MARKDOWN_EX_WIDGET_ID` -> `MARKDOWN_WIDGET_ID` (value
+`"markdown"`); timestamped rename notes added to
+`plans/markdown-renderer-widget.md`/`plans/markdown-ex-widget.md`;
+`design-docs/architecture.md`'s two component entries rewritten for
+the new identities (a live doc, not a historical plan); `diagrams.md`'s
+usage instruction and `PARKINGLOT.md`'s two forward-looking mentions
+updated for correctness (both actionable, not historical records, so
+in scope unlike the plan files).
+
+Confirmed one existing saved Desk file (`meta-desk.desk`) references
+`widget_id: "markdown"` -- intentionally left alone: per the user's own
+"replacing the old widget with the new one" framing, this now
+correctly resolves to the upgraded widget on next load, and neither
+widget persists its open file across reload today regardless (a
+separate, still-open `PARKINGLOT.md` follow-on), so nothing is lost.
+
+All headless verification steps above passed: `discover_widgets`
+reflects the rename (ids, names, deprecated flags); a real
+`WidgetSpawnMenu` shows "Markdown (Old, Basic)" in the collapsed
+Deprecated group and "Markdown" in Active -- the first real exercise
+of TODO ed483e2's grouping mechanism against an actually-deprecated
+widget; `_temp_ui_widget_id_for` still resolves a real `OpenMarkdown`
+tempui file to the renamed `"markdown"` id; both renamed widgets'
+`build()` still construct successfully.
+
+No `LEARNINGS.md` entry needed -- a mechanical rename, nothing
+surprising turned up.

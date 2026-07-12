@@ -307,9 +307,9 @@ This file captures thoughts and TODO items that arise during work on other thing
   post-build binding in `DeskWindow`) — but deliberately scoped to just
   the mechanism, not wiring any specific widget onto it. Two follow-ons
   this unlocks, still undecided:
-  - Have the Markdown/Markdown (Extended)/Editor widgets actually use it
-    to remember their open file across a reload (the original motivating
-    case above).
+  - Have the Markdown/Markdown (Old, Basic)/Editor widgets actually use
+    it to remember their open file across a reload (the original
+    motivating case above).
   - Migrate the existing per-kind `_bind_temp_ui_widget`/
     `_bind_claude_widget` special-cases onto it instead of their current
     bespoke, one-off wiring — a clean answer would simplify both.
@@ -325,14 +325,15 @@ This file captures thoughts and TODO items that arise during work on other thing
   from the Workspace Canvas's own zoom of the whole widget frame) would
   help; out of scope for that item, worth its own TODO if it comes up.
 
-- **Wire `.svg` results in the File Explorer / Markdown (Extended)
-  widgets to open in the SVG Viewer**
+- **Wire `.svg` results in the File Explorer / Markdown widgets to open
+  in the SVG Viewer**
 
   Right now the File Explorer (TODO b927389) always opens a selected
   file in a new Editor widget instance regardless of extension, and the
-  Markdown (Extended) widget (TODO a76e723) renders embedded images
-  (including SVG) via `QTextBrowser`'s own native/indirect handling,
-  not the new SVG Viewer widget (TODO c7d6e4d, built after both of
-  those). Neither was asked to integrate with it. Worth revisiting once
-  there's an actual need (e.g. double-clicking a `.svg` in the explorer
-  opening a real vector view instead of raw XML in the Editor).
+  Markdown widget (TODO a76e723, renamed from "Markdown (Extended)" /
+  `markdown_ex`, TODO 858752b) renders embedded images (including SVG)
+  via `QTextBrowser`'s own native/indirect handling, not the new SVG
+  Viewer widget (TODO c7d6e4d, built after both of those). Neither was
+  asked to integrate with it. Worth revisiting once there's an actual
+  need (e.g. double-clicking a `.svg` in the explorer opening a real
+  vector view instead of raw XML in the Editor).

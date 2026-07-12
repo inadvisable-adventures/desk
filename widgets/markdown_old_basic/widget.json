@@ -1,0 +1,8 @@
+{
+  "name": "Markdown (Old, Basic)",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": [],
+  "default_size": { "width": 560, "height": 640 },
+  "deprecated": true
+}

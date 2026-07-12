@@ -2,6 +2,15 @@
 
 TODO `6bf83a9`.
 
+> **2026-07-13 (TODO 96013cf):** the widget this plan describes,
+> originally `widgets/markdown/` id `markdown`, was renamed to
+> `widgets/markdown_old_basic/` id `markdown_old_basic` and marked
+> deprecated, replaced as the default "Markdown" widget by the former
+> Markdown (Extended) widget (see `plans/markdown-ex-widget.md` and
+> `plans/markdown-widget-identity-swap.md`). The rest of this plan is
+> left as a historical record of what was actually built and is
+> otherwise unchanged.
+
 ## Summary
 
 "Add a markdown renderer widget which puts a file watcher on a markdown

@@ -27,21 +27,25 @@ from desk.widgets import WidgetInfo, discover_widgets
 
 QUESTION_WIDGET_ID = "question"
 LIGHTNING_ROUND_WIDGET_ID = "lightning_round"
-MARKDOWN_EX_WIDGET_ID = "markdown_ex"
+# The widget formerly known as "markdown_ex"/"Markdown (Extended)" --
+# renamed to the new default "markdown"/"Markdown" (TODO 858752b),
+# replacing the old plain widget (renamed to "markdown_old_basic" and
+# deprecated, TODO 96013cf).
+MARKDOWN_WIDGET_ID = "markdown"
 SCRATCH_WIDGET_ID = "scratch"
 CLAUDE_WIDGET_ID = "claude"
 # Every widget kind that renders a TempUI file (TODO a02b001/TODO
 # 11aeb43/TODO 42dd260/TODO f8d9cec) and needs the same instance_id
 # -equals-source-file-uuid reconnection handling -- see
 # _load_desk_widgets/_bind_temp_ui_widget. A manually-placed
-# markdown_ex/scratch instance's restore is a safe no-op under this (see
+# markdown/scratch instance's restore is a safe no-op under this (see
 # _bind_temp_ui_content): its instance_id won't match any real
 # .desk_temp/ filename, so it just falls through unchanged, same as
 # its existing no-persistence-across-reload behavior.
 TEMP_UI_WIDGET_IDS = {
     QUESTION_WIDGET_ID,
     LIGHTNING_ROUND_WIDGET_ID,
-    MARKDOWN_EX_WIDGET_ID,
+    MARKDOWN_WIDGET_ID,
     SCRATCH_WIDGET_ID,
 }
 
@@ -549,7 +553,7 @@ class DeskWindow(QMainWindow):
         if kind == "lightning_round":
             return LIGHTNING_ROUND_WIDGET_ID
         if kind == "open_markdown":
-            return MARKDOWN_EX_WIDGET_ID
+            return MARKDOWN_WIDGET_ID
         if kind == "scratch":
             return SCRATCH_WIDGET_ID
         return QUESTION_WIDGET_ID

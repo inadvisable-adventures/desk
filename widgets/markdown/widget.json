@@ -3,5 +3,5 @@
   "kind": "python",
   "entry": "widget.py",
   "capabilities": [],
-  "default_size": { "width": 560, "height": 640 }
+  "default_size": { "width": 900, "height": 700 }
 }

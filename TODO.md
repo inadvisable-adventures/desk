@@ -1443,14 +1443,14 @@ a801180. Add to the tempui instructions to always use QUESTIONS.md for
    a top-right tempui notification that, when clicked, either visually
    focuses a currently-opened Questions widget (see TODO 7a086ba) or
    else opens a new Questions widget and focuses it.
-96013cf. Rename the current markdown widget (`widgets/markdown/`) as
+96013cf. COMPLETED: Rename the current markdown widget (`widgets/markdown/`) as
    `markdown_old_basic`, and add a timestamped note near the top of
    relevant plans that this rename was done, but don't change the rest
    of the plan. Mark that widget as deprecated and confirm that it
    shows up in the deprecated group in the widget-add context menu
    (depends on TODO ed483e2's active/deprecated grouping existing).
    [planned: markdown-widget-identity-swap.md]
-858752b. RESOLVED (see QUESTIONS.md): rename the current markdown_ex
+858752b. COMPLETED: rename the current markdown_ex
    widget (`widgets/markdown_ex/`) as `markdown` -- not
    `markdown_old_basic` as originally (conflictingly) written; the
    user clarified markdown_ex becomes the new default "markdown"

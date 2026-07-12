@@ -2,6 +2,16 @@
 
 TODO `a76e723`.
 
+> **2026-07-13 (TODO 858752b):** the widget this plan describes,
+> originally `widgets/markdown_ex/` id `markdown_ex`, was renamed to
+> `widgets/markdown/` id `markdown`, becoming the new default
+> "Markdown" widget and replacing the previous plain widget (now
+> deprecated as `markdown_old_basic` -- see
+> `plans/markdown-renderer-widget.md` and
+> `plans/markdown-widget-identity-swap.md`). The rest of this plan is
+> left as a historical record of what was actually built and is
+> otherwise unchanged.
+
 ## Summary
 
 "Implement a markdown viewer widget (`markdown_ex`) which can show

@@ -2,9 +2,10 @@
 
 Example cases exercising the Mermaid rendering (`desk/mermaid.py`) and
 SVG rendering (`widgets/svg_viewer/`) built for TODO `a76e723` and
-`c7d6e4d`. Open this file in the **Markdown (Extended)** widget to see
-everything render; the embedded SVGs can also be opened individually
-in the **SVG Viewer** widget.
+`c7d6e4d`. Open this file in the **Markdown** widget (formerly "Markdown
+(Extended)", renamed TODO 858752b) to see everything render; the
+embedded SVGs can also be opened individually in the **SVG Viewer**
+widget.
 
 Mermaid support here is intentionally partial — flowchart (basic
 shapes only) and flat state diagrams — not a full Mermaid

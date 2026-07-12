@@ -263,10 +263,12 @@ Desk Bridge API.
     while the widget isn't visible, and only trigger a redraw when the
     output actually changed since the last poll. See
     `plans/git-status-widget.md`.
-14. **Markdown Widget** — a built-in `kind: "python"` widget
-    (`widgets/markdown/`) that renders a chosen Markdown file via Qt's
-    native `QTextBrowser.setMarkdown()` (no Markdown-library dependency)
-    and auto-reloads it when the file changes on disk. File watching goes
+14. **Markdown (Old, Basic) Widget** — a built-in, **deprecated**
+    `kind: "python"` widget (`widgets/markdown_old_basic/`, id
+    `markdown_old_basic` — renamed from `widgets/markdown/`/`markdown`,
+    TODO 96013cf) that renders a chosen Markdown file via Qt's native
+    `QTextBrowser.setMarkdown()` (no Markdown-library dependency) and
+    auto-reloads it when the file changes on disk. File watching goes
     through `desk.file_watch.SingleFileWatcher` — a reusable single-file
     watcher (itself backed by the shared File Watcher Service, item 19
     above) extracted from the TODO widget's own original bespoke
@@ -277,7 +279,10 @@ Desk Bridge API.
     seeded from the current Desk directory (`desk.shell.current_context`)
     and, like the Code Editor, is not persisted across a reload (the
     widget contract has no per-instance state payload yet — see
-    `PARKINGLOT.md`). See `plans/markdown-renderer-widget.md`.
+    `PARKINGLOT.md`). Replaced as the default Markdown experience by the
+    widget in item 16 below, kept around deprecated (shown collapsed in
+    the widget-add menu's Deprecated group, TODO ed483e2) rather than
+    removed. See `plans/markdown-renderer-widget.md`.
 15. **Sheet Widget** — a built-in `kind: "python"` widget
     (`widgets/sheet/`): a basic `QTableWidget`-backed spreadsheet with
     interactively resizable rows/columns, word-wrapped/clipped cells,
@@ -290,17 +295,20 @@ Desk Bridge API.
     Editor/Markdown widgets, the open file isn't persisted across a
     reload (no per-instance state payload — see `PARKINGLOT.md`); a `•`
     dirty marker flags unsaved edits. See `plans/sheet-widget.md`.
-16. **Markdown (Extended) Widget** — a built-in `kind: "python"` widget
-    (`widgets/markdown_ex/`), separate from the plain Markdown Widget:
-    a left-hand TOC `QTreeWidget` plus a foldable, heading-nested
+16. **Markdown Widget** — a built-in `kind: "python"` widget
+    (`widgets/markdown/`, id `markdown` — renamed from
+    `widgets/markdown_ex/`/`markdown_ex`, TODO 858752b, becoming the
+    new default Markdown experience and replacing item 14 above, which
+    was renamed to `markdown_old_basic` and deprecated in the same
+    swap): a left-hand TOC `QTreeWidget` plus a foldable, heading-nested
     section view of the rendered document, with inline Mermaid diagram
     rendering. The raw Markdown is split (fence-aware, so a `#` inside
     a code block is never mistaken for a heading) into heading/text/
     ```mermaid blocks; each text chunk is fed to its own auto-height
     `QTextBrowser.setMarkdown()` (reusing Qt's native Markdown/image/
-    indirect-SVG handling for free, same as the plain Markdown Widget
-    — see `qtextbrowser-images-svg-controls.md`), and each `mermaid`
-    fence is rendered by `desk.mermaid.MermaidDiagramWidget`. Folding
+    indirect-SVG handling for free, same as the deprecated old-basic
+    widget — see `qtextbrowser-images-svg-controls.md`), and each
+    `mermaid` fence is rendered by `desk.mermaid.MermaidDiagramWidget`. Folding
     and the TOC are pure native-Qt composition (nested `QToolButton`
     disclosure sections) — no HTML/JS involved anywhere in this widget.
     `desk.mermaid` is a **bespoke, intentionally partial** Mermaid
