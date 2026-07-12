@@ -325,3 +325,22 @@ This file captures thoughts and TODO items that arise during work on other thing
   asked to integrate with it. Worth revisiting once there's an actual
   need (e.g. double-clicking a `.svg` in the explorer opening a real
   vector view instead of raw XML in the Editor).
+
+- **A generalized mechanism for "check immediately before create, abort
+  recoverably if it already exists"**
+
+  TODO `4716585` applied this pattern by hand at each file/directory
+  -creation call site in the New Desk flow specifically (`.desk_temp`,
+  `.gitignore`, `development-process.md`, the `.desk` file itself) --
+  re-verify existence right before the actual create/write, treat
+  "already there" as a normal, recoverable branch rather than
+  clobbering or crashing. Every other widget that creates a new file
+  (Markdown's "Save As", Stack's "Save as Markdown", any future one)
+  either needs the same hand-written check or currently doesn't have
+  it at all. Worth designing a small, reusable helper/pattern for this
+  instead of re-deriving the same three-line shape at each call site --
+  e.g. something like `create_if_absent(path, write_fn) -> bool`
+  (returns whether it actually created vs. found existing), or a
+  context-manager shape. Not designed yet; revisit once there's a
+  second or third widget that would clearly benefit, to avoid guessing
+  at the right generalization from just one example.

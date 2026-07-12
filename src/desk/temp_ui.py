@@ -6,6 +6,7 @@ from pathlib import Path
 TEMP_UI_DIRNAME = ".desk_temp"
 DOC_FILENAME = "desk-temporary-ui.md"
 GITIGNORE_ENTRY = ".desk_temp/"
+GITIGNORE_COMMENT = "# Desk-specific"
 
 DOC_TEMPLATE = """# Temporary UI
 
@@ -403,12 +404,30 @@ def record_lightning_round_answer(path: Path, item_index: int, character: str) -
     return text
 
 
+def _has_entry(text: str) -> bool:
+    return any(line.strip().rstrip("/") == ".desk_temp" for line in text.splitlines())
+
+
 def ensure_gitignore_entry(git_root: Path, ask: Callable[[], bool]) -> None:
+    """Adds `.desk_temp/` to `.gitignore` (creating the file if it
+    doesn't exist), preceded by a blank line and a `# Desk-specific`
+    comment -- in both the create-from-nothing and append-to-existing
+    cases (TODO 4716585), so a brand-new file created by this path
+    does start with one blank line before the comment, a deliberate
+    stylistic choice for consistency, not an oversight."""
     gitignore_path = git_root / ".gitignore"
     existing = gitignore_path.read_text() if gitignore_path.is_file() else ""
-    if any(line.strip().rstrip("/") == ".desk_temp" for line in existing.splitlines()):
+    if _has_entry(existing):
         return
     if not ask():
         return
+    # Re-read immediately before writing: ask() can pump a modal
+    # dialog's own nested event loop for an arbitrary amount of time,
+    # during which something else could already have added the entry
+    # -- re-verify against a fresh read rather than blindly overwriting
+    # with a now-stale in-memory copy (TODO 4716585).
+    existing = gitignore_path.read_text() if gitignore_path.is_file() else ""
+    if _has_entry(existing):
+        return
     prefix = existing if existing.endswith("\n") or not existing else existing + "\n"
-    gitignore_path.write_text(prefix + GITIGNORE_ENTRY + "\n")
+    gitignore_path.write_text(f"{prefix}\n{GITIGNORE_COMMENT}\n{GITIGNORE_ENTRY}\n")

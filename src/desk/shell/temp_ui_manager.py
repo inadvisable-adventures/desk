@@ -105,19 +105,30 @@ class TempUiManager(QObject):
         self._provisioned_directory = directory
 
         temp_dir = directory / TEMP_UI_DIRNAME
-        if not temp_dir.is_dir():
-            if not ask_create_dir():
-                self._stop_watching()
-                return None
+        want_temp_dir = temp_dir.is_dir() or ask_create_dir()
+        if want_temp_dir and not temp_dir.is_dir():
+            # Re-checked immediately before creating (TODO 4716585):
+            # ask_create_dir() can pump a modal dialog's own nested
+            # event loop for an arbitrary amount of time, during which
+            # the directory could already have been created by
+            # something else -- if so, there's nothing left to do here.
             temp_dir.mkdir(parents=True, exist_ok=True)
+
+        # Independent of the .desk_temp decision above (TODO 4716585):
+        # these used to be one all-or-nothing confirm, but they're two
+        # separate checkboxes in the New Desk dialog now, so declining
+        # .desk_temp must not also silently skip .gitignore.
+        git_root = find_git_root(directory)
+        if git_root is not None:
+            ensure_gitignore_entry(git_root, ask_gitignore)
+
+        if not want_temp_dir:
+            self._stop_watching()
+            return None
 
         doc_path = temp_dir / DOC_FILENAME
         if not doc_path.is_file():
             doc_path.write_text(DOC_TEMPLATE)
-
-        git_root = find_git_root(directory)
-        if git_root is not None:
-            ensure_gitignore_entry(git_root, ask_gitignore)
 
         self._start_watching(temp_dir)
         return temp_dir

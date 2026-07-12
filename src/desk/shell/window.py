@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from desk.server.runner import ServerHandle
 from desk.shell import current_context
 from desk.shell.canvas import WorkspaceView
 from desk.shell.chromium_widget import ChromiumWidget
+from desk.shell.new_desk_dialog import NewDeskDialog
 from desk.shell.python_widget import PythonWidgetHost
 from desk.shell.temp_ui_manager import TempUiManager
 from desk.shell.widget_frame import WidgetFrame
@@ -82,6 +84,17 @@ DEVELOPMENT_PROCESS_FILENAME = "development-process.md"
 README_FILENAME = "README.md"
 
 Confirm = Callable[[], bool]
+
+
+@dataclass
+class NewDeskProvisioning:
+    """Pre-decided answers from `NewDeskDialog` (TODO 4716585), passed
+    through `new_desk` -> `switch_desk` -> `_provision_temp_ui` so
+    provisioning never re-prompts for something the single New Desk
+    dialog already asked."""
+
+    create_temp_ui: bool
+    create_gitignore: bool
 
 
 class DeskWindow(QMainWindow):
@@ -537,7 +550,16 @@ class DeskWindow(QMainWindow):
         add_to_mru(desk.path)
         self._refresh_picker()
 
-    def switch_desk(self, path: Path, confirm: Confirm | None = None) -> None:
+    def switch_desk(
+        self,
+        path: Path,
+        confirm: Confirm | None = None,
+        provisioning: "NewDeskProvisioning | None" = None,
+    ) -> None:
+        """`provisioning`, if given (only by `new_desk`, sourced from
+        `NewDeskDialog`'s checkboxes), skips `_provision_temp_ui`'s own
+        confirm dialogs in favor of these pre-decided answers -- see
+        plans/fix-new-desk-flow-crash.md."""
         if path == self.current_desk.path:
             return
         confirm = confirm or self._confirm_fn("Switch Desk", f"Switch to “{path.stem}”?")
@@ -547,11 +569,22 @@ class DeskWindow(QMainWindow):
         self.view.clear_widgets()
         new_desk = load_desk(path) if path.is_file() else Desk(path=path)
         self.current_desk = new_desk
+        # Set before _provision_temp_ui/_load_desk_widgets below, both
+        # of which can synchronously construct/query a widget that
+        # reads this (TODO 4716585 -- matches __init__'s own documented
+        # ordering rationale for the exact same reason). All directory
+        # -level provisioning also now runs before any widget is placed,
+        # so a freshly-seeded widget (TODO cb2790d) never starts doing
+        # its own work concurrently with a still-open provisioning
+        # decision. The picker's own visual refresh (MRU included)
+        # stays at the end, after add_to_mru -- that's cosmetic, not a
+        # construction-time dependency.
+        current_context.set_current_desk_directory(new_desk.directory)
+        self._provision_temp_ui(provisioning)
         self._load_desk_widgets(new_desk)
         self.view.set_view_state(new_desk.pan_x, new_desk.pan_y, new_desk.scale)
         add_to_mru(path)
         self._refresh_picker()
-        self._provision_temp_ui()
 
     def close_widget(self, frame: WidgetFrame, confirm: Confirm | None = None) -> None:
         confirm = confirm or self._confirm_fn(
@@ -581,10 +614,20 @@ class DeskWindow(QMainWindow):
         self.save_current_desk()
         self._provision_temp_ui()
 
-    def new_desk(self, name: str, directory: Path) -> None:
+    def new_desk(
+        self,
+        name: str,
+        directory: Path,
+        *,
+        create_temp_ui: bool = True,
+        create_gitignore: bool = True,
+        copy_development_process: bool = False,
+    ) -> None:
         """Creates a new, empty Desk named `name` in `directory` and
         switches to it. Naming the Desk *is* the intent, so (unlike
-        switch_desk) there's no "Switch to X?" confirmation."""
+        switch_desk) there's no "Switch to X?" confirmation. The three
+        keyword args are `NewDeskDialog`'s checkbox answers (TODO
+        4716585) -- decided upfront, not asked again mid-flow."""
         name = name.strip()
         if not name:
             return
@@ -592,7 +635,26 @@ class DeskWindow(QMainWindow):
         if path.exists():
             self._warn("New Desk", f"A Desk named “{name}” already exists here.")
             return
-        self.switch_desk(path, confirm=lambda: True)
+        if copy_development_process:
+            # Reads from the *current* (about-to-be-left) Desk's
+            # directory -- must run before switch_desk below reassigns
+            # self.current_desk.
+            self._seed_development_process(directory)
+        self.switch_desk(
+            path,
+            confirm=lambda: True,
+            provisioning=NewDeskProvisioning(create_temp_ui, create_gitignore),
+        )
+        # Re-checked immediately before the actual on-disk creation
+        # (TODO 4716585): switch_desk above does real work
+        # (provisioning, placing widgets) that takes real time, during
+        # which something else could have created a .desk file at this
+        # exact path. Recoverable: nothing has been written to disk yet
+        # at this point, so aborting here just means this session's
+        # in-memory Desk doesn't get saved over it.
+        if path.exists():
+            self._warn("New Desk", f"A Desk named “{name}” already exists here.")
+            return
         # switch_desk only creates the new Desk in memory; persist it to
         # disk right away so it's a real file (added to the MRU, browsable)
         # rather than only materializing on the next transition.
@@ -626,22 +688,30 @@ class DeskWindow(QMainWindow):
         add_to_mru(new_path)
         self._refresh_picker()
 
-    def _provision_temp_ui(self) -> None:
+    def _provision_temp_ui(self, provisioning: "NewDeskProvisioning | None" = None) -> None:
         """Ensures .desk_temp/desk-temporary-ui.md/.gitignore entry exist
         for the current Desk's directory (TODO a02b001) -- called at boot
         and whenever the directory actually changes. TempUiManager itself
         guards against re-prompting for a directory it already
-        provisioned, so this can be called unconditionally here."""
+        provisioned, so this can be called unconditionally here.
+
+        `provisioning`, if given, skips the confirm dialogs below in
+        favor of its pre-decided answers (TODO 4716585 -- used only by
+        `new_desk`, sourced from `NewDeskDialog`'s checkboxes, so the
+        user never gets asked the same question twice: once in that
+        dialog, once again here)."""
         directory = self.current_desk.directory
-        self._temp_ui_manager.provision(
-            directory,
-            self._confirm_fn(
+        if provisioning is not None:
+            ask_create_dir: Confirm = lambda: provisioning.create_temp_ui
+            ask_gitignore: Confirm = lambda: provisioning.create_gitignore
+        else:
+            ask_create_dir = self._confirm_fn(
                 "Temporary UI",
                 f"Create “{TEMP_UI_DIRNAME}” in “{directory}” so agents can create "
                 "temporary UI here?",
-            ),
-            self._confirm_fn("Temporary UI", f"Add “{TEMP_UI_DIRNAME}” to .gitignore?"),
-        )
+            )
+            ask_gitignore = self._confirm_fn("Temporary UI", f"Add “{TEMP_UI_DIRNAME}” to .gitignore?")
+        self._temp_ui_manager.provision(directory, ask_create_dir, ask_gitignore)
         self._ensure_questions_watcher()
 
     def _ensure_questions_watcher(self) -> None:
@@ -898,32 +968,46 @@ class DeskWindow(QMainWindow):
             self.change_current_desk_directory(Path(directory))
 
     def _on_new_desk_requested(self) -> None:
-        name = self._prompt_fn("New Desk", "Name for the new Desk:")()
-        if not name:
-            return
-        chosen = QFileDialog.getExistingDirectory(
-            self, "New Desk Directory", str(self.current_desk.directory)
-        )
-        if not chosen:
-            return
-        directory = Path(chosen)
+        """Opens NewDeskDialog (TODO 4716585) -- one consolidated
+        dialog collecting name/path/checkboxes, replacing what used to
+        be up to five sequential modal popups (name, directory, an
+        optional development-process.md copy confirm, a .desk_temp
+        confirm, a .gitignore confirm). See
+        plans/fix-new-desk-flow-crash.md for why that mattered beyond
+        just convenience."""
         source = self.current_desk.directory / DEVELOPMENT_PROCESS_FILENAME
-        destination = directory / DEVELOPMENT_PROCESS_FILENAME
-        if source.is_file() and source.resolve() != destination.resolve():
-            confirm = self._confirm_fn(
-                "New Desk",
-                f"Initialize the new Desk's directory with a copy of "
-                f"“{DEVELOPMENT_PROCESS_FILENAME}”?",
-            )
-            if confirm():
-                self._seed_development_process(directory)
-        self.new_desk(name, directory)
+        dialog = NewDeskDialog(
+            default_directory=self.current_desk.directory,
+            dev_process_filename=DEVELOPMENT_PROCESS_FILENAME if source.is_file() else None,
+            parent=self,
+        )
+        dialog.created.connect(self._on_new_desk_dialog_submitted)
+        dialog.show()
+
+    def _on_new_desk_dialog_submitted(
+        self,
+        name: str,
+        directory: str,
+        create_temp_ui: bool,
+        create_gitignore: bool,
+        copy_development_process: bool,
+    ) -> None:
+        self.new_desk(
+            name,
+            Path(directory),
+            create_temp_ui=create_temp_ui,
+            create_gitignore=create_gitignore,
+            copy_development_process=copy_development_process,
+        )
 
     def _seed_development_process(self, directory: Path) -> None:
         """Copies the current Desk's development-process.md into
         `directory` (TODO fbd0554) -- a no-op if the current Desk has
         none to source from, or if `directory` already has its own
-        (never silently overwritten)."""
+        (never silently overwritten). The existence check already runs
+        immediately before the write with nothing in between (TODO
+        4716585's re-check-immediately-before-create requirement) --
+        confirmed correct as-is, no change needed here."""
         source = self.current_desk.directory / DEVELOPMENT_PROCESS_FILENAME
         destination = directory / DEVELOPMENT_PROCESS_FILENAME
         if not source.is_file() or destination.exists():

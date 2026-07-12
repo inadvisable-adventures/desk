@@ -309,15 +309,40 @@ always saves the current Desk *before* switching (rather than offering a
 discard path), so confirming "Switch to X?" can never silently lose
 layout changes.
 
-`DeskWindow.new_desk(name)` creates a new `.desk` in the current Desk's
-directory and switches to it (no "Switch to X?" confirm — naming it is
-the intent; a brand-new Desk gets the standard fresh-desk demo layout,
-same as any widget-less Desk). `DeskWindow.rename_current_desk(new_name)`
+`new_desk_requested` opens `NewDeskDialog` (TODO `4716585`,
+`src/desk/shell/new_desk_dialog.py`) — a single dialog collecting
+every New Desk decision at once: name, target directory (a read-only
+field plus a "Browse…" button, defaulting to the current Desk's
+directory), and checkboxes for creating `.desk_temp`, creating/updating
+`.gitignore`, and (only shown if the current Desk has one to copy)
+copying `development-process.md`. This replaced a chain of up to five
+sequential modal popups (name, directory, dev-process-copy confirm,
+`.desk_temp` confirm, `.gitignore` confirm) — both for convenience and
+because that chain of nested `exec()` calls was implicated in a real
+segfault (see `plans/fix-new-desk-flow-crash.md`): closing
+`_DeskListPopup` (`WA_DeleteOnClose`) only *schedules* its deletion,
+which actually runs during the next nested event loop — a long chain
+of them was a wide window for a stale, still-in-flight mouse event to
+be delivered to an already-destroyed list widget.
+
+`DeskWindow.new_desk(name, directory, *, create_temp_ui,
+create_gitignore, copy_development_process)` creates a new `.desk` in
+`directory` and switches to it (no "Switch to X?" confirm — naming it
+is the intent). A Desk with no saved widgets gets `cb2790d`'s seeded
+Markdown-with-README (or Scratch-with-template) layout, not the old
+one-of-every-widget default — and, since `switch_desk` now provisions
+`.desk_temp`/`.gitignore` *before* placing any widget (previously
+after), that seeded widget never starts running while a provisioning
+decision is still in flight. `DeskWindow.rename_current_desk(new_name)`
 renames the current Desk's file in place (a Desk's name *is* its file
 stem), preserving its widgets/view and leaving its directory (and thus
 `.desk_temp`) untouched. Both refuse a name that already exists (via a
-`_warn` dialog) and get their name via an injectable `_prompt_fn`
-(mirroring `_confirm_fn`, so both are substitutable in headless tests).
+`_warn` dialog) — `new_desk` re-checks this immediately before its
+actual save too, not just at the top, since `switch_desk` in between
+does real work that takes real time — and get their name via an
+injectable `_prompt_fn` (mirroring `_confirm_fn`, so both are
+substitutable in headless tests) for `rename_current_desk`, or
+`NewDeskDialog`'s own fields for `new_desk`.
 
 ### Add Widget Menu
 

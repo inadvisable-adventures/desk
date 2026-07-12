@@ -1,4 +1,4 @@
-# Fix New Desk flow segfault + consolidate into one dialog
+# Fix New Desk flow segfault + consolidate into one dialog (COMPLETED)
 
 TODO `4716585`.
 
@@ -230,4 +230,68 @@ files):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned:
+
+- `src/desk/shell/new_desk_dialog.py` (new) — `NewDeskDialog`.
+- `src/desk/shell/window.py` — `NewDeskProvisioning` dataclass;
+  `_on_new_desk_requested`/`_on_new_desk_dialog_submitted` rewritten
+  around `NewDeskDialog`; `switch_desk` reordered (sets
+  `current_context`'s directory and provisions *before*
+  `_load_desk_widgets`, not after); `_provision_temp_ui(provisioning=
+  None)`; `new_desk(..., create_temp_ui, create_gitignore,
+  copy_development_process)` with the late re-check before
+  `save_current_desk`.
+- `src/desk/shell/temp_ui_manager.py` — `provision` re-checks
+  `temp_dir.is_dir()` immediately before `mkdir()`, and no longer skips
+  the `.gitignore` step just because `.desk_temp` creation was
+  declined (they're independent checkboxes now).
+- `src/desk/temp_ui.py` — `ensure_gitignore_entry` re-reads
+  immediately before writing, and always emits a blank line + `#
+  Desk-specific` comment before the entry, for both the create-fresh
+  and append-to-existing cases.
+- `design-docs/widget-ux.md`'s Desk Picker section rewritten for the
+  new dialog and the crash context.
+- `PARKINGLOT.md` — new item for a generalized create-check-abort
+  mechanism.
+
+Verified headlessly (`QT_QPA_PLATFORM=offscreen`, real `QApplication`,
+real files):
+
+- `NewDeskDialog`: default path shown and updated by Browse…
+  (`QFileDialog.getExistingDirectory` mocked); the dev-process
+  checkbox only appears (unchecked) when offered; Create emits the
+  exact collected answers; an empty name emits nothing.
+- `ensure_gitignore_entry`: fresh file, append-with-trailing-newline,
+  and append-without-trailing-newline all produce exactly one blank
+  line before `# Desk-specific`/the entry; an already-present entry is
+  a no-op (`ask()` never called); a simulated concurrent add during
+  `ask()` doesn't get duplicated by the write.
+- `TempUiManager.provision`: a simulated concurrent `mkdir()` during
+  `ask_create_dir()` doesn't raise, and provisioning still ends in the
+  correct state; declining `.desk_temp` still independently honors the
+  `.gitignore` checkbox (previously would have skipped it too).
+- `DeskWindow._provision_temp_ui`/`switch_desk`/`new_desk` (unbound
+  methods on fake doubles, the established pattern for
+  `DeskWindow`-dependent logic): pre-decided `NewDeskProvisioning`
+  answers skip confirm dialogs entirely; `current_context`'s directory
+  and provisioning both run before `_load_desk_widgets`, confirmed by
+  call-order tracking; `new_desk`'s late re-check aborts (warns, never
+  calls `save_current_desk`) if the target path appears during
+  `switch_desk`, and the normal (no-race) path still saves correctly.
+
+Regression-checked: re-ran every other verification script from this
+session (tempui-live-refresh, Questions-notification, drag-and-drop,
+new-Desk-seeding, paste-clipboard-routing, `WidgetSpawnMenu` grouping
+/keyboard-nav, MRU-file-existence, crash-log, Cmd+Q-teardown) — all
+still pass unaffected.
+
+Not independently reproduced (the underlying crash is a use-after-free
+race, not reliably reproducible on demand) — the fix is a direct
+structural response to the diagnosed mechanism (fewer nested `exec()`
+calls in the New Desk flow specifically), not a confirmed-by-repro
+fix. If the same crash shape recurs elsewhere (e.g. `b44e8ba`, still
+open), the underlying `_DeskListPopup`/`WA_DeleteOnClose`-deferred
+-deletion mechanism itself would need a deeper fix (e.g. forcing
+synchronous deletion before any subsequent nested dialog) — out of
+scope here, per the user's own three-part prescription actually
+implemented.
