@@ -1343,6 +1343,7 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    connection-order invariant across two fundamentally different Qt
    signals (`aboutToQuit` vs. a widget's own `destroyed`) that can't
    actually be ordered against each other that way.
+   [planned: fix-teardown-keyerror.md]
 7f51230. COMPLETED: Store crash logs in the current active project directory's
    `.desk_temp` folder instead of the project directory itself. On
    startup, if there are any crash logs present, open a new Crash Log
