@@ -1,4 +1,4 @@
-# File Explorer toolbar controls don't scale their chrome with zoom
+# File Explorer toolbar controls don't scale their chrome with zoom (COMPLETED)
 
 TODO `465c404`.
 
@@ -116,4 +116,26 @@ through native macOS theme APIs.
 
 ## Status
 
-Not yet implemented.
+Implemented. `open_folder_button` and `self._search_box` both get
+`.setStyle(self._toolbar_style)`, `self._toolbar_style =
+QStyleFactory.create("Fusion")` kept alive as an instance attribute.
+
+Verified what's actually checkable in this environment: the widget
+builds without error, both controls report `style().objectName() ==
+"fusion"`, the Open Folder button's `clicked` still reaches
+`_choose_root`, and the search box's debounced filtering still works
+end-to-end -- all unchanged from before, confirming `setStyle()` only
+affected painting. Also rendered the real widget (not a minimal mockup)
+through a 3x-zoomed `QGraphicsView`/`QGraphicsProxyWidget`, same as the
+originally-reported setup: both controls' background/border scale in
+proportion with their text at zoom, with no layout breakage.
+
+As flagged in the plan: this environment's offscreen Qt platform
+defaults to Fusion regardless, so it cannot reproduce the *broken*
+native-macOS-style rendering the bug report showed, and therefore can't
+be used to prove this fix resolves that exact symptom by direct
+before/after comparison. Please confirm by zooming into the File
+Explorer widget's toolbar in the real running app. If Fusion's look
+reads as jarring, or the bug somehow persists, the fallback is
+hand-painted custom chrome for these two controls, mirroring the tree
+arrow fix more literally.

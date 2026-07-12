@@ -1335,7 +1335,7 @@ cee6f74. COMPLETED: Refactor TempUiManager and the TODO widget's file-watching s
    explicitly out of scope for now -- revisit only if it becomes a
    real, observed problem.
    [planned: file-watch-self-write-consolidation.md]
-465c404. Bug: in the File Explorer widget, the "Open Folder" button and
+465c404. COMPLETED: Bug: in the File Explorer widget, the "Open Folder" button and
    the search box's chrome (background/border) don't scale with zoom,
    similar to how the tree-collapsing controls (">") were also not
    scaling properly before that was fixed. Screenshot: the widget

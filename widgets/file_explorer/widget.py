@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLineEdit,
     QPushButton,
+    QStyleFactory,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -152,6 +153,20 @@ class FileExplorerWidget(QWidget):
 
         open_folder_button = QPushButton("Open Folder")
         open_folder_button.clicked.connect(self._choose_root)
+
+        # Native-style-painted button/line-edit chrome (background,
+        # border) was reported to visually desync from its own text once
+        # zoomed -- the same category of bug as _FileTreeView's
+        # native-drawn branch arrow above, now fixed here the same way:
+        # stop relying on native-style painting. Fusion paints its own
+        # chrome as ordinary transform-respecting vector operations
+        # instead of native macOS theme calls. setStyle() does not take
+        # ownership of the QStyle, so it's kept alive as an instance
+        # attribute -- otherwise Python's GC could free it out from
+        # under the still-referencing widgets. See TODO 465c404.
+        self._toolbar_style = QStyleFactory.create("Fusion")
+        open_folder_button.setStyle(self._toolbar_style)
+        self._search_box.setStyle(self._toolbar_style)
 
         toolbar = QHBoxLayout()
         toolbar.addWidget(open_folder_button)
