@@ -366,8 +366,10 @@ The mistake worth not repeating: treating the earlier hot-reload fix as
 having "solved" this class of bug, rather than as one instance of a
 general rule (*any* Qt-signal-invoked slot in this app is a hard
 crash boundary) that has to be re-applied at every such slot
-individually -- there is no single global backstop yet (see the
-separately-tracked, not-yet-implemented TODO 95f7ce9 for one). When a
+individually -- a single global backstop now exists (`desk
+.crash_handler`, TODO 95f7ce9's `sys.excepthook`-based logger, which
+does *not* prevent the crash itself, only records it), but each hazard
+still has to be found and hardened at its own call site. When a
 crash report includes a Python traceback (even a truncated one) ending
 inside code reached from a `*.connect(...)`-wired slot, suspect this
 mechanism first, regardless of whether the specific exception can be
@@ -379,3 +381,50 @@ all (this app installs no `faulthandler`) prints *no* Python traceback
 whatsoever (see `PARKINGLOT.md`'s Desk Picker crash note) -- so a report
 that *does* include one, even an incomplete one, points at this
 uncaught-exception mechanism, not an unrelated native crash.
+
+## `QWidget.mapToGlobal()` is unreliable for a `QGraphicsProxyWidget`-embedded widget under a non-unity view transform -- not just live mouse events
+
+TODO 10b0321: fixing the TODO widget's add/edit popup so it stays
+within the widget's own on-screen bounds needed that bounds rect in
+the first place -- the obvious approach, `self.mapToGlobal(QPoint(0,
+0))` / `self.mapToGlobal(QPoint(width, height))` on the embedded
+widget itself, was tried first and confirmed wrong before building
+anything on top of it. Reproduced directly: a widget placed at a
+non-origin scene position, embedded via a real `WorkspaceView`
+(mirroring the actual `WidgetFrame` -> `PythonWidgetHost` -> built
+-widget nesting depth), then the view zoomed 2x -- `mapToGlobal()`
+reported a rect offset by exactly the widget's own *placed scene
+position*, as if it had been placed at the scene origin instead, while
+still correctly applying the 2x zoom scale to the reported *size*. In
+other words: right size, wrong position, and wrong in a way that's easy
+to not notice if the widget in question happens to sit near the scene
+origin during manual testing.
+
+This is the same underlying category the existing "mouse events
+delivered into a `QGraphicsProxyWidget`-embedded widget don't reliably
+reflect real screen coordinates once the view is zoomed" entry (above)
+already documents -- but that entry is specifically about live
+`QMouseEvent` coordinates; this confirms the *static* geometry API
+(`mapToGlobal`/`mapFromGlobal`) has the analogous problem, not just
+event coordinates. Don't assume a plain geometry call "must" be safe
+just because it isn't an event handler.
+
+The reliable alternative, confirmed against the same real setup: don't
+ask the embedded widget to map its own coordinates at all -- go through
+the enclosing proxy/view chain explicitly, composing with this file's
+first entry (`self.window().graphicsProxyWidget()` to find the real
+proxy from a descendant):
+
+```
+proxy = self.window().graphicsProxyWidget()
+view = proxy.scene().views()[0]
+window_point = widget.mapTo(self.window(), local_point)   # local -> window-local
+scene_point = proxy.mapToScene(QPointF(window_point))     # window-local -> scene
+global_point = view.viewport().mapToGlobal(view.mapFromScene(scene_point))  # scene -> real screen
+```
+
+See `widgets/todo/widget.py`'s `_screen_point`/`_screen_rect`. If a
+zoom-dependent position/size bug shows up for something computed via
+`mapToGlobal`/`mapFromGlobal`/`geometry()`-style APIs on a
+canvas-embedded widget, suspect this before the specific feature's own
+logic.

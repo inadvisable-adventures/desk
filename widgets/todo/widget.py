@@ -5,7 +5,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
-from PyQt6.QtCore import QEvent, QObject, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QEvent, QObject, QPoint, QPointF, QRect, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -629,8 +629,73 @@ class TodoWidget(QWidget):
         dialog.item_submitted.connect(self._add_item)
         button = self.sender()
         if button is not None:
-            dialog.move(button.mapToGlobal(button.rect().bottomLeft()))
+            self._position_dialog(dialog, button, button.rect().bottomLeft())
         dialog.show()
+
+    def _resolve_view_and_proxy(self):
+        """The Workspace Canvas view + this widget's enclosing proxy, or
+        `None` if not actually embedded in one (e.g. a bare unit test).
+        `self.window()` resolves to the `WidgetFrame` -- the exact
+        widget passed to `scene.addWidget()` -- since a descendant's own
+        `graphicsProxyWidget()` is `None` even though it's just as
+        embedded (see LEARNINGS.md)."""
+        proxy = self.window().graphicsProxyWidget()
+        if proxy is None or proxy.scene() is None:
+            return None
+        views = proxy.scene().views()
+        if not views:
+            return None
+        return views[0], proxy
+
+    def _screen_point(self, widget: QWidget, local_point: QPoint) -> QPoint | None:
+        """`local_point` (in `widget`'s own local coordinates) mapped to
+        a real on-screen point, accounting for the Workspace Canvas's
+        zoom/pan -- `QWidget.mapToGlobal()` itself is unreliable for a
+        widget embedded in a `QGraphicsProxyWidget` under a non-unity
+        view transform (confirmed directly: it silently ignores the
+        widget's placed scene position while still applying the zoom
+        scale to size -- TODO 10b0321), so this goes through the
+        enclosing proxy/view chain explicitly instead. `widget` must be
+        `self` or one of its descendants. Returns `None` if not
+        actually embedded."""
+        resolved = self._resolve_view_and_proxy()
+        if resolved is None:
+            return None
+        view, proxy = resolved
+        window_point = widget.mapTo(self.window(), local_point)
+        scene_point = proxy.mapToScene(QPointF(window_point))
+        return view.viewport().mapToGlobal(view.mapFromScene(scene_point))
+
+    def _screen_rect(self, widget: QWidget) -> QRect | None:
+        top_left = self._screen_point(widget, QPoint(0, 0))
+        bottom_right = self._screen_point(widget, QPoint(widget.width(), widget.height()))
+        if top_left is None or bottom_right is None:
+            return None
+        return QRect(top_left, bottom_right)
+
+    def _position_dialog(self, dialog: "_ItemDialog", anchor: QWidget, local_point: QPoint) -> None:
+        """Positions `dialog` just past `local_point` (in `anchor`'s
+        local coordinates), clamped to remain within this widget's own
+        on-screen bounds (TODO 10b0321), capping the dialog's own size
+        down too if this widget is currently smaller than the dialog's
+        natural size (e.g. resized near `MIN_WIDTH`/`MIN_HEIGHT`) --
+        `_field`'s own `setMinimumSize` still applies underneath, so an
+        especially tiny widget just gets the dialog at its own practical
+        minimum. Falls back to the old, unclamped `mapToGlobal`
+        positioning if this widget isn't actually embedded in a canvas
+        (e.g. a bare unit test)."""
+        bounds = self._screen_rect(self)
+        desired = self._screen_point(anchor, local_point)
+        if bounds is None or desired is None:
+            dialog.move(anchor.mapToGlobal(local_point))
+            return
+        width = min(dialog.width(), bounds.width())
+        height = min(dialog.height(), bounds.height())
+        if (width, height) != (dialog.width(), dialog.height()):
+            dialog.resize(width, height)
+        x = bounds.left() + max(0, min(desired.x() - bounds.left(), bounds.width() - width))
+        y = bounds.top() + max(0, min(desired.y() - bounds.top(), bounds.height() - height))
+        dialog.move(x, y)
 
     def _add_item(self, description: str) -> None:
         if self._state["todo_path"] is None:
@@ -663,7 +728,7 @@ class TodoWidget(QWidget):
         # connecting an object's destroyed signal to its own bound method.
         dialog.destroyed.connect(lambda: self._open_edits.pop(item.item_id, None))
         rect = self._list.visualItemRect(list_item)
-        dialog.move(self._list.viewport().mapToGlobal(rect.bottomLeft()))
+        self._position_dialog(dialog, self._list.viewport(), rect.bottomLeft())
         dialog.show()
 
     def _edit_item(self, item: TodoItem, description: str) -> None:

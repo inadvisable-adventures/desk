@@ -1,4 +1,4 @@
-# Restrict the TODO widget's add/edit popup to its own widget bounds
+# Restrict the TODO widget's add/edit popup to its own widget bounds (COMPLETED)
 
 TODO `10b0321`.
 
@@ -121,4 +121,24 @@ Headless (`QT_QPA_PLATFORM=offscreen`, real `QApplication`, no mocks):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `_resolve_view_and_proxy`, `_screen_point`,
+`_screen_rect`, and `_position_dialog` added to `TodoWidget`;
+`_show_add_dialog`/`_show_edit_dialog` now call `_position_dialog`
+instead of their old, unclamped `dialog.move(widget.mapToGlobal(...))`.
+
+All headless verification steps above passed, against a real
+`WorkspaceView`/`PythonWidgetHost`/`TodoWidget` embedding (not a
+stand-in): the popup's shown geometry is fully contained within
+`_screen_rect(self)` at a non-unity zoom for both the add and edit
+paths; a widget resized down to `MIN_WIDTH`/`MIN_HEIGHT` gets the
+popup capped down from its default 420x220 rather than overflowing;
+constructing a bare `TodoWidget` with no canvas at all still shows the
+popup without raising (the fallback path). Also kept the
+`mapToGlobal`-is-wrong finding itself as its own standalone
+verification step, not just narrative.
+
+Added a `LEARNINGS.md` entry for the `mapToGlobal()` finding (a real,
+non-obvious, easy-to-repeat mistake -- the "obvious" approach was tried
+first and was wrong), and corrected a now-stale cross-reference in the
+adjacent "uncaught exception escaping a Qt slot" entry (TODO 95f7ce9
+is implemented now, no longer "not-yet-implemented").
