@@ -1522,4 +1522,4 @@ f74945e. COMPLETED: Add a "paste" item to the top of the widget menu if there is
    longer there, giving the full path in selectable/copyable text (an
    explicit exception to `CLAUDE.md`'s general "labels shouldn't be
    user-selectable" convention, matching its own "unless specifically
-   requested" carve-out).
+   requested" carve-out). [planned: mru-file-existence-check.md]
