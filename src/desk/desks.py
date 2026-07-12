@@ -19,6 +19,12 @@ class WidgetState:
     width: float
     height: float
     instance_id: str = field(default_factory=_new_instance_id)
+    # "Widget-local storage" (TODO fb76057): an arbitrary, JSON
+    # -serializable per-instance payload a widget can read back on
+    # restore and update on every save -- see
+    # desk.shell.window.DeskWindow's get/set_widget_local_storage
+    # binding.
+    state: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -75,6 +81,7 @@ def desk_state_dict(desk: Desk) -> dict:
                 "y": w.y,
                 "width": w.width,
                 "height": w.height,
+                "state": w.state,
             }
             for w in desk.widgets
         ],

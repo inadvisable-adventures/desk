@@ -1,4 +1,4 @@
-# Widget-local storage
+# Widget-local storage (COMPLETED)
 
 TODO `fb76057`.
 
@@ -103,4 +103,32 @@ Headless (`QT_QPA_PLATFORM=offscreen`, real `QApplication`, no mocks):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `WidgetState.state` in `src/desk/desks.py`
+(`desk_state_dict` includes it; `load_desk`/`save_desk` needed no
+other changes, since both already round-trip generically via
+dataclass fields / `**w` unpacking); `DeskWindow
+._bind_widget_local_storage`/`_get_widget_local_storage` in
+`src/desk/shell/window.py`, wired into the restore loop and
+`_capture_desk_state` respectively.
+
+All headless verification steps above passed: a `state` dict survives
+a real save-then-load round trip through an actual temp `.desk` file;
+an old-shaped `.desk` file with no `"state"` key at all loads fine,
+defaulting to `{}`; `desk_state_dict` includes `state`; the real
+`DeskWindow._bind_widget_local_storage`/`_get_widget_local_storage`
+methods (not reimplemented logic) work correctly against a widget
+implementing both methods, and are a safe no-op against one that
+implements neither.
+
+Updated `PARKINGLOT.md`'s existing parked note to reflect that the
+capability now exists, narrowing it to the two remaining, still-open
+follow-on questions (whether to actually use it for Markdown/Editor
+file-persistence, and whether to migrate the existing TempUI/Claude
+special-cased bindings onto it) -- neither pursued here, matching this
+TODO's own "ensure the capability exists" scope, not "migrate
+everything onto it." Updated `design-docs/architecture.md`'s Desk
+Model section with the new `"state"` field.
+
+No `LEARNINGS.md` entry needed -- this closely mirrored TODO a053e3a's
+own already-established generalized-binding pattern, nothing
+surprising turned up.

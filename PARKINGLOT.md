@@ -296,25 +296,26 @@ This file captures thoughts and TODO items that arise during work on other thing
   Not decided — parking to revisit as a deliberate design discussion.
 
 - **Widgets can't persist an arbitrary per-instance chosen file across
-  reload**
+  reload -- the underlying capability now exists, unused so far**
 
   Surfaced building the Markdown widget (TODO 6bf83a9): it opens/renders
   a Markdown file the user picks, but — like the Code Editor widget —
-  the chosen file is *not* remembered across a Desk reload, because
-  `WidgetState` has no per-instance custom-state payload (only geometry
-  + `instance_id`) and `build()` takes no args. The only current escape
-  hatch is the `instance_id`-as-uuid trick the Temporary UI widgets use,
-  which only works when the file itself *is* a uuid Desk controls, not an
-  arbitrary user-chosen path. Both the Markdown and Editor widgets would
-  benefit from remembering their file on reload. This is really the same
-  underlying gap as the parked "work-item-tracking / temp-UI-authoring"
-  discussions keep bumping into: **should the widget contract gain a
-  general per-instance state payload** (a `state: dict` on `WidgetState`,
-  a widget-side read/write protocol, and a generalized post-build
-  binding replacing the current per-kind `_bind_temp_ui_widget`/
-  `_bind_claude_widget` special-cases)? Revisit as its own design
-  decision; a clean answer would unlock file-persistence here plus
-  simplify the temp-UI and claude widgets.
+  the chosen file was *not* remembered across a Desk reload. TODO
+  fb76057 built the general mechanism this needed ("widget-local
+  storage": `WidgetState.state: dict`, `get_widget_local_storage()`/
+  `set_widget_local_storage()` duck-typed onto a widget, a generalized
+  post-build binding in `DeskWindow`) — but deliberately scoped to just
+  the mechanism, not wiring any specific widget onto it. Two follow-ons
+  this unlocks, still undecided:
+  - Have the Markdown/Markdown (Extended)/Editor widgets actually use it
+    to remember their open file across a reload (the original motivating
+    case above).
+  - Migrate the existing per-kind `_bind_temp_ui_widget`/
+    `_bind_claude_widget` special-cases onto it instead of their current
+    bespoke, one-off wiring — a clean answer would simplify both.
+
+  Not decided which (or both) is worth doing yet — parking to revisit
+  as its own design discussion.
 
 - **In-widget zoom/pan for the SVG Viewer**
 

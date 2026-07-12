@@ -1399,7 +1399,7 @@ ed483e2. COMPLETED: split the widget-adding popup menu list of popups into colla
    questions -- see `QUESTIONS.md` and
    `plans/markdown-rendering-doc-and-tempui-markdown.md`.
    [planned: markdown-rendering-doc-and-tempui-markdown.md]
-fb76057. Ensure that "widget-local storage" exists: a means by which
+fb76057. COMPLETED: Ensure that "widget-local storage" exists: a means by which
    widgets can store data in the current .desk file. Checked: this
    capability does not yet exist -- `WidgetState` currently only holds
    geometry + `instance_id`, no per-instance state payload.

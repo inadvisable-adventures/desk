@@ -137,6 +137,7 @@ class DeskWindow(QMainWindow):
                     # every widget kind relies on. See
                     # plans/temporary-ui.md/plans/lightning-round-tempui.md.
                     self._bind_temp_ui_widget(frame, desk.directory, state.instance_id)
+                self._bind_widget_local_storage(frame, state.state)
         else:
             for index, (widget_id, widget) in enumerate(sorted(self._widgets.items())):
                 pos = (index * WIDGET_SPACING, 0)
@@ -263,6 +264,35 @@ class DeskWindow(QMainWindow):
         if content is not None:
             self._bind_temp_ui_content(content, directory / TEMP_UI_DIRNAME / uuid_str, directory)
 
+    def _bind_widget_local_storage(self, frame: WidgetFrame, data: dict) -> None:
+        """Restores a widget's "widget-local storage" (TODO fb76057) --
+        only called from the Desk-reload restore path, since a fresh
+        placement has no prior data to restore. Duck-typed the same way
+        `hasattr(content, "set_file")` already is elsewhere in this
+        file: a widget that doesn't implement `set_widget_local_storage`
+        is a safe no-op, not an error."""
+        if not isinstance(frame.content, PythonWidgetHost):
+            return
+        content = frame.content.current
+        if content is None or not hasattr(content, "set_widget_local_storage"):
+            return
+        content.set_widget_local_storage(data)
+
+    @staticmethod
+    def _get_widget_local_storage(frame: WidgetFrame) -> dict:
+        """The counterpart read side, called by `_capture_desk_state`
+        on every save -- pull-based, not push-based, since a Desk save
+        already re-reads every other per-widget field (geometry) fresh
+        at save time rather than tracking live changes. A widget that
+        doesn't implement `get_widget_local_storage` contributes an
+        empty dict, same as it always implicitly had before this TODO."""
+        if not isinstance(frame.content, PythonWidgetHost):
+            return {}
+        content = frame.content.current
+        if content is None or not hasattr(content, "get_widget_local_storage"):
+            return {}
+        return content.get_widget_local_storage()
+
     def _bind_temp_ui_content(self, content, tempui_path: Path, directory: Path) -> None:
         """Wires a freshly-placed or restored TempUI-backed widget's
         content to its source tempui_path -- Question/LightningRound
@@ -344,6 +374,7 @@ class DeskWindow(QMainWindow):
                     size.width(),
                     size.height(),
                     instance_id=frame.instance_id,
+                    state=self._get_widget_local_storage(frame),
                 )
             )
         pan_x, pan_y, scale = self.view.get_view_state()

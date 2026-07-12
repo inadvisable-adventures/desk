@@ -481,8 +481,17 @@ single currently-open `Desk` for the window — only one window exists for
 now, and it can only have one Desk open at a time).
 
 - **File format**: a `.desk` file (JSON) — `{"widgets": [{"widget_id",
-  "x", "y", "width", "height"}, ...], "pan_x", "pan_y", "scale"}`. A Desk's
-  **name is its file's stem** (e.g. `my-project.desk` → "my-project").
+  "x", "y", "width", "height", "state"}, ...], "pan_x", "pan_y", "scale"}`.
+  A Desk's **name is its file's stem** (e.g. `my-project.desk` →
+  "my-project"). Each widget's `"state"` is its **widget-local storage**
+  (TODO fb76057) — an arbitrary, JSON-serializable per-instance payload a
+  widget can read back on restore (`set_widget_local_storage(data)`) and
+  update on every save (`get_widget_local_storage() -> dict`), both duck
+  -typed and optional independently, wired generically in `DeskWindow`
+  (not a per-widget-kind special case, unlike the existing TempUI/Claude
+  bindings — see `PARKINGLOT.md` for whether those should eventually move
+  onto this too). Pull-based: read fresh at each actual save, same as
+  every other per-widget field, not tracked live.
 - **Directory association**: by default a Desk's file lives in its
   associated directory (`Desk.directory == Desk.path.parent`); on launch,
   Desk looks for existing `*.desk` files in the current working directory
