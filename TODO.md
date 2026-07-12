@@ -1354,6 +1354,35 @@ a053e3a. COMPLETED: Update widgets which load files to note in the title bar for
    the widget if the widget is loading a file from a path outside of
    the currently associated directory, by showing "[EXTERNAL]".
    [planned: widget-external-file-indicator.md]
+95f7ce9. Add a global error handler: on an uncaught exception anywhere
+   in the app, attempt to append the stack trace to a file called
+   `DESK-CRASH-[timestamp].log` in the project folder. Must not itself
+   "further crash" if writing that log fails for any reason.
+810a5d6. Investigate and fix: a segmentation fault occurred opening
+   `./necro-4x/necro-4x.desk`. The last action taken in that Desk
+   beforehand was double-clicking `./necro-4x/.desk_temp
+   /desk-temporary-ui.md` in the File Explorer widget to open it (this
+   opens it in a new Editor widget instance). This may or may not be
+   related to work done around the same time on TODO a053e3a (the
+   "[EXTERNAL]" titlebar marker). Traceback captured at the time (paths
+   scrubbed to start at `./desk/`; trace is cut off after this point --
+   no exception type/message was captured):
+
+   ```
+   Traceback (most recent call last):
+     File "./desk/widgets/file_explorer/widget.py", line 246, in _open_index
+       widget.set_file(path)
+       ~~~~~~~~~~~~~~~^^^^^^
+     File "./desk/widgets/editor/widget.py", line 181, in set_file
+       self._load_file(path)
+       ~~~~~~~~~~~~~~~^^^^^^
+     File "./desk/widgets/editor/widget.py", line 146, in _load_file
+       self.refresh_external_path_status()
+       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+     File "./desk/widgets/editor/widget.py", line 155, in refresh_external_path_status
+       is_external = self._current_path is not None and current_context.path_is_external(
+   ```
+   [planned: segfault-open-tempui-file-in-editor.md]
 10b0321. in the TODO widget, please change the pop-up item adder/editor so that it is restricted to remain visually within the TODO widget itself.
 f8d9cec. Add a new (or existing?) tempui capability to allow agents to add "scratch" text, and make it clear in the tempui instructions given to claude that when the user refers to "scratch," that is what is meant, unless there is a more pressing local meaning.
 cdf45cb. Add "bring to front" and "send to back" buttons to the top-right of widgets, left of the "x" button, which move it in visual z-order to the front or back, respectively.
