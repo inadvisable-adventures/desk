@@ -1469,3 +1469,15 @@ cb2790d. When creating a new Desk, don't add all of the widgets to it --
    for the project, or else add a Scratch widget with content for a
    basic readme that has a "# [desk name] README" at the top followed
    by a section called "## What this project is about or exploring...".
+5915ac2. Drag and drop files into Desk should cause them to be opened
+   as external.
+f74945e. Add a "paste" item to the top of the widget menu if there is
+   anything in the clipboard; if pasted, put the pasted material into
+   a file in the temp directory and attempt to open it with a
+   corresponding widget; if it is markdown, then just use the markdown
+   approach we're implementing with the new DSL entry (TODO 9743419);
+   if it is text but not markdown, open it as a scrap (if there isn't
+   a DSL entry for that, add one -- see TODO f8d9cec's existing
+   `Scratch` tempui capability); if it is non-text content (binary),
+   paste it as a new file in the project directory with a filename
+   like `PASTED-ITEM-[timestamp].[file extension]`.

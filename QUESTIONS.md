@@ -35,7 +35,7 @@ meant, or inventing a different name for one of them.
 - Should the other one keep its current name, or get a different new
   name (e.g. something like `markdown_ex_old_basic`)? If so, what?
 
-(Answer: )
+(Answer: good catch! markdown should become markdown_old_basic and markdown_ex should become markdown. we're replacing the old markdown widget with the new one, but we're keeping the old one around as deprecated.)
 
 ## TODO `9743419`: what makes a tempui file "markdown-based," and how should the save-a-copy filename be derived?
 
@@ -59,7 +59,22 @@ blocked on:
   `# My Investigation Notes` become `My Investigation Notes.md`
   verbatim, a slugified `my-investigation-notes.md`, or something else?
 
-(Answer: )
-
-(Answer: )
+(Answer: option (a) -- a new explicit tempui DSL keyword, `Markdown
+<label>`, matching Scratch/OpenMarkdown's shape. Unlike OpenMarkdown
+(which points at an external target file), this one's own content
+*is* the markdown to render, live, the same "render the tempui file
+itself" pattern Question/LightningRound already use via
+set_source_file -- not the fallback-for-any-unrecognized-keyword
+option, which would have changed existing behavior. Placed on the new
+default markdown widget (post-rename: markdown_ex becomes "markdown"),
+since a tempui-bound instance shows a "Save As" button in place of
+"Open" (no "open a different file" concept applies to a tempui-bound
+instance). Saving writes the current content to a new file at the
+project root, opens it in a *new*, ordinary file-backed markdown
+widget instance, and leaves the original tempui-bound instance open
+and still rendering live. The filename-derivation algorithm: slugified
+to kebab-case, e.g. `# My Investigation Notes` -> `my-investigation
+-notes.md`. "Save As" is scoped to just this widget for now --
+generalizing something like it to other widgets is a separate, later
+idea, not part of this TODO.)
 
