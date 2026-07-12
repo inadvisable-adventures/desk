@@ -1,4 +1,4 @@
-# New-Desk default widget seeding
+# New-Desk default widget seeding (COMPLETED)
 
 TODO `cb2790d`.
 
@@ -69,4 +69,18 @@ pattern for `DeskWindow`-dependent logic):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `_load_desk_widgets`'s "no saved widgets"
+branch now calls `_seed_new_desk_widgets(desk)`; new `README_FILENAME`
+constant, alongside the other well-known-filename constants.
+
+Verified headlessly against the established unbound-method-on-a-fake
+-double pattern: a directory with a real `README.md` opens the
+markdown widget and calls `set_file` with it; a directory without one
+seeds a Scratch widget with the exact label/template text; a catalog
+missing either widget kind is a no-op, no crash. Regression-checked
+the tempui-live-refresh, Questions-notification, and drag-and-drop
+verification scripts -- all unaffected.
+
+No `LEARNINGS.md` entry needed -- nothing surprising here, just
+swapping one small piece of already-established placement logic for
+another.

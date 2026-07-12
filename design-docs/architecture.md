@@ -538,10 +538,13 @@ now, and it can only have one Desk open at a time).
   associated directory (`Desk.directory == Desk.path.parent`); on launch,
   Desk looks for existing `*.desk` files in the current working directory
   (most-recently-modified first) or falls back to `<cwd>/default.desk` (a
-  path that may not exist yet — treated as a brand-new, empty Desk, which
-  falls back to placing one instance of every discovered widget, matching
-  pre-Desk behavior, so a fresh directory still shows the demo widget out
-  of the box).
+  path that may not exist yet — treated as a brand-new, empty Desk). A
+  Desk with no saved widgets (TODO `cb2790d`) opens a Markdown viewer on
+  the project's `README.md` if it has one, else seeds a Scratch widget
+  with a minimal `# <name> README` starter template — replacing the
+  original behavior of placing one instance of every discovered widget,
+  which was a leftover bootstrapping default rather than a meaningful
+  onboarding experience. See `plans/new-desk-default-widgets.md`.
 - **Saving**: on quit, and immediately before switching to a different
   Desk or changing the current Desk's directory (so switching can never
   silently lose layout changes) — not continuously/debounced on every

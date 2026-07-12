@@ -1456,7 +1456,7 @@ f668aef. COMPLETED: Make the Question widget live-refresh when its tempui file i
 6fbae42. COMPLETED: Make the Markdown tempui-bound content widget (TODO 9743419)
    actually live-refresh as originally described (resolved by TODO
    67ab2df's general solution).
-cb2790d. When creating a new Desk, don't add all of the widgets to it --
+cb2790d. COMPLETED: When creating a new Desk, don't add all of the widgets to it --
    just open a markdown viewer of the README.md file if there is one
    for the project, or else add a Scratch widget with content for a
    basic readme that has a "# [desk name] README" at the top followed

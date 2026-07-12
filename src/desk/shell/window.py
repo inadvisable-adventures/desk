@@ -69,6 +69,10 @@ WIDGET_SPACING = 700
 # codebase's own development-process.md itself names -- a plain
 # literal, not a piece of shared behavior worth its own module.
 DEVELOPMENT_PROCESS_FILENAME = "development-process.md"
+# TODO cb2790d: a new Desk's default-widgets seeding looks for this exact
+# filename, same convention as the other well-known-filename constants
+# above.
+README_FILENAME = "README.md"
 
 Confirm = Callable[[], bool]
 
@@ -174,9 +178,37 @@ class DeskWindow(QMainWindow):
                     self._bind_temp_ui_widget(frame, desk.directory, state.instance_id)
                 self._bind_widget_local_storage(frame, state.state)
         else:
-            for index, (widget_id, widget) in enumerate(sorted(self._widgets.items())):
-                pos = (index * WIDGET_SPACING, 0)
-                self._place_widget(widget_id, widget, pos, widget.default_size)
+            self._seed_new_desk_widgets(desk)
+
+    def _seed_new_desk_widgets(self, desk: Desk) -> None:
+        """A Desk with no saved widgets (a genuinely new Desk, in
+        practice -- see plans/new-desk-default-widgets.md) used to get
+        every discovered widget placed side by side, a leftover
+        bootstrapping default rather than a meaningful onboarding
+        experience (TODO cb2790d). Instead: a Markdown viewer on the
+        project's README.md if it has one, else a Scratch widget seeded
+        with a minimal starter template."""
+        readme_path = desk.directory / README_FILENAME
+        if readme_path.is_file():
+            widget = self._widgets.get(MARKDOWN_WIDGET_ID)
+            if widget is None:
+                return
+            content = self.open_widget_content(MARKDOWN_WIDGET_ID, pos=(0, 0), size=widget.default_size)
+            if content is not None and hasattr(content, "set_file"):
+                content.set_file(readme_path)
+            return
+
+        widget = self._widgets.get(SCRATCH_WIDGET_ID)
+        if widget is None:
+            return
+        content = self.open_widget_content(SCRATCH_WIDGET_ID, pos=(0, 0), size=widget.default_size)
+        if content is None:
+            return
+        title = f"{desk.name} README"
+        if hasattr(content, "set_label"):
+            content.set_label(title)
+        if hasattr(content, "body"):
+            content.body.setPlainText(f"# {title}\n\n## What this project is about or exploring...\n")
 
     def _place_widget(
         self,
