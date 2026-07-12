@@ -428,3 +428,29 @@ zoom-dependent position/size bug shows up for something computed via
 `mapToGlobal`/`mapFromGlobal`/`geometry()`-style APIs on a
 canvas-embedded widget, suspect this before the specific feature's own
 logic.
+
+## Manually constructing a `QDropEvent` in Python and calling `dropEvent()` on it directly is flaky, not deterministically broken or safe
+
+While writing headless verification for drag-and-drop file support
+(TODO 5915ac2), an identical construct-a-`QDropEvent`-then-call-
+`view.dropEvent(event)` sequence segfaulted on one run and completed
+successfully on the very next, unchanged run. This has the shape of a
+dangling-pointer/reference-counting bug in PyQt6's ownership handling
+for a manually-built event object dispatched outside Qt's own event
+loop, not a logic bug in the code under test -- so a single passing
+run proves nothing, and a single crashing run doesn't necessarily mean
+the code under test is wrong either.
+
+The reliable fix: don't construct a real `QDropEvent` for a headless
+test at all. `dropEvent`/`dragEnterEvent`/etc. only ever call a small,
+fixed set of methods on whatever object they're given
+(`.mimeData()`/`.position()`/`.acceptProposedAction()`/`.isAccepted()`
+here) -- a plain duck-typed Python object implementing just those
+methods exercises the exact same code path deterministically, with
+none of the real event class's construction/lifetime risk. See
+`plans/drag-drop-open-external.md` for the pattern in full. If a handler needs
+to fall through to `super().dropEvent(event)` for the "not handled
+here" case, that branch specifically still needs a *real* Qt event
+(the C++ base implementation won't accept a duck-typed fake) -- test
+that branch's own new logic (if any) directly instead of by driving it
+through the real `super()` call.

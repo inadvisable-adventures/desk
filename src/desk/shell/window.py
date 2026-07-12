@@ -38,6 +38,17 @@ MARKDOWN_WIDGET_ID = "markdown"
 SCRATCH_WIDGET_ID = "scratch"
 CLAUDE_WIDGET_ID = "claude"
 QUESTIONS_WIDGET_ID = "questions"
+SVG_VIEWER_WIDGET_ID = "svg_viewer"
+EDITOR_WIDGET_ID = "editor"
+
+# Which widget kind opens a dropped file (TODO 5915ac2), by extension --
+# only these three widget kinds currently expose set_file. Everything not
+# listed here falls back to the Editor, same as File Explorer's own
+# always-Editor "open" action.
+EXTERNAL_DROP_WIDGET_BY_SUFFIX = {
+    ".md": MARKDOWN_WIDGET_ID,
+    ".svg": SVG_VIEWER_WIDGET_ID,
+}
 # Every widget kind that renders a TempUI file (TODO a02b001/TODO
 # 11aeb43/TODO 42dd260/TODO f8d9cec) and needs the same instance_id
 # -equals-source-file-uuid reconnection handling -- see
@@ -97,6 +108,7 @@ class DeskWindow(QMainWindow):
         self.view.set_widget_catalog(widgets)
         self.view.widget_add_requested.connect(self._on_widget_add_requested)
         self.view.widget_close_requested.connect(self._on_widget_close_requested)
+        self.view.files_dropped.connect(self._on_files_dropped)
         if widgets_dir is not None:
             broker.widget_changed.connect(self._on_widget_changed_refresh_catalog)
 
@@ -815,6 +827,28 @@ class DeskWindow(QMainWindow):
 
     def _on_widget_close_requested(self, frame: WidgetFrame) -> None:
         self.close_widget(frame)
+
+    def _on_files_dropped(self, paths: list[Path], scene_pos: QPointF) -> None:
+        """Opens each file dropped onto the canvas (TODO 5915ac2) by
+        reference to wherever it already lives on disk -- never copied
+        into the project -- in whichever widget kind its extension maps
+        to (EXTERNAL_DROP_WIDGET_BY_SUFFIX, falling back to the Editor).
+        A file outside the current Desk directory (the common case for
+        a drag from Finder) automatically picks up the existing
+        "[EXTERNAL]" titlebar indicator (TODO a053e3a) the moment
+        set_file resolves it -- no separate step needed for that.
+        Multiple files fan out with the same WIDGET_SPACING offset
+        _load_desk_widgets' own no-saved-state fallback uses, starting
+        from the drop's own scene position."""
+        for index, path in enumerate(paths):
+            widget_id = EXTERNAL_DROP_WIDGET_BY_SUFFIX.get(path.suffix.lower(), EDITOR_WIDGET_ID)
+            widget = self._widgets.get(widget_id)
+            if widget is None:
+                continue
+            pos = (scene_pos.x() + index * WIDGET_SPACING, scene_pos.y())
+            content = self.open_widget_content(widget_id, pos=pos, size=widget.default_size)
+            if content is not None and hasattr(content, "set_file"):
+                content.set_file(path)
 
     def _on_widget_changed_refresh_catalog(self, _widget_id: str) -> None:
         """Keeps the widget catalog (add-widget menu, recognized

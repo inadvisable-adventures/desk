@@ -1,4 +1,5 @@
 import math
+from pathlib import Path
 
 from PyQt6.QtCore import QEvent, QPointF, Qt, QTimer, pyqtSignal
 from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -59,11 +60,13 @@ class WorkspaceView(QGraphicsView):
 
     widget_add_requested = pyqtSignal(str, QPointF)  # widget_id, scene pos
     widget_close_requested = pyqtSignal(WidgetFrame)
+    files_dropped = pyqtSignal(list, QPointF)  # list[Path], scene pos
 
     def __init__(self, parent=None) -> None:
         super().__init__(QGraphicsScene(parent), parent)
         self.setSceneRect(-CANVAS_BOUNDS, -CANVAS_BOUNDS, 2 * CANVAS_BOUNDS, 2 * CANVAS_BOUNDS)
         self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
+        self.setAcceptDrops(True)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self._scale = 1.0
         self._frames: list[WidgetFrame] = []
@@ -126,6 +129,32 @@ class WorkspaceView(QGraphicsView):
         )
         menu.move(event.globalPos())
         menu.show()
+
+    @staticmethod
+    def _local_file_urls(mime_data) -> list:
+        return [url for url in mime_data.urls() if url.isLocalFile()]
+
+    def dragEnterEvent(self, event) -> None:
+        if self._local_file_urls(event.mimeData()):
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:
+        if self._local_file_urls(event.mimeData()):
+            event.acceptProposedAction()
+        else:
+            super().dragMoveEvent(event)
+
+    def dropEvent(self, event) -> None:
+        urls = self._local_file_urls(event.mimeData())
+        if not urls:
+            super().dropEvent(event)
+            return
+        paths = [Path(url.toLocalFile()) for url in urls]
+        scene_pos = self.mapToScene(event.position().toPoint())
+        event.acceptProposedAction()
+        self.files_dropped.emit(paths, scene_pos)
 
     def clear_widgets(self) -> None:
         """Removes every placed widget from the canvas (used when switching

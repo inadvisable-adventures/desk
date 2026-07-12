@@ -148,7 +148,15 @@ Desk Bridge API.
    `QGraphicsProxyWidget` items, wrapped in the common drag/resize chrome
    specified in `design-docs/widget-ux.md`, which also covers zoom
    input handling and why widget chrome stays a constant screen size
-   while content zooms with the view.
+   while content zooms with the view. Also accepts OS-level file drops
+   (TODO 5915ac2): dropping a file from outside Desk (Finder, another
+   app) opens it by reference to wherever it already lives on disk —
+   never copied into the project — in whichever widget kind its
+   extension maps to (Markdown for `.md`, SVG Viewer for `.svg`, Editor
+   otherwise), which automatically picks up the "[EXTERNAL]" titlebar
+   indicator the moment it's opened, since a dropped file is
+   essentially always outside the current Desk directory. See
+   `plans/drag-drop-open-external.md`.
 4. **Python Widget Host** — the default, preferred building block: given a
    widget directory with a `widget.py` exposing `build() -> QWidget`,
    imports that module and calls `build()` directly (no subprocess, no

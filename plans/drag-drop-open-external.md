@@ -1,4 +1,4 @@
-# Drag-and-drop files onto the canvas open as external
+# Drag-and-drop files onto the canvas open as external (COMPLETED)
 
 TODO `5915ac2`.
 
@@ -76,4 +76,34 @@ Headless (`QT_QPA_PLATFORM=offscreen`, real `QApplication`):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `WorkspaceView.files_dropped` +
+`dragEnterEvent`/`dragMoveEvent`/`dropEvent` in `src/desk/shell/canvas.py`;
+`EXTERNAL_DROP_WIDGET_BY_SUFFIX`/`EDITOR_WIDGET_ID`/`SVG_VIEWER_WIDGET_ID`
+constants and `_on_files_dropped` in `src/desk/shell/window.py`, wired
+alongside `widget_add_requested`.
+
+Verified headlessly (`QT_QPA_PLATFORM=offscreen`, real `QApplication`
+and a real `WorkspaceView`): dropping a local-file URL emits
+`files_dropped` with the resolved path and accepts the event;
+extension dispatch routes `.md`/`.svg`/anything-else to
+markdown/svg_viewer/editor respectively (case-insensitively), each at
+a `WIDGET_SPACING`-offset position from the drop point, via
+`DeskWindow._on_files_dropped` run unbound against a fake double (the
+established pattern for `DeskWindow`-dependent logic, since
+constructing a real `DeskWindow` stalls headlessly).
+
+One real gotcha hit and worked around during verification: manually
+constructing a real `QDropEvent` in Python and calling `dropEvent()`
+directly on it is flaky in PyQt6 -- an identical construct-then-call
+segfaulted on one run and succeeded on the next (a dangling-pointer
+-style crash, not a deterministic logic bug). Fixed by exercising
+`dropEvent`/`_local_file_urls` against a plain duck-typed fake event
+object instead (it only ever calls `.mimeData()`/`.position()`
+/`.acceptProposedAction()`), which is both safe and exercises the same
+code path -- confirmed stable across repeated runs afterward. Recorded
+in `LEARNINGS.md` since this is exactly the kind of non-obvious,
+surprising PyQt6 gotcha that file is for.
+
+Regression-checked: re-ran `verify_tempui_live_refresh.py` and the
+Questions-widget notification-routing verification script -- both
+still pass unaffected.
