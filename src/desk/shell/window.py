@@ -438,14 +438,14 @@ class DeskWindow(QMainWindow):
         self.save_current_desk()
         self._provision_temp_ui()
 
-    def new_desk(self, name: str) -> None:
-        """Creates a new, empty Desk named `name` in the current Desk's
-        directory and switches to it. Naming the Desk *is* the intent, so
-        (unlike switch_desk) there's no "Switch to X?" confirmation."""
+    def new_desk(self, name: str, directory: Path) -> None:
+        """Creates a new, empty Desk named `name` in `directory` and
+        switches to it. Naming the Desk *is* the intent, so (unlike
+        switch_desk) there's no "Switch to X?" confirmation."""
         name = name.strip()
         if not name:
             return
-        path = self.current_desk.directory / (name + DESK_SUFFIX)
+        path = directory / (name + DESK_SUFFIX)
         if path.exists():
             self._warn("New Desk", f"A Desk named “{name}” already exists here.")
             return
@@ -628,8 +628,14 @@ class DeskWindow(QMainWindow):
 
     def _on_new_desk_requested(self) -> None:
         name = self._prompt_fn("New Desk", "Name for the new Desk:")()
-        if name:
-            self.new_desk(name)
+        if not name:
+            return
+        directory = QFileDialog.getExistingDirectory(
+            self, "New Desk Directory", str(self.current_desk.directory)
+        )
+        if not directory:
+            return
+        self.new_desk(name, Path(directory))
 
     def _on_rename_requested(self) -> None:
         name = self._prompt_fn(

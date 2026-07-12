@@ -1,4 +1,4 @@
-# New-Desk creation: pick both title and directory
+# New-Desk creation: pick both title and directory (COMPLETED)
 
 TODO `4c3fe4b`.
 
@@ -78,4 +78,23 @@ that don't need a full window):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `new_desk` now takes `directory: Path`
+explicitly; `_on_new_desk_requested` adds the `QFileDialog
+.getExistingDirectory` step, defaulting to `self.current_desk.directory`.
+
+Verification note: constructing a real `DeskWindow` is a known,
+pre-existing stall in this headless environment (already noted and
+skipped in several earlier plans this session -- 578cb6b, cee6f74,
+a053e3a). Rather than skip verification of this method entirely,
+exercised the real, unmodified `DeskWindow.new_desk` bound onto a
+lightweight double for the surrounding window (faking only
+`switch_desk`/`save_current_desk` with the minimal *real* behavior
+`new_desk` depends on, via the actual standalone `desk.desks`
+functions, not reimplemented logic). All steps passed: a new Desk
+lands in the chosen directory, not the current one; an existing-name
+collision check applies to the *chosen* directory, not the current
+one; an empty name still aborts.
+
+No `LEARNINGS.md` entry needed for the offscreen-`DeskWindow`-stall
+workaround itself -- it's already an established, previously-noted
+limitation, not a new finding.
