@@ -1296,6 +1296,53 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    click vs. hover), and check for any known-fragile native code path (e.g.
    LEARNINGS.md's QNativeGestureEvent segfault note) that could plausibly be
    involved.
+03f623a. Crash: quitting the app with Cmd+Q raises a `KeyError` partway
+   through teardown, so it doesn't tear down cleanly. Traceback:
+
+   ```
+   Traceback (most recent call last):
+     File "./desk-stable/widgets/todo/widget.py", line 434, in _flush_on_teardown
+       watcher.stop()
+       ~~~~~~~~~~~~^^
+     File "./desk-stable/src/desk/file_watch.py", line 107, in stop
+       self._handle.cancel()
+       ~~~~~~~~~~~~~~~~~~~^^
+     File "./desk-stable/src/desk_services/file_watcher/service.py", line 83, in cancel
+       self._service._unsubscribe(self._key, self._callback)
+       ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     File "./desk-stable/src/desk_services/file_watcher/service.py", line 135, in _unsubscribe
+       self._observer.unschedule(watch)
+       ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+     File "./desk-stable/.venv/lib/python3.13/site-packages/watchdog/observers/api.py", line 363, in unschedule
+       emitter = self._emitter_for_watch[watch]
+                 ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^
+   KeyError: <ObservedWatch: path='./desk-stable', is_recursive=False>
+   ```
+
+   Likely root cause (from reading `desk/app.py` and
+   `desk_services/file_watcher/service.py`, not yet confirmed by
+   reproducing): `desk/app.py`'s `main()` connects
+   `get_service().stop()` to `app.aboutToQuit` *last*, with a comment
+   claiming this makes it run after "every individual consumer's own
+   aboutToQuit-triggered watcher.stop()/handle.cancel()" -- but the
+   TODO widget's `watcher.stop()` here isn't wired to `aboutToQuit` at
+   all; it's in `_flush_on_teardown`, connected to the widget's own
+   `destroyed` signal, which fires later, as part of Qt's actual
+   widget-teardown cascade *after* `aboutToQuit` has already finished
+   running. So `aboutToQuit`'s `get_service().stop()` -- which stops
+   (and presumably clears) the whole shared `watchdog.observers
+   .Observer` -- can easily run *before* a `destroyed`-triggered
+   `SingleFileWatcher.stop()` (TODO widget, Questions widget, and any
+   other widget with the same flush-on-teardown pattern) tries to
+   unschedule its own watch from that now-already-stopped Observer,
+   which watchdog itself no longer has bookkeeping for -- hence the
+   `KeyError`. Likely fix direction: make
+   `FileWatcherService._unsubscribe`/`WatchHandle.cancel()` tolerant of
+   the shared Observer already being stopped (nothing meaningful left
+   to unschedule at that point), rather than trying to guarantee a
+   connection-order invariant across two fundamentally different Qt
+   signals (`aboutToQuit` vs. a widget's own `destroyed`) that can't
+   actually be ordered against each other that way.
 7f51230. COMPLETED: Store crash logs in the current active project directory's
    `.desk_temp` folder instead of the project directory itself. On
    startup, if there are any crash logs present, open a new Crash Log
