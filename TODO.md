@@ -1354,7 +1354,7 @@ a053e3a. COMPLETED: Update widgets which load files to note in the title bar for
    the widget if the widget is loading a file from a path outside of
    the currently associated directory, by showing "[EXTERNAL]".
    [planned: widget-external-file-indicator.md]
-95f7ce9. Add a global error handler: on an uncaught exception anywhere
+95f7ce9. COMPLETED: Add a global error handler: on an uncaught exception anywhere
    in the app, attempt to append the stack trace to a file called
    `DESK-CRASH-[timestamp].log` in the project folder. Must not itself
    "further crash" if writing that log fails for any reason.

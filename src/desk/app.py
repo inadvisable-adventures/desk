@@ -5,6 +5,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import QApplication
 
 from desk import __version__
+from desk.crash_handler import install as install_crash_handler
 from desk.desks import default_desk_path, discover_desk_files
 from desk.hotreload import HotReloadBroker
 from desk.server.app import DEFAULT_WIDGETS_DIR
@@ -18,6 +19,7 @@ logger = logging.getLogger("desk")
 
 
 def main() -> int:
+    install_crash_handler()
     logger.info("Desk %s starting", __version__)
 
     app = QApplication(sys.argv)

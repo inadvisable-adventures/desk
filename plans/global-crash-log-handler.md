@@ -1,4 +1,4 @@
-# Global crash-log handler
+# Global crash-log handler (COMPLETED)
 
 TODO `95f7ce9`.
 
@@ -126,4 +126,23 @@ Headless, no `QApplication` needed for the core logic:
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `src/desk/crash_handler.py` (`install()`,
+`_log_path()`, `_handle_exception()`), wired into `desk.app.main()` as
+the very first thing it does.
+
+All headless verification steps above passed: idempotent install;
+writes `DESK-CRASH-<timestamp>.log` (containing the real formatted
+traceback) into the current Desk directory when one is set; falls back
+to `Path.cwd()` when none is set; chains to and still invokes the
+previously-installed hook; survives the log-write step itself being
+forced to raise, without losing the chained call. Also ran a real
+end-to-end check with an actual `QApplication`/`QPushButton.clicked`
+slot raising: a real log file was written and the process kept running
+afterward.
+
+No `LEARNINGS.md` entry needed -- the one non-obvious finding from this
+work (that `sys.excepthook` reliably fires for both same-thread and
+cross-thread-queued Qt slot exceptions, without the process necessarily
+aborting) is recorded in this plan's own Investigation section, and
+doesn't contradict or need to revise the existing, differently-scoped
+"isolate-hot-reload-crash" finding.
