@@ -1308,3 +1308,4 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
 10b0321. in the TODO widget, please change the pop-up item adder/editor so that it is restricted to remain visually within the TODO widget itself.
 f8d9cec. Add a new (or existing?) tempui capability to allow agents to add "scratch" text, and make it clear in the tempui instructions given to claude that when the user refers to "scratch," that is what is meant, unless there is a more pressing local meaning.
 cdf45cb. Add "bring to front" and "send to back" buttons to the top-right of widgets, left of the "x" button, which move it in visual z-order to the front or back, respectively.
+ed483e2. split the widget-adding popup menu list of popups into collapsible groups, with the current groups being "active" and "deprecated", and default to showing active as shown and deprecated as collapsed.
