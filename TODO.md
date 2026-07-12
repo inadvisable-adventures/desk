@@ -1388,3 +1388,36 @@ f8d9cec. Add a new (or existing?) tempui capability to allow agents to add "scra
 cdf45cb. Add "bring to front" and "send to back" buttons to the top-right of widgets, left of the "x" button, which move it in visual z-order to the front or back, respectively.
 ed483e2. split the widget-adding popup menu list of popups into collapsible groups, with the current groups being "active" and "deprecated", and default to showing active as shown and deprecated as collapsed.
 9743419. Add a md file to the source with a description of the markdown rendering capabilities of Desk. update the markdown_ex markdown viewer to be able to show a tempui-based markdown file; in that case, add a "save a copy" button to replace "open" and default to the root of the project directory with a default file name derived from the first line of the markdown file; once that file is saved, it should be opened in a new normal markdown_ex widget, and the original tempui one should remain open.
+fb76057. Ensure that "widget-local storage" exists: a means by which
+   widgets can store data in the current .desk file. Checked: this
+   capability does not yet exist -- `WidgetState` currently only holds
+   geometry + `instance_id`, no per-instance state payload.
+   `PARKINGLOT.md` already has a parked note on this exact gap
+   ("Widgets can't persist an arbitrary per-instance chosen file across
+   reload"), scoping the same underlying design question: a `state:
+   dict` on `WidgetState`, a widget-side read/write protocol, and a
+   generalized post-build binding replacing the current per-kind
+   `_bind_temp_ui_widget`/`_bind_claude_widget` special-cases. If/when
+   this is built (or if some equivalent mechanism already exists
+   elsewhere and was missed), it should be consistently branded
+   "widget-local storage" throughout code, docs, and future TODO items.
+ac212bc. Create a "stack" widget to keep track of nested discussions,
+   with its data stored in widget-local storage (see TODO fb76057 --
+   depends on that capability existing), plus a button to copy the
+   stack as markdown into a project file called `STACK-[timestamp].md`,
+   and the ability to load from an appropriately-formatted stack
+   markdown file.
+4c3fe4b. When creating a new .desk, the user should pick both the title
+   and the initial associated directory (today, `new_desk` only prompts
+   for a name/title and always creates the new Desk inside the
+   *current* Desk's directory, with no directory picker at all), with
+   the directory picker defaulting to the current Desk's associated
+   directory.
+fbd0554. Add an option during new Desk creation to initialize the new
+   Desk with a `development-process.md`, sourced initially from the
+   current Desk's own `development-process.md`. Additionally: if a
+   `development-process.md` exists for a Desk's associated project when
+   a Claude widget is opened, add an instruction to read that file to
+   the initial prompt given to claude (see `CLAUDE_WIDGET_PROMPT` in
+   `widgets/claude/widget.py`, which already conditions its prompt on
+   the current Desk's directory).
