@@ -1391,6 +1391,7 @@ f8d9cec. COMPLETED: Add a new (or existing?) tempui capability to allow agents t
 cdf45cb. COMPLETED: Add "bring to front" and "send to back" buttons to the top-right of widgets, left of the "x" button, which move it in visual z-order to the front or back, respectively.
    [planned: widget-z-order-buttons.md]
 ed483e2. split the widget-adding popup menu list of popups into collapsible groups, with the current groups being "active" and "deprecated", and default to showing active as shown and deprecated as collapsed.
+   [planned: widget-spawn-menu-groups.md]
 9743419. Add a md file to the source with a description of the markdown rendering capabilities of Desk. update the markdown_ex markdown viewer to be able to show a tempui-based markdown file; in that case, add a "save a copy" button to replace "open" and default to the root of the project directory with a default file name derived from the first line of the markdown file; once that file is saved, it should be opened in a new normal markdown_ex widget, and the original tempui one should remain open.
 fb76057. Ensure that "widget-local storage" exists: a means by which
    widgets can store data in the current .desk file. Checked: this
