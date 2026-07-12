@@ -1435,6 +1435,7 @@ fbd0554. Add an option during new Desk creation to initialize the new
    the initial prompt given to claude (see `CLAUDE_WIDGET_PROMPT` in
    `widgets/claude/widget.py`, which already conditions its prompt on
    the current Desk's directory).
+   [planned: development-process-seeding.md]
 7a086ba. Add a Questions widget that works similarly to the TODO
    widget, but for managing QUESTIONS.md.
 a801180. Add to the tempui instructions to always use QUESTIONS.md for
