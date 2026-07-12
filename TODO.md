@@ -1296,6 +1296,47 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    click vs. hover), and check for any known-fragile native code path (e.g.
    LEARNINGS.md's QNativeGestureEvent segfault note) that could plausibly be
    involved.
+4716585. Crash: creating a new Desk segfaulted right as the
+   ".desk_temp" creation confirmation dialog was answered ("Yes"), with
+   the new Desk's seeded Markdown-with-README widget (TODO cb2790d)
+   seemingly appearing "at the same time." A full macOS crash report
+   was provided for this one (kept out of the repo per explicit
+   instruction, not pasted here or anywhere else in the project) --
+   `EXC_BAD_ACCESS`/`SIGSEGV` on the main thread inside
+   `QAbstractItemView::mouseReleaseEvent` ->
+   `QListView::mouseReleaseEvent` -> `sipQListWidget
+   ::mouseReleaseEvent`, reached via the normal Cocoa mouse-event
+   -delivery path -- the faulting address looks like reused/garbage
+   memory, the shape of a use-after-free, not a null-deref. Likely
+   involves the same `_DeskListPopup` (a `QListWidget`-based,
+   `WA_DeleteOnClose` popup) class of bug as `b44e8ba` above -- that
+   report also names the Desk picker specifically, and never had a
+   crash log to confirm against until now; fixing this may resolve
+   that one too, though it's recorded separately since `b44e8ba`'s own
+   trigger (just "interacting with the picker") wasn't confirmed to be
+   New-Desk-creation specifically.
+
+   Do the following:
+   1. Refactor the "New Desk" flow so all of its questions are one
+      single dialog (checkboxes/a path-picker-launcher/textboxes)
+      instead of popping up one after another: (a) name (textbox); (b)
+      path (a picker-launcher button showing the currently-selected
+      default path); (c) create `.desk_temp` for tempui (checkbox);
+      (d) create or update `.gitignore` with Desk-specific patterns
+      (checkbox). Update the `.gitignore` process to be able to append
+      to it if it can't already, and make sure that in both the create
+      and update cases there's an empty line and then a comment saying
+      the entries are Desk-specific.
+   2. When opening a new Desk for the first time, take all of the
+      appropriate actions (directory/file provisioning) before opening
+      it (placing any widgets), so it isn't trying to do conflicting
+      things in parallel.
+   3. When creating directories and files, check immediately before
+      the create that the item doesn't already exist, and abort in a
+      recoverable way (e.g. switching to the "already exists" path) if
+      it's found to. Do this per-widget for now; also see the
+      `PARKINGLOT.md` item on a more generalized mechanism for this.
+   [planned: fix-new-desk-flow-crash.md]
 03f623a. COMPLETED: Crash: quitting the app with Cmd+Q raises a `KeyError` partway
    through teardown, so it doesn't tear down cleanly. Traceback:
 
