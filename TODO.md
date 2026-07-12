@@ -1392,7 +1392,13 @@ cdf45cb. COMPLETED: Add "bring to front" and "send to back" buttons to the top-r
    [planned: widget-z-order-buttons.md]
 ed483e2. COMPLETED: split the widget-adding popup menu list of popups into collapsible groups, with the current groups being "active" and "deprecated", and default to showing active as shown and deprecated as collapsed.
    [planned: widget-spawn-menu-groups.md]
-9743419. Add a md file to the source with a description of the markdown rendering capabilities of Desk. update the markdown_ex markdown viewer to be able to show a tempui-based markdown file; in that case, add a "save a copy" button to replace "open" and default to the root of the project directory with a default file name derived from the first line of the markdown file; once that file is saved, it should be opened in a new normal markdown_ex widget, and the original tempui one should remain open.
+9743419. PENDING: Add a md file to the source with a description of the markdown rendering capabilities of Desk. update the markdown_ex markdown viewer to be able to show a tempui-based markdown file; in that case, add a "save a copy" button to replace "open" and default to the root of the project directory with a default file name derived from the first line of the markdown file; once that file is saved, it should be opened in a new normal markdown_ex widget, and the original tempui one should remain open.
+
+   Part 1 (the description doc, `markdown-rendering.md`) is done. Parts
+   2/3 (tempui-based rendering + save-a-copy) are blocked on open
+   questions -- see `QUESTIONS.md` and
+   `plans/markdown-rendering-doc-and-tempui-markdown.md`.
+   [planned: markdown-rendering-doc-and-tempui-markdown.md]
 fb76057. Ensure that "widget-local storage" exists: a means by which
    widgets can store data in the current .desk file. Checked: this
    capability does not yet exist -- `WidgetState` currently only holds

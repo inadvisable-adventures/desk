@@ -37,3 +37,29 @@ meant, or inventing a different name for one of them.
 
 (Answer: )
 
+## TODO `9743419`: what makes a tempui file "markdown-based," and how should the save-a-copy filename be derived?
+
+See `plans/markdown-rendering-doc-and-tempui-markdown.md` for full
+context. Part 1 of this item (a Markdown-rendering-capabilities doc,
+`markdown-rendering.md`) is done; parts 2/3 (Markdown (Extended)
+rendering a tempui file directly, with a "save a copy" button) are
+blocked on:
+
+- Should "a tempui-based markdown file" be a **new explicit tempui
+  keyword** (e.g. `Markdown <label>` as the first line, matching how
+  `Scratch` -- TODO f8d9cec -- and `OpenMarkdown` already work), or
+  should **any tempui file with no recognized keyword at all** fall
+  back to being rendered as Markdown, instead of today's fallback to
+  the Question widget? The second option changes existing,
+  already-relied-upon fallback behavior for any malformed/typo'd
+  tempui file, not just adding something new -- worth confirming
+  before touching it.
+- What's the actual filename-derivation algorithm for "a default file
+  name derived from the first line of the markdown file" -- e.g. would
+  `# My Investigation Notes` become `My Investigation Notes.md`
+  verbatim, a slugified `my-investigation-notes.md`, or something else?
+
+(Answer: )
+
+(Answer: )
+
