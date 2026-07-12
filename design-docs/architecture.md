@@ -183,7 +183,16 @@ Desk Bridge API.
    time this widget was built, no `python` widget had a way to learn the
    current Desk's directory; `desk.shell.current_context` (see item 11's
    TODO Widget) since closed that specific gap, but this widget hasn't
-   been revisited to use it (see `plans/code-editor-widget.md`).
+   been revisited to use it (see `plans/code-editor-widget.md`). Watches
+   its open file via `desk.file_watch.SingleFileWatcher` (TODO cee6f74)
+   — an external change reloads silently if there are no unsaved local
+   edits, or is flagged in the title label (without touching the
+   buffer) if there are, e.g. when the TODO Widget writes a `TODO.md`
+   this widget also has open. This "just works" across widgets with no
+   extra plumbing because of the File Watcher Service's existing
+   de-duplication (item 19) — every `SingleFileWatcher` on the same
+   file's parent directory shares one native schedule and independently
+   filters down to its own exact target path.
 10. **Console Widget** — a built-in `kind: "python"` widget (a
     `QPlainTextEdit`-based terminal over a real PTY running `bash`, not
     Chromium/`xterm.js` — resolved; see Key Design Decisions) so the user
@@ -365,6 +374,12 @@ Desk Bridge API.
     duplicate (FSEvents reports symlink-resolved paths; an atomic write
     lands as a `FileMovedEvent` whose real path is `dest_path`, not
     `src_path` — see `LEARNINGS.md`). See `plans/file-watcher-service.md`.
+    A related, smaller shared helper, `desk.file_watch.SelfWriteMemory`
+    (TODO cee6f74), centralizes "was this change notification just an
+    echo of a write I made myself" the same way — used internally by
+    both `SingleFileWatcher.record_own_write` and `TempUiManager
+    .record_own_write` instead of each keeping its own separate
+    last-written-text dict.
 
 ### Widget Model
 

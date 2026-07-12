@@ -102,13 +102,21 @@ _GIT_LOCK = threading.Lock()
 
 
 def _write_and_commit(
-    state: dict, message: str, on_committed: Callable[[bool], None] | None = None
+    state: dict,
+    message: str,
+    watcher: SingleFileWatcher | None = None,
+    on_committed: Callable[[bool], None] | None = None,
 ) -> threading.Thread | None:
     """Module-level (not a method): safe to call from the destroyed
     -triggered cleanup closure, which must not touch `self` or any Qt
     child object -- see LEARNINGS.md ("Connecting an object's own
     destroyed signal..."). `state` is a plain dict the widget keeps
     up-to-date, not a Qt object, so reading it after teardown is safe.
+    `watcher`, if given, must be a plain captured reference (as in the
+    teardown closure below) rather than accessed via `self` -- calling
+    a method directly on an already-obtained QObject reference is fine
+    even during teardown (see `watcher.stop()` in the same closure);
+    reading `self._watcher` at call time would not be.
 
     Writes TODO.md synchronously (fast, and must happen in call order on
     the GUI thread so concurrent edits are never lost or applied out of
@@ -131,12 +139,14 @@ def _write_and_commit(
         return None
     text = render_todo_file(state["preamble"], state["items"])
     todo_path.write_text(text)
-    # Recorded so _on_external_change (fed by the shared SingleFileWatcher
-    # below) can tell "the file changed because we just wrote it" apart
-    # from a real external edit -- comparing against the file's fresh
-    # content on the next change notification, not just a timestamp/flag,
-    # since a real external edit could plausibly land in the same instant.
-    state["last_written_text"] = text
+    # Recorded so the watcher (see _watcher/_on_external_change below)
+    # can tell "the file changed because we just wrote it" apart from a
+    # real external edit -- comparing against the file's fresh content
+    # on the next change notification, not just a timestamp/flag, since
+    # a real external edit could plausibly land in the same instant. See
+    # desk.file_watch.SingleFileWatcher.record_own_write (TODO cee6f74).
+    if watcher is not None:
+        watcher.record_own_write(text)
 
     def run() -> None:
         with _GIT_LOCK:
@@ -164,13 +174,11 @@ class _CommitResultRelay(QObject):
 # File watching is now desk.file_watch.SingleFileWatcher (backed by the
 # shared desk_services.file_watcher service, TODO 578cb6b) -- this used
 # to be a bespoke watchdog Observer/handler/relay trio here, extracted
-# (TODO 6bf83a9) into SingleFileWatcher for the Markdown widget but
-# left duplicated here because the self-write-suppression logic below
-# was entangled with this widget's own _state dict (see the now
-# -resolved PARKINGLOT.md note). That suppression logic (comparing
-# state["last_written_text"] in _on_external_change) still lives in
-# this widget, unchanged -- only the watch/debounce/gotcha-handling
-# plumbing moved out.
+# (TODO 6bf83a9) into SingleFileWatcher for the Markdown widget. Self
+# -write-echo suppression also now happens inside SingleFileWatcher
+# itself (via record_own_write, called from _write_and_commit) instead
+# of this widget's own former state["last_written_text"] comparison --
+# see TODO cee6f74.
 
 
 class _ItemDialog(QWidget):
@@ -316,7 +324,6 @@ class TodoWidget(QWidget):
             "items": [],
             "pending": False,
             "last_commit_ok": True,
-            "last_written_text": None,
         }
 
         # item_id -> (dialog, description as originally loaded) for every
@@ -411,7 +418,7 @@ class TodoWidget(QWidget):
             # (_add_item/_edit_item/_flush_pending_commit) need to avoid
             # blocking the GUI thread. See TODO 62e8b05.
             if state["pending"]:
-                thread = _write_and_commit(state, REPRIORITIZE_MESSAGE)
+                thread = _write_and_commit(state, REPRIORITIZE_MESSAGE, watcher)
                 if thread is not None:
                     thread.join()
             watcher.stop()
@@ -449,19 +456,21 @@ class TodoWidget(QWidget):
             self._watcher.watch(todo_path)
 
     def _on_external_change(self) -> None:
+        # No self-write-echo check needed here -- SingleFileWatcher
+        # itself already suppresses the `changed` signal for our own
+        # writes (see _write_and_commit's `watcher.record_own_write`
+        # call, TODO cee6f74), so this only ever fires for a real
+        # external edit.
         todo_path = self._state["todo_path"]
         if todo_path is None or not todo_path.is_file():
             return
-        current_text = todo_path.read_text()
-        if current_text == self._state["last_written_text"]:
-            return  # our own write echoing back through the watcher, not a real external edit
 
         if self._state["pending"]:
             # Flush our own uncommitted reorder to disk first so it isn't
             # silently lost by the reload below -- see
             # plans/todo-widget-file-watcher.md.
             self._debounce_timer.stop()
-            thread = _write_and_commit(self._state, REPRIORITIZE_MESSAGE)
+            thread = _write_and_commit(self._state, REPRIORITIZE_MESSAGE, self._watcher)
             if thread is not None:
                 thread.join()
 
@@ -561,7 +570,7 @@ class TodoWidget(QWidget):
         # pending..." label (set in _on_rows_moved) already covers the
         # interim state; _on_commit_finished reports the final status
         # once the background commit (started here) completes.
-        _write_and_commit(self._state, REPRIORITIZE_MESSAGE, self._commit_relay.finished.emit)
+        _write_and_commit(self._state, REPRIORITIZE_MESSAGE, self._watcher, self._commit_relay.finished.emit)
 
     def _new_item_dialog(self, **kwargs) -> "_ItemDialog":
         # _ItemDialog must be parented to a widget whose .window() is a
@@ -604,6 +613,7 @@ class TodoWidget(QWidget):
         _write_and_commit(
             self._state,
             f"Add TODO item: {truncate_description(description, 60)}",
+            self._watcher,
             self._commit_relay.finished.emit,
         )
         self._populate_list()
@@ -641,6 +651,7 @@ class TodoWidget(QWidget):
         _write_and_commit(
             self._state,
             f"Edit TODO item: {truncate_description(description, 60)}",
+            self._watcher,
             self._commit_relay.finished.emit,
         )
         self._populate_list()

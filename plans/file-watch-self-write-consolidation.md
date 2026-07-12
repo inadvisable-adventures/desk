@@ -1,4 +1,4 @@
-# Consolidate self-write suppression; give the Editor widget external-change detection
+# Consolidate self-write suppression; give the Editor widget external-change detection (COMPLETED)
 
 TODO `cee6f74`.
 
@@ -52,7 +52,7 @@ of the first (and both TODO 578cb6b) existing:
   shared logic), used internally by both `SingleFileWatcher` and
   `TempUiManager`.
 - **New internal helper, not a new public API.** `desk/file_watch.py`
-  gains a small `_SelfWriteMemory` class: `record(key, text)` /
+  gains a small `SelfWriteMemory` class: `record(key, text)` /
   `is_own_write(key, text) -> bool`, wrapping a single `dict[Hashable,
   str]`. `SingleFileWatcher` uses it internally (keyed by its one
   resolved target path) in place of its current single `_expected_write`
@@ -123,11 +123,11 @@ of the first (and both TODO 578cb6b) existing:
 
 ## New/affected files
 
-- `src/desk/file_watch.py` -- new internal `_SelfWriteMemory` helper;
+- `src/desk/file_watch.py` -- new internal `SelfWriteMemory` helper;
   `SingleFileWatcher` internals rewritten onto it (public API
   unchanged).
 - `src/desk/shell/temp_ui_manager.py` -- internals rewritten onto the
-  same `_SelfWriteMemory` helper (public API unchanged).
+  same `SelfWriteMemory` helper (public API unchanged).
 - `widgets/todo/widget.py` -- `_write_and_commit` gains the optional
   `watcher` parameter and calls `record_own_write`; every call site
   updated to pass `self._watcher`/the teardown closure's captured
@@ -142,7 +142,7 @@ of the first (and both TODO 578cb6b) existing:
 - `design-docs/architecture.md` -- Editor Widget entry (component 9)
   gains a short mention of the new file-watching/conflict-flagging
   behavior; File Watcher Service entry (component 19) gains a short
-  mention of the shared `_SelfWriteMemory` helper.
+  mention of the shared `SelfWriteMemory` helper.
 - `LEARNINGS.md` -- an entry if verification surfaces anything
   surprising.
 
@@ -152,7 +152,7 @@ Headless (`QT_QPA_PLATFORM=offscreen`, real `QApplication`/
 `QCoreApplication`, no mocks -- same approach TODO 578cb6b's
 verification used):
 
-- `_SelfWriteMemory` in isolation: `record`/`is_own_write` round-trip
+- `SelfWriteMemory` in isolation: `record`/`is_own_write` round-trip
   correctly for multiple independent keys.
 - `SingleFileWatcher`: existing debounce/idempotent-watch/
   `record_own_write` behavior unchanged (re-run TODO 578cb6b's own
@@ -183,4 +183,31 @@ verification used):
 
 ## Status
 
-Not yet implemented.
+Implemented and verified. All headless verification steps above passed:
+
+- `SelfWriteMemory` used successfully inside both `SingleFileWatcher`
+  and `TempUiManager`; both classes' existing test coverage from TODO
+  578cb6b (debounce, idempotent watch, add/edit classification,
+  `record_own_write` suppression) re-run unchanged and still passes.
+- TODO widget: the same round-trip TODO 578cb6b verified (own write via
+  `_write_and_commit` doesn't misfire `_on_external_change`; a real
+  external edit does reload) still passes with `state
+  ["last_written_text"]` removed -- suppression now happens entirely
+  inside `SingleFileWatcher`.
+- Editor widget: verified all three new cases directly -- silent reload
+  with no local unsaved edits; buffer *not* clobbered plus a flagged
+  `"(changed on disk)"` label with unsaved local edits present; saving
+  afterward both resolves the flag and suppresses the resulting
+  self-write echo via `record_own_write`.
+- **The actual motivating scenario, reproduced directly**: a TODO
+  widget and an Editor widget both pointed at the same real `TODO.md`
+  in a temp Desk directory; the TODO widget's `_add_item` (a real
+  write-and-commit) was picked up and silently reloaded by the Editor
+  widget with zero additional wiring beyond it owning its own
+  `SingleFileWatcher` -- confirming the File Watcher Service's existing
+  de-duplication (TODO 578cb6b) is sufficient on its own.
+
+No `LEARNINGS.md` entry was needed -- nothing surprising turned up;
+the one real subtlety (keeping `SingleFileWatcher.record_own_write`'s
+key consistent with `on_change`'s resolved-path comparison) was caught
+during implementation, not verification.

@@ -1320,7 +1320,7 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    watch <ObservedWatch: path=... is_recursive=False> - it is already
    scheduled.").
    [planned: file-watcher-service.md]
-cee6f74. Refactor TempUiManager and the TODO widget's file-watching so
+cee6f74. COMPLETED: Refactor TempUiManager and the TODO widget's file-watching so
    they share the self-write-echo-suppression logic instead of each
    having its own copy, routing the TODO widget onto
    `SingleFileWatcher.record_own_write` instead of its own separate

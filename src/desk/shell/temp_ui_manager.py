@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from desk.file_watch import SelfWriteMemory
 from desk.git_utils import find_git_root
 from desk.temp_ui import (
     DOC_FILENAME,
@@ -89,7 +90,7 @@ class TempUiManager(QObject):
         self._handle: WatchHandle | None = None
         self._watched_directory: Path | None = None
         self._provisioned_directory: Path | None = None
-        self._last_written: dict[str, str] = {}
+        self._writes = SelfWriteMemory()
         # Classifies added-vs-edited by whether a filename has ever been
         # seen before (see _DirectoryHandler.on_change's inline comment
         # for why this can't be decided from the raw watchdog event
@@ -124,15 +125,18 @@ class TempUiManager(QObject):
     def record_own_write(self, path: Path, text: str) -> None:
         """Wired into current_context.set_temp_ui_write_recorder so the
         Question Widget's own answer-append doesn't spawn a spurious
-        "edited externally" notification for itself."""
-        self._last_written[path.resolve().name] = text
+        "edited externally" notification for itself. Backed by the same
+        `desk.file_watch.SelfWriteMemory` helper `SingleFileWatcher`
+        uses (TODO cee6f74) -- one implementation of "was this change
+        notification just an echo of our own write" instead of two."""
+        self._writes.record(path.resolve().name, text)
 
     def _start_watching(self, directory: Path) -> None:
         if self._handle is not None and self._watched_directory == directory:
             return
         self._stop_watching()
         self._known_files.clear()
-        self._last_written.clear()
+        self._writes = SelfWriteMemory()
         handler = _DirectoryHandler(directory, self)
         self._handle = get_service().watch(directory, handler.on_change, recursive=False)
         self._watched_directory = directory
@@ -147,7 +151,7 @@ class TempUiManager(QObject):
         if not path.is_file():
             return
         current_text = path.read_text()
-        if current_text == self._last_written.get(path.name):
+        if self._writes.is_own_write(path.name, current_text):
             return  # our own write (e.g. the Question Widget's answer-append) echoing back
 
         if path.name not in self._known_files:

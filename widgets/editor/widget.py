@@ -16,6 +16,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFontDatabase, QKeySequence, QShortcut
 from PyQt6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
+from desk.file_watch import SingleFileWatcher
 from desk.shell import current_context
 
 EXTENSION_LEXERS = {
@@ -48,13 +49,22 @@ class EditorWidget(QWidget):
     desk.shell.current_context, resolved once at construction -- same
     shape as the TODO widget's own use of it) when one is known, falling
     back to the user's home directory otherwise. See
-    plans/editor-open-default-desk-directory.md."""
+    plans/editor-open-default-desk-directory.md.
+
+    Watches its open file for external changes (via
+    desk.file_watch.SingleFileWatcher, TODO cee6f74) -- e.g. the TODO
+    widget writing the same TODO.md this widget also has open. If there
+    are no unsaved local edits, an external change reloads silently,
+    same as the Markdown widget. If there ARE unsaved local edits, the
+    buffer is never clobbered -- the change is just flagged in the
+    title label until the next save or reload."""
 
     def __init__(self, parent=None, confirm_unsaved: ConfirmUnsaved | None = None) -> None:
         super().__init__(parent)
         self._confirm_unsaved = confirm_unsaved
         self._current_path: Path | None = None
         self._last_dir = current_context.get_current_desk_directory() or Path.home()
+        self._external_change_pending = False
 
         self.editor = QsciScintilla()
         font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
@@ -93,6 +103,14 @@ class EditorWidget(QWidget):
         QShortcut(QKeySequence.StandardKey.Save, self, activated=lambda: self._save_file())
         QShortcut(QKeySequence.StandardKey.SaveAs, self, activated=lambda: self._save_file_as())
 
+        self._watcher = SingleFileWatcher(self)
+        self._watcher.changed.connect(self._on_external_change)
+        # Captured (not self._watcher) so this destroyed-triggered
+        # closure never touches self -- same pattern as the Markdown/
+        # Markdown (Extended)/SVG Viewer/TODO widgets' own teardown.
+        watcher = self._watcher
+        self.destroyed.connect(lambda: watcher.stop())
+
     def _apply_lexer(self, path: Path) -> None:
         lexer_cls = EXTENSION_LEXERS.get(path.suffix.lower())
         if lexer_cls is None:
@@ -105,14 +123,31 @@ class EditorWidget(QWidget):
     def _update_label(self) -> None:
         name = self._current_path.name if self._current_path else "(untitled)"
         marker = " •" if self.editor.isModified() else ""
-        self._label.setText(name + marker)
+        conflict = " (changed on disk)" if self._external_change_pending else ""
+        self._label.setText(name + marker + conflict)
 
     def _load_file(self, path: Path) -> None:
         self.editor.setText(path.read_text())
         self.editor.setModified(False)
         self._current_path = path
         self._last_dir = path.parent
+        self._external_change_pending = False
         self._apply_lexer(path)
+        self._update_label()
+        self._watcher.watch(path)
+
+    def _on_external_change(self) -> None:
+        if self._current_path is None:
+            return
+        if not self.editor.isModified():
+            # Nothing of the user's to lose -- reload silently, same as
+            # the Markdown widget's unconditional reload.
+            self._load_file(self._current_path)
+            return
+        # Don't clobber unsaved local edits: just flag the conflict.
+        # Resolved in the user's favor by the next Save (which
+        # overwrites the on-disk change) or the next full reload.
+        self._external_change_pending = True
         self._update_label()
 
     def set_file(self, path: Path) -> None:
@@ -127,8 +162,11 @@ class EditorWidget(QWidget):
     def _save_file(self) -> bool:
         if self._current_path is None:
             return self._save_file_as()
-        self._current_path.write_text(self.editor.text())
+        text = self.editor.text()
+        self._current_path.write_text(text)
+        self._watcher.record_own_write(text)
         self.editor.setModified(False)
+        self._external_change_pending = False
         self._update_label()
         return True
 
@@ -138,8 +176,12 @@ class EditorWidget(QWidget):
             return False
         self._current_path = Path(filename)
         self._last_dir = self._current_path.parent
-        self._current_path.write_text(self.editor.text())
+        text = self.editor.text()
+        self._current_path.write_text(text)
+        self._watcher.watch(self._current_path)
+        self._watcher.record_own_write(text)
         self.editor.setModified(False)
+        self._external_change_pending = False
         self._apply_lexer(self._current_path)
         self._update_label()
         return True
