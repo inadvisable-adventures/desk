@@ -1296,6 +1296,31 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    click vs. hover), and check for any known-fragile native code path (e.g.
    LEARNINGS.md's QNativeGestureEvent segfault note) that could plausibly be
    involved.
+ff6514a. Small borders around widgets by default, to visually
+   distinguish one widget from another and from the canvas.
+8d05920. Lock widgets in place so that only the title and an unlock
+   icon show in the top bar of the widget -- unable to be moved,
+   resized, or moved in z order while locked.
+cbbb661. Editor widget needs a different color text caret when
+   focused -- black-on-black doesn't work well.
+f2aede6. Feedback widget: able to take internal screenshots of the app
+   and make a DESK-feedback-[timestamp].md with the internal
+   screenshots attached, and also a temp mode (with full-screen
+   overlay) launched by a button which allows UI elements to be
+   clicked and an identifying UI path will be pasted into the feedback
+   either at the current caret position or at the end.
+397770c. Introduce the idea of focus in the app: individual controls
+   in a widget can have focus, and if so the widget itself is also
+   focused. The titlebar of a widget should change slightly when the
+   widget is focused.
+a1c701d. Clicking then releasing the title bar of a widget should
+   activate/focus the current caret inside of it.
+17a2720. The white background on the editor line numbers is good for
+   separating but bad for dark mode. Instead, draw a vertical line
+   between the numbers area and the editor box, and draw the numbers
+   in a slightly different color than the default text in the box.
+1d6777f. Wrap too-long lines in the editor, and keep the line number
+   aligned with the top line.
 f447303. COMPLETED: When opening new instances of the Claude or Console widgets,
    the default working directory should be the active project (current
    Desk) directory, not wherever the Desk process itself is running
