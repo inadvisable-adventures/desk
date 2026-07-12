@@ -1,5 +1,5 @@
 from PyQt6.QtCore import QEvent, Qt, pyqtSignal
-from PyQt6.QtWidgets import QLineEdit, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QApplication, QLineEdit, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 
 from desk.widgets import WidgetInfo
 
@@ -27,6 +27,7 @@ class WidgetSpawnMenu(QWidget):
     headers themselves, so a manually-toggled state survives typing)."""
 
     widget_chosen = pyqtSignal(str)
+    paste_requested = pyqtSignal()
 
     def __init__(self, catalog: dict[str, WidgetInfo], parent=None) -> None:
         super().__init__(parent, Qt.WindowType.Popup)
@@ -47,6 +48,21 @@ class WidgetSpawnMenu(QWidget):
         self._list.setHeaderHidden(True)
         self._list.itemActivated.connect(self._on_item_activated)
         layout.addWidget(self._list)
+
+        # A "Paste" entry pinned first (TODO f74945e), shown only if the
+        # clipboard actually has something pasteable right now -- a
+        # one-time snapshot at menu-open time, not live-updated while
+        # the menu stays open. Outside the Active/Deprecated groups
+        # below (not part of the widget catalog), so re-filtering by
+        # typed text never touches it.
+        self._paste_item: QTreeWidgetItem | None = None
+        clipboard_mime = QApplication.clipboard().mimeData()
+        # mimeData() can be None for a genuinely empty clipboard on some
+        # platforms (confirmed on the offscreen platform used for
+        # headless testing) -- not just an empty-but-real QMimeData.
+        if clipboard_mime is not None and (clipboard_mime.hasText() or clipboard_mime.hasImage()):
+            self._paste_item = QTreeWidgetItem(["Paste"])
+            self._list.addTopLevelItem(self._paste_item)
 
         self._group_items: dict[str, QTreeWidgetItem] = {}
         for label, collapsed_by_default in _GROUPS:
@@ -82,8 +98,12 @@ class WidgetSpawnMenu(QWidget):
     def _visible_entries(self) -> list[QTreeWidgetItem]:
         """Leaf (non-group) items reachable by keyboard nav right now --
         skips group headers themselves, and skips any entry sitting
-        under a currently-collapsed or hidden (zero-match) group."""
+        under a currently-collapsed or hidden (zero-match) group. The
+        Paste item (if present) is always first, matching its pinned
+        position in the list itself."""
         result = []
+        if self._paste_item is not None:
+            result.append(self._paste_item)
         for group_item in self._group_items.values():
             if group_item.isHidden() or not group_item.isExpanded():
                 continue
@@ -101,12 +121,16 @@ class WidgetSpawnMenu(QWidget):
         self._populate(sorted(matches, key=lambda pair: pair[1].name))
 
     def _on_item_activated(self, item: QTreeWidgetItem) -> None:
+        self._activate_item(item)
+
+    def _activate_item(self, item: QTreeWidgetItem) -> None:
+        if item is self._paste_item:
+            self.paste_requested.emit()
+            self.close()
+            return
         widget_id = item.data(0, WIDGET_ID_ROLE)
         if widget_id is None:
             return  # a group header, not a real entry
-        self._activate(widget_id)
-
-    def _activate(self, widget_id: str) -> None:
         self.widget_chosen.emit(widget_id)
         self.close()
 
@@ -123,7 +147,7 @@ class WidgetSpawnMenu(QWidget):
             if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 current = self._list.currentItem()
                 if current is not None and current in visible:
-                    self._activate(current.data(0, WIDGET_ID_ROLE))
+                    self._activate_item(current)
                 return True
             if key == Qt.Key.Key_Escape:
                 self.close()

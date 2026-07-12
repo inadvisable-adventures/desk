@@ -61,6 +61,7 @@ class WorkspaceView(QGraphicsView):
     widget_add_requested = pyqtSignal(str, QPointF)  # widget_id, scene pos
     widget_close_requested = pyqtSignal(WidgetFrame)
     files_dropped = pyqtSignal(list, QPointF)  # list[Path], scene pos
+    paste_requested = pyqtSignal(QPointF)  # scene pos of the click that opened the menu
 
     def __init__(self, parent=None) -> None:
         super().__init__(QGraphicsScene(parent), parent)
@@ -127,6 +128,7 @@ class WorkspaceView(QGraphicsView):
         menu.widget_chosen.connect(
             lambda widget_id: self.widget_add_requested.emit(widget_id, scene_pos)
         )
+        menu.paste_requested.connect(lambda: self.paste_requested.emit(scene_pos))
         menu.move(event.globalPos())
         menu.show()
 

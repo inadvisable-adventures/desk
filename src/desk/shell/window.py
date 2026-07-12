@@ -1,9 +1,10 @@
 import uuid
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 from PyQt6.QtCore import QPointF, QTimer
-from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMainWindow, QMessageBox, QWidget
+from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QWidget
 
 from desk.desks import DESK_SUFFIX, Desk, WidgetState, desk_state_dict, load_desk, save_desk
 from desk.file_watch import SingleFileWatcher
@@ -18,6 +19,8 @@ from desk.shell.python_widget import PythonWidgetHost
 from desk.shell.temp_ui_manager import TempUiManager
 from desk.shell.widget_frame import WidgetFrame
 from desk.temp_ui import (
+    MARKDOWN_KEYWORD,
+    SCRATCH_KEYWORD,
     TEMP_UI_DIRNAME,
     detect_temp_ui_kind,
     parse_lightning_round,
@@ -113,6 +116,7 @@ class DeskWindow(QMainWindow):
         self.view.widget_add_requested.connect(self._on_widget_add_requested)
         self.view.widget_close_requested.connect(self._on_widget_close_requested)
         self.view.files_dropped.connect(self._on_files_dropped)
+        self.view.paste_requested.connect(self._on_paste_requested)
         if widgets_dir is not None:
             broker.widget_changed.connect(self._on_widget_changed_refresh_catalog)
 
@@ -881,6 +885,62 @@ class DeskWindow(QMainWindow):
             content = self.open_widget_content(widget_id, pos=pos, size=widget.default_size)
             if content is not None and hasattr(content, "set_file"):
                 content.set_file(path)
+
+    def _on_paste_requested(self, scene_pos: QPointF) -> None:
+        """Handles the widget menu's "Paste" entry (TODO f74945e).
+        Text (markdown or not) is written as a new tempui file and
+        opened immediately at the click position; content the
+        clipboard offers as an explicit "text/markdown" flavor (RFC
+        7763 -- a deliberately conservative signal, not content
+        -sniffing) uses the Markdown DSL entry (TODO 9743419), anything
+        else textual uses the Scratch DSL entry (TODO f8d9cec). Content
+        with no text at all but a clipboard image is saved directly as
+        a new file in the project directory instead -- there's no
+        tempui DSL for binary content, and nothing to open it in."""
+        directory = self.current_desk.directory
+        mime = QApplication.clipboard().mimeData()
+        if mime is None:
+            return
+        if mime.hasText() and mime.text().strip():
+            self._paste_text_as_temp_ui(mime.text(), mime.hasFormat("text/markdown"), directory, scene_pos)
+        elif mime.hasImage():
+            self._paste_image_as_project_file(directory)
+
+    def _paste_text_as_temp_ui(
+        self, text: str, is_markdown: bool, directory: Path, scene_pos: QPointF
+    ) -> None:
+        temp_dir = directory / TEMP_UI_DIRNAME
+        if not temp_dir.is_dir():
+            return
+        first_line = next((line.strip().lstrip("#").strip() for line in text.splitlines() if line.strip()), "")
+        label = first_line or "Pasted content"
+        keyword = MARKDOWN_KEYWORD if is_markdown else SCRATCH_KEYWORD
+        content_text = f"{keyword} {label}\n{text}"
+        path = temp_dir / str(uuid.uuid4())
+        path.write_text(content_text)
+        # Suppresses the directory watcher's own "file added" notification
+        # for this exact write (same mechanism TempUiManager already uses
+        # for e.g. the Question Widget's own answer-append) -- this paste
+        # is opened immediately below, so a redundant top-right banner a
+        # moment later would just be noise.
+        self._temp_ui_manager.record_own_write(path, content_text)
+
+        widget_id = self._temp_ui_widget_id_for(path)
+        widget = self._widgets.get(widget_id)
+        if widget is None:
+            return
+        content = self.open_widget_content(
+            widget_id, pos=(scene_pos.x(), scene_pos.y()), size=widget.default_size, instance_id=path.name
+        )
+        if content is not None:
+            self._bind_temp_ui_content(content, path, directory)
+
+    def _paste_image_as_project_file(self, directory: Path) -> None:
+        image = QApplication.clipboard().image()
+        if image.isNull():
+            return
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        image.save(str(directory / f"PASTED-ITEM-{timestamp}.png"), "PNG")
 
     def _on_widget_changed_refresh_catalog(self, _widget_id: str) -> None:
         """Keeps the widget catalog (add-widget menu, recognized

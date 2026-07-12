@@ -356,6 +356,19 @@ the *same* `_place_widget` path already used for loading a Desk's saved
 widgets and the fresh-desk fallback, so this can't drift out of sync with
 how widgets are placed anywhere else in the app.
 
+- **Paste entry** (TODO `f74945e`): a `Paste` item pinned first (outside
+  the Active/Deprecated groups, unaffected by the typed filter), shown
+  only if the clipboard has anything pasteable at the moment the menu
+  is opened. Choosing it emits `paste_requested(scene_pos)`; `DeskWindow`
+  writes the clipboard content into a new `.desk_temp/<uuid>` tempui
+  file and opens it immediately at the click position — a `Markdown
+  <label>` entry (TODO `9743419`) if the clipboard offers an explicit
+  `text/markdown` flavor, else a `Scratch <label>` entry (TODO
+  `f8d9cec`) for any other text. A clipboard image (no tempui DSL
+  exists for binary content) is instead saved directly as
+  `PASTED-ITEM-<timestamp>.png` in the project directory — no widget is
+  opened for that case. See `plans/paste-clipboard-routing.md`.
+
 Any right-click opens this same menu — there's no special-casing for
 right-clicking empty canvas vs. an existing widget's chrome/content. A
 widget-specific context menu (close, duplicate, etc.) is a reasonable

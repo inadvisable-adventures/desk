@@ -1,4 +1,4 @@
-# Paste clipboard content from the widget menu
+# Paste clipboard content from the widget menu (COMPLETED)
 
 TODO `f74945e`.
 
@@ -104,4 +104,35 @@ supports an in-process clipboard):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `WidgetSpawnMenu._paste_item`/`paste_requested`
+in `src/desk/shell/widget_spawn_menu.py`; `WorkspaceView.paste_requested`
+in `src/desk/shell/canvas.py`; `DeskWindow._on_paste_requested`/
+`_paste_text_as_temp_ui`/`_paste_image_as_project_file` in
+`src/desk/shell/window.py`. Also updates `design-docs/widget-ux.md`'s
+Add Widget Menu section.
+
+Verified headlessly (`QT_QPA_PLATFORM=offscreen`, real `QApplication`
+and a real `QApplication.clipboard()` -- the offscreen platform
+supports an in-process clipboard): the menu shows/hides the Paste item
+based on real clipboard state and emits `paste_requested` on
+activation; `DeskWindow._on_paste_requested` run unbound against a
+fake double (the established pattern for `DeskWindow`-dependent logic)
+covers clipboard text with a `text/markdown` flavor (writes and opens
+a `Markdown <label>`-prefixed file at the click position), plain text
+(writes and opens a `Scratch <label>`-prefixed file), a clipboard
+image (saves a real `PASTED-ITEM-*.png` project file, opens no
+widget), and an empty clipboard (no-op) -- also confirms
+`record_own_write` is called with the exact written text.
+
+One thing caught during verification, fixed in both call sites: on the
+offscreen platform (used here, and plausibly some other headless
+environments), `QApplication.clipboard().mimeData()` can return `None`
+for a genuinely empty clipboard rather than an empty-but-real
+`QMimeData` -- both `WidgetSpawnMenu.__init__` and
+`DeskWindow._on_paste_requested` now guard for `None` before calling
+any `QMimeData` method.
+
+Regression-checked: re-ran the tempui-live-refresh, Questions
+-notification, drag-and-drop, new-Desk-seeding, and the existing
+`WidgetSpawnMenu` grouping/keyboard-nav verification scripts -- all
+still pass unaffected.

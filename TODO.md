@@ -1494,7 +1494,7 @@ a801180. COMPLETED: Add to the tempui instructions to always use QUESTIONS.md fo
    [planned: audit-old-basic-markdown-widget-usage.md]
 5915ac2. COMPLETED: Drag and drop files into Desk should cause them to be opened
    as external. [planned: drag-drop-open-external.md]
-f74945e. Add a "paste" item to the top of the widget menu if there is
+f74945e. COMPLETED: Add a "paste" item to the top of the widget menu if there is
    anything in the clipboard; if pasted, put the pasted material into
    a file in the temp directory and attempt to open it with a
    corresponding widget; if it is markdown, then just use the markdown
