@@ -1459,11 +1459,12 @@ a801180. Add to the tempui instructions to always use QUESTIONS.md for
    top of relevant plans that this rename was done, but don't change
    the rest of the plan.
    [planned: markdown-widget-identity-swap.md]
-17ac2a8. Check for places in the code where the old basic markdown
+17ac2a8. COMPLETED: Check for places in the code where the old basic markdown
    widget is being used, and add to QUESTIONS.md about whether or not
    they should be updated to point to the new markdown widget. (Depends
    on TODO 96013cf/858752b's rename(s) actually happening first, and on
    resolving which widget "the new markdown widget" refers to.)
+   [planned: audit-old-basic-markdown-widget-usage.md]
 cb2790d. When creating a new Desk, don't add all of the widgets to it --
    just open a markdown viewer of the README.md file if there is one
    for the project, or else add a Scratch widget with content for a

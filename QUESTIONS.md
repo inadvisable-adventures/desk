@@ -78,3 +78,23 @@ to kebab-case, e.g. `# My Investigation Notes` -> `my-investigation
 generalizing something like it to other widgets is a separate, later
 idea, not part of this TODO.)
 
+## TODO `17ac2a8`: does anything reference the old basic markdown widget in a way that needs updating post-rename?
+
+See `plans/audit-old-basic-markdown-widget-usage.md`. Searched the
+whole codebase for any hardcoded markdown-widget-id reference (the
+only way one widget opens another is `current_context
+.get_widget_opener()("<widget_id>")`, since widget directories can't
+import each other).
+
+(Answer: only one real reference exists -- the TODO widget's "open
+plan" button (`widgets/todo/widget.py`'s `_open_hovered_plan`),
+`opener("markdown")` + `set_file(plan_path)`. It already used the
+*id* `"markdown"`, not anything specific to the old plain widget, so
+the TODOs 96013cf/858752b rename already transparently upgrades it to
+the new, strictly-more-capable widget (TOC/folding/Mermaid) via the
+same `set_file(path)` call both widgets share -- no code change
+needed. Checked `plans/markdown-ex-widget.md` for any documented
+downside of the new widget that might argue for deliberately keeping
+this call site on the old one (e.g. slower on large files); found
+none.)
+
