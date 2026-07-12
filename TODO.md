@@ -1431,6 +1431,31 @@ fbd0554. COMPLETED: Add an option during new Desk creation to initialize the new
    `widgets/claude/widget.py`, which already conditions its prompt on
    the current Desk's directory).
    [planned: development-process-seeding.md]
+67ab2df. Implement a general solution so that already-placed tempui
+   -bound widgets live-refresh when their `.desk_temp` file is
+   genuinely edited externally, instead of a notification click only
+   centering the view on stale content (surfaced while implementing
+   TODO 9743419 -- I'd described that capability as "live," which
+   wasn't true of any tempui-bound widget kind). Reuses the existing
+   generalized `_bind_temp_ui_content` dispatch; a widget with local
+   editable state that a blind refresh could clobber (only Scratch, so
+   far) opts out via a new optional `has_unsaved_local_edits()` hook.
+   Resolves TODOs `f668aef`/`091bc27`/`9ee505f`/`6fbae42` below as part
+   of the same implementation, rather than separately.
+   [planned: tempui-live-refresh.md]
+f668aef. Make the Question widget live-refresh when its tempui file is
+   edited after being placed (resolved by TODO 67ab2df's general
+   solution -- documented gap, see `PARKINGLOT.md`).
+091bc27. Make the LightningRound widget live-refresh when its tempui
+   file is edited after being placed (resolved by TODO 67ab2df's
+   general solution -- same underlying gap as Question, not
+   previously called out separately).
+9ee505f. Make the Scratch widget live-refresh from its tempui file
+   without clobbering unsaved local edits (resolved by TODO 67ab2df's
+   general solution, which specifically had to account for this case).
+6fbae42. Make the Markdown tempui-bound content widget (TODO 9743419)
+   actually live-refresh as originally described (resolved by TODO
+   67ab2df's general solution).
 7a086ba. Add a Questions widget that works similarly to the TODO
    widget, but for managing QUESTIONS.md.
 a801180. Add to the tempui instructions to always use QUESTIONS.md for
