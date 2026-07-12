@@ -552,7 +552,14 @@ now, and it can only have one Desk open at a time).
 - **Recently-used list**: a small global (not per-directory) MRU of
   opened `.desk` file paths, in `~/.desk/recent_desks.json`
   (`desk.recent_desks`), capped at 10 entries, deduped/moved-to-front on
-  reopen, filtering out entries whose file no longer exists.
+  reopen. `prune_missing_mru_entries()` (TODO `8f5568f`) both filters out
+  and actually *persists the removal of* an entry whose file no longer
+  exists — used whenever the picker is shown, so a stale entry is
+  forgotten rather than silently re-filtered forever; `load_mru()` stays
+  a plain, non-persisting read for callers (like `add_to_mru`) that don't
+  need that. Clicking an MRU entry whose file vanished since the picker
+  was last shown warns (full path in selectable text) instead of
+  `switch_desk` silently creating an empty stand-in Desk at that path.
 - **Top-left picker UX**: see `design-docs/widget-ux.md`'s Desk Picker
   section for the `DeskPicker` HUD (collapsed half-alpha name label,
   expanding on hover to an MRU dropdown + directory-picker button) and its

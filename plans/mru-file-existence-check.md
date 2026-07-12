@@ -1,4 +1,4 @@
-# MRU file-existence checking
+# MRU file-existence checking (COMPLETED)
 
 TODO `8f5568f`.
 
@@ -81,4 +81,31 @@ files in a temp `~/.desk`-equivalent directory):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `_load_raw_mru()`/`prune_missing_mru_entries()`
+in `src/desk/recent_desks.py`; `_refresh_picker` switched to the
+pruning variant, `_warn_with_selectable_text`, and the existence check
+in `_on_desk_chosen`, all in `src/desk/shell/window.py`. Also updates
+`design-docs/architecture.md`'s Recently-used-list note.
+
+Verified headlessly (`QT_QPA_PLATFORM=offscreen`, real `QApplication`,
+real JSON files, `MRU_PATH` patched to a temp path): pruning rewrites
+the file when something is actually missing and returns only the
+survivors; it does *not* rewrite the file when nothing is missing
+(confirmed via an unchanged mtime, not just equal content); `load_mru`
+itself remains a pure, non-persisting read. `DeskWindow._on_desk_chosen`
+(unbound method on a fake double, the established pattern for
+`DeskWindow`-dependent logic): an existing path calls `switch_desk`
+directly with no warning; a missing path warns (with the full path
+present in the message), never calls `switch_desk`, and refreshes the
+picker once (pruning the now-confirmed-stale entry).
+
+Regression-checked: re-ran every other verification script touched
+this session (tempui-live-refresh, Questions-notification, drag-and
+-drop, new-Desk-seeding, paste-clipboard-routing, and the existing
+`WidgetSpawnMenu` grouping/keyboard-nav script) -- all still pass
+unaffected.
+
+No `LEARNINGS.md` entry needed -- nothing surprising here, just new
+application logic built from already-established patterns (the
+fake-double `DeskWindow` test pattern, `QMessageBox` with explicit
+`setTextInteractionFlags`).

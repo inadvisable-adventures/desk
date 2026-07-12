@@ -3,14 +3,14 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
-from PyQt6.QtCore import QPointF, QTimer
+from PyQt6.QtCore import QPointF, Qt, QTimer
 from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QWidget
 
 from desk.desks import DESK_SUFFIX, Desk, WidgetState, desk_state_dict, load_desk, save_desk
 from desk.file_watch import SingleFileWatcher
 from desk.hotreload import HotReloadBroker
 from desk.questions_file import find_nearest_questions_file, parse_questions_file
-from desk.recent_desks import add_to_mru, load_mru
+from desk.recent_desks import add_to_mru, prune_missing_mru_entries
 from desk.server.runner import ServerHandle
 from desk.shell import current_context
 from desk.shell.canvas import WorkspaceView
@@ -790,15 +790,38 @@ class DeskWindow(QMainWindow):
     def _warn(self, title: str, message: str) -> None:
         QMessageBox.warning(self, title, message)
 
+    def _warn_with_selectable_text(self, title: str, message: str) -> None:
+        """Like _warn, but the message text is selectable/copyable --
+        QMessageBox.warning's static convenience method doesn't allow
+        that, so this constructs the box directly. Used for TODO
+        8f5568f's missing-MRU-file warning, which needs to give the
+        full path in selectable text -- an explicit, TODO-specified
+        exception to CLAUDE.md's general "labels shouldn't be user
+        -selectable" convention."""
+        box = QMessageBox(QMessageBox.Icon.Warning, title, message, QMessageBox.StandardButton.Ok, self)
+        box.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        box.exec()
+
     def _refresh_picker(self) -> None:
         self.view.desk_picker.set_current(self.current_desk.name, self.current_desk.directory)
-        self.view.desk_picker.set_mru(load_mru(), self.current_desk.path)
+        self.view.desk_picker.set_mru(prune_missing_mru_entries(), self.current_desk.path)
         # Keeps python widgets' access to "the current Desk's directory"
         # (see desk.shell.current_context, deferred since item 18) in sync
         # with everything else this method already refreshes.
         current_context.set_current_desk_directory(self.current_desk.directory)
 
     def _on_desk_chosen(self, path: Path) -> None:
+        """Guards against an MRU entry whose file vanished between the
+        picker last refreshing and this click (TODO 8f5568f) --
+        without this, switch_desk's existing "path doesn't exist"
+        handling (Desk(path=path)) would silently create a brand-new,
+        empty Desk at that now-nonexistent path instead of warning."""
+        if not path.is_file():
+            self._warn_with_selectable_text(
+                "Desk Not Found", f"This Desk's file is no longer there:\n\n{path}"
+            )
+            self._refresh_picker()  # prunes the now-confirmed-stale entry
+            return
         self.switch_desk(path)
 
     def _on_browse_requested(self) -> None:
