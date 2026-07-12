@@ -1283,6 +1283,7 @@ c7d6e4d. COMPLETED: Implement an SVG-rendering widget.
    [planned: svg-viewer-widget.md]
 42dd260. Add new tempui capabilities to allow claude to open markdown
    files in the GUI.
+   [planned: tempui-open-markdown.md]
 b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    Console output before the crash: `python -m desk` started normally,
    discovered widgets `browser`, `claude`, `console`, `demo`, `editor`,
