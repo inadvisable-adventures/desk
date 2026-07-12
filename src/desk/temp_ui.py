@@ -23,6 +23,28 @@ file types, distinguished by their first line's keyword — `Question`
 still), `Scratch` (further down still), or `Markdown` (further down
 still).
 
+## Questions for the user: use QUESTIONS.md, not this DSL
+
+If you have an open-ended question *for the user* — something you're
+genuinely blocked on and need their input to resolve, as opposed to a
+single quick multiple-choice decision (`Question`/`LightningRound`
+below are for that) — write it to `QUESTIONS.md` at the project root
+instead of creating a file here. Each entry is a `## <short summary>`
+heading, the question's own text below it, then a trailing
+`(Answer: )` placeholder line for the user to fill in (leave it empty;
+never write your own guess into it). If `QUESTIONS.md` doesn't exist
+yet, create it with a `# Questions with optional answers` title line
+first.
+
+Desk watches `QUESTIONS.md` the same way it watches this directory: a
+newly-added entry surfaces as a top-right notification, which either
+focuses an already-open Questions widget or opens a new one, letting
+the user answer directly from the canvas. This is on top of whatever
+your own working conventions already say about tracking questions
+(e.g. this project's own `development-process.md`, if it has one) —
+follow those for *when* to ask, use `QUESTIONS.md` as *where* the
+question itself lives.
+
 ## The TempUI DSL: Question
 
 Each line is `keyword rest-of-line...` — everything after the first

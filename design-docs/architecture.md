@@ -404,6 +404,16 @@ Desk Bridge API.
     text that can itself contain nested parentheses (confirmed directly
     against this project's own `QUESTIONS.md`) via paren-depth tracking
     rather than a naive first-`)` scan. See `plans/questions-widget.md`.
+    A `DeskWindow`-owned `SingleFileWatcher` (separate from the widget's
+    own instance-level one) watches the nearest `QUESTIONS.md` for the
+    current Desk's directory regardless of whether a Questions widget
+    is currently open, so a newly-added entry surfaces as the same
+    top-right notification mechanism the `.desk_temp` DSL uses; clicking
+    it focuses an already-open Questions widget or opens and focuses a
+    new one. `desk-temporary-ui.md` (the doc seeded into every Desk's
+    `.desk_temp/`) now tells any agent to write open-ended questions for
+    the user into `QUESTIONS.md` rather than the tempui DSL. See
+    `plans/questions-notification-routing.md`.
 
 ### Widget Model
 

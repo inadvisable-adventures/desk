@@ -1463,11 +1463,12 @@ cb2790d. When creating a new Desk, don't add all of the widgets to it --
    by a section called "## What this project is about or exploring...".
 7a086ba. COMPLETED: Add a Questions widget that works similarly to the TODO
    widget, but for managing QUESTIONS.md. [planned: questions-widget.md]
-a801180. Add to the tempui instructions to always use QUESTIONS.md for
+a801180. COMPLETED: Add to the tempui instructions to always use QUESTIONS.md for
    any questions there are for the user. If adding a new question, send
    a top-right tempui notification that, when clicked, either visually
    focuses a currently-opened Questions widget (see TODO 7a086ba) or
    else opens a new Questions widget and focuses it.
+   [planned: questions-notification-routing.md]
 96013cf. COMPLETED: Rename the current markdown widget (`widgets/markdown/`) as
    `markdown_old_basic`, and add a timestamped note near the top of
    relevant plans that this rename was done, but don't change the rest

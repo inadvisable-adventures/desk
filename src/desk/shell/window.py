@@ -6,7 +6,9 @@ from PyQt6.QtCore import QPointF, QTimer
 from PyQt6.QtWidgets import QFileDialog, QInputDialog, QMainWindow, QMessageBox, QWidget
 
 from desk.desks import DESK_SUFFIX, Desk, WidgetState, desk_state_dict, load_desk, save_desk
+from desk.file_watch import SingleFileWatcher
 from desk.hotreload import HotReloadBroker
+from desk.questions_file import find_nearest_questions_file, parse_questions_file
 from desk.recent_desks import add_to_mru, load_mru
 from desk.server.runner import ServerHandle
 from desk.shell import current_context
@@ -35,6 +37,7 @@ LIGHTNING_ROUND_WIDGET_ID = "lightning_round"
 MARKDOWN_WIDGET_ID = "markdown"
 SCRATCH_WIDGET_ID = "scratch"
 CLAUDE_WIDGET_ID = "claude"
+QUESTIONS_WIDGET_ID = "questions"
 # Every widget kind that renders a TempUI file (TODO a02b001/TODO
 # 11aeb43/TODO 42dd260/TODO f8d9cec) and needs the same instance_id
 # -equals-source-file-uuid reconnection handling -- see
@@ -100,6 +103,17 @@ class DeskWindow(QMainWindow):
         self._temp_ui_manager = TempUiManager()
         self._temp_ui_manager.file_added.connect(self._on_temp_ui_file_added)
         self._temp_ui_manager.file_edited.connect(self._on_temp_ui_file_edited)
+
+        # Global QUESTIONS.md watcher (TODO a801180) -- unlike the
+        # per-widget SingleFileWatcher a Questions widget instance owns
+        # itself, this one lives for the whole window so a newly-added
+        # question notifies even when no Questions widget is currently
+        # open, matching the .desk_temp mechanism's own "notify
+        # regardless of whether a widget for it exists yet" behavior.
+        self._questions_watcher = SingleFileWatcher(self)
+        self._questions_watcher.changed.connect(self._on_questions_file_changed)
+        self._questions_path: Path | None = None
+        self._known_question_keys: set[tuple] | None = None
 
         self.current_desk = load_desk(desk_path) if desk_path.is_file() else Desk(path=desk_path)
         # Must run before _load_desk_widgets: it's the only place that
@@ -521,6 +535,75 @@ class DeskWindow(QMainWindow):
             ),
             self._confirm_fn("Temporary UI", f"Add “{TEMP_UI_DIRNAME}” to .gitignore?"),
         )
+        self._ensure_questions_watcher()
+
+    def _ensure_questions_watcher(self) -> None:
+        """(Re)watches the nearest QUESTIONS.md for the current Desk's
+        directory (TODO a801180) -- called alongside _provision_temp_ui
+        (boot, desk switch, directory change) since a QUESTIONS.md
+        relevant to the current Desk can change out from under any of
+        those. Re-seeds the known-question baseline whenever the
+        resolved path changes so pre-existing entries never spuriously
+        notify -- only entries added *after* this point do."""
+        directory = self.current_desk.directory
+        questions_path = find_nearest_questions_file(directory)
+        self._questions_path = questions_path
+        if questions_path is None:
+            self._questions_watcher.stop()
+            self._known_question_keys = None
+            return
+        self._questions_watcher.watch(questions_path)
+        _, entries = parse_questions_file(questions_path)
+        self._known_question_keys = {tuple(entry.todo_ids) for entry in entries}
+
+    def _on_questions_file_changed(self) -> None:
+        """A real external change to the watched QUESTIONS.md (self
+        -writes are already suppressed by SingleFileWatcher itself) --
+        surfaces a top-right notification only for genuinely *new*
+        question entries (comparing against the baseline captured by
+        _ensure_questions_watcher/the previous call here), not every
+        edit (e.g. filling in an existing answer shouldn't re-notify)."""
+        questions_path = self._questions_path
+        if questions_path is None or not questions_path.is_file():
+            return
+        _, entries = parse_questions_file(questions_path)
+        keys = {tuple(entry.todo_ids) for entry in entries}
+        new_keys = keys - (self._known_question_keys or set())
+        self._known_question_keys = keys
+        if not new_keys:
+            return
+        new_entries = [entry for entry in entries if tuple(entry.todo_ids) in new_keys]
+        text = (
+            new_entries[0].title
+            if len(new_entries) == 1
+            else f"{len(new_entries)} new questions in QUESTIONS.md"
+        )
+        self.view.notify_temp_ui(questions_path, text, self._focus_questions_widget)
+
+    def _find_frame_by_widget_id(self, widget_id: str) -> WidgetFrame | None:
+        for frame in self.view._frames:
+            if isinstance(frame.content, PythonWidgetHost) and frame.content.widget_id == widget_id:
+                return frame
+        return None
+
+    def _focus_questions_widget(self) -> None:
+        """Click-handler for the "new question(s)" notification: centers
+        on an already-open Questions widget if one exists, otherwise
+        opens a fresh one centered in the current view -- mirrors
+        _activate_temp_ui's own "center if it exists, otherwise create
+        it centered" shape."""
+        frame = self._find_frame_by_widget_id(QUESTIONS_WIDGET_ID)
+        if frame is None:
+            widget = self._widgets.get(QUESTIONS_WIDGET_ID)
+            if widget is None:
+                return
+            center = self.view.mapToScene(self.view.viewport().rect().center())
+            frame = self._place_widget(
+                QUESTIONS_WIDGET_ID, widget, (center.x(), center.y()), widget.default_size
+            )
+        proxy = frame.graphicsProxyWidget()
+        if proxy is not None:
+            self.view.centerOn(proxy.sceneBoundingRect().center())
 
     def _on_temp_ui_file_added(self, path: Path) -> None:
         self._notify_temp_ui(path)
