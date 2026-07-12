@@ -1,4 +1,4 @@
-# Questions widget
+# Questions widget (COMPLETED)
 
 TODO `7a086ba`.
 
@@ -133,5 +133,39 @@ widget's own tests already established the pattern):
 
 ## Status
 
-Not yet implemented -- `questions_file.py` is written and verified;
-next is the widget itself.
+Implemented as planned: `src/desk/questions_file.py` and
+`widgets/questions/widget.py` (`QuestionsWidget`), plus
+`widgets/questions/widget.json` and a new architecture.md entry (item
+20).
+
+Verified headlessly (`QT_QPA_PLATFORM=offscreen`, real `QApplication`
+and real `git` repos in temp directories, no mocks except
+`_confirm_discard` for the discard-confirmation path):
+
+- Default filter shows unanswered only; toggling `all`/`answered`
+  updates the visible list correctly.
+- Answering an entry writes the exact `(Answer: ...)` text to disk,
+  leaves every other entry's raw text untouched, and commits with a
+  message naming the entry's TODO id(s) -- confirmed both the file
+  content and `git log`.
+- No QUESTIONS.md found near the current Desk directory: status label
+  reflects that, list stays empty, no crash.
+- An external edit while the widget is open (`_on_external_change`)
+  picks up a newly-added entry live.
+- The answer dialog's submit flow updates the in-memory entry and
+  clears `_open_edits`; the discard-confirmation path (confirmed,
+  discarding a typed-but-unsaved change) also clears `_open_edits`
+  without touching the entry's stored answer.
+
+One bug caught and fixed during this verification pass (not left as a
+TODO): the default filter-button state initially had *both*
+"unanswered" and "all" checked at once (harmless, but only "all"
+should default off and exactly one of unanswered/answered/all should
+be meaningfully "the" default) -- fixed to just "unanswered" checked by
+default, matching the widget's primary purpose (surfacing open
+questions).
+
+No `LEARNINGS.md` entry needed -- nothing here was a surprising,
+non-obvious platform/library behavior; the one real subtlety (nested
+parens in answer text) was anticipated and designed for up front, not
+discovered as a surprise during verification.

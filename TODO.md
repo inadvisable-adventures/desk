@@ -1461,7 +1461,7 @@ cb2790d. When creating a new Desk, don't add all of the widgets to it --
    for the project, or else add a Scratch widget with content for a
    basic readme that has a "# [desk name] README" at the top followed
    by a section called "## What this project is about or exploring...".
-7a086ba. Add a Questions widget that works similarly to the TODO
+7a086ba. COMPLETED: Add a Questions widget that works similarly to the TODO
    widget, but for managing QUESTIONS.md. [planned: questions-widget.md]
 a801180. Add to the tempui instructions to always use QUESTIONS.md for
    any questions there are for the user. If adding a new question, send

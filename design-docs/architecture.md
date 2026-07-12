@@ -388,6 +388,22 @@ Desk Bridge API.
     both `SingleFileWatcher.record_own_write` and `TempUiManager
     .record_own_write` instead of each keeping its own separate
     last-written-text dict.
+20. **Questions Widget** — a built-in `kind: "python"` widget
+    (`widgets/questions/`) that reads the nearest `QUESTIONS.md` relative
+    to the current Desk's directory and shows it as a filterable
+    (unanswered/answered/all) list of question entries, each answerable
+    via a hovering dialog (question text read-only, answer editable and
+    pre-filled if already answered). Mirrors the TODO Widget's shape
+    (file watching, `external_path_changed`, git-commit-backed writes)
+    but adapted for `QUESTIONS.md`'s own format: an entry can reference
+    more than one TODO id, and has just one answered/unanswered state
+    rather than TODO.md's four-way status — so there's no drag-reorder
+    or debounced commit, since entry order isn't a priority signal here.
+    Parsing/rendering (`desk.questions_file`) is a separate, reusable
+    module mirroring `desk.todo_file`'s shape, notably handling answer
+    text that can itself contain nested parentheses (confirmed directly
+    against this project's own `QUESTIONS.md`) via paren-depth tracking
+    rather than a naive first-`)` scan. See `plans/questions-widget.md`.
 
 ### Widget Model
 
