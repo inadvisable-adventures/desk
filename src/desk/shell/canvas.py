@@ -119,9 +119,8 @@ class WorkspaceView(QGraphicsView):
         self._widget_catalog = catalog
 
     def contextMenuEvent(self, event) -> None:
-        names = {widget_id: info.name for widget_id, info in self._widget_catalog.items()}
         scene_pos = self.mapToScene(event.pos())
-        menu = WidgetSpawnMenu(names, self)
+        menu = WidgetSpawnMenu(self._widget_catalog, self)
         menu.widget_chosen.connect(
             lambda widget_id: self.widget_add_requested.emit(widget_id, scene_pos)
         )

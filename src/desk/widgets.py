@@ -19,6 +19,7 @@ class WidgetInfo:
     entry: str
     capabilities: list[str]
     default_size: tuple[int, int] | None
+    deprecated: bool = False
 
 
 def _parse_manifest(manifest_path: Path) -> WidgetInfo:
@@ -42,6 +43,7 @@ def _parse_manifest(manifest_path: Path) -> WidgetInfo:
         entry=manifest.get("entry", default_entry),
         capabilities=manifest.get("capabilities", []),
         default_size=(size["width"], size["height"]) if size else None,
+        deprecated=manifest.get("deprecated", False),
     )
 
 

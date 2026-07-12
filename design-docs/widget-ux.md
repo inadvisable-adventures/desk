@@ -329,12 +329,23 @@ this is a dedicated `QWidget` (`Qt.WindowType.Popup`, giving it the same
 click-away/focus-loss auto-close behavior as a real `QMenu`) rather than a
 `QMenu` subclass:
 
-- A `QLineEdit` filter box (auto-focused on open) above a `QListWidget` of
+- A `QLineEdit` filter box (auto-focused on open) above a `QTreeWidget` of
   matching entries, live-filtered as the user types (case-insensitive
   substring match against the widget's name or id).
 - Up/Down move the list selection without the line edit losing focus;
   Return (with a selection), or clicking/double-clicking a row, chooses
   it; Escape or clicking away closes the popup without choosing anything.
+- Entries are grouped into two collapsible sections (TODO ed483e2),
+  "Active" (expanded by default) and "Deprecated" (collapsed by
+  default) — driven by a new `WidgetInfo.deprecated: bool` field
+  (`widget.json`'s optional `"deprecated"` key, `false` unless set).
+  `QTreeWidget` gives native expand/collapse for free via two
+  persistent, non-selectable top-level group items; re-filtering only
+  rebuilds each group's *children*, never the group headers themselves,
+  so a group the user manually expanded/collapsed stays that way while
+  typing. Up/Down/Return only ever reach an actual widget entry — never
+  a group header, and never an entry sitting inside a currently
+  -collapsed group (a filter match doesn't auto-expand its group).
 
 `WorkspaceView` builds the menu from a catalog it's told about once, at
 construction (`set_widget_catalog` — the only piece of the wider widget

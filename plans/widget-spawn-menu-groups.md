@@ -1,4 +1,4 @@
-# Collapsible active/deprecated groups in the widget-add popup menu
+# Collapsible active/deprecated groups in the widget-add popup menu (COMPLETED)
 
 TODO `ed483e2`.
 
@@ -98,4 +98,27 @@ Headless (`QT_QPA_PLATFORM=offscreen`, real `QApplication`, no mocks):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `WidgetInfo.deprecated: bool = False` and
+`_parse_manifest` reading it in `src/desk/widgets.py`;
+`WidgetSpawnMenu` rewritten onto `QTreeWidget` with two persistent
+group header items in `src/desk/shell/widget_spawn_menu.py`;
+`WorkspaceView.contextMenuEvent` passes the full `WidgetInfo` catalog
+through unchanged.
+
+All headless verification steps above passed: correct default expand
+state and grouping; a filter match inside the collapsed Deprecated
+group stays collapsed (not auto-expanded) and an empty group hides
+itself; a manually-expanded group survives re-populating on every
+filter keystroke; Up/Down/Return walk only visible leaf entries,
+clamped at the ends, never landing on a header or a collapsed entry;
+`WidgetInfo.deprecated` defaults `False` and honors an explicit
+`true`. Also ran a real end-to-end sanity check against the actual
+`discover_widgets(Path("widgets"))` catalog (15 real widgets, all
+currently non-deprecated) confirming the Deprecated group correctly
+hides itself with zero real widgets in it yet.
+
+Updated `design-docs/widget-ux.md`'s "Add Widget Menu" section for the
+new grouping.
+
+No `LEARNINGS.md` entry needed -- followed the Markdown (Extended)
+widget's own existing `QTreeWidget` precedent, nothing surprising.
