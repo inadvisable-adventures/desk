@@ -1,4 +1,4 @@
-# Seed development-process.md on new-Desk creation + mention it to claude
+# Seed development-process.md on new-Desk creation + mention it to claude (COMPLETED)
 
 TODO `fbd0554`.
 
@@ -80,4 +80,22 @@ Headless (`QT_QPA_PLATFORM=offscreen`, real `QApplication`, no mocks):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `DEVELOPMENT_PROCESS_FILENAME`,
+`_seed_development_process`, and the confirm-and-seed step in
+`_on_new_desk_requested` in `src/desk/shell/window.py`;
+`_development_process_instruction()` appended onto the constructed
+prompt in `widgets/claude/widget.py`.
+
+All headless verification steps above passed (exercising the real
+`DeskWindow._seed_development_process` method, bound onto a minimal
+double for the same reason noted in TODO 4c3fe4b's plan -- constructing
+a full `DeskWindow` stalls headlessly): copies real content when
+source exists and destination doesn't; no-ops when there's no source;
+never overwrites an existing destination (content unchanged); no-ops
+when source and destination are the same file. The Claude widget's
+prompt instruction is non-empty and mentions the real path when the
+file is present, and construction is byte-for-byte unchanged from
+before this TODO when it's absent or no current Desk directory is
+known yet (explicit regression check, not just "empty string").
+
+No `LEARNINGS.md` entry needed -- nothing surprising turned up.

@@ -46,6 +46,10 @@ TEMP_UI_WIDGET_IDS = {
 }
 
 WIDGET_SPACING = 700
+# TODO fbd0554: the well-known project-convention filename this
+# codebase's own development-process.md itself names -- a plain
+# literal, not a piece of shared behavior worth its own module.
+DEVELOPMENT_PROCESS_FILENAME = "development-process.md"
 
 Confirm = Callable[[], bool]
 
@@ -630,12 +634,34 @@ class DeskWindow(QMainWindow):
         name = self._prompt_fn("New Desk", "Name for the new Desk:")()
         if not name:
             return
-        directory = QFileDialog.getExistingDirectory(
+        chosen = QFileDialog.getExistingDirectory(
             self, "New Desk Directory", str(self.current_desk.directory)
         )
-        if not directory:
+        if not chosen:
             return
-        self.new_desk(name, Path(directory))
+        directory = Path(chosen)
+        source = self.current_desk.directory / DEVELOPMENT_PROCESS_FILENAME
+        destination = directory / DEVELOPMENT_PROCESS_FILENAME
+        if source.is_file() and source.resolve() != destination.resolve():
+            confirm = self._confirm_fn(
+                "New Desk",
+                f"Initialize the new Desk's directory with a copy of "
+                f"“{DEVELOPMENT_PROCESS_FILENAME}”?",
+            )
+            if confirm():
+                self._seed_development_process(directory)
+        self.new_desk(name, directory)
+
+    def _seed_development_process(self, directory: Path) -> None:
+        """Copies the current Desk's development-process.md into
+        `directory` (TODO fbd0554) -- a no-op if the current Desk has
+        none to source from, or if `directory` already has its own
+        (never silently overwritten)."""
+        source = self.current_desk.directory / DEVELOPMENT_PROCESS_FILENAME
+        destination = directory / DEVELOPMENT_PROCESS_FILENAME
+        if not source.is_file() or destination.exists():
+            return
+        destination.write_text(source.read_text())
 
     def _on_rename_requested(self) -> None:
         name = self._prompt_fn(

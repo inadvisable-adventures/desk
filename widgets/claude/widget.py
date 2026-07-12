@@ -26,6 +26,23 @@ def _doc_path() -> str:
     return f"{TEMP_UI_DIRNAME}/{DOC_FILENAME}"
 
 
+DEVELOPMENT_PROCESS_FILENAME = "development-process.md"
+
+
+def _development_process_instruction() -> str:
+    """Empty unless the current project actually has its own
+    development-process.md (TODO fbd0554) -- appended as a second
+    sentence onto CLAUDE_WIDGET_PROMPT when non-empty, not a
+    placeholder/negative statement when there isn't one."""
+    directory = current_context.get_current_desk_directory()
+    if directory is None:
+        return ""
+    path = directory / DEVELOPMENT_PROCESS_FILENAME
+    if not path.is_file():
+        return ""
+    return f" This project also has its own {DEVELOPMENT_PROCESS_FILENAME} at {path} -- please read that too."
+
+
 class ClaudeWidget(TerminalWidget):
     """A bash shell that auto-launches `claude` bound to a specific
     session id, so the session can be resumed across a Desk reload. The
@@ -52,7 +69,7 @@ class ClaudeWidget(TerminalWidget):
         else:
             # Fresh launch: assign the session id up front (so a later
             # reload can --resume it) and send the initial Desk prompt.
-            prompt = CLAUDE_WIDGET_PROMPT.format(doc_path=_doc_path())
+            prompt = CLAUDE_WIDGET_PROMPT.format(doc_path=_doc_path()) + _development_process_instruction()
             command = (
                 f"exec claude --session-id {shlex.quote(session_id)} "
                 f"{PERMISSION_MODE_ARGS} {shlex.quote(prompt)}\n"

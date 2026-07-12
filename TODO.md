@@ -1427,7 +1427,7 @@ ac212bc. COMPLETED: Create a "stack" widget to keep track of nested discussions,
    the directory picker defaulting to the current Desk's associated
    directory.
    [planned: new-desk-directory-picker.md]
-fbd0554. Add an option during new Desk creation to initialize the new
+fbd0554. COMPLETED: Add an option during new Desk creation to initialize the new
    Desk with a `development-process.md`, sourced initially from the
    current Desk's own `development-process.md`. Additionally: if a
    `development-process.md` exists for a Desk's associated project when
