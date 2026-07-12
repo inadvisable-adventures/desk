@@ -17,9 +17,10 @@ Each file is named with a bare UUID (e.g.
 `550e8400-e29b-41d4-a716-446655440000`, no extension). Desk watches
 this directory: a newly-created file shows up as a clickable
 notification in the app's upper-right corner; clicking it places a new
-widget on the canvas, centered in the current view. There are two file
-types, distinguished by their first line's keyword — `Question` (below)
-or `LightningRound` (further down).
+widget on the canvas, centered in the current view. There are three
+file types, distinguished by their first line's keyword — `Question`
+(below), `LightningRound` (further down), or `OpenMarkdown` (further
+down still).
 
 ## The TempUI DSL: Question
 
@@ -103,6 +104,26 @@ LRItem	run	V
 LRItem	quick	unanswered
 ```
 
+## The TempUI DSL: OpenMarkdown
+
+For telling Desk to open a Markdown file in the Markdown (Extended)
+widget — a fire-and-forget instruction, not a question: there is no
+`Answer` line, and Desk never writes back to this file.
+
+- `OpenMarkdown <path>` — the first (and normally only) line. `path`
+  is the file to open, absolute or relative to the current Desk's
+  directory. Like `Question <text>`, everything after the first space
+  is one opaque value, so a path containing spaces needs no escaping.
+
+Example:
+
+```
+OpenMarkdown ./diagrams.md
+```
+
+Clicking the notification opens `path` in a new Markdown (Extended)
+widget instance, centered in the current view.
+
 This file (`desk-temporary-ui.md`) is itself ignored by the file
 watcher — its name isn't a UUID, so it's never mistaken for a temp UI
 file.
@@ -117,6 +138,7 @@ class TempUiDocument:
 
 
 LIGHTNING_ROUND_KEYWORD = "LightningRound"
+OPEN_MARKDOWN_KEYWORD = "OpenMarkdown"
 UNANSWERED = "unanswered"
 
 
@@ -135,16 +157,36 @@ class LightningRoundDocument:
 
 
 def detect_temp_ui_kind(text: str) -> str:
-    """"question" (the original, default type) or "lightning_round",
-    read from the first non-blank line's keyword -- lets a caller that's
-    seeing a temp-ui file for the first time (a notification, a saved
-    Desk's widget state) know which widget kind to place without
-    assuming "question"."""
+    """"question" (the original, default type), "lightning_round", or
+    "open_markdown", read from the first non-blank line's keyword --
+    lets a caller that's seeing a temp-ui file for the first time (a
+    notification, a saved Desk's widget state) know which widget kind
+    to place without assuming "question"."""
     for line in text.splitlines():
         if line.strip():
             keyword = line.split(None, 1)[0]
-            return "lightning_round" if keyword == LIGHTNING_ROUND_KEYWORD else "question"
+            if keyword == LIGHTNING_ROUND_KEYWORD:
+                return "lightning_round"
+            if keyword == OPEN_MARKDOWN_KEYWORD:
+                return "open_markdown"
+            return "question"
     return "question"
+
+
+def parse_open_markdown(text: str) -> str | None:
+    """Extracts the target Markdown path from an OpenMarkdown temp-UI
+    file's first line (`OpenMarkdown <path>`) -- same "everything after
+    the first space is one opaque value" shape as Question, so a path
+    containing spaces doesn't need escaping. Returns None if the file
+    doesn't actually start with the OpenMarkdown keyword."""
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split(None, 1)
+        if parts[0] == OPEN_MARKDOWN_KEYWORD and len(parts) > 1:
+            return parts[1].strip()
+        return None
+    return None
 
 
 def is_temp_ui_filename(name: str) -> bool:

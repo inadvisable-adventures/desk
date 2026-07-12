@@ -15,16 +15,28 @@ from desk.shell.chromium_widget import ChromiumWidget
 from desk.shell.python_widget import PythonWidgetHost
 from desk.shell.temp_ui_manager import TempUiManager
 from desk.shell.widget_frame import WidgetFrame
-from desk.temp_ui import TEMP_UI_DIRNAME, detect_temp_ui_kind, parse_lightning_round, parse_temp_ui
+from desk.temp_ui import (
+    TEMP_UI_DIRNAME,
+    detect_temp_ui_kind,
+    parse_lightning_round,
+    parse_open_markdown,
+    parse_temp_ui,
+)
 from desk.widgets import WidgetInfo, discover_widgets
 
 QUESTION_WIDGET_ID = "question"
 LIGHTNING_ROUND_WIDGET_ID = "lightning_round"
+MARKDOWN_EX_WIDGET_ID = "markdown_ex"
 CLAUDE_WIDGET_ID = "claude"
 # Every widget kind that renders a TempUI file (TODO a02b001/TODO
-# 11aeb43) and needs the same instance_id-equals-source-file-uuid
-# reconnection handling -- see _load_desk_widgets/_bind_temp_ui_widget.
-TEMP_UI_WIDGET_IDS = {QUESTION_WIDGET_ID, LIGHTNING_ROUND_WIDGET_ID}
+# 11aeb43/TODO 42dd260) and needs the same instance_id-equals-source
+# -file-uuid reconnection handling -- see
+# _load_desk_widgets/_bind_temp_ui_widget. A manually-placed
+# markdown_ex instance's restore is a safe no-op under this (see
+# _bind_temp_ui_content): its instance_id won't match any real
+# .desk_temp/ filename, so it just falls through unchanged, same as
+# its existing no-persistence-across-reload behavior.
+TEMP_UI_WIDGET_IDS = {QUESTION_WIDGET_ID, LIGHTNING_ROUND_WIDGET_ID, MARKDOWN_EX_WIDGET_ID}
 
 WIDGET_SPACING = 700
 
@@ -225,7 +237,41 @@ class DeskWindow(QMainWindow):
             return
         content = frame.content.current
         if content is not None:
-            content.set_source_file(directory / TEMP_UI_DIRNAME / uuid_str)
+            self._bind_temp_ui_content(content, directory / TEMP_UI_DIRNAME / uuid_str, directory)
+
+    def _bind_temp_ui_content(self, content, tempui_path: Path, directory: Path) -> None:
+        """Wires a freshly-placed or restored TempUI-backed widget's
+        content to its source tempui_path -- Question/LightningRound
+        render the tempui file itself (set_source_file); OpenMarkdown
+        instead parses out its *target* Markdown path and opens that
+        (set_file), since it's a pure fire-and-forget viewer action
+        with no answer to render back into the tempui file. Shared by
+        both the notification-click path (_activate_temp_ui) and the
+        Desk-reload restore path (_bind_temp_ui_widget) so there's one
+        place deciding which method gets which path."""
+        try:
+            kind = detect_temp_ui_kind(tempui_path.read_text())
+        except OSError:
+            kind = "question"
+        if kind == "open_markdown":
+            if not hasattr(content, "set_file"):
+                return
+            target = self._resolve_open_markdown_target(tempui_path, directory)
+            if target is not None:
+                content.set_file(target)
+        elif hasattr(content, "set_source_file"):
+            content.set_source_file(tempui_path)
+
+    @staticmethod
+    def _resolve_open_markdown_target(tempui_path: Path, directory: Path) -> Path | None:
+        try:
+            raw = parse_open_markdown(tempui_path.read_text())
+        except OSError:
+            return None
+        if not raw:
+            return None
+        target = Path(raw)
+        return target if target.is_absolute() else (directory / target).resolve()
 
     def find_frame_by_instance_id(self, instance_id: str) -> WidgetFrame | None:
         for frame in self.view._frames:
@@ -396,10 +442,15 @@ class DeskWindow(QMainWindow):
         text = f"New question: {path.name}"
         try:
             content_text = path.read_text()
-            if detect_temp_ui_kind(content_text) == "lightning_round":
+            kind = detect_temp_ui_kind(content_text)
+            if kind == "lightning_round":
                 lr_doc = parse_lightning_round(content_text)
                 if lr_doc.prompt or lr_doc.name:
                     text = lr_doc.prompt or lr_doc.name
+            elif kind == "open_markdown":
+                target = parse_open_markdown(content_text)
+                if target:
+                    text = f"Open {target}"
             else:
                 doc = parse_temp_ui(content_text)
                 if doc.question:
@@ -419,7 +470,11 @@ class DeskWindow(QMainWindow):
             kind = detect_temp_ui_kind(path.read_text())
         except OSError:
             kind = "question"
-        return LIGHTNING_ROUND_WIDGET_ID if kind == "lightning_round" else QUESTION_WIDGET_ID
+        if kind == "lightning_round":
+            return LIGHTNING_ROUND_WIDGET_ID
+        if kind == "open_markdown":
+            return MARKDOWN_EX_WIDGET_ID
+        return QUESTION_WIDGET_ID
 
     def _activate_temp_ui(self, path: Path) -> None:
         """Shared click-handler for both an "added" and an "edited"
@@ -448,7 +503,7 @@ class DeskWindow(QMainWindow):
             instance_id=uuid_str,
         )
         if content is not None:
-            content.set_source_file(path)
+            self._bind_temp_ui_content(content, path, self.current_desk.directory)
 
     def _confirm_fn(self, title: str, message: str) -> Confirm:
         def confirm() -> bool:

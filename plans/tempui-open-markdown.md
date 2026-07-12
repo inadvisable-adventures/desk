@@ -1,4 +1,4 @@
-# TempUI: `OpenMarkdown` capability
+# TempUI: `OpenMarkdown` capability (COMPLETED)
 
 TODO `42dd260`.
 
@@ -139,4 +139,38 @@ Headless:
 
 ## Status
 
-Not yet implemented.
+**Completed.** Implemented and verified headlessly as described above:
+
+- `detect_temp_ui_kind`/`parse_open_markdown`: correct detection and
+  parsing for `OpenMarkdown`, including a path containing spaces;
+  `Question`/`LightningRound` detection unchanged (regression check).
+- `_resolve_open_markdown_target`: a relative path resolves against
+  the passed directory; an absolute path passes through unchanged
+  (verified without the misleading `.resolve()` comparison a macOS
+  `tempfile.mkdtemp()` symlink would otherwise cause — compared
+  against the literal expected `Path`, not a resolved one).
+- `_bind_temp_ui_content` against real widget instances (not mocks):
+  a real `MarkdownExWidget` gets `set_file`'d with the correctly
+  -resolved target and renders it; a real `Question` widget still gets
+  `set_source_file` and genuinely re-renders its question text
+  (checked before/after, not just "didn't raise") — confirms the
+  shared-helper refactor didn't regress the existing types; a real
+  `LightningRound` widget binds without exception; a non-tempui
+  `markdown_ex` instance (a `.desk_temp/` path that doesn't exist) is
+  a safe no-op, matching its pre-existing "starts blank on reload"
+  behavior.
+- `_temp_ui_widget_id_for` routes an `OpenMarkdown` file to
+  `"markdown_ex"`; `_notify_temp_ui`'s preview text is `"Open
+  <path>"`.
+- `design-docs/architecture.md`'s Markdown (Extended) Widget entry
+  updated; the local, gitignored `.desk_temp/desk-temporary-ui.md`
+  copy hand-refreshed from the updated `DOC_TEMPLATE` so this repo's
+  already-provisioned `.desk_temp/` (and the `claude` widget reading
+  it) picks up the new capability immediately.
+- **Skipped**: a literal end-to-end `DeskWindow` + real notification
+  -click flow, for the same pre-existing, unrelated offscreen-canvas
+  stall noted in `plans/markdown-ex-widget.md`/`plans/file-explorer
+  -widget.md`/`plans/svg-viewer-widget.md`. Every piece of the chain
+  (`detect_temp_ui_kind` → `_temp_ui_widget_id_for` →
+  `_notify_temp_ui` → `_bind_temp_ui_content` → `MarkdownExWidget
+  .set_file`) was instead verified directly against real objects.

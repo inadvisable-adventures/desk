@@ -298,7 +298,13 @@ Desk Bridge API.
     per `CLAUDE.md`'s dependency aversion and direct user direction;
     any other diagram type or unparseable source falls back to showing
     the raw fenced source as plain text instead of erroring. See
-    `plans/markdown-ex-widget.md`.
+    `plans/markdown-ex-widget.md`. Also TempUI-backed (TODO `42dd260`):
+    an `OpenMarkdown <path>` temp-ui file (see
+    `.desk_temp/desk-temporary-ui.md`'s DSL doc, `src/desk/temp_ui.py`)
+    places a new instance and calls its `set_file` with the parsed
+    target path — the widget itself needed no changes, since
+    `set_file` already existed for programmatic opening. See
+    `plans/tempui-open-markdown.md`.
 17. **File Explorer Widget** — a built-in `kind: "python"` widget
     (`widgets/file_explorer/`): a `_FileTreeView` (`QTreeView`
     subclass; see below) browsing the current Desk directory via a
