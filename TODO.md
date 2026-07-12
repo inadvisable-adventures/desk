@@ -1320,6 +1320,21 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    watch <ObservedWatch: path=... is_recursive=False> - it is already
    scheduled.").
    [planned: file-watcher-service.md]
+cee6f74. Refactor TempUiManager and the TODO widget's file-watching so
+   they share the self-write-echo-suppression logic instead of each
+   having its own copy, routing the TODO widget onto
+   `SingleFileWatcher.record_own_write` instead of its own separate
+   check. Additionally, add file-watching to the Editor widget so that
+   if a file it has open is edited elsewhere (e.g. TODO.md edited by
+   the TODO widget) while there are no local unsaved changes, it
+   detects and reloads the external change -- relying on the
+   file-watcher service's existing de-duplication/dispatch (TODO
+   578cb6b), not a new mechanism; if there are local unsaved changes,
+   flag the conflict without clobbering them. Performance for a
+   pathologically-high-frequency writer on a single watched file is
+   explicitly out of scope for now -- revisit only if it becomes a
+   real, observed problem.
+   [planned: file-watch-self-write-consolidation.md]
 10b0321. in the TODO widget, please change the pop-up item adder/editor so that it is restricted to remain visually within the TODO widget itself.
 f8d9cec. Add a new (or existing?) tempui capability to allow agents to add "scratch" text, and make it clear in the tempui instructions given to claude that when the user refers to "scratch," that is what is meant, unless there is a more pressing local meaning.
 cdf45cb. Add "bring to front" and "send to back" buttons to the top-right of widgets, left of the "x" button, which move it in visual z-order to the front or back, respectively.
