@@ -108,18 +108,6 @@ This file captures thoughts and TODO items that arise during work on other thing
   worth doing proactively or the next time a "wrong directory after
   switching Desks" symptom is reported for real.
 
-- **Question Widget doesn't live-refresh if its `.desk_temp` file
-  changes after being placed**
-
-  TODO a02b001 only asks that clicking an "edited" notification *center
-  the view* on an already-placed Question Widget, not that the widget's
-  displayed content re-renders to match the file's latest state. If a
-  file is edited again after its widget is already on the canvas (e.g.
-  options changed), the placed widget keeps showing what it loaded when
-  `set_source_file`/the notification click last (re)rendered it. Minor,
-  deliberate scope limitation — revisit if stale displayed content for
-  an already-open Question Widget becomes a real annoyance.
-
 - **Personal information audit: one leaked absolute path with local
   username**
 

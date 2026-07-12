@@ -1,4 +1,4 @@
-# General live-refresh for already-placed tempui-bound widgets
+# General live-refresh for already-placed tempui-bound widgets (COMPLETED)
 
 TODO `67ab2df`.
 
@@ -152,4 +152,34 @@ Headless (`QT_QPA_PLATFORM=offscreen`, real `QApplication`, no mocks):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `DeskWindow._refresh_live_temp_ui` (checked
+first by `_on_temp_ui_file_edited`, before falling back to the
+existing `_notify_temp_ui`) in `src/desk/shell/window.py`; new
+`ScratchWidget.has_unsaved_local_edits()` in `widgets/scratch/widget.py`
+(the one widget that needed it -- Question/LightningRound/the Markdown
+tempui capability needed zero code changes, confirmed).
+
+All headless verification steps above passed: Question and
+LightningRound both live-refresh on a real external edit without any
+notification click, and correctly preserve already-answered/in
+-progress state across the refresh (re-deriving it fresh from the
+file each time, exactly as their existing idempotent `_render` methods
+already did); the Markdown tempui-bound widget live-refreshes its
+rendered content; Scratch live-refreshes when untouched, and -- the
+critical case -- does **not** clobber real, unsaved local typing
+(confirmed via `insertPlainText`, not `setPlainText`, to trigger a
+genuine `document().isModified()`); falling through to the existing
+notification path when no frame is placed yet is unchanged
+(regression-checked). Also re-ran the existing Scratch and Markdown
+-tempui verification scripts with no regressions.
+
+TODOs `f668aef`/`091bc27`/`9ee505f`/`6fbae42` are marked `COMPLETED`
+alongside this one, as planned -- each is resolved by this same
+implementation, not built separately.
+
+No `LEARNINGS.md` entry needed -- the one genuinely non-obvious fact
+here (`QPlainTextEdit.setPlainText()` always resets `document()
+.isModified()` to `False`, while real edits set it `True`) was
+confirmed directly during design, not discovered as a surprise during
+verification, and is already documented inline in `has_unsaved_local_edits`'s
+own docstring.

@@ -116,6 +116,18 @@ class ScratchWidget(QWidget):
     def body(self) -> QPlainTextEdit:
         return self._body
 
+    def has_unsaved_local_edits(self) -> bool:
+        """Duck-typed hook (TODO 67ab2df) letting `DeskWindow` know a
+        blind tempui live-refresh would clobber real, in-progress user
+        typing here -- unlike Question/LightningRound, this widget's
+        body is a real editable buffer, not a pure re-render of the
+        tempui file. `QPlainTextEdit.setPlainText()` (what a tempui
+        -triggered refresh calls) always resets `document()
+        .isModified()` to `False`; only genuine user edits (typing,
+        `insertPlainText`, etc.) set it `True` -- confirmed directly,
+        not assumed."""
+        return self._body.document().isModified()
+
 
 def build() -> QWidget:
     return ScratchWidget()

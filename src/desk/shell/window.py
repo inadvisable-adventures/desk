@@ -526,7 +526,39 @@ class DeskWindow(QMainWindow):
         self._notify_temp_ui(path)
 
     def _on_temp_ui_file_edited(self, path: Path) -> None:
+        if self._refresh_live_temp_ui(path):
+            return
         self._notify_temp_ui(path)
+
+    def _refresh_live_temp_ui(self, path: Path) -> bool:
+        """Live-refreshes an already-placed tempui-bound widget in
+        place when its source file is genuinely edited externally
+        (TODO 67ab2df), instead of only letting a notification click
+        center the view on now-stale content -- re-invokes the exact
+        same `_bind_temp_ui_content` dispatch used for a fresh
+        placement/restore, since it already reads the file fresh and
+        routes to whichever method each kind needs.
+
+        Returns `True` if a live refresh actually happened, in which
+        case the caller should skip the usual notification (the widget
+        already visibly updated, so a banner saying the same thing
+        would be redundant). Returns `False` if there's no already
+        -placed frame for this file yet, or if the frame's content
+        reports unsaved local edits via the optional
+        `has_unsaved_local_edits()` duck-typed hook (e.g. the Scratch
+        widget, TODO 9ee505f) that a blind refresh would clobber -- in
+        both cases the caller falls through to the existing
+        notification path unchanged."""
+        frame = self.find_frame_by_instance_id(path.name)
+        if frame is None or not isinstance(frame.content, PythonWidgetHost):
+            return False
+        content = frame.content.current
+        if content is None:
+            return False
+        if hasattr(content, "has_unsaved_local_edits") and content.has_unsaved_local_edits():
+            return False
+        self._bind_temp_ui_content(content, path, self.current_desk.directory)
+        return True
 
     def _notify_temp_ui(self, path: Path) -> None:
         text = f"New question: {path.name}"
