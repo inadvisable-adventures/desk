@@ -1,4 +1,4 @@
-# Stack widget
+# Stack widget (COMPLETED)
 
 TODO `ac212bc`.
 
@@ -104,4 +104,29 @@ Headless (`QT_QPA_PLATFORM=offscreen`, real `QApplication`, no mocks):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `src/desk/stack_file.py` (`StackFrame`,
+`render_stack_file`, `parse_stack_file`); `widgets/stack/widget.json` +
+`widgets/stack/widget.py` (`StackWidget`, `_FrameRow`).
+
+All headless verification steps above passed: render/parse round-trip
+(including a case with an empty-notes frame); render order is
+bottom-of-stack-first; parse ignores any preamble before the first `##`
+heading; Push/Pop maintain correct stack order in both the internal
+list and the visual layout (top of stack always visually first);
+`get_widget_local_storage`/`set_widget_local_storage` round-trip a
+real multi-frame stack, order preserved; "Save as Markdown" writes a
+real file whose content matches `render_stack_file`'s own output;
+"Load" replaces the stack after confirmation and leaves it untouched
+if declined; and a full real `Desk` save/load round trip (via
+`desk.desks.save_desk`/`load_desk`, not reimplemented logic) preserves
+a pushed multi-frame stack correctly -- the Stack widget is
+widget-local storage's (TODO fb76057) first real consumer.
+
+Confirmed `discover_widgets` picks up the new widget correctly
+(`id="stack"`, `deprecated=False`).
+
+No `LEARNINGS.md` entry needed -- nothing surprising turned up; the one
+real subtlety (reconstructing `_replace_frames`'s visual insertion
+order to match what sequential `_push()` calls would have produced)
+was caught and fixed during implementation, not discovered as a
+surprising runtime behavior during verification.

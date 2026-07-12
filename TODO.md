@@ -1413,7 +1413,7 @@ fb76057. COMPLETED: Ensure that "widget-local storage" exists: a means by which
    elsewhere and was missed), it should be consistently branded
    "widget-local storage" throughout code, docs, and future TODO items.
    [planned: widget-local-storage.md]
-ac212bc. Create a "stack" widget to keep track of nested discussions,
+ac212bc. COMPLETED: Create a "stack" widget to keep track of nested discussions,
    with its data stored in widget-local storage (see TODO fb76057 --
    depends on that capability existing), plus a button to copy the
    stack as markdown into a project file called `STACK-[timestamp].md`,
