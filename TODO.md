@@ -1335,6 +1335,21 @@ cee6f74. COMPLETED: Refactor TempUiManager and the TODO widget's file-watching s
    explicitly out of scope for now -- revisit only if it becomes a
    real, observed problem.
    [planned: file-watch-self-write-consolidation.md]
+465c404. Bug: in the File Explorer widget, the "Open Folder" button and
+   the search box's chrome (background/border) don't scale with zoom,
+   similar to how the tree-collapsing controls (">") were also not
+   scaling properly before that was fixed. Screenshot: the widget
+   zoomed in to roughly 3-4x -- the titlebar ("File Explorer" label,
+   "x" close button) renders at the normal constant screen size, as
+   designed, but within the widget's own content the "Open Folder"
+   button's text is huge and overflows well outside its own grey
+   rounded-pill background (which stayed a visibly smaller size), and
+   the "Search..." placeholder text is similarly oversized and
+   overflows past the right edge of the search box's own thin border.
+   The text itself correctly scales with zoom; each control's own
+   native-style-painted background/border chrome does not, desyncing
+   from it.
+   [planned: file-explorer-toolbar-zoom-scaling.md]
 10b0321. in the TODO widget, please change the pop-up item adder/editor so that it is restricted to remain visually within the TODO widget itself.
 f8d9cec. Add a new (or existing?) tempui capability to allow agents to add "scratch" text, and make it clear in the tempui instructions given to claude that when the user refers to "scratch," that is what is meant, unless there is a more pressing local meaning.
 cdf45cb. Add "bring to front" and "send to back" buttons to the top-right of widgets, left of the "x" button, which move it in visual z-order to the front or back, respectively.
