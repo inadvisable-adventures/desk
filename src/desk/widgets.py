@@ -3,10 +3,8 @@ import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from watchdog.events import FileSystemEvent, FileSystemEventHandler
-from watchdog.observers import Observer
-
 from desk.hotreload import HotReloadBroker
+from desk_services.file_watcher import WatchHandle, get_service
 
 DEBOUNCE_SECONDS = 0.2
 VALID_KINDS = ("python", "html")
@@ -60,16 +58,27 @@ def discover_widgets(widgets_dir: Path) -> dict[str, WidgetInfo]:
     return widgets
 
 
-class _DebouncedHandler(FileSystemEventHandler):
+class _WidgetChangeDispatcher:
+    """Extracts the changed widget's id (its directory's name -- the
+    first path component under widgets_dir) from a resolved changed
+    path and debounces per widget_id. Was a watchdog
+    FileSystemEventHandler before TODO 578cb6b's migration onto the
+    shared `desk_services.file_watcher` service, which now does the
+    raw-event -> resolved-Path normalization (symlink resolution,
+    FileMovedEvent handling -- see that module) this class used to
+    skip entirely; widgets_dir is resolved here too so the
+    relative_to comparison stays correct if it's ever symlinked (the
+    same gotcha SingleFileWatcher already handled)."""
+
     def __init__(self, widgets_dir: Path, broker: HotReloadBroker) -> None:
-        self.widgets_dir = widgets_dir
+        self.widgets_dir = widgets_dir.resolve()
         self.broker = broker
         self._timers: dict[str, threading.Timer] = {}
         self._lock = threading.Lock()
 
-    def on_any_event(self, event: FileSystemEvent) -> None:
+    def on_change(self, changed_path: Path) -> None:
         try:
-            relative = Path(event.src_path).relative_to(self.widgets_dir)
+            relative = changed_path.relative_to(self.widgets_dir)
         except ValueError:
             return
         if not relative.parts:
@@ -93,14 +102,17 @@ class _DebouncedHandler(FileSystemEventHandler):
 class WidgetWatcher:
     def __init__(self, widgets_dir: Path, broker: HotReloadBroker) -> None:
         self.widgets_dir = widgets_dir
-        self._observer = Observer()
-        self._observer.schedule(_DebouncedHandler(widgets_dir, broker), str(widgets_dir), recursive=True)
+        self._dispatcher = _WidgetChangeDispatcher(widgets_dir, broker)
+        self._handle: WatchHandle | None = None
 
     def start(self) -> None:
-        if self.widgets_dir.is_dir():
-            self._observer.start()
+        if self.widgets_dir.is_dir() and self._handle is None:
+            self._handle = get_service().watch(self.widgets_dir, self._dispatcher.on_change, recursive=True)
 
     def stop(self, timeout: float = 5.0) -> None:
-        if self._observer.is_alive():
-            self._observer.stop()
-            self._observer.join(timeout=timeout)
+        # timeout kept for API compatibility (app.aboutToQuit calls this
+        # with no args anyway) -- cancelling a subscription on the
+        # shared, still-running service has nothing to join.
+        if self._handle is not None:
+            self._handle.cancel()
+            self._handle = None

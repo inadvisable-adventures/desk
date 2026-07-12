@@ -19,9 +19,8 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from watchdog.events import FileMovedEvent, FileSystemEvent, FileSystemEventHandler
-from watchdog.observers import Observer
 
+from desk.file_watch import SingleFileWatcher
 from desk.git_utils import find_git_root
 from desk.shell import current_context
 from desk.todo_file import (
@@ -132,7 +131,7 @@ def _write_and_commit(
         return None
     text = render_todo_file(state["preamble"], state["items"])
     todo_path.write_text(text)
-    # Recorded so the file watcher (see _FileChangeRelay/_SingleFileHandler
+    # Recorded so _on_external_change (fed by the shared SingleFileWatcher
     # below) can tell "the file changed because we just wrote it" apart
     # from a real external edit -- comparing against the file's fresh
     # content on the next change notification, not just a timestamp/flag,
@@ -162,61 +161,16 @@ class _CommitResultRelay(QObject):
     finished = pyqtSignal(bool)
 
 
-FILE_WATCH_DEBOUNCE_SECONDS = 0.3
-
-
-class _FileChangeRelay(QObject):
-    """Dedicated QObject purely to own a pyqtSignal, mirroring
-    _CommitResultRelay above -- lets a watchdog callback (running on the
-    Observer's own background thread) report a file change back onto the
-    GUI thread safely."""
-
-    changed = pyqtSignal()
-
-
-class _SingleFileHandler(FileSystemEventHandler):
-    """watchdog can only watch directories, not a single file -- this
-    filters events down to the one exact path we care about, and
-    debounces bursts (e.g. an editor's save-via-temp-file-then-rename
-    dance) into a single signal emission, same shape as
-    desk.widgets._DebouncedHandler."""
-
-    def __init__(self, target_path: Path, relay: _FileChangeRelay) -> None:
-        # .resolve() both here and in on_any_event: on macOS a
-        # tempfile.mkdtemp() path (and some real Desk directories) is
-        # actually a symlink (/var/folders/... -> /private/var/folders/
-        # ...), and the FSEvents-backed observer reports the *resolved*
-        # path in event.src_path -- comparing against the unresolved
-        # path silently never matches. See LEARNINGS.md's "WidgetWatcher
-        # never fires when pointed at a tempfile.mkdtemp() path".
-        self._target_path = target_path.resolve()
-        self._relay = relay
-        self._timer: threading.Timer | None = None
-        self._lock = threading.Lock()
-
-    def on_any_event(self, event: FileSystemEvent) -> None:
-        # A common "atomic write" idiom -- write to a scratch name, then
-        # rename over the target file -- reports as a FileMovedEvent
-        # whose meaningful path is dest_path (where the file landed),
-        # not src_path (the scratch name, which never matches
-        # self._target_path). See LEARNINGS.md / TODO bb65aab, which
-        # found the identical gap in TempUiManager's directory watcher.
-        raw_path = event.dest_path if isinstance(event, FileMovedEvent) else event.src_path
-        if Path(raw_path).resolve() != self._target_path:
-            return
-        with self._lock:
-            if self._timer is not None:
-                self._timer.cancel()
-            self._timer = threading.Timer(FILE_WATCH_DEBOUNCE_SECONDS, self._relay.changed.emit)
-            self._timer.daemon = True
-            self._timer.start()
-
-
-def _start_file_watcher(todo_path: Path, relay: _FileChangeRelay) -> Observer:
-    observer = Observer()
-    observer.schedule(_SingleFileHandler(todo_path, relay), str(todo_path.parent), recursive=False)
-    observer.start()
-    return observer
+# File watching is now desk.file_watch.SingleFileWatcher (backed by the
+# shared desk_services.file_watcher service, TODO 578cb6b) -- this used
+# to be a bespoke watchdog Observer/handler/relay trio here, extracted
+# (TODO 6bf83a9) into SingleFileWatcher for the Markdown widget but
+# left duplicated here because the self-write-suppression logic below
+# was entangled with this widget's own _state dict (see the now
+# -resolved PARKINGLOT.md note). That suppression logic (comparing
+# state["last_written_text"] in _on_external_change) still lives in
+# this widget, unchanged -- only the watch/debounce/gotcha-handling
+# plumbing moved out.
 
 
 class _ItemDialog(QWidget):
@@ -363,8 +317,6 @@ class TodoWidget(QWidget):
             "pending": False,
             "last_commit_ok": True,
             "last_written_text": None,
-            "watcher": None,
-            "watched_path": None,
         }
 
         # item_id -> (dialog, description as originally loaded) for every
@@ -373,8 +325,8 @@ class TodoWidget(QWidget):
         # conflicts with an in-progress edit. Popped automatically when a
         # dialog closes (see _show_edit_dialog).
         self._open_edits: dict[str, tuple["_ItemDialog", str]] = {}
-        self._file_change_relay = _FileChangeRelay()
-        self._file_change_relay.changed.connect(self._on_external_change)
+        self._watcher = SingleFileWatcher(self)
+        self._watcher.changed.connect(self._on_external_change)
 
         self._status_label = QLabel()
         self._status_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
@@ -446,6 +398,10 @@ class TodoWidget(QWidget):
         self._commit_relay.finished.connect(self._on_commit_finished)
 
         state = self._state
+        # Captured (not self._watcher) so this destroyed-triggered
+        # closure never touches self -- same pattern as the Markdown/
+        # Markdown (Extended)/SVG Viewer widgets' own teardown.
+        watcher = self._watcher
 
         def _flush_on_teardown() -> None:
             # No on_committed callback here: after teardown there's no
@@ -458,9 +414,7 @@ class TodoWidget(QWidget):
                 thread = _write_and_commit(state, REPRIORITIZE_MESSAGE)
                 if thread is not None:
                     thread.join()
-            watcher = state["watcher"]
-            if watcher is not None:
-                watcher.stop()
+            watcher.stop()
 
         self.destroyed.connect(_flush_on_teardown)
 
@@ -484,21 +438,15 @@ class TodoWidget(QWidget):
         self._timestamp_label.setText(f"{verb} {datetime.now().strftime('%H:%M:%S')}")
 
     def _ensure_watcher(self, todo_path: Path | None) -> None:
-        # Only (re)started when the resolved path actually changes -- not
-        # on every reload() call, which would otherwise restart (and
-        # briefly stop watching during) every single external-change
-        # -triggered reload too.
-        if todo_path == self._state["watched_path"] and (
-            todo_path is None or self._state["watcher"] is not None
-        ):
-            return
-        old_watcher = self._state["watcher"]
-        if old_watcher is not None:
-            old_watcher.stop()
-        self._state["watcher"] = (
-            _start_file_watcher(todo_path, self._file_change_relay) if todo_path is not None else None
-        )
-        self._state["watched_path"] = todo_path
+        # SingleFileWatcher.watch() is already a no-op when called again
+        # for the same path (see desk.file_watch), so this no longer
+        # needs its own "did the path actually change" guard -- it won't
+        # restart (and briefly stop watching during) every single
+        # external-change-triggered reload.
+        if todo_path is None:
+            self._watcher.stop()
+        else:
+            self._watcher.watch(todo_path)
 
     def _on_external_change(self) -> None:
         todo_path = self._state["todo_path"]

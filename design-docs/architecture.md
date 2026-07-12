@@ -116,8 +116,8 @@ key design decisions behind that structure, and the tradeoffs considered.
 │  │               watcher thread → GUI thread)          │                  │
 │  └───────────────────────────────────────────────────┘                  │
 │                                                                         │
-│  WidgetWatcher (watchdog, background thread) watches widgets/ and       │
-│  feeds the HotReloadBroker for both widget kinds.                       │
+│  WidgetWatcher (background thread, via the shared File Watcher Service) │
+│  watches widgets/ and feeds the HotReloadBroker for both widget kinds.  │
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -259,9 +259,11 @@ Desk Bridge API.
     native `QTextBrowser.setMarkdown()` (no Markdown-library dependency)
     and auto-reloads it when the file changes on disk. File watching goes
     through `desk.file_watch.SingleFileWatcher` — a reusable single-file
-    watcher extracted from the TODO widget's own watcher so its two
-    watchdog gotchas (FSEvents reports symlink-resolved paths; an atomic
-    write lands as a `FileMovedEvent`/`dest_path`) live in one place; see
+    watcher (itself backed by the shared File Watcher Service, item 19
+    above) extracted from the TODO widget's own original bespoke
+    watcher, which now also uses it, so the two watchdog gotchas
+    (FSEvents reports symlink-resolved paths; an atomic write lands as
+    a `FileMovedEvent`/`dest_path`) live in one place; see
     `LEARNINGS.md`. The file is picked via an editor-style "Open" button
     seeded from the current Desk directory (`desk.shell.current_context`)
     and, like the Code Editor, is not persisted across a reload (the
@@ -344,6 +346,25 @@ Desk Bridge API.
     aspect ratio (a circle came out as a wide ellipse). An invalid/
     unparseable SVG shows a message instead of crashing or leaving a
     blank canvas. See `plans/svg-viewer-widget.md`.
+19. **File Watcher Service** (`desk_services.file_watcher`) — a single,
+    process-wide `watchdog.observers.Observer`, lazily constructed via
+    module-level `get_service()`. Every file/directory watcher in the
+    app (`desk.file_watch.SingleFileWatcher`, `desk.widgets
+    .WidgetWatcher`, `desk.shell.temp_ui_manager.TempUiManager`)
+    schedules its watch onto this one shared `Observer` instead of
+    constructing its own, each keeping its existing public API/signals
+    unchanged. This exists because *separate* `Observer` instances
+    watching overlapping/nested paths (e.g. a Desk directory and its
+    own `.desk_temp/` subdirectory, previously watched by two different
+    watchers) collide at macOS's FSEvents layer with `RuntimeError:
+    Cannot add watch ... it is already scheduled` — routing every watch
+    through one `Observer` eliminates that regardless of path overlap.
+    Identical `(path, recursive)` requests from different callers share
+    one native schedule and fan out to every subscriber. Also
+    centralizes the two watchdog gotchas every consumer used to
+    duplicate (FSEvents reports symlink-resolved paths; an atomic write
+    lands as a `FileMovedEvent` whose real path is `dest_path`, not
+    `src_path` — see `LEARNINGS.md`). See `plans/file-watcher-service.md`.
 
 ### Widget Model
 

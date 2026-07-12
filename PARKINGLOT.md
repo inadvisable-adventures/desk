@@ -120,28 +120,6 @@ This file captures thoughts and TODO items that arise during work on other thing
   deliberate scope limitation — revisit if stale displayed content for
   an already-open Question Widget becomes a real annoyance.
 
-- **`FSEventsEmitter` "already scheduled" background-thread warning when
-  a TODO widget is opened in a headless test**
-
-  Noticed (but not chased down) while verifying TODO `c8e3b28`: opening
-  a real `DeskWindow` with a `todo` widget placed on it reliably prints
-  `Unhandled exception in FSEventsEmitter ... RuntimeError: Cannot add
-  watch ... it is already scheduled` for the current Desk's temp
-  directory, even though only one `DeskWindow` (and thus, as far as
-  this was checked, only one `watchdog` `Observer` per watched path) is
-  ever constructed. Confirmed directly it does *not* happen when a
-  `DeskWindow` is booted without ever opening a `todo` widget — so it's
-  specifically triggered by the combination of the TODO widget's own
-  single-file watcher (watching the directory containing `TODO.md`,
-  i.e. the Desk's directory itself) and `TempUiManager`'s directory
-  watcher (watching that same directory's `.desk_temp` subdirectory).
-  Didn't cause any test assertion to fail and is only a background
-  -thread stderr warning, not a raised exception in the main script, so
-  not investigated further. Worth root-causing if it's ever seen in a
-  real (non-test) run, or if a real bug (missed/duplicated file events)
-  is ever reported that could plausibly trace back to two overlapping
-  `watchdog` watches on nested paths.
-
 - **Personal information audit: one leaked absolute path with local
   username**
 
@@ -337,22 +315,6 @@ This file captures thoughts and TODO items that arise during work on other thing
   `_bind_claude_widget` special-cases)? Revisit as its own design
   decision; a clean answer would unlock file-persistence here plus
   simplify the temp-UI and claude widgets.
-
-- **Consolidate the TODO widget's single-file watcher onto
-  `desk.file_watch.SingleFileWatcher`**
-
-  TODO 6bf83a9 extracted a reusable, gotcha-hardened single-file watcher
-  (`desk.file_watch.SingleFileWatcher`) for the Markdown widget, adapted
-  from the TODO widget's own `_SingleFileHandler`/`_start_file_watcher`.
-  The TODO widget was left on its own copy because its watcher is
-  entangled with self-write-echo suppression (comparing fresh file
-  content against `last_written_text`) tied to its state dict, so
-  swapping it out isn't a pure lift-and-shift and risks regressing a
-  working, well-tested path. Worth consolidating later — either by
-  growing `SingleFileWatcher` to optionally own the self-write
-  suppression, or by having the TODO widget layer that on top of the
-  shared watcher — so there's one single-file watcher implementation
-  instead of two.
 
 - **In-widget zoom/pan for the SVG Viewer**
 

@@ -1307,7 +1307,7 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    reproduction -- see `QUESTIONS.md` and
    `plans/fix-desk-picker-segfault.md`.
    [planned: fix-desk-picker-segfault.md]
-578cb6b. Create a service for filewatchers in Desk, both from the app
+578cb6b. COMPLETED: Create a service for filewatchers in Desk, both from the app
    and from widgets. create a new `desk-services` directory under
    `./src/`, and create a sub-directory file-watcher, and put the
    implementation in there. For now, only implement the APIs that are

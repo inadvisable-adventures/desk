@@ -11,6 +11,7 @@ from desk.server.app import DEFAULT_WIDGETS_DIR
 from desk.server.runner import start_server
 from desk.shell.window import DeskWindow
 from desk.widgets import WidgetWatcher, discover_widgets
+from desk_services.file_watcher import get_service
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("desk")
@@ -47,5 +48,11 @@ def main() -> int:
     handle.gui_bridge.attach(window)
     app.aboutToQuit.connect(window.save_current_desk)
     window.show()
+
+    # Stops the shared file-watcher Observer thread itself (TODO
+    # 578cb6b) -- connected last so it runs after every individual
+    # consumer's own aboutToQuit-triggered watcher.stop()/handle.cancel(),
+    # never racing a cancel() against an already-stopped Observer.
+    app.aboutToQuit.connect(get_service().stop)
 
     return app.exec()

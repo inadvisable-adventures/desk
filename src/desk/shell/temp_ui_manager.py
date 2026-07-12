@@ -3,14 +3,6 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal
-from watchdog.events import (
-    FileCreatedEvent,
-    FileModifiedEvent,
-    FileMovedEvent,
-    FileSystemEvent,
-    FileSystemEventHandler,
-)
-from watchdog.observers import Observer
 
 from desk.git_utils import find_git_root
 from desk.temp_ui import (
@@ -20,6 +12,7 @@ from desk.temp_ui import (
     ensure_gitignore_entry,
     is_temp_ui_filename,
 )
+from desk_services.file_watcher import WatchHandle, get_service
 
 DEBOUNCE_SECONDS = 0.3
 
@@ -35,43 +28,30 @@ class _Relay(QObject):
     edited = pyqtSignal(Path)
 
 
-class _DirectoryHandler(FileSystemEventHandler):
+class _DirectoryHandler:
     """Watches a whole directory (unlike the TODO widget's single-file
     watcher) for UUID-named files being created or modified, debouncing
     per-path bursts. Ignores non-UUID filenames (including
     desk-temporary-ui.md, which naturally fails the UUID check) and
-    self-recorded writes (the Question Widget's own answer-append)."""
+    self-recorded writes (the Question Widget's own answer-append).
 
-    def __init__(self, directory: Path, relay: _Relay, manager: "TempUiManager") -> None:
-        # .resolve(): watchdog's FSEvents backend reports the *resolved*
-        # path, which silently never matches an unresolved directory on
-        # macOS (tempfile.mkdtemp() and some real directories are
-        # symlinks) -- see LEARNINGS.md's "WidgetWatcher never fires..."
-        # and its TODO d25e557 recurrence.
+    Was a watchdog FileSystemEventHandler before TODO 578cb6b's
+    migration onto the shared `desk_services.file_watcher` service,
+    which now centrally handles the two gotchas this class used to
+    (symlink-resolved event paths; an atomic write landing as a
+    FileMovedEvent whose real path is dest_path, not src_path -- see
+    LEARNINGS.md and plans/fix-temp-ui-watcher-missed-atomic-write.md).
+    The old event.is_directory early-exit is dropped as redundant, not
+    a behavior change: TempUiManager._handle_change's own
+    `path.is_file()` check already discards directory-entry events."""
+
+    def __init__(self, directory: Path, manager: "TempUiManager") -> None:
         self._directory = directory.resolve()
-        self._relay = relay
         self._manager = manager
         self._timers: dict[str, threading.Timer] = {}
         self._lock = threading.Lock()
 
-    def on_any_event(self, event: FileSystemEvent) -> None:
-        if event.is_directory:
-            return
-        # A common "atomic write" idiom -- write to a scratch name, then
-        # rename into place (editors/safe-write tools routinely do this;
-        # see LEARNINGS.md) -- reports as a FileMovedEvent, not
-        # Created/Modified. Its meaningful path is dest_path (where the
-        # file landed), not src_path (the scratch name, which never
-        # matches is_temp_ui_filename anyway) -- confirmed directly that
-        # without this, such a write is silently never detected at all.
-        # See plans/fix-temp-ui-watcher-missed-atomic-write.md.
-        if isinstance(event, FileMovedEvent):
-            raw_path = event.dest_path
-        elif isinstance(event, (FileCreatedEvent, FileModifiedEvent)):
-            raw_path = event.src_path
-        else:
-            return
-        path = Path(raw_path).resolve()
+    def on_change(self, path: Path) -> None:
         if path.parent != self._directory or not is_temp_ui_filename(path.name):
             return
         # A brand-new file reliably fires *both* a Created and a
@@ -106,14 +86,14 @@ class TempUiManager(QObject):
         self._relay = _Relay()
         self._relay.added.connect(self.file_added.emit)
         self._relay.edited.connect(self.file_edited.emit)
-        self._observer: Observer | None = None
+        self._handle: WatchHandle | None = None
         self._watched_directory: Path | None = None
         self._provisioned_directory: Path | None = None
         self._last_written: dict[str, str] = {}
         # Classifies added-vs-edited by whether a filename has ever been
-        # seen before (see _DirectoryHandler.on_any_event's docstring
-        # comment for why this can't be decided from the raw watchdog
-        # event type).
+        # seen before (see _DirectoryHandler.on_change's inline comment
+        # for why this can't be decided from the raw watchdog event
+        # type).
         self._known_files: set[str] = set()
 
     def provision(
@@ -148,21 +128,19 @@ class TempUiManager(QObject):
         self._last_written[path.resolve().name] = text
 
     def _start_watching(self, directory: Path) -> None:
-        if self._observer is not None and self._watched_directory == directory:
+        if self._handle is not None and self._watched_directory == directory:
             return
         self._stop_watching()
         self._known_files.clear()
         self._last_written.clear()
-        observer = Observer()
-        observer.schedule(_DirectoryHandler(directory, self._relay, self), str(directory), recursive=False)
-        observer.start()
-        self._observer = observer
+        handler = _DirectoryHandler(directory, self)
+        self._handle = get_service().watch(directory, handler.on_change, recursive=False)
         self._watched_directory = directory
 
     def _stop_watching(self) -> None:
-        if self._observer is not None:
-            self._observer.stop()
-            self._observer = None
+        if self._handle is not None:
+            self._handle.cancel()
+            self._handle = None
         self._watched_directory = None
 
     def _handle_change(self, path: Path) -> None:

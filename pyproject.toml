@@ -22,4 +22,4 @@ dependencies = [
 desk = "desk.app:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/desk"]
+packages = ["src/desk", "src/desk_services"]

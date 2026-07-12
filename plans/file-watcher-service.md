@@ -1,4 +1,4 @@
-# Centralized file-watcher service
+# Centralized file-watcher service (COMPLETED)
 
 TODO `578cb6b`.
 
@@ -187,4 +187,41 @@ Headless:
 
 ## Status
 
-Not yet implemented.
+Implemented and verified. All headless verification steps above passed:
+
+- `FileWatcherService` in isolation: identical `(path, recursive)` keys
+  share one native schedule and fan out to every subscriber; cancelling
+  one subscriber leaves others receiving events; cancelling the last
+  subscriber unschedules the native watch; re-watching after full
+  cancellation re-schedules cleanly.
+- Two watches on nested paths (directory + subdirectory, the actual
+  reported real-world shape) schedule and fire independently through
+  the shared service with no exception.
+- `SingleFileWatcher`: debounced `changed` signal, idempotent
+  re-`watch()` of the same path, and the new `record_own_write`
+  suppression all verified against a real temp file; the Markdown,
+  Markdown (Extended), and SVG Viewer widgets still `build()`
+  successfully unchanged.
+- `WidgetWatcher`: hot-reload still fires `HotReloadBroker
+  .widget_changed` with the correct widget id on a real widget-source
+  edit, and stops cleanly.
+- `TempUiManager`: `file_added`/`file_edited` fire correctly classified
+  by prior-seen-filename, and `record_own_write` still suppresses
+  self-writes.
+- TODO widget: a full round-trip against a real temp Desk directory --
+  initial load, an add/reprioritize write-and-commit that does *not*
+  misfire `_on_external_change` (the widget's own pre-existing
+  `last_written_text` comparison, left as-is rather than routed through
+  `SingleFileWatcher.record_own_write`, since `_write_and_commit` is
+  deliberately not a method and must not hold a reference to the
+  watcher -- see its own docstring), and a real external edit to
+  `TODO.md` reloading correctly.
+- Real widget-loading path: `desk.file_watch`, `desk.widgets
+  .WidgetWatcher`, and `desk.shell.temp_ui_manager.TempUiManager` all
+  exercised via real (offscreen) `PyQt6.QtWidgets.QApplication`/
+  `QCoreApplication` instances, not mocks. A literal `DeskWindow`
+  construction was skipped, same as prior plans, due to the
+  pre-existing, unrelated offscreen stall.
+
+No `LEARNINGS.md` entry was needed -- nothing surprising turned up
+during verification; the migration matched the plan's design exactly.
