@@ -1350,6 +1350,10 @@ cee6f74. COMPLETED: Refactor TempUiManager and the TODO widget's file-watching s
    native-style-painted background/border chrome does not, desyncing
    from it.
    [planned: file-explorer-toolbar-zoom-scaling.md]
+a053e3a. Update widgets which load files to note in the title bar for
+   the widget if the widget is loading a file from a path outside of
+   the currently associated directory, by showing "[EXTERNAL]".
+   [planned: widget-external-file-indicator.md]
 10b0321. in the TODO widget, please change the pop-up item adder/editor so that it is restricted to remain visually within the TODO widget itself.
 f8d9cec. Add a new (or existing?) tempui capability to allow agents to add "scratch" text, and make it clear in the tempui instructions given to claude that when the user refers to "scratch," that is what is meant, unless there is a more pressing local meaning.
 cdf45cb. Add "bring to front" and "send to back" buttons to the top-right of widgets, left of the "x" button, which move it in visual z-order to the front or back, respectively.
