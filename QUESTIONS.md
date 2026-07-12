@@ -17,3 +17,23 @@ opening a `.desk` file. Code review (see
 
 (Answer: )
 
+## TODO `96013cf`/`858752b`: both name their rename target `markdown_old_basic` -- conflict
+
+Two TODO items, added together, each rename a *different* widget to
+the *same* new name:
+
+- `96013cf`: rename `widgets/markdown/` (the plain Markdown widget) to
+  `markdown_old_basic`.
+- `858752b`: rename `widgets/markdown_ex/` (Markdown (Extended)) to
+  `markdown_old_basic`.
+
+Both can't be true -- two widget directories can't share one id/name.
+Recorded verbatim as given rather than silently guessing which one was
+meant, or inventing a different name for one of them.
+
+- Which widget should actually become `markdown_old_basic`?
+- Should the other one keep its current name, or get a different new
+  name (e.g. something like `markdown_ex_old_basic`)? If so, what?
+
+(Answer: )
+

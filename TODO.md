@@ -1424,3 +1424,36 @@ fbd0554. Add an option during new Desk creation to initialize the new
    the initial prompt given to claude (see `CLAUDE_WIDGET_PROMPT` in
    `widgets/claude/widget.py`, which already conditions its prompt on
    the current Desk's directory).
+7a086ba. Add a Questions widget that works similarly to the TODO
+   widget, but for managing QUESTIONS.md.
+a801180. Add to the tempui instructions to always use QUESTIONS.md for
+   any questions there are for the user. If adding a new question, send
+   a top-right tempui notification that, when clicked, either visually
+   focuses a currently-opened Questions widget (see TODO 7a086ba) or
+   else opens a new Questions widget and focuses it.
+96013cf. Rename the current markdown widget (`widgets/markdown/`) as
+   `markdown_old_basic`, and add a timestamped note near the top of
+   relevant plans that this rename was done, but don't change the rest
+   of the plan. Mark that widget as deprecated and confirm that it
+   shows up in the deprecated group in the widget-add context menu
+   (depends on TODO ed483e2's active/deprecated grouping existing).
+858752b. Rename the current markdown_ex widget (`widgets/markdown_ex/`)
+   as `markdown_old_basic`, and add a timestamped note near the top of
+   relevant plans that this rename was done, but don't change the rest
+   of the plan.
+   NOTE (added when this item was recorded, not by the user): this
+   names the *same* target, `markdown_old_basic`, as TODO 96013cf,
+   which renames a *different* widget (`widgets/markdown/`) -- two
+   widgets can't both take that name. Flagged here verbatim as given;
+   needs the user's clarification before either rename is implemented
+   (see QUESTIONS.md).
+17ac2a8. Check for places in the code where the old basic markdown
+   widget is being used, and add to QUESTIONS.md about whether or not
+   they should be updated to point to the new markdown widget. (Depends
+   on TODO 96013cf/858752b's rename(s) actually happening first, and on
+   resolving which widget "the new markdown widget" refers to.)
+cb2790d. When creating a new Desk, don't add all of the widgets to it --
+   just open a markdown viewer of the README.md file if there is one
+   for the project, or else add a Scratch widget with content for a
+   basic readme that has a "# [desk name] README" at the top followed
+   by a section called "## What this project is about or exploring...".
