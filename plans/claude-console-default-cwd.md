@@ -1,4 +1,4 @@
-# Claude/Console widgets default to the active project directory
+# Claude/Console widgets default to the active project directory (COMPLETED)
 
 TODO `f447303`.
 
@@ -65,4 +65,23 @@ returning a known directory.
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `TerminalWidget.__init__` gained `cwd: Path |
+None = None`, passed straight to `subprocess.Popen`'s own `cwd=`;
+`widgets/console/widget.py` and `widgets/claude/widget.py`'s
+`ClaudeWidget.__init__` both pass `current_context
+.get_current_desk_directory()` through. Also updates
+`design-docs/architecture.md`'s Console Widget and Claude Widget
+entries.
+
+Verified headlessly with a real spawned PTY (not just call-argument
+inspection): `TerminalWidget(cwd=<temp dir>)`, asked via `pwd` typed
+into the live shell, actually starts in that directory; the existing
+`cwd=None` default still inherits the test process's own cwd
+(regression check); both `widgets/console/widget.py:build()` and
+`ClaudeWidget()` construction, with `current_context` patched to a
+known directory, produce a shell whose real `pwd` output matches it.
+Regression-checked every other verification script from this session.
+
+No `LEARNINGS.md` entry needed — nothing surprising here, `subprocess
+.Popen`'s `cwd=` accepting a path-like object directly is standard,
+documented behavior, not a gotcha.

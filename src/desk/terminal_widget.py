@@ -5,6 +5,7 @@ import pty
 import struct
 import subprocess
 import termios
+from pathlib import Path
 
 import pyte
 from PyQt6.QtCore import Qt, QSocketNotifier, pyqtSignal
@@ -214,7 +215,9 @@ class TerminalWidget(QPlainTextEdit):
     screen-buffer state (not an appended log), so full-screen, redraw-in
     -place programs (`claude` included) display correctly. Shared by the
     Console widget (`widgets/console/`, plain `bash`) and the Claude widget
-    (`widgets/claude/`, `bash` with `claude` typed into it) -- widget
+    (`widgets/claude/`, `bash` with `claude` typed into it), both of
+    which pass `cwd` (TODO f447303) as the current Desk's own directory
+    -- widget
     directories can't import each other directly, so this lives in
     `desk.` proper, the same "shared logic, thin widget.py entry points"
     pattern as `desk.todo_file`/`desk.temp_ui`. See
@@ -227,7 +230,9 @@ class TerminalWidget(QPlainTextEdit):
     # 5ddbef0).
     process_exited = pyqtSignal()
 
-    def __init__(self, parent=None, command: list[str] | None = None) -> None:
+    def __init__(
+        self, parent=None, command: list[str] | None = None, cwd: Path | None = None
+    ) -> None:
         super().__init__(parent)
         self.setReadOnly(True)
         self.setUndoRedoEnabled(False)
@@ -246,6 +251,13 @@ class TerminalWidget(QPlainTextEdit):
             stdin=slave_fd,
             stdout=slave_fd,
             stderr=slave_fd,
+            # None (the default) inherits this process's own cwd, same as
+            # before `cwd` existed as a parameter -- correct fallback for
+            # the one caller-side edge case (no current Desk directory
+            # known yet), not a bug to work around here. TODO f447303:
+            # the Console/Claude widgets pass the current Desk's own
+            # directory instead of leaving this unset.
+            cwd=cwd,
             # start_new_session=True (not preexec_fn=os.setsid): preexec_fn
             # runs arbitrary Python between fork() and exec() and is unsafe
             # in a multi-threaded process -- which a running PyQt app is.

@@ -210,7 +210,10 @@ Desk Bridge API.
     full-screen, redraw-in-place programs (`claude`'s own interface
     included) display correctly — not the regex-stripped/append-only
     approach an earlier version of this doc described, which broke
-    exactly that case.
+    exactly that case. `bash`'s working directory defaults to the current
+    Desk's own directory (TODO `f447303`, via `TerminalWidget`'s `cwd`
+    parameter) — previously unset, so it silently inherited wherever the
+    Desk process itself happened to be launched from.
 11. **TODO Widget** — a built-in `kind: "python"` widget
     (`widgets/todo/`) that reads the nearest `TODO.md` relative to the
     current Desk's directory (via `desk.shell.current_context` — a
@@ -246,7 +249,10 @@ Desk Bridge API.
     `widgets/console/widget.py` into `desk.terminal_widget` for this
     reuse — widget directories can't import each other directly, so
     shared widget logic lives in `desk.` proper, the same pattern as
-    `desk.todo_file`/`desk.temp_ui`. See `plans/claude-widget.md`.
+    `desk.todo_file`/`desk.temp_ui`. See `plans/claude-widget.md`. Like
+    the Console Widget, `bash`'s (and thus, after `exec`, `claude`'s own)
+    working directory defaults to the current Desk's directory (TODO
+    `f447303`) instead of the Desk process's own cwd.
     **Session persistence/resume (TODO 1d7331b):** the widget's Desk
     `instance_id` is generated as a full UUID and doubles as its claude
     `--session-id` (the same instance_id-as-durable-identity pattern the

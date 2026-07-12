@@ -53,7 +53,11 @@ class ClaudeWidget(TerminalWidget):
     See plans/claude-widget-session-resume.md."""
 
     def __init__(self) -> None:
-        super().__init__(command=["bash"])
+        # cwd defaults to the current Desk's own directory (TODO
+        # f447303), not wherever the Desk process itself happens to be
+        # running from -- exec-ing claude afterward keeps this same cwd,
+        # since exec replaces the process image in place without forking.
+        super().__init__(command=["bash"], cwd=current_context.get_current_desk_directory())
 
     def start_session(self, session_id: str, resume: bool) -> None:
         # `exec` so bash loads its profile (PATH/aliases/nvm/...) and then
