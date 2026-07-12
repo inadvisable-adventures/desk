@@ -1419,6 +1419,7 @@ ac212bc. Create a "stack" widget to keep track of nested discussions,
    stack as markdown into a project file called `STACK-[timestamp].md`,
    and the ability to load from an appropriately-formatted stack
    markdown file.
+   [planned: stack-widget.md]
 4c3fe4b. When creating a new .desk, the user should pick both the title
    and the initial associated directory (today, `new_desk` only prompts
    for a name/title and always creates the new Desk inside the
