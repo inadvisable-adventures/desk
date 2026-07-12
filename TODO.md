@@ -1304,3 +1304,4 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    reproduction -- see `QUESTIONS.md` and
    `plans/fix-desk-picker-segfault.md`.
    [planned: fix-desk-picker-segfault.md]
+578cb6b. Create a service for filewatchers in Desk, both from the app and from widgets. create a new `desk-services` directory under `./src/`, and create a sub-directory file-watcher, and put the implementation in there. For now, only implement the APIs that are needed by the app and widgets. The currently active watchers should be tracked and managed by this service. Watches should be de-duplicated as appropriate, such that a single watcher might make more than one notification; the goal of the de-duplication is to fix an issue that I've seen with file watchers in the current version of desk, which shows an error ("RuntimeError: Cannot add watch <ObservedWatch: path=... is_recursive=False> - it is already scheduled.").
