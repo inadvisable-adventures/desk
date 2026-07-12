@@ -195,22 +195,45 @@ handling of its own. `WorkspaceView.mousePressEvent` already intercepts and
 bounds before it can reach an embedded child widget (see [Zoom-Correct
 Dragging](#zoom-correct-dragging)), so a real `QPushButton.clicked` inside
 the titlebar would never actually fire. Instead, `_hit_test_chrome` gains a
-third hit kind: `(frame, "close")`, checked before the general titlebar
-case since `_CloseButton` is itself nested inside `_TitleBar`'s layout.
+`(frame, "close")` hit kind, checked before the general titlebar case since
+`_CloseButton` is itself nested inside `_TitleBar`'s layout.
 
 `WorkspaceView` treats a close-button hit as an ordinary **click**, not a
-drag: a press remembers which frame's close button was hit
-(`_close_press_frame`) without starting a drag session; the matching
-release re-runs the hit test and only fires `widget_close_requested` if the
-release landed on the *same* button (press-then-drag-away is a cancelled
-click, matching normal button semantics — release elsewhere does nothing
-and does not fall through to starting a drag).
+drag: a press remembers which frame's close button was hit and which
+button kind it was (`_button_press: tuple[WidgetFrame, str] | None` --
+generalized, TODO cdf45cb, to also cover the bring-to-front/send-to-back
+buttons below, not just close) without starting a drag session; the
+matching release re-runs the hit test and only fires the corresponding
+action if the release landed on the *same* button (press-then-drag-away is
+a cancelled click, matching normal button semantics — release elsewhere
+does nothing and does not fall through to starting a drag).
 
 `DeskWindow` connects `widget_close_requested`, shows a confirmation prompt
 (same `Confirm`-callable pattern as switching/relocating a Desk — see
 `design-docs/architecture.md`'s Desk Model), and on confirmation removes
 the widget from the canvas and re-saves the current Desk. See
 `plans/widget-close-button.md`.
+
+### Bring to Front / Send to Back Buttons
+
+Two more chrome buttons (`_BringToFrontButton` "▲", `_SendToBackButton`
+"▼", both sharing a `_TitlebarButton` base class with `_CloseButton`) sit
+left of the close button, in that order. Same purely-visual/centralized
+-click-handling shape as the close button — `_hit_test_chrome` recognizes
+`(frame, "bring_to_front")`/`(frame, "send_to_back")` the same way.
+
+Unlike close (which needs `DeskWindow` confirmation and Desk-state
+removal), these are handled entirely inside `WorkspaceView` itself:
+`bring_to_front(frame)`/`send_to_back(frame)` set the frame's
+`QGraphicsProxyWidget.setZValue()` to one above the current maximum, or
+one below the current minimum, across every placed frame (`self._frames`)
+— not a fixed constant, so repeated clicks on different widgets keep
+stacking correctly rather than tying. This is genuine `QGraphicsScene`
+stacking order, so it also affects which widget wins an overlapping click,
+not just paint order. Session-only — no z-order field exists on
+`WidgetState`, so stacking order isn't persisted across a Desk save/reload
+(everything reverts to implicit insertion-order stacking on next load).
+See `plans/widget-z-order-buttons.md`.
 
 ### Zoom Control
 

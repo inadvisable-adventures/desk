@@ -16,8 +16,10 @@ from desk.shell.widget_frame import (
     MIN_HEIGHT,
     MIN_WIDTH,
     WidgetFrame,
+    _BringToFrontButton,
     _CloseButton,
     _ResizeHandle,
+    _SendToBackButton,
     _TitleBar,
 )
 from desk.shell.widget_spawn_menu import WidgetSpawnMenu
@@ -33,6 +35,11 @@ ZOOM_CONTROL_MARGIN = 12
 DESK_PICKER_MARGIN = 12
 TEMP_UI_NOTIFICATIONS_MARGIN = 12
 SCALE_EPSILON = 1e-6
+
+# Chrome buttons handled as an ordinary click (press-then-release-on
+# -the-same-button), not a drag -- see _hit_test_chrome/mousePressEvent/
+# mouseReleaseEvent (TODO cdf45cb generalized this from just "close").
+_BUTTON_KINDS = {"close", "bring_to_front", "send_to_back"}
 
 # A large, fixed bound for the "infinite" canvas. Without this,
 # QGraphicsView derives its scene rect from the current items' bounding
@@ -65,7 +72,12 @@ class WorkspaceView(QGraphicsView):
         self._drag_frame: WidgetFrame | None = None
         self._drag_edge: str | None = None
         self._drag_last_pos: QPointF | None = None
-        self._close_press_frame: WidgetFrame | None = None
+        # Which chrome button ("close", "bring_to_front", "send_to_back")
+        # was pressed and on which frame -- a press-then-release-on-the
+        # -same-button click, generalized from what was previously just
+        # "the" close button (see _hit_test_chrome/mousePressEvent/
+        # mouseReleaseEvent below).
+        self._button_press: tuple[WidgetFrame, str] | None = None
         self._forwarding_wheel = False
 
         self.zoom_control = ZoomControl(self.viewport())
@@ -249,8 +261,8 @@ class WorkspaceView(QGraphicsView):
             hit = self._hit_test_chrome(event.position())
             if hit is not None:
                 frame, edge = hit
-                if edge == "close":
-                    self._close_press_frame = frame
+                if edge in _BUTTON_KINDS:
+                    self._button_press = (frame, edge)
                     event.accept()
                     return
                 self._drag_frame, self._drag_edge = hit
@@ -273,12 +285,17 @@ class WorkspaceView(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
-        if self._close_press_frame is not None:
-            frame = self._close_press_frame
-            self._close_press_frame = None
+        if self._button_press is not None:
+            frame, kind = self._button_press
+            self._button_press = None
             hit = self._hit_test_chrome(event.position())
-            if hit is not None and hit[0] is frame and hit[1] == "close":
-                self.widget_close_requested.emit(frame)
+            if hit is not None and hit[0] is frame and hit[1] == kind:
+                if kind == "close":
+                    self.widget_close_requested.emit(frame)
+                elif kind == "bring_to_front":
+                    self.bring_to_front(frame)
+                elif kind == "send_to_back":
+                    self.send_to_back(frame)
             event.accept()
             return
         if self._drag_frame is not None:
@@ -304,16 +321,42 @@ class WorkspaceView(QGraphicsView):
         scene_pos = self.mapToScene(view_pos.toPoint())
         local_point = (scene_pos - item.pos()).toPoint()
         child = frame.childAt(local_point)
-        while child is not None and not isinstance(child, (_CloseButton, _TitleBar, _ResizeHandle)):
+        while child is not None and not isinstance(
+            child, (_CloseButton, _BringToFrontButton, _SendToBackButton, _TitleBar, _ResizeHandle)
+        ):
             child = child.parentWidget()
 
         if isinstance(child, _CloseButton):
             return frame, "close"
+        if isinstance(child, _BringToFrontButton):
+            return frame, "bring_to_front"
+        if isinstance(child, _SendToBackButton):
+            return frame, "send_to_back"
         if isinstance(child, _TitleBar):
             return frame, None
         if isinstance(child, _ResizeHandle):
             return frame, child.edge
         return None
+
+    def bring_to_front(self, frame: WidgetFrame) -> None:
+        proxy = frame.graphicsProxyWidget()
+        if proxy is None:
+            return
+        max_z = max((z for z in self._frame_z_values()), default=0.0)
+        proxy.setZValue(max_z + 1)
+
+    def send_to_back(self, frame: WidgetFrame) -> None:
+        proxy = frame.graphicsProxyWidget()
+        if proxy is None:
+            return
+        min_z = min((z for z in self._frame_z_values()), default=0.0)
+        proxy.setZValue(min_z - 1)
+
+    def _frame_z_values(self):
+        for other in self._frames:
+            other_proxy = other.graphicsProxyWidget()
+            if other_proxy is not None:
+                yield other_proxy.zValue()
 
     @staticmethod
     def _apply_drag(proxy: QGraphicsProxyWidget, edge: str | None, dx: float, dy: float) -> None:

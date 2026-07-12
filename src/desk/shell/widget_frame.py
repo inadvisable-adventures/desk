@@ -11,18 +11,21 @@ MIN_WIDTH = 200
 MIN_HEIGHT = 120
 
 
-class _CloseButton(QWidget):
-    """Purely visual: background, cursor shape, and an 'x' glyph. Clicking
-    is handled centrally by WorkspaceView (not by this widget itself) --
-    see design-docs/widget-ux.md for why."""
+class _TitlebarButton(QWidget):
+    """Purely visual: background, cursor shape, and a glyph label.
+    Clicking is handled centrally by WorkspaceView (not by this widget
+    itself) -- see design-docs/widget-ux.md for why. Shared base for
+    the close, bring-to-front, and send-to-back buttons -- each is
+    otherwise identical (a constant-screen-size glyph, counter-scaled
+    the same way as the rest of the chrome)."""
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, glyph: str, parent=None) -> None:
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self._label = QLabel("✕")
+        self._label = QLabel(glyph)
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         layout.addWidget(self._label)
@@ -37,6 +40,21 @@ class _CloseButton(QWidget):
         self.setFixedSize(size, size)
         font_pt = max(1, round(TITLEBAR_FONT_PT / view_scale))
         self._label.setStyleSheet(f"color: #e8e8e8; font-size: {font_pt}pt;")
+
+
+class _CloseButton(_TitlebarButton):
+    def __init__(self, parent=None) -> None:
+        super().__init__("✕", parent)
+
+
+class _BringToFrontButton(_TitlebarButton):
+    def __init__(self, parent=None) -> None:
+        super().__init__("▲", parent)
+
+
+class _SendToBackButton(_TitlebarButton):
+    def __init__(self, parent=None) -> None:
+        super().__init__("▼", parent)
 
 
 class _TitleBar(QWidget):
@@ -58,6 +76,10 @@ class _TitleBar(QWidget):
         self._update_label_text()
         layout.addWidget(self._label)
         layout.addStretch()
+        self.bring_to_front_button = _BringToFrontButton()
+        layout.addWidget(self.bring_to_front_button)
+        self.send_to_back_button = _SendToBackButton()
+        layout.addWidget(self.send_to_back_button)
         self.close_button = _CloseButton()
         layout.addWidget(self.close_button)
 
@@ -82,6 +104,8 @@ class _TitleBar(QWidget):
         self.setFixedHeight(max(1, round(TITLEBAR_HEIGHT / view_scale)))
         font_pt = max(1, round(TITLEBAR_FONT_PT / view_scale))
         self._label.setStyleSheet(f"color: #e8e8e8; font-size: {font_pt}pt;")
+        self.bring_to_front_button.apply_scale(view_scale)
+        self.send_to_back_button.apply_scale(view_scale)
         self.close_button.apply_scale(view_scale)
 
 

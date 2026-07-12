@@ -1,4 +1,4 @@
-# Bring-to-front / send-to-back titlebar buttons
+# Bring-to-front / send-to-back titlebar buttons (COMPLETED)
 
 TODO `cdf45cb`.
 
@@ -93,4 +93,28 @@ Headless (`QT_QPA_PLATFORM=offscreen`, real `QApplication`, real
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `_TitlebarButton` factored out of `_CloseButton`
+in `widget_frame.py`, with `_BringToFrontButton`/`_SendToBackButton`
+added alongside it and laid out left of the close button;
+`WorkspaceView._close_press_frame` generalized to `_button_press`,
+`_hit_test_chrome` recognizes both new button types, and
+`bring_to_front`/`send_to_back` compute against the live max/min
+`zValue()` across all placed frames.
+
+All headless verification steps above passed against a real
+`WorkspaceView` with real placed frames: bring-to-front/send-to-back
+set the correct highest/lowest `zValue()`; repeated bring-to-front on
+different widgets stacks correctly rather than tying; a real simulated
+button click (synthetic `QMouseEvent` press+release routed through
+`WorkspaceView`'s actual `mousePressEvent`/`mouseReleaseEvent`, not a
+direct method call) works end-to-end for the new buttons; the
+pre-existing close button still fires `widget_close_requested`
+correctly after the `_button_press` generalization; a press-then
+-release-elsewhere is still a cancelled click, not a mis-fire.
+
+Updated `design-docs/widget-ux.md`'s "Close Button" section to
+describe the generalized `_button_press` mechanism, and added a new
+"Bring to Front / Send to Back Buttons" section.
+
+No `LEARNINGS.md` entry needed -- this closely followed an existing,
+well-documented pattern (the close button's own mechanism).
