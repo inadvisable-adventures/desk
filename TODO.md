@@ -1358,7 +1358,7 @@ a053e3a. COMPLETED: Update widgets which load files to note in the title bar for
    in the app, attempt to append the stack trace to a file called
    `DESK-CRASH-[timestamp].log` in the project folder. Must not itself
    "further crash" if writing that log fails for any reason.
-810a5d6. Investigate and fix: a segmentation fault occurred opening
+810a5d6. COMPLETED: Investigate and fix: a segmentation fault occurred opening
    `./necro-4x/necro-4x.desk`. The last action taken in that Desk
    beforehand was double-clicking `./necro-4x/.desk_temp
    /desk-temporary-ui.md` in the File Explorer widget to open it (this

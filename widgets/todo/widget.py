@@ -1,3 +1,4 @@
+import logging
 import subprocess
 import threading
 from collections.abc import Callable
@@ -32,6 +33,8 @@ from desk.todo_file import (
     truncate_description,
 )
 from desk.todo_ids import make_item_id
+
+logger = logging.getLogger(__name__)
 
 DEBOUNCE_SECONDS = 60
 ITEM_ROLE = Qt.ItemDataRole.UserRole
@@ -455,9 +458,19 @@ class TodoWidget(QWidget):
         TODO.md (TODO a053e3a) -- called here after every reload, and
         once more by DeskWindow right after wiring the signal, since
         this widget's own __init__ already calls reload() once,
-        before that connection could possibly exist yet."""
+        before that connection could possibly exist yet.
+
+        Wrapped defensively (TODO 810a5d6): this is a purely cosmetic
+        titlebar feature reached from a Qt-signal-invoked slot chain
+        where an uncaught exception is fatal to the whole process in
+        this PyQt6 setup -- see plans/isolate-hot-reload-crash.md and
+        LEARNINGS.md."""
         todo_path = self._state["todo_path"]
-        is_external = todo_path is not None and current_context.path_is_external(todo_path)
+        try:
+            is_external = todo_path is not None and current_context.path_is_external(todo_path)
+        except Exception:
+            logger.error("Failed to compute external-path status for %s", todo_path, exc_info=True)
+            return
         self.external_path_changed.emit(is_external)
 
     def _touch_timestamp(self, verb: str) -> None:

@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from PyQt6.QtCore import QDir, QEvent, QModelIndex, QPointF, QRectF, QTimer, Qt
@@ -15,6 +16,8 @@ from PyQt6.QtWidgets import (
 )
 
 from desk.shell import current_context
+
+logger = logging.getLogger(__name__)
 
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", "build", "dist"}
 SEARCH_DEBOUNCE_MS = 200
@@ -243,7 +246,16 @@ class FileExplorerWidget(QWidget):
             return
         widget = opener("editor")
         if widget is not None and hasattr(widget, "set_file"):
-            widget.set_file(path)
+            # A broken set_file() must never propagate out of here
+            # (TODO 810a5d6): this runs inside a Qt slot (doubleClicked),
+            # and an uncaught exception there is fatal to the whole
+            # process in this PyQt6 setup, not just to opening this one
+            # file -- see plans/isolate-hot-reload-crash.md and
+            # LEARNINGS.md.
+            try:
+                widget.set_file(path)
+            except Exception:
+                logger.error("Failed to open %s in the Editor widget", path, exc_info=True)
 
     def _choose_root(self) -> None:
         directory = QFileDialog.getExistingDirectory(self, "Open Folder", str(self._root))

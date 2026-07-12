@@ -341,3 +341,41 @@ paint path itself before assuming the interaction/event-handling logic
 is at fault — and note that this category of bug may not reproduce
 under the offscreen platform, since that skips the real native style
 entirely.
+
+## An uncaught Python exception escaping a Qt-signal-invoked slot can crash the whole process, not just raise -- and this can happen at any such slot, not only the one already fixed for it
+
+TODO 810a5d6: a user reported a segmentation fault opening a `.desk`
+file; the last action beforehand was double-clicking a file in the File
+Explorer widget (`QTreeView.doubleClicked` → `_open_index`, which opens
+the file in a new Editor widget instance via `widget.set_file(path)`).
+The captured traceback was cut off before the actual exception type/
+message, so the precise originating bug was never conclusively
+identified -- but that ended up not mattering, because this codebase
+had *already* documented the general mechanism behind exactly this kind
+of crash, at a different call site: `PythonWidgetHost._rebuild`'s own
+docstring and `plans/isolate-hot-reload-crash.md` record that an
+uncaught exception escaping a Qt slot (there, the Hot Reload Broker's
+`widget_changed` signal) is fatal to the whole process in this PyQt6
+setup, confirmed via a real crash. `QTreeView.doubleClicked` is exactly
+the same shape of hazard -- a Qt-dispatched signal invoking a Python
+slot (`_open_index`) that calls into arbitrary further code
+(`widget.set_file`, and whatever *that* widget kind's implementation
+does) -- just a call site nobody had hardened yet.
+
+The mistake worth not repeating: treating the earlier hot-reload fix as
+having "solved" this class of bug, rather than as one instance of a
+general rule (*any* Qt-signal-invoked slot in this app is a hard
+crash boundary) that has to be re-applied at every such slot
+individually -- there is no single global backstop yet (see the
+separately-tracked, not-yet-implemented TODO 95f7ce9 for one). When a
+crash report includes a Python traceback (even a truncated one) ending
+inside code reached from a `*.connect(...)`-wired slot, suspect this
+mechanism first, regardless of whether the specific exception can be
+pinned down -- wrapping that slot's risky call in `try`/`except
+Exception` (logging via `exc_info=True`, matching `_rebuild`'s own
+style) fixes the crash regardless of the exact underlying cause. Also
+worth noting: a real, signal-level segfault with no Python involved at
+all (this app installs no `faulthandler`) prints *no* Python traceback
+whatsoever (see `PARKINGLOT.md`'s Desk Picker crash note) -- so a report
+that *does* include one, even an incomplete one, points at this
+uncaught-exception mechanism, not an unrelated native crash.

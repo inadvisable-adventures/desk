@@ -1,3 +1,4 @@
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -23,6 +24,8 @@ from PyQt6.QtWidgets import (
 from desk.file_watch import SingleFileWatcher
 from desk.mermaid import MermaidDiagramWidget
 from desk.shell import current_context
+
+logger = logging.getLogger(__name__)
 
 PLACEHOLDER_TEXT = "No file open — click Open to choose a Markdown file."
 MARKDOWN_FILTER = "Markdown (*.md *.markdown *.mdown *.mkd *.mdwn);;All files (*)"
@@ -316,10 +319,20 @@ class MarkdownExWidget(QWidget):
         """Re-emits `external_path_changed` for the currently loaded file
         (TODO a053e3a) -- called here after every load, and once more by
         DeskWindow right after wiring the signal, since the file may
-        already have been loaded before that connection existed."""
-        is_external = self._current_path is not None and current_context.path_is_external(
-            self._current_path
-        )
+        already have been loaded before that connection existed.
+
+        Wrapped defensively (TODO 810a5d6): this is a purely cosmetic
+        titlebar feature reached from a Qt-signal-invoked slot chain
+        where an uncaught exception is fatal to the whole process in
+        this PyQt6 setup -- see plans/isolate-hot-reload-crash.md and
+        LEARNINGS.md."""
+        try:
+            is_external = self._current_path is not None and current_context.path_is_external(
+                self._current_path
+            )
+        except Exception:
+            logger.error("Failed to compute external-path status for %s", self._current_path, exc_info=True)
+            return
         self.external_path_changed.emit(is_external)
 
     def _reload(self) -> None:

@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable
 from pathlib import Path
 
@@ -18,6 +19,8 @@ from PyQt6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPush
 
 from desk.file_watch import SingleFileWatcher
 from desk.shell import current_context
+
+logger = logging.getLogger(__name__)
 
 EXTENSION_LEXERS = {
     ".py": QsciLexerPython,
@@ -135,7 +138,19 @@ class EditorWidget(QWidget):
         self._label.setText(name + marker + conflict)
 
     def _load_file(self, path: Path) -> None:
-        self.editor.setText(path.read_text())
+        # Read before touching any widget state (TODO 810a5d6): on
+        # failure, the buffer/current-path/watcher are left exactly as
+        # they were -- showing a friendly message *in the buffer itself*
+        # (like the read-only Markdown widget does) would risk the user
+        # then hitting Save and overwriting a real file with that
+        # message text, since this widget, unlike Markdown, is editable.
+        try:
+            text = path.read_text()
+        except OSError as error:
+            logger.error("Failed to read %s", path, exc_info=True)
+            QMessageBox.warning(self, "Open File", f"Could not read {path.name}: {error}")
+            return
+        self.editor.setText(text)
         self.editor.setModified(False)
         self._current_path = path
         self._last_dir = path.parent
@@ -151,10 +166,21 @@ class EditorWidget(QWidget):
         `_save_file_as` (which sets `_current_path` directly, bypassing
         `_load_file`), and once more by DeskWindow right after wiring
         the signal, since the file may already have been loaded before
-        that connection existed."""
-        is_external = self._current_path is not None and current_context.path_is_external(
-            self._current_path
-        )
+        that connection existed.
+
+        Wrapped defensively (TODO 810a5d6): this is a purely cosmetic
+        titlebar feature reached from a Qt-signal-invoked slot chain
+        (File Explorer's doubleClicked -> _open_index -> set_file ->
+        here) where an uncaught exception is fatal to the whole process
+        in this PyQt6 setup, not just to this feature -- see
+        plans/isolate-hot-reload-crash.md and LEARNINGS.md."""
+        try:
+            is_external = self._current_path is not None and current_context.path_is_external(
+                self._current_path
+            )
+        except Exception:
+            logger.error("Failed to compute external-path status for %s", self._current_path, exc_info=True)
+            return
         self.external_path_changed.emit(is_external)
 
     def _on_external_change(self) -> None:

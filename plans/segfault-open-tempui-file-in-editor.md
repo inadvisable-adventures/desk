@@ -1,4 +1,4 @@
-# Segfault opening a tempui file from File Explorer into the Editor widget
+# Segfault opening a tempui file from File Explorer into the Editor widget (COMPLETED)
 
 TODO `810a5d6`.
 
@@ -155,4 +155,36 @@ Headless (`QT_QPA_PLATFORM=offscreen`, real `QApplication`, no mocks):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned. `EditorWidget._load_file` now reads the file
+before touching any widget state and shows a `QMessageBox` warning
+(rather than writing an error message into the editable buffer itself,
+which risked the user then hitting Save and overwriting a real file
+with that message) on `OSError`; each of the 5 widgets'
+`refresh_external_path_status` and `FileExplorerWidget._open_index`'s
+`widget.set_file(path)` call are now wrapped in `try`/`except
+Exception`, logging via a new per-file `logging.getLogger(__name__)`
+matching `desk.shell.python_widget`'s existing style.
+
+All headless verification steps above passed: each widget's
+`refresh_external_path_status` survives `path_is_external` monkeypatched
+to raise (logs, doesn't emit, widget stays otherwise functional);
+`_open_index` survives a `set_file` monkeypatched to raise (logs, File
+Explorer widget stays fully usable -- confirmed by exercising its search
+afterward); `EditorWidget._load_file` against a real nonexistent path
+shows a warning dialog and leaves the existing buffer/`_current_path`
+completely untouched; a full regression pass of TODO a053e3a's own
+verification confirms none of this hardening changed the real,
+non-error-case behavior.
+
+Added a `LEARNINGS.md` entry (see its own new section) recording this
+as a second, independent instance of the "uncaught exception escaping a
+Qt slot is fatal" class first documented for hot-reload -- the general
+lesson being that this is a per-slot hazard needing re-application at
+every `*.connect(...)` site individually, not something fixed once for
+the whole app (that broader backstop is the separate, not-yet
+-implemented TODO 95f7ce9).
+
+The exact original exception that caused the reported crash was never
+conclusively identified, since the pasted traceback was cut off before
+the exception type/message -- the fix addresses the whole class of bug
+regardless, per the plan's own reasoning above.
