@@ -1504,6 +1504,7 @@ f74945e. Add a "paste" item to the top of the widget menu if there is
    `Scratch` tempui capability); if it is non-text content (binary),
    paste it as a new file in the project directory with a filename
    like `PASTED-ITEM-[timestamp].[file extension]`.
+   [planned: paste-clipboard-routing.md]
 8f5568f. When the desk-switching MRU is shown, or when one of its items
    is clicked, ensure the shown/clicked item's file is still where
    it's expected to be (i.e. that it hasn't moved or been deleted).
