@@ -132,7 +132,20 @@ class FileWatcherService:
             del self._subscribers[key]
             watch = self._observed_watches.pop(key, None)
         if watch is not None:
-            self._observer.unschedule(watch)
+            try:
+                self._observer.unschedule(watch)
+            except KeyError:
+                # The shared Observer can already be fully stopped by
+                # the time this runs (TODO 03f623a): app.aboutToQuit's
+                # get_service().stop() and a widget's own `destroyed`
+                # -triggered watcher.stop() fire at two different,
+                # unorderable-relative-to-each-other phases of
+                # shutdown -- if stop() already ran first, watchdog's
+                # own internal bookkeeping for this watch is gone, and
+                # there's nothing left to unschedule. The process is
+                # already quitting either way, so this is safe to
+                # treat as already-unscheduled rather than crash.
+                pass
 
     def stop(self, timeout: float = 5.0) -> None:
         """Stops the shared Observer thread entirely -- for clean

@@ -395,7 +395,17 @@ Desk Bridge API.
     echo of a write I made myself" the same way — used internally by
     both `SingleFileWatcher.record_own_write` and `TempUiManager
     .record_own_write` instead of each keeping its own separate
-    last-written-text dict.
+    last-written-text dict. `FileWatcherService._unsubscribe` tolerates
+    the shared `Observer` already having been fully stopped by the time
+    it runs (TODO `03f623a`) — `app.aboutToQuit`'s `get_service().stop()`
+    and a widget's own `destroyed`-signal-triggered
+    `SingleFileWatcher.stop()` fire at two different, unorderable
+    -relative-to-each-other phases of shutdown, so a later `unschedule()`
+    call can hit watchdog's own now-cleared internal bookkeeping; this
+    used to crash the whole teardown with a `KeyError`, now it's a
+    silent no-op (nothing left to unschedule, and the process is
+    already quitting either way). See
+    `plans/fix-teardown-keyerror.md`.
 20. **Questions Widget** — a built-in `kind: "python"` widget
     (`widgets/questions/`) that reads the nearest `QUESTIONS.md` relative
     to the current Desk's directory and shows it as a filterable

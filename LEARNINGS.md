@@ -454,3 +454,31 @@ here" case, that branch specifically still needs a *real* Qt event
 (the C++ base implementation won't accept a duck-typed fake) -- test
 that branch's own new logic (if any) directly instead of by driving it
 through the real `super()` call.
+
+## `QApplication.aboutToQuit`'s connection order can't be used to sequence cleanup against a widget's own `destroyed` signal
+
+`desk/app.py` connected the shared file-watcher service's
+`get_service().stop()` to `aboutToQuit` *last*, with a comment
+claiming this makes it run after every other consumer's own cleanup.
+That was wrong for any cleanup wired to a widget's `destroyed` signal
+instead of directly to `aboutToQuit` (e.g. the TODO widget's
+`_flush_on_teardown`, which calls `watcher.stop()`) -- `destroyed`
+fires *later*, as part of Qt's own widget-teardown cascade during
+actual application shutdown, which happens only *after* all
+`aboutToQuit` slots have already run to completion. So the shared
+`watchdog.observers.Observer` could already be fully stopped (and
+`.join()`-ed) by the time a `destroyed`-triggered `SingleFileWatcher
+.stop()` tried to unschedule its own watch from it -- watchdog's own
+internal bookkeeping for that watch was already gone, raising a
+`KeyError` that crashed the whole Cmd+Q teardown (TODO `03f623a`,
+`plans/fix-teardown-keyerror.md`).
+
+The general lesson: connecting slot B to a signal "after" slot A
+(construction order) only orders B relative to A's *own* signal firing
+-- it says nothing about ordering against a *different* signal (here,
+`destroyed`) that fires at a different phase of the same shutdown
+sequence, even though both are conceptually "cleanup that happens when
+the app quits." Don't assume two different Qt signals' relative timing
+without checking; make the cleanup itself tolerant of running in
+either order instead (here: treat a `KeyError` from an already
+-cleared native watch as "nothing left to do," not a bug).

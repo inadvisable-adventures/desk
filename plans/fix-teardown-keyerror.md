@@ -1,4 +1,4 @@
-# Fix Cmd+Q teardown KeyError
+# Fix Cmd+Q teardown KeyError (COMPLETED)
 
 TODO `03f623a`.
 
@@ -70,4 +70,37 @@ non-crashing path).
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `FileWatcherService._unsubscribe` (in
+`src/desk_services/file_watcher/service.py`) wraps
+`self._observer.unschedule(watch)` in `try/except KeyError: pass`.
+Also updates `design-docs/architecture.md`'s File Watcher Service
+entry (item 19).
+
+Verified directly (not headless-Qt -- this is plain Python/threading
+code, no QApplication needed): first confirmed the exact reported
+`KeyError` reproduces against the pre-fix code (via `git stash`) by
+constructing a real `FileWatcherService`, watching a temp directory,
+calling the shared `Observer`'s own `.stop()`+`.join()` directly
+(simulating `get_service().stop()` having already run), then calling
+`WatchHandle.cancel()` -- this raised the identical `KeyError` before
+the fix and completes cleanly after it, with `_subscribers`/
+`_observed_watches` bookkeeping still correctly cleared either way.
+Also confirmed: `cancel()` stays idempotent (calling it twice never
+raises), a normal `cancel()` while the Observer is still running still
+actually unschedules (regression check for the non-crashing path), and
+a watch shared by two subscribers only unschedules once the *last*
+one cancels (regression check for the reference-counting behavior the
+fix must not disturb).
+
+Regression-checked: re-ran every other verification script from this
+session (tempui-live-refresh, Questions-notification, drag-and-drop,
+new-Desk-seeding, paste-clipboard-routing, `WidgetSpawnMenu` grouping
+/keyboard-nav, MRU-file-existence, crash-log) -- all still pass
+unaffected.
+
+Added a `LEARNINGS.md` entry: the underlying fact that `aboutToQuit`
+connection order and a widget's own `destroyed`-signal timing can't be
+assumed ordered relative to each other is a genuinely non-obvious Qt
+teardown gotcha (it's exactly what the original, now-corrected
+`desk/app.py` comment got wrong) worth remembering if a similar issue
+surfaces elsewhere.
