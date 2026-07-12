@@ -1313,9 +1313,10 @@ f2aede6. Feedback widget: able to take internal screenshots of the app
 397770c. Introduce the idea of focus in the app: individual controls
    in a widget can have focus, and if so the widget itself is also
    focused. The titlebar of a widget should change slightly when the
-   widget is focused.
+   widget is focused. [planned: widget-focus-concept.md]
 a1c701d. Clicking then releasing the title bar of a widget should
    activate/focus the current caret inside of it.
+   [planned: widget-focus-concept.md]
 17a2720. The white background on the editor line numbers is good for
    separating but bad for dark mode. Instead, draw a vertical line
    between the numbers area and the editor box, and draw the numbers
