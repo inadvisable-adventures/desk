@@ -1502,3 +1502,21 @@ f74945e. Add a "paste" item to the top of the widget menu if there is
    `Scratch` tempui capability); if it is non-text content (binary),
    paste it as a new file in the project directory with a filename
    like `PASTED-ITEM-[timestamp].[file extension]`.
+8f5568f. When the desk-switching MRU is shown, or when one of its items
+   is clicked, ensure the shown/clicked item's file is still where
+   it's expected to be (i.e. that it hasn't moved or been deleted).
+   Checked: `desk.recent_desks.load_mru()` already filters missing
+   files out of what it *returns* on every call (`p.is_file()`), but
+   never persists that removal back to `~/.desk/recent_desks.json` --
+   the stale entry just gets silently re-filtered every time, forever.
+   If a file is missing when showing the MRU, actually remove it from
+   the persisted list (not just the in-memory display). If the user
+   clicks an MRU item whose file is missing, do not continue the "load
+   new desk" operation -- checked: `DeskWindow.switch_desk`'s current
+   behavior for a nonexistent path (`Desk(path=path)`) silently creates
+   a brand-new *empty* Desk at that path instead, with no warning at
+   all. Instead, show a modal pop-up warning that the file is no
+   longer there, giving the full path in selectable/copyable text (an
+   explicit exception to `CLAUDE.md`'s general "labels shouldn't be
+   user-selectable" convention, matching its own "unless specifically
+   requested" carve-out).
