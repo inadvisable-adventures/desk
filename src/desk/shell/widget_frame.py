@@ -9,6 +9,8 @@ TITLEBAR_FONT_PT = 10
 CLOSE_BUTTON_SIZE = 18
 MIN_WIDTH = 200
 MIN_HEIGHT = 120
+BORDER_THICKNESS = 1
+BORDER_COLOR = "#4a4d51"
 
 
 class _TitlebarButton(QWidget):
@@ -181,10 +183,25 @@ class WidgetFrame(QWidget):
         outer.addWidget(self._bottom_handle)
 
         self.content = content
+        self._apply_border_scale(1.0)
+
+    def _apply_border_scale(self, view_scale: float) -> None:
+        """A small default border (TODO ff6514a) distinguishing this
+        widget from the canvas and from adjacent widgets -- counter
+        -scaled to a constant on-screen thickness, same convention as
+        every other piece of chrome here (see _TitleBar.apply_scale).
+        Scoped to the `WidgetFrame` class name, not a bare `QWidget`
+        selector, since an unscoped QWidget stylesheet rule cascades
+        to every nested child widget (buttons, fields, ...) inside
+        arbitrary widget content."""
+        view_scale = view_scale or 1.0
+        thickness = max(1, round(BORDER_THICKNESS / view_scale))
+        self.setStyleSheet(f"WidgetFrame {{ border: {thickness}px solid {BORDER_COLOR}; }}")
 
     def set_view_scale(self, view_scale: float) -> None:
         for chrome in (self._titlebar, self._left_handle, self._right_handle, self._bottom_handle):
             chrome.apply_scale(view_scale)
+        self._apply_border_scale(view_scale)
 
     def set_external(self, is_external: bool) -> None:
         """Shows/hides the titlebar's "[EXTERNAL]" marker (TODO

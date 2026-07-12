@@ -78,6 +78,15 @@ just pass their content widget and a title, they don't construct
   (`QSizePolicy.Policy.Expanding` in both directions, set by `WidgetFrame`
   regardless of the content widget's own default policy).
 
+`WidgetFrame` itself also has a small 1px border by default (TODO
+`ff6514a`, `#4a4d51`) so adjacent widgets — and a widget against the
+plain canvas background — stay visually distinguishable, counter
+-scaled to a constant on-screen thickness like every other piece of
+chrome here. The stylesheet rule is scoped to the `WidgetFrame` class
+name specifically (`WidgetFrame { ... }`, not a bare `QWidget { ... }`
+selector), since an unscoped `QWidget` rule would cascade the border
+onto every nested child widget inside arbitrary widget content.
+
 ### Zoom-Correct Dragging
 
 `WidgetFrame` (and its titlebar/handles) is embedded on the

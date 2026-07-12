@@ -1,4 +1,4 @@
-# Small borders around widgets by default
+# Small borders around widgets by default (COMPLETED)
 
 TODO `ff6514a`.
 
@@ -46,4 +46,17 @@ thickness in the stylesheet text proportionally to the given scale
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `BORDER_THICKNESS`/`BORDER_COLOR` constants
+and `WidgetFrame._apply_border_scale`, called from `__init__` and
+`set_view_scale`, in `src/desk/shell/widget_frame.py`.
+
+Verified headlessly (`QT_QPA_PLATFORM=offscreen`, real `QApplication`,
+a real `WidgetFrame`): a border rule is present by default, scoped to
+the `WidgetFrame` class name (not a bare `QWidget` selector); the
+local border thickness in the stylesheet shrinks as zoom increases and
+grows as zoom decreases (counter-scaling, same convention as the rest
+of this file's chrome), never below 1 local px.
+
+No `LEARNINGS.md` entry needed -- nothing surprising, just following
+this file's own already-established counter-scaling and
+class-name-scoped-stylesheet conventions.

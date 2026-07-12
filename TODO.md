@@ -1296,7 +1296,7 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    click vs. hover), and check for any known-fragile native code path (e.g.
    LEARNINGS.md's QNativeGestureEvent segfault note) that could plausibly be
    involved.
-ff6514a. Small borders around widgets by default, to visually
+ff6514a. COMPLETED: Small borders around widgets by default, to visually
    distinguish one widget from another and from the canvas.
    [planned: widget-borders.md]
 8d05920. Lock widgets in place so that only the title and an unlock
