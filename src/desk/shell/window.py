@@ -19,6 +19,7 @@ from desk.temp_ui import (
     TEMP_UI_DIRNAME,
     detect_temp_ui_kind,
     parse_lightning_round,
+    parse_markdown_tempui,
     parse_open_markdown,
     parse_scratch,
     parse_temp_ui,
@@ -310,9 +311,12 @@ class DeskWindow(QMainWindow):
         with no answer to render back into the tempui file. Scratch
         (TODO f8d9cec) is the same fire-and-forget shape as OpenMarkdown,
         just seeding a label + initial body text instead of a path.
-        Shared by both the notification-click path (_activate_temp_ui)
-        and the Desk-reload restore path (_bind_temp_ui_widget) so
-        there's one place deciding which method gets which path."""
+        Markdown (TODO 9743419) is the same shape again, but renders
+        its own content directly (set_tempui_content) rather than
+        pointing at a separate file the way OpenMarkdown does. Shared
+        by both the notification-click path (_activate_temp_ui) and the
+        Desk-reload restore path (_bind_temp_ui_widget) so there's one
+        place deciding which method gets which path."""
         try:
             kind = detect_temp_ui_kind(tempui_path.read_text())
         except OSError:
@@ -334,6 +338,16 @@ class DeskWindow(QMainWindow):
                 label, body = parsed
                 content.set_label(label)
                 content.body.setPlainText(body)
+        elif kind == "markdown_content":
+            if not hasattr(content, "set_tempui_content"):
+                return
+            try:
+                parsed = parse_markdown_tempui(tempui_path.read_text())
+            except OSError:
+                parsed = None
+            if parsed is not None:
+                label, markdown_content = parsed
+                content.set_tempui_content(label, markdown_content)
         elif hasattr(content, "set_source_file"):
             content.set_source_file(tempui_path)
 
@@ -531,6 +545,10 @@ class DeskWindow(QMainWindow):
                 parsed = parse_scratch(content_text)
                 if parsed and parsed[0]:
                     text = f"Scratch: {parsed[0]}"
+            elif kind == "markdown_content":
+                parsed = parse_markdown_tempui(content_text)
+                if parsed and parsed[0]:
+                    text = f"Markdown: {parsed[0]}"
             else:
                 doc = parse_temp_ui(content_text)
                 if doc.question:
@@ -552,7 +570,7 @@ class DeskWindow(QMainWindow):
             kind = "question"
         if kind == "lightning_round":
             return LIGHTNING_ROUND_WIDGET_ID
-        if kind == "open_markdown":
+        if kind in ("open_markdown", "markdown_content"):
             return MARKDOWN_WIDGET_ID
         if kind == "scratch":
             return SCRATCH_WIDGET_ID

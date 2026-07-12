@@ -1,4 +1,4 @@
-# Markdown rendering capabilities doc + tempui-based Markdown (Extended) "save a copy"
+# Markdown rendering capabilities doc + tempui-based Markdown (Extended) "save a copy" (COMPLETED)
 
 TODO `9743419`.
 
@@ -76,9 +76,46 @@ right the first time rather than picking arbitrarily).
 
 ## Status
 
-Part 1 (`markdown-rendering.md`) is done, but parked on branch
-`pending/9743419-markdown-rendering-doc` rather than merged to `main`
-(per `development-process.md`'s PENDING workflow), since the item as a
-whole isn't complete. Parts 2/3 blocked on `QUESTIONS.md` -- TODO
-`9743419` marked `PENDING` until answered; once answered, merge that
-branch's doc commit in as part of finishing the rest of this item.
+Implemented in full, after the user resolved the open questions (see
+`QUESTIONS.md`): a new `Markdown <label>` tempui DSL keyword
+(`desk.temp_ui.MARKDOWN_KEYWORD`/`parse_markdown_tempui`,
+`detect_temp_ui_kind` -> `"markdown_content"`) whose own content -- not
+a pointer to an external file, unlike `OpenMarkdown` -- is rendered
+directly by the Markdown widget via a new `set_tempui_content(label,
+content)`. Wired through `DeskWindow._bind_temp_ui_content`/
+`_temp_ui_widget_id_for`/`_notify_temp_ui` the same way the other
+tempui kinds already are. A tempui-bound instance shows a **"Save As"**
+button in place of "Open"; saving defaults to the project root with a
+kebab-case-slugified filename derived from the rendered content's own
+first line, and opens the saved file in a *new*, ordinary file-backed
+Markdown instance while the original tempui-bound instance stays open,
+unaffected.
+
+The parked branch (`pending/9743419-markdown-rendering-doc`) was
+merged in, and `markdown-rendering.md` itself updated for the
+now-completed 96013cf/858752b rename (it was written before that
+happened) plus a new "Tempui integration" description of this
+capability.
+
+All headless verification steps above passed, plus a full,
+non-mocked-except-the-file-dialog "Save As" round trip: a real
+tempui-bound widget instance saves real content to a real file at the
+derived path, a real second widget instance opens pointed at it, and
+the original instance is confirmed unaffected/still tempui-bound
+afterward. Also ran a regression pass of the existing Scratch tempui
+verification to confirm the shared dispatch code (`_bind_temp_ui_content`
+/`_temp_ui_widget_id_for`/`_notify_temp_ui`) wasn't disturbed for the
+other kinds.
+
+One correction to my own earlier description to the user, noted here
+for the record: I described this as "rendered live and watched for
+changes," but checking `QuestionWidget`/`LightningRoundWidget`'s actual
+existing behavior showed neither actually live-watches its tempui file
+for *external* edits after being bound -- both just render once at
+bind time (plus their own self-triggered updates). The Markdown tempui
+capability matches that same, simpler, actual precedent (render once
+at bind time via `set_tempui_content`), not continuous file-watching.
+
+No `LEARNINGS.md` entry needed -- the correction above is a plan
+-level clarification, not a surprising runtime discovery during
+verification.

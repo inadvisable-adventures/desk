@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -29,6 +30,17 @@ logger = logging.getLogger(__name__)
 
 PLACEHOLDER_TEXT = "No file open — click Open to choose a Markdown file."
 MARKDOWN_FILTER = "Markdown (*.md *.markdown *.mdown *.mkd *.mdwn);;All files (*)"
+
+_SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _slugify(text: str) -> str:
+    """Kebab-case slug for the "Save As" default filename (TODO
+    9743419) -- e.g. "# My Investigation Notes" -> "my-investigation
+    -notes". Falls back to "untitled" for empty/all-punctuation input."""
+    stripped = text.lstrip("#").strip()
+    slug = _SLUG_RE.sub("-", stripped.lower()).strip("-")
+    return slug or "untitled"
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 _FENCE_RE = re.compile(r"^```\s*([A-Za-z0-9_+-]*)\s*$")
@@ -224,7 +236,12 @@ class MarkdownWidget(QWidget):
     """Markdown viewer with a left-hand TOC treeview, foldable
     sections, and inline Mermaid diagram rendering (see desk.mermaid),
     on top of QTextBrowser's own native image/SVG handling for
-    everything else. See plans/markdown-ex-widget.md."""
+    everything else. See plans/markdown-ex-widget.md.
+
+    Also renders tempui `Markdown <label>` content directly
+    (`set_tempui_content`, TODO 9743419) -- unlike a normal file-backed
+    instance, a tempui-bound one shows a "Save As" button in place of
+    "Open" (there's no "open a different file" concept for it)."""
 
     external_path_changed = pyqtSignal(bool)
 
@@ -232,13 +249,15 @@ class MarkdownWidget(QWidget):
         super().__init__(parent)
         self._current_path: Path | None = None
         self._last_dir = current_context.get_current_desk_directory() or Path.home()
+        self._tempui_bound = False
+        self._tempui_content = ""
 
         self._label = QLabel()
         self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
-        open_button = QPushButton("Open")
-        open_button.clicked.connect(self._open_file)
+        self._open_button = QPushButton("Open")
+        self._open_button.clicked.connect(self._on_open_button_clicked)
         toolbar = QHBoxLayout()
-        toolbar.addWidget(open_button)
+        toolbar.addWidget(self._open_button)
         toolbar.addStretch()
         toolbar.addWidget(self._label)
 
@@ -298,6 +317,12 @@ class MarkdownWidget(QWidget):
         self._label.setText("(no file)")
         self._show_message(PLACEHOLDER_TEXT)
 
+    def _on_open_button_clicked(self) -> None:
+        if self._tempui_bound:
+            self._save_as()
+        else:
+            self._open_file()
+
     def _open_file(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(
             self, "Open Markdown File", str(self._last_dir), MARKDOWN_FILTER
@@ -309,11 +334,53 @@ class MarkdownWidget(QWidget):
         """Point the widget at `path`: render it and watch it for
         changes. Public so other widgets can open a file here
         programmatically, matching the plain Markdown widget."""
+        self._tempui_bound = False
+        self._open_button.setText("Open")
         self._current_path = path
         self._last_dir = path.parent
         self._watcher.watch(path)
         self._reload()
         self.refresh_external_path_status()
+
+    def set_tempui_content(self, label: str, content: str) -> None:
+        """Renders `content` directly (TODO 9743419) -- a tempui
+        `Markdown <label>` file's own content *is* the markdown, unlike
+        `OpenMarkdown`'s pointer-to-an-external-file shape. Switches
+        this instance into tempui-bound mode: "Open" becomes "Save As",
+        since there's no "open a different file" concept for a
+        tempui-bound instance."""
+        self._watcher.stop()
+        self._current_path = None
+        self._tempui_bound = True
+        self._tempui_content = content
+        self._open_button.setText("Save As")
+        self._label.setText(label or "(tempui)")
+        base_dir = current_context.get_current_desk_directory() or Path.home()
+        self._render(content, base_dir)
+        self.refresh_external_path_status()
+
+    def _save_as(self) -> None:
+        directory = current_context.get_current_desk_directory() or Path.cwd()
+        first_line = self._tempui_content.splitlines()[0] if self._tempui_content else ""
+        default_target = directory / f"{_slugify(first_line)}.md"
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Save As", str(default_target), MARKDOWN_FILTER
+        )
+        if not filename:
+            return
+        target = Path(filename)
+        try:
+            target.write_text(self._tempui_content)
+        except OSError as error:
+            logger.error("Failed to save tempui content to %s", target, exc_info=True)
+            QMessageBox.warning(self, "Save As", f"Could not save: {error}")
+            return
+        opener = current_context.get_widget_opener()
+        if opener is None:
+            return
+        new_widget = opener("markdown")
+        if new_widget is not None and hasattr(new_widget, "set_file"):
+            new_widget.set_file(target)
 
     def refresh_external_path_status(self) -> None:
         """Re-emits `external_path_changed` for the currently loaded file

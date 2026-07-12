@@ -6,24 +6,25 @@ exercising the Mermaid/SVG pieces of this.
 
 ## Widgets
 
-- **Markdown Widget** (`widgets/markdown/`) — the plain viewer. Renders
-  one chosen file via Qt's native `QTextBrowser.setMarkdown()`, nothing
-  more: no table of contents, no foldable sections, no diagrams. Auto
-  -reloads when the file changes on disk. See
-  `plans/markdown-renderer-widget.md`.
-- **Markdown (Extended) Widget** (`widgets/markdown_ex/`) — everything
-  the plain widget does, plus:
+- **Markdown Widget** (`widgets/markdown/`, id `markdown` — renamed
+  from `markdown_ex`/"Markdown (Extended)", TODO 858752b, now the
+  default) —
   - A left-hand table-of-contents tree, generated from the document's
     own headings.
   - Foldable sections: each heading's content collapses/expands via a
     disclosure triangle, nested by heading level.
   - Inline Mermaid diagram rendering (see below) for fenced
-    ` ```mermaid ` code blocks — the one piece of syntax the plain
-    Markdown widget doesn't understand at all (it renders a Mermaid
-    fence as a plain, unrendered code block, same as any other
-    language).
+    ` ```mermaid ` code blocks.
 
   See `plans/markdown-ex-widget.md`.
+- **Markdown (Old, Basic) Widget** (`widgets/markdown_old_basic/`, id
+  `markdown_old_basic` — renamed from `markdown`/"Markdown", TODO
+  96013cf, now **deprecated**, replaced as the default by the widget
+  above) — the plain viewer this project started with: Qt's native
+  `QTextBrowser.setMarkdown()` with none of the above (no TOC, no
+  folding, no diagrams). Auto-reloads when the file changes on disk.
+  Kept around for continuity, not removed outright. See
+  `plans/markdown-renderer-widget.md`.
 
 Both widgets can be pointed at a file either via their own "Open"
 button, or programmatically by another widget (`set_file(path)`) — e.g.
@@ -69,7 +70,7 @@ the dedicated **SVG Viewer** widget instead (`widgets/svg_viewer/`,
 `QSvgRenderer`-based, true vector scaling). See
 `qtextbrowser-images-svg-controls.md` for the full investigation.
 
-## Mermaid diagrams (Markdown (Extended) only)
+## Mermaid diagrams (Markdown only, not the deprecated old-basic widget)
 
 A fenced ` ```mermaid ` block is pulled out and rendered by
 `desk.mermaid` — a small, **intentionally partial** Mermaid
@@ -100,11 +101,26 @@ Markdown rendering.
 
 ## Tempui integration
 
-The plain Markdown widget has no tempui integration. Markdown
-(Extended) does, via the `OpenMarkdown` tempui capability
-(`desk-temporary-ui.md`'s own DSL docs, `desk.temp_ui.parse_open_markdown`):
-an agent drops a `.desk_temp/<uuid>` file whose first line is
-`OpenMarkdown <path>`, and clicking the resulting notification opens
-`path` in a new Markdown (Extended) instance. This is a **pointer** to
-an existing file elsewhere on disk — the tempui file's own content
-isn't itself rendered as Markdown. See `plans/tempui-open-markdown.md`.
+The deprecated Markdown (Old, Basic) widget has no tempui integration.
+The Markdown widget has two, both fire-and-forget (no `Answer` line,
+Desk never writes back):
+
+- `OpenMarkdown <path>` (`desk.temp_ui.parse_open_markdown`) — a
+  **pointer** to an existing file elsewhere on disk. An agent drops a
+  `.desk_temp/<uuid>` file whose first line is `OpenMarkdown <path>`,
+  and clicking the resulting notification opens `path` in a new
+  Markdown instance. The tempui file's own content isn't itself
+  rendered. See `plans/tempui-open-markdown.md`.
+- `Markdown <label>` (TODO 9743419, `desk.temp_ui.parse_markdown_tempui`)
+  — the tempui file's *own content* (everything after the first line)
+  *is* the Markdown to render, live and watched for changes, the same
+  "render the tempui file itself" pattern Question/LightningRound use.
+  The resulting widget instance shows a **"Save As"** button in place
+  of "Open" (there's no "open a different file" concept for a
+  tempui-bound instance): it defaults to the project root, with a
+  kebab-case-slugified filename derived from the content's first line
+  (e.g. `# My Investigation Notes` → `my-investigation-notes.md`).
+  Saving opens the new file in a *separate*, ordinary file-backed
+  Markdown instance, while the original tempui-bound instance stays
+  open and keeps rendering live. See
+  `plans/markdown-rendering-doc-and-tempui-markdown.md`.

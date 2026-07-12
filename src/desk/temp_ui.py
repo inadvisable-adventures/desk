@@ -17,10 +17,11 @@ Each file is named with a bare UUID (e.g.
 `550e8400-e29b-41d4-a716-446655440000`, no extension). Desk watches
 this directory: a newly-created file shows up as a clickable
 notification in the app's upper-right corner; clicking it places a new
-widget on the canvas, centered in the current view. There are three
+widget on the canvas, centered in the current view. There are five
 file types, distinguished by their first line's keyword — `Question`
-(below), `LightningRound` (further down), or `OpenMarkdown` (further
-down still).
+(below), `LightningRound` (further down), `OpenMarkdown` (further down
+still), `Scratch` (further down still), or `Markdown` (further down
+still).
 
 ## The TempUI DSL: Question
 
@@ -106,9 +107,11 @@ LRItem	quick	unanswered
 
 ## The TempUI DSL: OpenMarkdown
 
-For telling Desk to open a Markdown file in the Markdown (Extended)
-widget — a fire-and-forget instruction, not a question: there is no
-`Answer` line, and Desk never writes back to this file.
+For telling Desk to open a Markdown file in the Markdown widget — a
+fire-and-forget instruction, not a question: there is no `Answer`
+line, and Desk never writes back to this file. This is a *pointer* to
+an existing file elsewhere on disk — if you want to give Desk markdown
+content directly instead, use `Markdown` below.
 
 - `OpenMarkdown <path>` — the first (and normally only) line. `path`
   is the file to open, absolute or relative to the current Desk's
@@ -121,8 +124,8 @@ Example:
 OpenMarkdown ./diagrams.md
 ```
 
-Clicking the notification opens `path` in a new Markdown (Extended)
-widget instance, centered in the current view.
+Clicking the notification opens `path` in a new Markdown widget
+instance, centered in the current view.
 
 ## The TempUI DSL: Scratch
 
@@ -148,6 +151,39 @@ certainly what's meant — not some other, more generic sense of the
 word — unless a clearly more pressing local meaning has already been
 established earlier in the current conversation.
 
+## The TempUI DSL: Markdown
+
+For giving Desk markdown *content* directly, rendered in the Markdown
+widget — unlike `OpenMarkdown` above, there is no separate target file:
+this file's own content *is* the markdown. Fire-and-forget, same as
+`OpenMarkdown`/`Scratch`: there is no `Answer` line, and Desk never
+writes back to this file.
+
+- The first line is `Markdown <label>` — `label` is used for the
+  notification text; it is *not* used for anything saved to disk.
+- Every line after that, verbatim, is the markdown to render (not
+  further parsed here — write real markdown, including fenced
+  ` ```mermaid ` blocks if you want a diagram).
+
+Example:
+
+```
+Markdown Investigation summary
+# Investigation summary
+
+Found the bug in `file_watch.py` line 42.
+```
+
+The resulting widget shows a **"Save As"** button in place of "Open"
+(there's nothing to "open" — its content already comes from this
+file, not a chosen path): saving defaults to the project root, with a
+filename derived from the *rendered content's own first line*
+(kebab-case-slugified, e.g. `# Investigation summary` becomes
+`investigation-summary.md`) — not from `<label>` above. Saving opens
+the new file in a separate, ordinary Markdown widget instance; this
+tempui-bound instance stays open, unaffected. See
+`markdown-rendering.md`.
+
 This file (`desk-temporary-ui.md`) is itself ignored by the file
 watcher — its name isn't a UUID, so it's never mistaken for a temp UI
 file.
@@ -164,6 +200,7 @@ class TempUiDocument:
 LIGHTNING_ROUND_KEYWORD = "LightningRound"
 OPEN_MARKDOWN_KEYWORD = "OpenMarkdown"
 SCRATCH_KEYWORD = "Scratch"
+MARKDOWN_KEYWORD = "Markdown"
 UNANSWERED = "unanswered"
 
 
@@ -183,10 +220,13 @@ class LightningRoundDocument:
 
 def detect_temp_ui_kind(text: str) -> str:
     """"question" (the original, default type), "lightning_round",
-    "open_markdown", or "scratch", read from the first non-blank line's
-    keyword -- lets a caller that's seeing a temp-ui file for the first
-    time (a notification, a saved Desk's widget state) know which
-    widget kind to place without assuming "question"."""
+    "open_markdown", "scratch", or "markdown_content", read from the
+    first non-blank line's keyword -- lets a caller that's seeing a
+    temp-ui file for the first time (a notification, a saved Desk's
+    widget state) know which widget kind to place without assuming
+    "question". Named "markdown_content" (not "markdown") to stay
+    unambiguous against the "markdown" *widget id* it happens to
+    render into (TODO 9743419)."""
     for line in text.splitlines():
         if line.strip():
             keyword = line.split(None, 1)[0]
@@ -196,6 +236,8 @@ def detect_temp_ui_kind(text: str) -> str:
                 return "open_markdown"
             if keyword == SCRATCH_KEYWORD:
                 return "scratch"
+            if keyword == MARKDOWN_KEYWORD:
+                return "markdown_content"
             return "question"
     return "question"
 
@@ -230,6 +272,25 @@ def parse_scratch(text: str) -> tuple[str, str] | None:
     label = parts[1].strip() if len(parts) > 1 else ""
     body = "\n".join(lines[1:])
     return label, body
+
+
+def parse_markdown_tempui(text: str) -> tuple[str, str] | None:
+    """Extracts `(label, content)` from a Markdown temp-UI file (TODO
+    9743419): the first line is `Markdown <label>`; every line after
+    it, verbatim, is the markdown content to render. Same shape as
+    parse_scratch -- `label` is for notification text only, never used
+    for the eventual saved filename (that's derived from `content`'s
+    own first line, at save time). Returns None if the file doesn't
+    actually start with the Markdown keyword."""
+    lines = text.splitlines()
+    if not lines:
+        return None
+    parts = lines[0].split(None, 1)
+    if not parts or parts[0] != MARKDOWN_KEYWORD:
+        return None
+    label = parts[1].strip() if len(parts) > 1 else ""
+    content = "\n".join(lines[1:])
+    return label, content
 
 
 def is_temp_ui_filename(name: str) -> bool:
