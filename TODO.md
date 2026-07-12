@@ -1296,6 +1296,10 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    click vs. hover), and check for any known-fragile native code path (e.g.
    LEARNINGS.md's QNativeGestureEvent segfault note) that could plausibly be
    involved.
+f447303. When opening new instances of the Claude or Console widgets,
+   the default working directory should be the active project (current
+   Desk) directory, not wherever the Desk process itself is running
+   from.
 4716585. COMPLETED: Crash: creating a new Desk segfaulted right as the
    ".desk_temp" creation confirmation dialog was answered ("Yes"), with
    the new Desk's seeded Markdown-with-README widget (TODO cb2790d)
