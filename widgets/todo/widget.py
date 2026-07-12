@@ -309,7 +309,14 @@ class _ItemDialog(QWidget):
 class TodoWidget(QWidget):
     """Reads the nearest TODO.md relative to the current Desk's directory
     (desk.shell.current_context) and displays it as a filterable,
-    reorderable list. See plans/todo-widget.md."""
+    reorderable list. See plans/todo-widget.md.
+
+    `find_nearest_todo_file` walks *up* through parent directories, so
+    the resolved TODO.md can legitimately live outside the current Desk
+    directory -- `external_path_changed` (TODO a053e3a) reflects that
+    in the widget's titlebar."""
+
+    external_path_changed = pyqtSignal(bool)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -433,6 +440,7 @@ class TodoWidget(QWidget):
             self._state.update(todo_path=None, preamble="", items=[], pending=False)
             self._status_label.setText("No TODO.md found near the current Desk's directory.")
             self._list.clear()
+            self.refresh_external_path_status()
             return
 
         preamble, items = parse_todo_file(todo_path)
@@ -440,6 +448,17 @@ class TodoWidget(QWidget):
         self._status_label.setText(str(todo_path))
         self._touch_timestamp("Reloaded")
         self._populate_list()
+        self.refresh_external_path_status()
+
+    def refresh_external_path_status(self) -> None:
+        """Re-emits `external_path_changed` for the currently loaded
+        TODO.md (TODO a053e3a) -- called here after every reload, and
+        once more by DeskWindow right after wiring the signal, since
+        this widget's own __init__ already calls reload() once,
+        before that connection could possibly exist yet."""
+        todo_path = self._state["todo_path"]
+        is_external = todo_path is not None and current_context.path_is_external(todo_path)
+        self.external_path_changed.emit(is_external)
 
     def _touch_timestamp(self, verb: str) -> None:
         self._timestamp_label.setText(f"{verb} {datetime.now().strftime('%H:%M:%S')}")

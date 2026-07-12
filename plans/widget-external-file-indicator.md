@@ -1,4 +1,4 @@
-# "[EXTERNAL]" titlebar marker for widgets loading a file outside the current Desk directory
+# "[EXTERNAL]" titlebar marker for widgets loading a file outside the current Desk directory (COMPLETED)
 
 TODO `a053e3a`.
 
@@ -10,7 +10,7 @@ associated directory, by showing '[EXTERNAL]'."
 
 Every widget that displays/edits a single file the user (or an automatic
 lookup) picked -- Markdown, Markdown (Extended), SVG Viewer, Editor, and
-TODO -- gains a small `external_changed(bool)` signal, computed against
+TODO -- gains a small `external_path_changed(bool)` signal, computed against
 `desk.shell.current_context.get_current_desk_directory()` (the "currently
 associated directory" -- the same concept these widgets' own "Open"
 dialogs already seed from). `DeskWindow` wires that signal, for every
@@ -36,12 +36,12 @@ normally.
   a path to the exact state that module already owns -- matches this
   codebase's convention of shared non-widget logic living in `desk.`
   proper (widget directories can't import each other).
-- **Each of the 5 widgets gets its own `external_changed = pyqtSignal
+- **Each of the 5 widgets gets its own `external_path_changed = pyqtSignal
   (bool)`** (Qt signals must be declared per-QObject-class -- there's no
   way to share one signal instance across independent widget classes,
   and this codebase doesn't use a shared widget base class either, see
   TODO cee6f74's plan for why). Each also gets one new public method,
-  `refresh_external_status()`, that computes the current file's status
+  `refresh_external_path_status()`, that computes the current file's status
   via `path_is_external` and emits it -- called both (a) internally, at
   the end of the widget's existing single file-load choke point
   (`MarkdownWidget.set_file`, `MarkdownExWidget.set_file`,
@@ -56,7 +56,7 @@ normally.
   at the end of its own `__init__`, before `DeskWindow` can possibly
   have connected anything yet -- `PythonWidgetHost._rebuild()` runs
   `module.build()` fully synchronously). A signal alone would silently
-  miss that first, already-happened load. `refresh_external_status()`
+  miss that first, already-happened load. `refresh_external_path_status()`
   being idempotent and side-effect-free beyond emitting means calling it
   an extra time right after connecting costs nothing and closes that
   gap, without resorting to event-loop-timing tricks
@@ -71,9 +71,9 @@ normally.
   (not per-call-site like the Claude/TempUI special-cased bindings,
   which need restore-specific extra arguments this doesn't) -- duck
   -typed the same way `hasattr(content, "set_file")` already is
-  elsewhere in this file: `if hasattr(content, "external_changed"):
-  content.external_changed.connect(frame.set_external);
-  content.refresh_external_status()`. Since every placement path
+  elsewhere in this file: `if hasattr(content, "external_path_changed"):
+  content.external_path_changed.connect(frame.set_external);
+  content.refresh_external_path_status()`. Since every placement path
   (fresh, restored, programmatic via `open_widget`, the add-widget menu)
   already funnels through `_place_widget`, one call site covers all of
   them.
@@ -93,8 +93,8 @@ normally.
   duck-typed bind step.
 - `widgets/markdown/widget.py`, `widgets/markdown_ex/widget.py`,
   `widgets/svg_viewer/widget.py`, `widgets/editor/widget.py`,
-  `widgets/todo/widget.py` -- new `external_changed` signal +
-  `refresh_external_status()`, called from each widget's existing
+  `widgets/todo/widget.py` -- new `external_path_changed` signal +
+  `refresh_external_path_status()`, called from each widget's existing
   file-load choke point(s).
 - `design-docs/widget-ux.md` -- a short mention under "Chrome Stays a
   Constant Screen Size" (the titlebar label is no longer fully static
@@ -109,7 +109,7 @@ Headless (`QT_QPA_PLATFORM=offscreen`, real `QApplication`, no mocks):
   elsewhere (e.g. a sibling temp directory) -> `True`; no current Desk
   directory set -> `False`.
 - Each of the 5 widgets: after `set_file`/`_load_file`/`reload()` with a
-  path inside the current Desk directory, `external_changed` fires
+  path inside the current Desk directory, `external_path_changed` fires
   `False`; with a path outside it, fires `True`; switching from an
   external file back to an internal one fires `False` again (not
   "sticky").
@@ -127,4 +127,41 @@ Headless (`QT_QPA_PLATFORM=offscreen`, real `QApplication`, no mocks):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned, with one naming refinement made during
+implementation: the signal/method are `external_path_changed`/
+`refresh_external_path_status()`, not the shorter `external_changed`/
+`refresh_external_status` used earlier in this plan's drafting. Reason:
+the Editor and TODO widgets already have a *different*,
+pre-existing "external change" concept (a file's *content* changing on
+disk, from `SingleFileWatcher`/TODO cee6f74 -- see `EditorWidget
+._on_external_change`/`_external_change_pending`). Reusing bare
+"external" for this feature's different meaning ("this file's
+*location* is outside the Desk directory") inside the very same widget
+classes would have been a real readability trap; `external_path_changed`
+disambiguates the two at a glance.
+
+All headless verification steps above passed: `path_is_external` for
+inside/nested/outside/no-current-directory cases; `WidgetFrame
+.set_external` toggling the titlebar label text cleanly both ways;
+`MarkdownWidget` firing `False`/`True`/`False` across
+inside/outside/inside `set_file` calls; a real `find_nearest_todo_file`
+lookup that resolves *above* a temp "Desk directory" (the one concrete
+case that actually motivated including the TODO widget) correctly
+reported as external; `EditorWidget` firing `False` for an in-directory
+file.
+
+Not separately re-verified: `DeskWindow._place_widget`'s actual runtime
+wiring end-to-end via a real, constructed `DeskWindow` -- consistent
+with this codebase's existing precedent (see TODO 578cb6b's plan) of
+skipping a literal `DeskWindow` construction in headless verification
+due to a known, unrelated offscreen stall. The race this wiring exists
+to close (a widget's file already loaded during its own `__init__`,
+before `DeskWindow` can connect anything) was exercised directly instead:
+connecting to a signal *after* construction and then calling
+`refresh_external_path_status()` manually, mirroring exactly what
+`_bind_external_indicator` does, and confirming it still reports
+correctly.
+
+No `LEARNINGS.md` entry needed -- nothing surprising turned up beyond
+the naming consideration above, which is a design decision, not a
+bug/gotcha.

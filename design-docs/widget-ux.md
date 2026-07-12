@@ -174,6 +174,15 @@ requires maintaining a second graphics item per widget kept in sync on
 every pan/zoom/move/resize. Counter-scaling keeps the existing "one
 `WidgetFrame` proxy per widget" structure entirely intact.
 
+The titlebar label itself is no longer fully static after construction:
+`WidgetFrame.set_external(bool)` (TODO a053e3a) appends `" [EXTERNAL]"`
+to it for a widget whose loaded file lives outside the current Desk
+directory (`_TitleBar` keeps the original title string and an
+`_external` flag, recomputing the label text from both). `DeskWindow`
+wires this generically for any placed widget exposing an
+`external_path_changed(bool)` signal -- see
+`plans/widget-external-file-indicator.md`.
+
 ### Close Button
 
 A `_CloseButton` ("✕") sits at the titlebar's right edge, counter-scaled

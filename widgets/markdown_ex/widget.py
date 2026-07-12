@@ -2,7 +2,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QUrl
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal
 from PyQt6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -223,6 +223,8 @@ class MarkdownExWidget(QWidget):
     on top of QTextBrowser's own native image/SVG handling for
     everything else. See plans/markdown-ex-widget.md."""
 
+    external_path_changed = pyqtSignal(bool)
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._current_path: Path | None = None
@@ -308,6 +310,17 @@ class MarkdownExWidget(QWidget):
         self._last_dir = path.parent
         self._watcher.watch(path)
         self._reload()
+        self.refresh_external_path_status()
+
+    def refresh_external_path_status(self) -> None:
+        """Re-emits `external_path_changed` for the currently loaded file
+        (TODO a053e3a) -- called here after every load, and once more by
+        DeskWindow right after wiring the signal, since the file may
+        already have been loaded before that connection existed."""
+        is_external = self._current_path is not None and current_context.path_is_external(
+            self._current_path
+        )
+        self.external_path_changed.emit(is_external)
 
     def _reload(self) -> None:
         path = self._current_path

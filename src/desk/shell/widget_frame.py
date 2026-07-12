@@ -48,17 +48,30 @@ class _TitleBar(QWidget):
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.SizeAllCursor)
         self.setStyleSheet("background-color: #3a3d41;")
+        self._title = title
+        self._external = False
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 0, 8, 0)
-        self._label = QLabel(title)
+        self._label = QLabel()
         self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self._update_label_text()
         layout.addWidget(self._label)
         layout.addStretch()
         self.close_button = _CloseButton()
         layout.addWidget(self.close_button)
 
         self.apply_scale(1.0)
+
+    def _update_label_text(self) -> None:
+        self._label.setText(f"{self._title} [EXTERNAL]" if self._external else self._title)
+
+    def set_external(self, is_external: bool) -> None:
+        """Shows/hides the "[EXTERNAL]" marker (TODO a053e3a) -- for a
+        widget whose loaded file is outside the current Desk's
+        directory."""
+        self._external = is_external
+        self._update_label_text()
 
     def apply_scale(self, view_scale: float) -> None:
         """Counter-scales this titlebar's local height/font so that, once
@@ -148,3 +161,9 @@ class WidgetFrame(QWidget):
     def set_view_scale(self, view_scale: float) -> None:
         for chrome in (self._titlebar, self._left_handle, self._right_handle, self._bottom_handle):
             chrome.apply_scale(view_scale)
+
+    def set_external(self, is_external: bool) -> None:
+        """Shows/hides the titlebar's "[EXTERNAL]" marker (TODO
+        a053e3a). See `desk.shell.window.DeskWindow`'s generic
+        `external_changed`-signal binding in `_place_widget`."""
+        self._titlebar.set_external(is_external)

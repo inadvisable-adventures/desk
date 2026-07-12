@@ -1350,7 +1350,7 @@ cee6f74. COMPLETED: Refactor TempUiManager and the TODO widget's file-watching s
    native-style-painted background/border chrome does not, desyncing
    from it.
    [planned: file-explorer-toolbar-zoom-scaling.md]
-a053e3a. Update widgets which load files to note in the title bar for
+a053e3a. COMPLETED: Update widgets which load files to note in the title bar for
    the widget if the widget is loading a file from a path outside of
    the currently associated directory, by showing "[EXTERNAL]".
    [planned: widget-external-file-indicator.md]

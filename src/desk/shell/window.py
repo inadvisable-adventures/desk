@@ -167,7 +167,24 @@ class DeskWindow(QMainWindow):
         frame = proxy.widget()
         if widget_id == CLAUDE_WIDGET_ID:
             self._bind_claude_widget(frame, resume=restore)
+        self._bind_external_indicator(frame)
         return frame
+
+    def _bind_external_indicator(self, frame: WidgetFrame) -> None:
+        """Wires a freshly-placed widget's "[EXTERNAL]" titlebar marker
+        (TODO a053e3a), duck-typed the same way as `hasattr(content,
+        "set_file")` elsewhere in this file: any widget exposing
+        `external_path_changed` gets it connected, plus one immediate
+        `refresh_external_path_status()` call, since the widget may already
+        have loaded its file during its own `__init__`/`build()` --
+        before this connection could possibly have existed."""
+        if not isinstance(frame.content, PythonWidgetHost):
+            return
+        content = frame.content.current
+        if content is None or not hasattr(content, "external_path_changed"):
+            return
+        content.external_path_changed.connect(frame.set_external)
+        content.refresh_external_path_status()
 
     def _bind_claude_widget(self, frame: WidgetFrame, resume: bool) -> None:
         """Launches `claude` in a just-placed claude widget, bound to the

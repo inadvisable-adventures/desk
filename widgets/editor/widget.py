@@ -12,7 +12,7 @@ from PyQt6.Qsci import (
     QsciLexerYAML,
     QsciScintilla,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFontDatabase, QKeySequence, QShortcut
 from PyQt6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
@@ -57,7 +57,15 @@ class EditorWidget(QWidget):
     are no unsaved local edits, an external change reloads silently,
     same as the Markdown widget. If there ARE unsaved local edits, the
     buffer is never clobbered -- the change is just flagged in the
-    title label until the next save or reload."""
+    title label until the next save or reload.
+
+    Also emits `external_path_changed` (TODO a053e3a) when the open
+    file's location relative to the current Desk directory changes --
+    a distinct concept from the file-content-changed detection above,
+    despite the similar name (one is "this file lives outside the Desk
+    directory," the other is "this file's content changed on disk")."""
+
+    external_path_changed = pyqtSignal(bool)
 
     def __init__(self, parent=None, confirm_unsaved: ConfirmUnsaved | None = None) -> None:
         super().__init__(parent)
@@ -135,6 +143,19 @@ class EditorWidget(QWidget):
         self._apply_lexer(path)
         self._update_label()
         self._watcher.watch(path)
+        self.refresh_external_path_status()
+
+    def refresh_external_path_status(self) -> None:
+        """Re-emits `external_path_changed` for the currently open file
+        (TODO a053e3a) -- called here after every load, once more after
+        `_save_file_as` (which sets `_current_path` directly, bypassing
+        `_load_file`), and once more by DeskWindow right after wiring
+        the signal, since the file may already have been loaded before
+        that connection existed."""
+        is_external = self._current_path is not None and current_context.path_is_external(
+            self._current_path
+        )
+        self.external_path_changed.emit(is_external)
 
     def _on_external_change(self) -> None:
         if self._current_path is None:
@@ -184,6 +205,7 @@ class EditorWidget(QWidget):
         self._external_change_pending = False
         self._apply_lexer(self._current_path)
         self._update_label()
+        self.refresh_external_path_status()
         return True
 
     def _open_file(self) -> None:

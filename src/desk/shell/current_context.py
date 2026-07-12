@@ -40,6 +40,21 @@ def get_current_desk_directory() -> Path | None:
     return _current_directory
 
 
+def path_is_external(path: Path) -> bool:
+    """Whether `path` is outside `get_current_desk_directory()` -- used
+    by widgets that load a single file to show an "[EXTERNAL]" titlebar
+    marker (TODO a053e3a). `False` if there's no current Desk directory
+    known yet (nothing to be "outside" of)."""
+    directory = _current_directory
+    if directory is None:
+        return False
+    try:
+        path.resolve().relative_to(directory.resolve())
+        return False
+    except (ValueError, OSError):
+        return True
+
+
 def set_widget_opener(opener: Callable[[str], QWidget | None]) -> None:
     global _widget_opener
     _widget_opener = opener
