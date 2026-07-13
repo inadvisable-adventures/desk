@@ -28,7 +28,13 @@ a screenshot of the app's own window and resolve a global screen
 position to a human-readable description of whichever widget is
 there, without needing to import `desk.shell.window`/
 `desk.shell.canvas` directly (the same decoupling the widget-opener
-hook already gives `open_widget_content`)."""
+hook already gives `open_widget_content`).
+
+Also holds a "discuss starter" hook (TODO 46e1b42), same shape again:
+lets a `python` widget (the Questions widget's own "Discuss" button)
+kick off the same new-claude-session discussion flow as the tempui
+`DiscussParkingLotItem` keyword (TODO c0875bc) -- see
+`desk.shell.window.DeskWindow.start_discussion`."""
 from collections.abc import Callable
 from pathlib import Path
 
@@ -40,6 +46,7 @@ _widget_opener: Callable[[str], QWidget | None] | None = None
 _temp_ui_write_recorder: Callable[[Path, str], None] | None = None
 _main_window: QWidget | None = None
 _widget_path_resolver: Callable[[QPoint], str | None] | None = None
+_discuss_starter: Callable[[str, str], None] | None = None
 
 
 def set_current_desk_directory(directory: Path) -> None:
@@ -100,3 +107,12 @@ def set_widget_path_resolver(resolver: Callable[[QPoint], str | None]) -> None:
 
 def get_widget_path_resolver() -> Callable[[QPoint], str | None] | None:
     return _widget_path_resolver
+
+
+def set_discuss_starter(starter: Callable[[str, str], None]) -> None:
+    global _discuss_starter
+    _discuss_starter = starter
+
+
+def get_discuss_starter() -> Callable[[str, str], None] | None:
+    return _discuss_starter

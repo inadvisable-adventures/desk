@@ -1790,3 +1790,8 @@ c0875bc. COMPLETED: tempui DSL addition which enables Desk to initiate a
    something like "let's discuss an item from PARKINGLOT.md: [full
    parking lot item text]".
    [planned: tempui-discuss-parking-lot-item.md]
+46e1b42. COMPLETED: Add a button to each of the questions displayed in the
+   question widget: the button should be labeled "Discuss" and
+   clicking it should do the same thing as the tempui DSL addition
+   (TODO c0875bc).
+   [planned: questions-widget-discuss-button.md]

@@ -297,6 +297,25 @@ class QuestionsWidget(QWidget):
         self._list.setSpacing(ITEM_LIST_SPACING)
         self._list.itemDoubleClicked.connect(self._show_answer_dialog)
 
+        # A single floating "Discuss" button that follows the hovered
+        # row (TODO 46e1b42), mirroring widgets/todo/widget.py's own
+        # "📄 Plan" button -- not a per-row setItemWidget, matching that
+        # sibling widget's established convention. Shown over every
+        # entry (unlike the Plan button, which only shows for entries
+        # that have one) -- clicking it starts a new claude session to
+        # discuss that entry, via the same flow as the tempui
+        # DiscussParkingLotItem keyword (TODO c0875bc).
+        self._list.setMouseTracking(True)
+        self._list.viewport().setMouseTracking(True)
+        self._list.itemEntered.connect(self._on_item_entered)
+        self._list.viewport().installEventFilter(self)
+        self._list.verticalScrollBar().valueChanged.connect(self._hide_discuss_button)
+        self._discuss_button = QPushButton("Discuss", self._list.viewport())
+        self._discuss_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._discuss_button.hide()
+        self._discuss_button.clicked.connect(self._discuss_hovered_entry)
+        self._discuss_item: QListWidgetItem | None = None
+
         status_row = QHBoxLayout()
         status_row.addWidget(self._status_label, 1)
         status_row.addWidget(self._timestamp_label)
@@ -394,6 +413,7 @@ class QuestionsWidget(QWidget):
         dialog.close()
 
     def _populate_list(self) -> None:
+        self._hide_discuss_button()
         self._list.clear()
         for entry in self._state["entries"]:
             status = "answered" if entry.answer.strip() else "unanswered"
@@ -408,6 +428,39 @@ class QuestionsWidget(QWidget):
 
     def _apply_filter(self, _checked: bool) -> None:
         self._populate_list()
+
+    def eventFilter(self, obj, event) -> bool:
+        # Hide the floating Discuss button when the mouse leaves the
+        # list, so it doesn't linger over an un-hovered row -- mirrors
+        # widgets/todo/widget.py's own plan-button eventFilter.
+        if obj is self._list.viewport() and event.type() == QEvent.Type.Leave:
+            self._hide_discuss_button()
+        return super().eventFilter(obj, event)
+
+    def _on_item_entered(self, list_item: QListWidgetItem) -> None:
+        self._discuss_item = list_item
+        rect = self._list.visualItemRect(list_item)
+        self._discuss_button.adjustSize()
+        size = self._discuss_button.size()
+        x = rect.right() - size.width() - 6
+        y = rect.center().y() - size.height() // 2
+        self._discuss_button.move(max(rect.left(), x), y)
+        self._discuss_button.show()
+        self._discuss_button.raise_()
+
+    def _hide_discuss_button(self) -> None:
+        self._discuss_item = None
+        self._discuss_button.hide()
+
+    def _discuss_hovered_entry(self) -> None:
+        if self._discuss_item is None:
+            return
+        entry = self._discuss_item.data(ENTRY_ROLE)
+        starter = current_context.get_discuss_starter()
+        if entry is None or starter is None:
+            return
+        starter("QUESTIONS.md", entry.raw_text)
+        self._hide_discuss_button()
 
     def _new_answer_dialog(self, **kwargs) -> "_AnswerDialog":
         # Same parenting rationale as TodoWidget._new_item_dialog -- see

@@ -216,6 +216,7 @@ class DeskWindow(QMainWindow):
         current_context.set_temp_ui_write_recorder(self._temp_ui_manager.record_own_write)
         current_context.set_main_window(self)
         current_context.set_widget_path_resolver(self.view.describe_widget_at_global_pos)
+        current_context.set_discuss_starter(self.start_discussion)
         self._sync_tempui_doc()
         self._open_crash_log_widgets()
 
@@ -386,6 +387,40 @@ class DeskWindow(QMainWindow):
                     0, lambda: self.close_widget_by_instance_id(iid)
                 )
             )
+
+    def _place_discuss_claude_widget(
+        self, source_label: str, item_text: str, instance_id: str | None = None
+    ) -> WidgetFrame | None:
+        """Places a new claude widget with a fresh session prompted to
+        discuss item_text, framed as "an item from source_label" --
+        shared by the tempui DiscussParkingLotItem keyword's
+        _activate_temp_ui branch (TODO c0875bc, source_label=
+        "PARKINGLOT.md") and start_discussion below (TODO 46e1b42).
+        Returns None (placing nothing) if the "claude" widget kind
+        isn't registered."""
+        widget = self._widgets.get(CLAUDE_WIDGET_ID)
+        if widget is None:
+            return None
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        return self._place_widget(
+            CLAUDE_WIDGET_ID,
+            widget,
+            (center.x(), center.y()),
+            widget.default_size,
+            instance_id=instance_id,
+            claude_extra_instructions=f"\n\nLet's discuss an item from {source_label}: {item_text}",
+        )
+
+    def start_discussion(self, source_label: str, item_text: str) -> None:
+        """The current_context "discuss starter" hook (TODO 46e1b42) --
+        lets a python widget (the Questions widget's own Discuss
+        button) kick off the same new-claude-session discussion flow
+        as the tempui DiscussParkingLotItem keyword, without needing to
+        import desk.shell.window directly. Each call is an independent,
+        fresh session (no instance_id/dedup -- unlike a tempui file,
+        there's no natural stable identity to dedup a button click
+        against)."""
+        self._place_discuss_claude_widget(source_label, item_text)
 
     def open_widget(
         self,
@@ -1051,21 +1086,18 @@ class DeskWindow(QMainWindow):
             # _bind_claude_widget), before the generic
             # open_widget_content -> _bind_temp_ui_content two-step
             # below would get a chance to run -- too late to append the
-            # item text to the prompt by then, so the extra instructions
-            # have to be threaded into _place_widget's own call instead.
+            # item text to the prompt by then, so this goes through the
+            # shared _place_discuss_claude_widget helper instead (also
+            # used by the Questions widget's Discuss button, TODO
+            # 46e1b42), passing this file's own uuid as instance_id so
+            # a repeat notification click just centers on it (the
+            # find_frame_by_instance_id check above), not restarts it.
             try:
                 parsed = parse_discuss_parking_lot_item(path.read_text())
             except OSError:
                 parsed = None
             item_text = parsed[1] if parsed is not None else ""
-            self._place_widget(
-                widget_id,
-                widget,
-                (center.x(), center.y()),
-                widget.default_size,
-                instance_id=uuid_str,
-                claude_extra_instructions=f"\n\nLet's discuss an item from PARKINGLOT.md: {item_text}",
-            )
+            self._place_discuss_claude_widget("PARKINGLOT.md", item_text, instance_id=uuid_str)
             return
         content = self.open_widget_content(
             widget_id,
