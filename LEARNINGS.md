@@ -666,3 +666,32 @@ what actually happens — verify with `QTimer.singleShot(0, ...)` and a
 real embedded `QGraphicsProxyWidget`, the same as any other focus
 -resolution timing question in this codebase (see this file's other
 `QGraphicsProxyWidget` focus entries).
+
+## `shlex.quote`-ing an entire hand-written-prose blob before typing it into an interactive shell isn't automatically safe just because it's syntactically correct
+
+TODO `624ff3a`: a `claude` widget failed to launch when its initial
+prompt had an arbitrary, unbounded chunk of markdown (a `PARKINGLOT.md`
+item's full text) appended to it. The command that got typed into the
+shell was `exec claude --session-id <uuid> --permission-mode auto
+'<prompt>'`, with the *entire* prompt run through `shlex.quote(...)`
+first — so this wasn't a case of literally-unescaped shell
+metacharacters; the quoting was correct POSIX shell syntax. `shlex.quote`
+only guarantees the *shell's parser* sees one inert argument — it says
+nothing about an *interactive* shell's other behaviors layered on top of
+parsing: bash's default `histexpand` still performs `!`-history
+-expansion *inside* an already-single-quoted argument, and the whole
+quoted blob is written to the PTY in one `os.write` immediately after
+spawning the shell, before there's any guarantee the shell's own
+readline has taken over the terminal in raw mode (an early write can
+still race the kernel tty layer's canonical-mode line-length limit).
+Neither was proven as the exact mechanism here, but both are real gaps
+`shlex.quote` alone doesn't close.
+
+Don't treat "the whole string went through `shlex.quote`" as "this is
+now safe to type into an interactive shell regardless of size/content."
+For anything with unbounded, hand-written prose content (as opposed to
+a short, fixed-shape value like a path or an id), prefer keeping what's
+typed into the shell short and structurally simple — e.g. a reference
+the receiving program can go read for itself (a file path, a line
+number) — over splicing the actual content into the command line at
+all.

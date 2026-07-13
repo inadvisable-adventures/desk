@@ -35,7 +35,7 @@ GITIGNORE_COMMENT = "# Desk-specific"
 # of tempui-*.md files (SPLIT_DOC_CONTENT below), not just this one --
 # bump it for a meaningful change to any of them, and don't add a
 # separate version note to any split file (there isn't one to add).
-TEMPUI_DOC_VERSION = 5
+TEMPUI_DOC_VERSION = 6
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -434,27 +434,34 @@ current conversation, or expecting the current session to context
 
 - The first line is `DiscussParkingLotItem <label>` — `label` is only
   used for the notification text, never sent to the new session.
-- Every line after that, verbatim, is the *full* text of the
-  `PARKINGLOT.md` item to discuss — copy it in exactly as it appears
-  there (heading, body, everything), don't summarize or trim it.
+- The next line is `Line <N>` — the 1-indexed line number, in the
+  *current* `PARKINGLOT.md`, where the item you want discussed starts
+  (its leading `- **Title**` bullet). Write the **line number**, not
+  the item's own text — the new session reads `PARKINGLOT.md` itself to
+  get the item's current, full text, rather than being handed a copy of
+  it up front. (Don't paste the item's text into this file at all; the
+  launch prompt built from a bare line number is short and reliable,
+  where splicing in arbitrary, unbounded item text into the new
+  session's launch command has caused real launch failures.)
 
 Example:
 
 ```
 DiscussParkingLotItem A way to end a claude widget's session
-- **A way to end a claude widget's session so it can get new
-  instructions -- maybe an "end session" button?**
-
-  Right now a claude widget is bound to one session for its lifetime...
+Line 533
 ```
 
 Clicking the resulting notification places a **new** claude widget
 with a fresh session (not the one that created this file) — its
 initial prompt is the same "you're embedded in Desk" instructions
-every claude widget gets, with the item's text appended as a final
-instruction to discuss it. This is a one-shot trigger, not a live
--synced document like `Scratch` — there's no `Answer` line, and once
-the new session starts there's nothing more Desk does with this file.
+every claude widget gets, plus an instruction to read that line of
+`PARKINGLOT.md` and discuss the item found there, **in this same new
+session** (it's told explicitly not to kick off yet another new Desk
+discussion of its own, e.g. by writing another `DiscussParkingLotItem`
+file, unless the user actually asks it to). This is a one-shot trigger,
+not a live-synced document like `Scratch` — there's no `Answer` line,
+and once the new session starts there's nothing more Desk does with
+this file.
 """
 
 LIGHTNING_ROUND_DOC_FILENAME = "tempui-lightning-round.md"
@@ -723,15 +730,16 @@ def parse_scratch(text: str) -> tuple[str, str] | None:
     return label, body
 
 
-def parse_discuss_parking_lot_item(text: str) -> tuple[str, str] | None:
-    """Extracts `(label, item_text)` from a DiscussParkingLotItem
+def parse_discuss_parking_lot_item(text: str) -> tuple[str, int] | None:
+    """Extracts `(label, line_number)` from a DiscussParkingLotItem
     temp-UI file: the first line is `DiscussParkingLotItem <label>`;
-    every line after it, verbatim, is the full PARKINGLOT.md item text
-    to discuss (not further parsed). Same shape as parse_scratch --
-    `label` is for notification text only, `item_text` is what gets
-    appended to the new claude session's prompt. Returns None if the
-    file doesn't actually start with the DiscussParkingLotItem
-    keyword."""
+    the next non-blank line is `Line <N>`, the 1-indexed line number in
+    PARKINGLOT.md where the item to discuss starts. `label` is for
+    notification text only; `line_number` is what a new claude session
+    is told to go read for itself (TODO 624ff3a -- previously this
+    embedded the item's full text instead, which could break the new
+    session's launch). Returns None if the file doesn't start with the
+    DiscussParkingLotItem keyword, or has no valid `Line <N>` line."""
     lines = text.splitlines()
     if not lines:
         return None
@@ -739,8 +747,19 @@ def parse_discuss_parking_lot_item(text: str) -> tuple[str, str] | None:
     if not parts or parts[0] != DISCUSS_PARKING_LOT_ITEM_KEYWORD:
         return None
     label = parts[1].strip() if len(parts) > 1 else ""
-    item_text = "\n".join(lines[1:])
-    return label, item_text
+    for line in lines[1:]:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        line_parts = stripped.split(None, 1)
+        if line_parts[0] != "Line" or len(line_parts) < 2:
+            return None
+        try:
+            line_number = int(line_parts[1].strip())
+        except ValueError:
+            return None
+        return label, line_number
+    return None
 
 
 def parse_markdown_tempui(text: str) -> tuple[str, str] | None:

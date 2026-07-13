@@ -1795,3 +1795,59 @@ c0875bc. COMPLETED: tempui DSL addition which enables Desk to initiate a
    clicking it should do the same thing as the tempui DSL addition
    (TODO c0875bc).
    [planned: questions-widget-discuss-button.md]
+624ff3a. COMPLETED: Bug: launching a DiscussParkingLotItem tempui discussion (TODO
+   c0875bc) failed to let claude start -- something about dumping the
+   entire PARKINGLOT.md item's text into the initial launch prompt
+   broke it. Instead of embedding the full item text, the tempui file
+   should just reference the item by its line number in PARKINGLOT.md,
+   and the new session should read the file itself. Additionally, add
+   an instruction telling claude not to immediately start a new
+   discussion in Desk (e.g. by creating another DiscussParkingLotItem
+   file) but to just have the discussion in the current session.
+
+   Traced the full launch path: the assembled prompt was already
+   correctly passed through a single `shlex.quote(...)` call before
+   being spliced into the `exec claude ...` command typed into the
+   PTY, so this wasn't naive/unescaped shell interpolation -- but the
+   full parking-lot item's raw markdown text is unbounded, real prose
+   (backticks, quotes, blank lines), and at least two still-plausible
+   failure modes exist independent of the quoting itself: bash's
+   default interactive `histexpand` performs `!`-history-expansion even
+   inside a single-quoted argument, and the whole quoted blob is
+   written to the PTY in one shot immediately after spawning bash,
+   before it's certain readline has taken over the terminal in raw
+   mode (risking the kernel tty layer's canonical-mode line-length
+   limit). Neither was independently reproduced, but shortening the
+   message sidesteps both regardless of which (if either) is the exact
+   mechanism.
+
+   `DiscussParkingLotItem`'s DSL shape changed from "first line label,
+   rest of file the full verbatim item text" to "first line label,
+   second line `Line <N>` (the item's starting line number in
+   PARKINGLOT.md, written by the creating agent)" --
+   `parse_discuss_parking_lot_item` now returns `(label, line_number)`.
+   `_place_discuss_claude_widget` (`src/desk/shell/window.py`, shared
+   with the Questions widget's Discuss button, TODO 46e1b42) gained a
+   `parking_lot_line: int | None` param: when given, it builds a short
+   "read PARKINGLOT.md yourself at that line" reference instead of
+   splicing in full text; the Questions-widget path (full `item_text`,
+   unaffected -- QUESTIONS.md entries aren't line-number-addressed and
+   weren't reported broken) is unchanged. Both paths now get a shared
+   trailing instruction telling the new session to discuss it in this
+   same session rather than starting another new Desk discussion of
+   its own. `TEMPUI_DOC_VERSION` bumped 5 -> 6; this project's own
+   already-provisioned `.desk_temp/desk-temporary-ui.md` and
+   `tempui-discuss-parking-lot-item.md` refreshed via a real
+   `ensure_docs_current` run (not hand-edited) so they exactly match
+   the new source; the originally-reported demo tempui file rewritten
+   to the new `Line <N>` format. Verified headlessly (real
+   `DeskWindow`-method-on-a-double pattern): `parse_discuss_parking_lot_item`
+   round-trip/rejection cases; `_place_discuss_claude_widget`'s built
+   instructions for both the line-number and full-text paths (each
+   contains its expected content plus the new "don't start a new
+   discussion" sentence); `_activate_temp_ui`'s CLAUDE_WIDGET_ID branch
+   correctly extracts and forwards the line number; the final
+   `exec claude ...` command string built end-to-end from the new,
+   short prompt (~1000 chars, well short of anything that was ~1500-
+   3000+ chars with a real item's full text spliced in).
+   [planned: fix-discuss-parking-lot-item-launch-prompt.md]

@@ -389,18 +389,47 @@ class DeskWindow(QMainWindow):
             )
 
     def _place_discuss_claude_widget(
-        self, source_label: str, item_text: str, instance_id: str | None = None
+        self,
+        source_label: str,
+        item_text: str = "",
+        parking_lot_line: int | None = None,
+        instance_id: str | None = None,
     ) -> WidgetFrame | None:
         """Places a new claude widget with a fresh session prompted to
-        discuss item_text, framed as "an item from source_label" --
-        shared by the tempui DiscussParkingLotItem keyword's
-        _activate_temp_ui branch (TODO c0875bc, source_label=
-        "PARKINGLOT.md") and start_discussion below (TODO 46e1b42).
-        Returns None (placing nothing) if the "claude" widget kind
-        isn't registered."""
+        discuss something -- shared by the tempui DiscussParkingLotItem
+        keyword's _activate_temp_ui branch (TODO c0875bc,
+        source_label="PARKINGLOT.md") and start_discussion below (TODO
+        46e1b42). What to discuss is either a line number in
+        source_label (parking_lot_line, TODO 624ff3a -- the new session
+        reads that file itself rather than being handed a copy of the
+        item's text, which could break the launch for a long item) or,
+        for the Questions-widget path, the full item_text verbatim
+        (unaffected by that TODO -- QUESTIONS.md entries aren't
+        line-number-addressed the way PARKINGLOT.md items are, and
+        this path hasn't shown the same launch problem). Either way, a
+        shared trailing instruction tells the new session to have the
+        discussion right there instead of starting another new Desk
+        discussion of its own. Returns None (placing nothing) if the
+        "claude" widget kind isn't registered."""
         widget = self._widgets.get(CLAUDE_WIDGET_ID)
         if widget is None:
             return None
+        if parking_lot_line is not None:
+            what = (
+                f"the item starting at line {parking_lot_line} of {source_label} -- "
+                f"read that file yourself for its current, full text (line numbers "
+                f"may have shifted slightly if the file has changed since this "
+                f"reference was written; use the nearby heading as an anchor if the "
+                f"line itself looks off)"
+            )
+        else:
+            what = f"an item from {source_label}: {item_text}"
+        instructions = (
+            f"\n\nLet's discuss {what}. Have this discussion here, in this "
+            f"session -- don't immediately start a new Desk discussion of your "
+            f"own about it (e.g. by writing another DiscussParkingLotItem tempui "
+            f"file) unless the user explicitly asks you to."
+        )
         center = self.view.mapToScene(self.view.viewport().rect().center())
         return self._place_widget(
             CLAUDE_WIDGET_ID,
@@ -408,7 +437,7 @@ class DeskWindow(QMainWindow):
             (center.x(), center.y()),
             widget.default_size,
             instance_id=instance_id,
-            claude_extra_instructions=f"\n\nLet's discuss an item from {source_label}: {item_text}",
+            claude_extra_instructions=instructions,
         )
 
     def start_discussion(self, source_label: str, item_text: str) -> None:
@@ -1092,12 +1121,17 @@ class DeskWindow(QMainWindow):
             # 46e1b42), passing this file's own uuid as instance_id so
             # a repeat notification click just centers on it (the
             # find_frame_by_instance_id check above), not restarts it.
+            # Passes a line-number reference, not the item's full text
+            # (TODO 624ff3a -- splicing the full text into the launch
+            # prompt could break the new session's launch).
             try:
                 parsed = parse_discuss_parking_lot_item(path.read_text())
             except OSError:
                 parsed = None
-            item_text = parsed[1] if parsed is not None else ""
-            self._place_discuss_claude_widget("PARKINGLOT.md", item_text, instance_id=uuid_str)
+            line_number = parsed[1] if parsed is not None else None
+            self._place_discuss_claude_widget(
+                "PARKINGLOT.md", parking_lot_line=line_number, instance_id=uuid_str
+            )
             return
         content = self.open_widget_content(
             widget_id,
