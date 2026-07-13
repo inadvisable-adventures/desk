@@ -733,3 +733,14 @@ This file captures thoughts and TODO items that arise during work on other thing
   widget for viewing (and maybe editing) that embedded code directly,
   rather than needing an external decode step, would help when
   inspecting or debugging a custom widget's actual implementation.
+
+- **DSLs for dealing with data: file/stream format, syntax, database, and disk layout DSLs**
+
+  A family of DSL ideas for describing/working with data: a DSL for
+  describing a file or stream format, a DSL for describing a syntax
+  (e.g. a grammar), a DSL for describing a database (schema/queries?),
+  and a DSL for describing a disk layout. Connects to the already
+  -parked "formalization of DSLs for Desk" idea above (domain
+  packages, a DSL for specifying a DSL, a DSL for specifying widgets)
+  -- these would likely want to build on whatever that formalization
+  produces, rather than being designed independently.
