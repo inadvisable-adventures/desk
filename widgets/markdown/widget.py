@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 
 from desk.file_watch import SingleFileWatcher
 from desk.mermaid import MermaidDiagramWidget
+from desk.persisted_path import resolve_persisted_path
 from desk.shell import current_context
 
 logger = logging.getLogger(__name__)
@@ -454,6 +455,21 @@ class MarkdownWidget(QWidget):
             ancestor.set_expanded(True)
             ancestor = ancestor._parent_section_widget
         self._scroll.ensureWidgetVisible(section_widget)
+
+    # -- widget-local storage (TODO fb76057/02eda20) ---------------------
+
+    def get_widget_local_storage(self) -> dict:
+        # _current_path is already None whenever tempui-bound (set in
+        # set_tempui_content) -- a tempui-bound instance is re-bound
+        # fresh from the tempui file itself on every reload, so
+        # persisting a path here would be actively wrong, not just
+        # redundant.
+        return {"path": str(self._current_path)} if self._current_path else {}
+
+    def set_widget_local_storage(self, data: dict) -> None:
+        path = resolve_persisted_path(data.get("path"))
+        if path is not None:
+            self.set_file(path)
 
 
 def build() -> QWidget:

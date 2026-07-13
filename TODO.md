@@ -1313,14 +1313,18 @@ b44e8ba. COMPLETED: Crash: segfault while interacting with the Desk picker.
    Likely resolves `b44e8ba` too (same crash shape, that report just
    never had a crash log to confirm against).
    [planned: fix-desk-picker-nested-dialog-crash.md]
-02eda20. Wire the Markdown and Editor widgets onto widget-local
+02eda20. COMPLETED: Wire the Markdown and Editor widgets onto widget-local
    storage (TODO fb76057) so their currently-open file path actually
    persists and restores across a Desk reload -- currently every
    widget's `"state"` in a saved `.desk` file is an empty `{}`, even
    for widgets with an obvious per-instance thing to remember (already
    tracked in `PARKINGLOT.md`, never wired up for any real widget).
    Tolerate a since-moved/deleted file gracefully at restore time, not
-   as a crash or silent misbehavior.
+   as a crash or silent misbehavior. Also wired up the Markdown (Old,
+   Basic) widget (named alongside Markdown/Editor in PARKINGLOT.md's
+   original tracked gap, though not in this item's own title) via a
+   new shared `desk.persisted_path.resolve_persisted_path` helper.
+   [planned: widget-local-storage-file-paths.md]
 ff6514a. COMPLETED: Small borders around widgets by default, to visually
    distinguish one widget from another and from the canvas.
    [planned: widget-borders.md]

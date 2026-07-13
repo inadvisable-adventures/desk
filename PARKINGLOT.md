@@ -283,8 +283,8 @@ This file captures thoughts and TODO items that arise during work on other thing
 
   Not decided — parking to revisit as a deliberate design discussion.
 
-- **Widgets can't persist an arbitrary per-instance chosen file across
-  reload -- the underlying capability now exists, unused so far**
+- **Migrate the TempUI/Claude widget bindings onto widget-local storage
+  too, instead of their current bespoke, one-off wiring**
 
   Surfaced building the Markdown widget (TODO 6bf83a9): it opens/renders
   a Markdown file the user picks, but — like the Code Editor widget —
@@ -293,17 +293,15 @@ This file captures thoughts and TODO items that arise during work on other thing
   storage": `WidgetState.state: dict`, `get_widget_local_storage()`/
   `set_widget_local_storage()` duck-typed onto a widget, a generalized
   post-build binding in `DeskWindow`) — but deliberately scoped to just
-  the mechanism, not wiring any specific widget onto it. Two follow-ons
-  this unlocks, still undecided:
-  - Have the Markdown/Markdown (Old, Basic)/Editor widgets actually use
-    it to remember their open file across a reload (the original
-    motivating case above).
-  - Migrate the existing per-kind `_bind_temp_ui_widget`/
-    `_bind_claude_widget` special-cases onto it instead of their current
-    bespoke, one-off wiring — a clean answer would simplify both.
+  the mechanism, not wiring any specific widget onto it. The original
+  motivating case (Markdown/Markdown (Old, Basic)/Editor remembering
+  their open file) is now done, under TODO `02eda20`. Still parked: the
+  existing per-kind `_bind_temp_ui_widget`/`_bind_claude_widget`
+  special-cases could migrate onto this same mechanism instead of their
+  current bespoke wiring — a clean answer would simplify both, but isn't
+  decided or scoped yet.
 
-  Not decided which (or both) is worth doing yet — parking to revisit
-  as its own design discussion.
+  Not decided — parking to revisit as its own design discussion.
 
 - **In-widget zoom/pan for the SVG Viewer**
 

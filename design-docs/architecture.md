@@ -589,7 +589,16 @@ now, and it can only have one Desk open at a time).
   (not a per-widget-kind special case, unlike the existing TempUI/Claude
   bindings — see `PARKINGLOT.md` for whether those should eventually move
   onto this too). Pull-based: read fresh at each actual save, same as
-  every other per-widget field, not tracked live.
+  every other per-widget field, not tracked live. Used by the Stack
+  widget (its frame list) and, for their currently-open file path (TODO
+  `02eda20`), the Markdown, Markdown (Old, Basic), and Editor widgets —
+  the latter three via a shared `desk.persisted_path.resolve_persisted_
+  path(raw) -> Path | None` helper that tolerates a since-moved/deleted
+  file at restore time by returning `None` (leaving the widget in its
+  normal no-file-open placeholder state) instead of crashing or adopting
+  a bogus path. A tempui-bound Markdown instance never persists a path
+  this way — it's rebound fresh from the tempui file itself on every
+  reload instead.
 - **Directory association**: by default a Desk's file lives in its
   associated directory (`Desk.directory == Desk.path.parent`); on launch,
   Desk looks for existing `*.desk` files in the current working directory

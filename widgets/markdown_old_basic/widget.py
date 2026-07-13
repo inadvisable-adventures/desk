@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
 )
 
 from desk.file_watch import SingleFileWatcher
+from desk.persisted_path import resolve_persisted_path
 from desk.shell import current_context
 
 logger = logging.getLogger(__name__)
@@ -28,9 +29,10 @@ class MarkdownWidget(QWidget):
     directory seeds from the current Desk's directory (via
     desk.shell.current_context, resolved once at construction -- same
     shape as the editor/TODO widgets), falling back to home. The chosen
-    file is not persisted across a reload (the widget contract has no
-    per-instance state payload yet -- see PARKINGLOT.md), matching the
-    editor widget. See plans/markdown-renderer-widget.md."""
+    file persists across a reload via widget-local storage (TODO
+    02eda20), tolerating a since-moved/deleted file gracefully (see
+    desk.persisted_path.resolve_persisted_path). See
+    plans/markdown-renderer-widget.md."""
 
     external_path_changed = pyqtSignal(bool)
 
@@ -124,6 +126,16 @@ class MarkdownWidget(QWidget):
             self._view.setMarkdown(f"*`{path.name}` no longer exists.*")
         except OSError as error:
             self._view.setMarkdown(f"*Could not read `{path.name}`: {error}.*")
+
+    # -- widget-local storage (TODO fb76057/02eda20) ---------------------
+
+    def get_widget_local_storage(self) -> dict:
+        return {"path": str(self._current_path)} if self._current_path else {}
+
+    def set_widget_local_storage(self, data: dict) -> None:
+        path = resolve_persisted_path(data.get("path"))
+        if path is not None:
+            self.set_file(path)
 
 
 def build() -> QWidget:
