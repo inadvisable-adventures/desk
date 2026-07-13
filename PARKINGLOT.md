@@ -365,3 +365,45 @@ This file captures thoughts and TODO items that arise during work on other thing
   `discover_widgets(widgets_dir)` -- not designed yet; parking rather
   than guessing at the right generalization from a single specific
   fix's own narrow workaround.
+
+- **Scrolling while hovering over a widget scrolls the Desk instead of
+  the widget**
+
+  Right now a mouse-wheel scroll over a widget frame appears to scroll/
+  pan the Workspace Canvas underneath it rather than scrolling the
+  widget's own content. It should instead be captured by whichever
+  widget is under the cursor and scroll that widget, not the Desk.
+
+  Alongside that fix, add a minimap like `world-timelines`'s, so that
+  panning/navigating the Desk canvas still has a reliable way to get
+  around once wheel-scroll is no longer available as a canvas-pan
+  gesture over a widget.
+
+  Not designed yet -- parking rather than guessing at scope (e.g.
+  exactly which widget kinds currently rely on wheel-scroll-as-canvas
+  -pan today, and what the minimap should actually show/support beyond
+  "like world-timelines's").
+
+- **Locked widgets still show the resize-edge cursors**
+
+  A locked widget's edges shouldn't do anything (resizing is disabled
+  while locked), but the custom edge-resize mouse cursors still appear
+  when hovering there, which is misleading -- it looks like resizing is
+  still available. Should be suppressed while the widget is locked.
+
+- **Context-menu clicks/taps that fall through an unhandled widget
+  should not reach the Desk underneath**
+
+  A right-click (or equivalent context-menu gesture) that a widget
+  doesn't itself handle currently appears to fall through to the
+  Workspace Canvas below it, presumably opening/triggering the Desk's
+  own context menu. It should instead just be ignored/swallowed at the
+  widget boundary when the widget doesn't handle it, not passed through
+  to the Desk.
+
+- **A visible inner outline around a widget's content area**
+
+  There's currently no visual boundary marking where a widget's frame
+  ends and its actual content begins. An inner outline around the
+  content area (distinct from the widget frame's own outer border)
+  would make that boundary clear.
