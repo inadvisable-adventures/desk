@@ -1302,7 +1302,7 @@ ff6514a. COMPLETED: Small borders around widgets by default, to visually
 8d05920. COMPLETED: Lock widgets in place so that only the title and an unlock
    icon show in the top bar of the widget -- unable to be moved,
    resized, or moved in z order while locked. [planned: lock-widgets.md]
-cbbb661. Editor widget needs a different color text caret when
+cbbb661. COMPLETED: Editor widget needs a different color text caret when
    focused -- black-on-black doesn't work well.
    [planned: editor-dark-mode-and-wrap.md]
 f2aede6. Feedback widget: able to take internal screenshots of the app
@@ -1318,12 +1318,12 @@ f2aede6. Feedback widget: able to take internal screenshots of the app
 a1c701d. COMPLETED: Clicking then releasing the title bar of a widget should
    activate/focus the current caret inside of it.
    [planned: widget-focus-concept.md]
-17a2720. The white background on the editor line numbers is good for
+17a2720. COMPLETED: The white background on the editor line numbers is good for
    separating but bad for dark mode. Instead, draw a vertical line
    between the numbers area and the editor box, and draw the numbers
    in a slightly different color than the default text in the box.
    [planned: editor-dark-mode-and-wrap.md]
-1d6777f. Wrap too-long lines in the editor, and keep the line number
+1d6777f. COMPLETED: Wrap too-long lines in the editor, and keep the line number
    aligned with the top line. [planned: editor-dark-mode-and-wrap.md]
 f447303. COMPLETED: When opening new instances of the Claude or Console widgets,
    the default working directory should be the active project (current

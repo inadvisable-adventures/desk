@@ -1,4 +1,4 @@
-# Editor: visible caret, dark-mode-friendly line numbers, line wrap
+# Editor: visible caret, dark-mode-friendly line numbers, line wrap (COMPLETED)
 
 TODOs `cbbb661` (caret color), `17a2720` (line-number margin), and
 `1d6777f` (line wrap) -- implemented together since all three are
@@ -98,4 +98,36 @@ Headless (`QT_QPA_PLATFORM=offscreen`, real `QApplication`, a real
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `EDITOR_FOREGROUND`/`EDITOR_BACKGROUND`/
+`CARET_COLOR`/`LINE_NUMBER_COLOR`/`MARGIN_DIVIDER_COLOR`/
+`MARGIN_DIVIDER_WIDTH` constants and the corresponding `QsciScintilla`
+setup calls in `widgets/editor/widget.py`'s `EditorWidget.__init__`.
+
+Verified headlessly (`QT_QPA_PLATFORM=offscreen`, real `QApplication`,
+a real `EditorWidget`): `editor.color()`/`.paper()` return the new dark
+palette; the line-number foreground and background genuinely differ
+from the main text color and match the editor's own background,
+respectively; the new divider margin (index 1, `SymbolMarginColor`,
+positive width) has a color distinct from both; `wrapMode()` is
+`WrapWord`; opening and lexing a real file still works with everything
+set. One real, non-obvious QScintilla gotcha caught and worked around
+*during verification* (not a bug in the implementation itself, which
+used the correct APIs throughout): `QsciScintilla.marginBackgroundColor
+()`/`SCI_SETMARGINBACKN` only apply to a `SC_MARGIN_COLOUR`-typed
+margin -- a `NumberMargin`'s actual background is `STYLE_LINENUMBER`'s
+own background instead (what `setMarginsBackgroundColor` -- plural --
+actually sets), a completely different mechanism from the
+per-margin-type one the divider (margin 1) uses. Recorded in
+`LEARNINGS.md`, including that several QScintilla setters
+(`setCaretForegroundColor`, `setMarginsForegroundColor`) have no
+getter at all -- reading them back for verification needs the raw
+`SendScintilla(SCI_STYLEGETFORE/BACK, STYLE_LINENUMBER)`/
+`SCI_GETCARETFORE` messages, whose "colour" ints are BGR-ordered, not
+RGB.
+
+Regression-checked every other verification script from this session.
+
+Deliberately out of scope, noted explicitly rather than silently
+skipped: making individual lexers' own syntax-highlighting colors
+(`QsciLexerPython` etc.) dark-theme-aware -- only the base/default
+style and the margins were asked about here.

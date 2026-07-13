@@ -512,3 +512,41 @@ anything canvas-embedded, use the scene-level signal, not
 file's other "mouse/focus/geometry APIs don't reflect what you'd
 expect once something is embedded via `QGraphicsProxyWidget`" entries
 above; check before assuming the plain top-level API applies.
+
+## `QsciScintilla.marginBackgroundColor()`/`SCI_SETMARGINBACKN` only apply to a `SC_MARGIN_COLOUR`-typed margin — a `NumberMargin`'s actual background is a different mechanism entirely
+
+While making the Editor widget's line-number margin dark-mode-friendly
+(TODO `17a2720`), `setMarginsBackgroundColor(...)` was used to color
+margin 0 (a `NumberMargin`) to match the editor's own background.
+Verifying this by reading it back via `marginBackgroundColor(0)`
+(the getter QScintilla pairs with `setMarginBackgroundColor`) failed —
+it reported an unrelated, untouched value, not the color that was just
+set and that visibly renders correctly.
+
+The reason: `marginBackgroundColor`/`setMarginBackgroundColor` are
+backed by Scintilla's `SCI_GETMARGINBACKN`/`SCI_SETMARGINBACKN`, which
+Scintilla's own docs limit to margins whose *type* is `SC_MARGIN_COLOUR`
+(or `SC_MARGIN_BACK`/`SC_MARGIN_FORE`) — a `NumberMargin`'s background
+is controlled by an entirely different mechanism, the `STYLE_LINENUMBER`
+style's own background (what `setMarginsBackgroundColor` -- plural,
+note the name -- actually sets, via `SCI_STYLESETBACK`). Two visually
+identical-looking concepts ("this margin's background color"), two
+unrelated storage/API paths depending on the margin's type. The
+foreground side has the same split: `setMarginsForegroundColor` also
+sets `STYLE_LINENUMBER`'s foreground, with no getter at all — reading
+it back requires the raw message directly:
+`editor.SendScintilla(QsciScintilla.SCI_STYLEGETFORE,
+QsciScintilla.STYLE_LINENUMBER)` (similarly `SCI_STYLEGETBACK` for the
+background, `SCI_GETCARETFORE` for `setCaretForegroundColor`, which
+also has no getter). These raw messages return a Scintilla "colour" as
+a BGR-ordered int (`0x00BBGGRR` — confirmed directly by round-tripping
+a known `QColor`), not RGB — swap byte order when converting back to a
+`QColor` for comparison.
+
+If a QScintilla color/style getter doesn't exist or reports something
+that doesn't match what was just set, check whether the property in
+question is actually backed by a per-margin-type message
+(`SCI_SETMARGINBACKN`) versus a named style (`STYLE_LINENUMBER` and
+friends, via `SCI_STYLESETFORE`/`BACK`) before assuming the setter
+didn't work — `SendScintilla` with the matching `SCI_*GET*` message is
+the reliable fallback either way.

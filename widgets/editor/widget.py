@@ -22,6 +22,18 @@ from desk.shell import current_context
 
 logger = logging.getLogger(__name__)
 
+# This app's own established dark palette (matches desk.terminal_widget's
+# DEFAULT_FOREGROUND/DEFAULT_BACKGROUND) -- committed to explicitly here
+# (TODO cbbb661) rather than left to Qt's palette-derived default, which
+# is what made the caret (hardcoded black by QScintilla) invisible
+# against a dark background in the first place.
+EDITOR_FOREGROUND = "#e8e8e8"
+EDITOR_BACKGROUND = "#1e1e1e"
+CARET_COLOR = "#3daee9"  # this app's established accent blue
+LINE_NUMBER_COLOR = "#7a7f85"  # a muted, dimmer shade of EDITOR_FOREGROUND
+MARGIN_DIVIDER_COLOR = "#3a3d41"  # matches WidgetFrame's own titlebar chrome
+MARGIN_DIVIDER_WIDTH = 2
+
 EXTENSION_LEXERS = {
     ".py": QsciLexerPython,
     ".json": QsciLexerJSON,
@@ -81,8 +93,37 @@ class EditorWidget(QWidget):
         font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         self.editor.setFont(font)
         self.editor.setUtf8(True)
+
+        # Base text/background colors (TODO cbbb661) -- scoped
+        # deliberately to just the base style and the margins below, not
+        # any individual lexer's own token colors (_apply_lexer);
+        # making syntax highlighting itself dark-theme-aware is a
+        # separate, materially bigger task nobody asked for here.
+        self.editor.setColor(QColor(EDITOR_FOREGROUND))
+        self.editor.setPaper(QColor(EDITOR_BACKGROUND))
+        self.editor.setCaretForegroundColor(QColor(CARET_COLOR))
+
+        # Line-number margin (TODO 17a2720): matches the editor's own
+        # background instead of Scintilla's independent white default,
+        # numbers in a dimmer shade of the main text color.
         self.editor.setMarginType(0, QsciScintilla.MarginType.NumberMargin)
         self.editor.setMarginWidth(0, "0000")
+        self.editor.setMarginsBackgroundColor(QColor(EDITOR_BACKGROUND))
+        self.editor.setMarginsForegroundColor(QColor(LINE_NUMBER_COLOR))
+        # A second, narrow solid-color margin as a divider line between
+        # the numbers and the text -- Scintilla's own documented
+        # mechanism for this, not an approximation.
+        self.editor.setMarginType(1, QsciScintilla.MarginType.SymbolMarginColor)
+        self.editor.setMarginWidth(1, MARGIN_DIVIDER_WIDTH)
+        self.editor.setMarginBackgroundColor(1, QColor(MARGIN_DIVIDER_COLOR))
+
+        # Wrap too-long lines (TODO 1d6777f). Scintilla's own default
+        # wrapped-line numbering already shows the line number once, on
+        # the first visual sub-line of a wrapped logical line -- "keep
+        # the line number aligned with the top line" -- with no further
+        # configuration needed.
+        self.editor.setWrapMode(QsciScintilla.WrapMode.WrapWord)
+
         self.editor.setCaretLineVisible(True)
         self.editor.setCaretLineBackgroundColor(QColor("#2a2d2f"))
         self.editor.modificationChanged.connect(lambda _modified: self._update_label())
