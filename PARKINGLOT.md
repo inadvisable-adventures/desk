@@ -407,3 +407,91 @@ This file captures thoughts and TODO items that arise during work on other thing
   ends and its actual content begins. An inner outline around the
   content area (distinct from the widget frame's own outer border)
   would make that boundary clear.
+
+- **`kind: "html"` widgets with more than one file silently fail to
+  load, because relative-path sub-resource requests lose the auth
+  token**
+
+  From `DESK_FEEDBACK-2026-07-13T012144.md` (TODO `4ab5875`,
+  investigating `widgets/hex_flower`'s blank page). A widget's main
+  page is loaded with the per-launch token as a query parameter, but a
+  plain relative-path browser reference (`<script src>`, `<link
+  href>`, CSS `url(...)`, `<img src>`) does not carry that query string
+  forward, and a native resource tag can't attach a custom header
+  either -- so every such sub-resource request arrives at
+  `TokenAuthMiddleware` with no credential and gets `401`'d, silently
+  aborting the module/resource graph with no console output. This
+  affects any `kind: "html"` widget built as an ordinary multi-file web
+  project; only tempui `DefineWidget` widgets avoid it today, as a side
+  effect of being forced into one inlined HTML file (TODO `91b3f42`),
+  not because anyone intentionally avoided the bug. The suggested fix:
+  a same-origin cookie set when a widget's main page is served,
+  alongside (not replacing) the existing query-param/`X-Desk-Token`
+  -header checks -- cookies are the one credential mechanism a browser
+  attaches automatically to every same-origin request, including plain
+  `<script src>`/`<link href>` loads. Not designed/implemented yet.
+
+- **Reconsider `DefineWidget`'s single-inlined-file requirement, once
+  the relative-path/token gap above is fixed**
+
+  From the same feedback doc. Inlining everything into one base64
+  -encoded HTML document is convenient for an agent to author quickly,
+  but stops working well for anything non-trivial (as `hex_flower`,
+  ported from a real multi-file TypeScript project, illustrates).
+  Once the auth gap above no longer forces this, worth reconsidering
+  whether `DefineWidget` could support a small set of named files (e.g.
+  an HTML entry plus a script and a stylesheet) instead of one inlined
+  document. Depends on the item above; not designed yet.
+
+- **No visible signal when a `kind: "html"` widget fails to load**
+
+  From the same feedback doc. Right now a `kind: "html"` widget that
+  fails for any reason (the token gap above, a script error, whatever)
+  just renders as a silent blank page indistinguishable from several
+  other failure modes, with no console output surfaced anywhere. Worth
+  some visible failure signal -- e.g. surfacing the widget's own
+  `javaScriptConsoleMessage` output somewhere inspectable (a log file,
+  a debug panel), and/or a generic "this widget failed to render"
+  placeholder shown in place of a silent blank page.
+
+- **A known-good, minimal multi-file `kind: "html"` widget template**
+
+  From the same feedback doc. A checked-in (or docs-referenced) minimal
+  example of a working multi-file `kind: "html"` widget would give a
+  future agent building something like `hex_flower` a template to diff
+  against, rather than discovering gaps like the one above the hard way
+  after already doing a real port of an existing project.
+
+- **Document the auth-token requirement for a `kind: "html"` widget's
+  own asset requests**
+
+  From the same feedback doc. `design-docs/architecture.md`'s
+  description of `kind: "html"` widgets doesn't mention the auth token
+  at all. It should state plainly that every request the browser makes
+  for a widget's own page -- not just the top-level navigation -- must
+  carry the per-launch token, and that ordinary relative-path resource
+  references do not carry the token forward and will be rejected, so a
+  widget with more than one file won't load until the underlying gap
+  (above) is fixed.
+
+- **No single doc lays out what does/doesn't work yet for a `kind:
+  "html"` widget built from scratch (as opposed to a tempui
+  `DefineWidget` single-file widget)**
+
+  From the same feedback doc. E.g. "single self-contained HTML file:
+  works"; "multiple files loaded via relative paths: currently broken,
+  see [gap]". Without that, a reasonable, competently-built ordinary
+  web project (exactly what happened with `hex_flower`) silently fails
+  with zero diagnostic signal and no way for whoever built it to have
+  known in advance.
+
+- **No guidance on how to debug a blank `kind: "html"` widget**
+
+  From the same feedback doc. Nothing currently tells a widget author
+  how to tell their widget failed to load. A "how to debug a blank
+  widget" note (start from: is the custom element even defined? check
+  `document.querySelector(...).shadowRoot`; are there failed network
+  requests?) would shorten this kind of investigation considerably --
+  today the failure mode is a silent blank page with no console
+  output, indistinguishable from several other possible failures (bad
+  HTML, a crashed script, wrong entry point, etc.).
