@@ -645,6 +645,7 @@ class DeskWindow(QMainWindow):
             # directory -- must run before switch_desk below reassigns
             # self.current_desk.
             self._seed_development_process(directory)
+            self._seed_todo_item_ids_script(directory)
         self.switch_desk(
             path,
             confirm=lambda: True,
@@ -1018,6 +1019,26 @@ class DeskWindow(QMainWindow):
         if not source.is_file() or destination.exists():
             return
         destination.write_text(source.read_text())
+
+    def _seed_todo_item_ids_script(self, directory: Path) -> None:
+        """Copies the current Desk's scripts/todo_item_ids.py into
+        `directory` (TODO c458012) -- same no-op-if-nothing-to-source
+        -from/never-overwrite posture as _seed_development_process
+        above, since development-process.md's own "Item IDs" section
+        tells you to run this exact script, and copying the doc without
+        it would leave that instruction broken in the new project.
+        Unlike the doc, this also creates the destination's scripts/
+        directory (won't exist yet in a brand-new project) and sets the
+        copy executable -- explicit 0o755, not copied from the source
+        file's own mode bits, since umask/source-filesystem quirks
+        shouldn't leak into the destination."""
+        source = self.current_desk.directory / "scripts" / "todo_item_ids.py"
+        destination = directory / "scripts" / "todo_item_ids.py"
+        if not source.is_file() or destination.exists():
+            return
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(source.read_text())
+        destination.chmod(0o755)
 
     def _on_rename_requested(self) -> None:
         name = self._prompt_fn(

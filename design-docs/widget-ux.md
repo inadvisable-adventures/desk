@@ -383,8 +383,14 @@ layout changes.
 every New Desk decision at once: name, target directory (a read-only
 field plus a "Browse…" button, defaulting to the current Desk's
 directory), and checkboxes for creating `.desk_temp`, creating/updating
-`.gitignore`, and (only shown if the current Desk has one to copy)
-copying `development-process.md`. This replaced a chain of up to five
+`.gitignore` (also covers `**/__pycache__/` now, alongside `.desk_temp/`
+-- TODO `c458012`), and (only shown if the current Desk has one to
+copy) copying `development-process.md` — which, since that file's own
+"Item IDs" section tells you to run `scripts/todo_item_ids.py`, also
+brings along a self-contained copy of that script (no dependency on
+this app's own `desk` package, since the new project won't have it
+installed — TODO `c458012`, `DeskWindow._seed_todo_item_ids_script`)
+if the current Desk has one. This replaced a chain of up to five
 sequential modal popups (name, directory, dev-process-copy confirm,
 `.desk_temp` confirm, `.gitignore` confirm) — both for convenience and
 because that chain of nested `exec()` calls was implicated in a real

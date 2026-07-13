@@ -67,7 +67,10 @@ class NewDeskDialog(QWidget):
         # from -- mirrors the old flow's own source.is_file() gate.
         self._dev_process_checkbox: QCheckBox | None = None
         if dev_process_filename is not None:
-            self._dev_process_checkbox = QCheckBox(f"Copy {dev_process_filename} from the current Desk")
+            self._dev_process_checkbox = QCheckBox(
+                f"Copy {dev_process_filename} (and its scripts/todo_item_ids.py"
+                " tool, if present) from the current Desk"
+            )
             layout.addWidget(self._dev_process_checkbox)
 
         layout.addStretch()

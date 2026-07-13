@@ -4,8 +4,12 @@
 Each TODO item gets a permanent 7-lowercase-hex-digit id, assigned once
 and never recomputed afterward -- see development-process.md's "Item IDs"
 section and how-to-convert-item-id-one-time.md for the full scheme and
-the one-time conversion procedure this implements. Id generation itself
-lives in desk.todo_ids (shared with the TODO widget, widgets/todo/).
+the one-time conversion procedure this implements.
+
+This file is meant to be copied verbatim into other projects (seeded
+alongside development-process.md on "New Desk" creation -- TODO
+c458012), so it's deliberately self-contained: no import of this app's
+own `desk` package, which a destination project won't have installed.
 
 Usage:
     python3 scripts/todo_item_ids.py new "<item description text>"
@@ -17,11 +21,31 @@ Usage:
         rewrites every "item N" cross-reference elsewhere in the file to
         "TODO <id>". Prints the number -> id mapping it used.
 """
+import hashlib
 import re
+import secrets
 import sys
 from pathlib import Path
 
-from desk.todo_ids import make_item_id
+ID_LENGTH = 7
+SHORT_DESCRIPTION_THRESHOLD = 10
+
+
+def make_item_id(description: str) -> str:
+    """Stable id derived from an item's description at the moment the id
+    is assigned. If the description is shorter than
+    SHORT_DESCRIPTION_THRESHOLD characters, hash a random string instead
+    (a short description alone wouldn't give a well-distributed hash).
+    Once assigned, this is just an opaque label -- never recompute it from
+    a later-edited description.
+
+    Kept as an independent copy of desk.todo_ids.make_item_id (used
+    directly by widgets/todo/widget.py, which always runs with the
+    `desk` package available) rather than imported from it -- see this
+    file's own module docstring for why."""
+    text = description if len(description) >= SHORT_DESCRIPTION_THRESHOLD else secrets.token_hex(8)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:ID_LENGTH]
+
 
 # A top-level item start: a line beginning (no leading whitespace) with
 # digits, a period, and a space -- e.g. "12. Fix the thing". Only plain

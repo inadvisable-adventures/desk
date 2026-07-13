@@ -1,6 +1,12 @@
-"""Stable TODO item id generation, shared by scripts/todo_item_ids.py and
-the TODO widget (widgets/todo/). See development-process.md's "Item IDs"
-section and how-to-convert-item-id-one-time.md for the full scheme.
+"""Stable TODO item id generation, used directly by the TODO widget
+(widgets/todo/). See development-process.md's "Item IDs" section and
+how-to-convert-item-id-one-time.md for the full scheme.
+
+scripts/todo_item_ids.py intentionally keeps its own independent copy
+of make_item_id (not imported from here) -- see TODO c458012 / that
+script's own module docstring: it's meant to be copied verbatim into
+other projects via "New Desk" seeding, which won't have this app's own
+`desk` package installed.
 
 Deliberately just make_item_id here, not an item-start regex too: the
 one-time conversion script and the TODO widget need different patterns

@@ -1683,3 +1683,15 @@ f74945e. COMPLETED: Add a "paste" item to the top of the widget menu if there is
    explicit exception to `CLAUDE.md`'s general "labels shouldn't be
    user-selectable" convention, matching its own "unless specifically
    requested" carve-out). [planned: mru-file-existence-check.md]
+c458012. COMPLETED: `scripts/todo_item_ids.py` only works when run from a directory
+   that both has that exact script at that path and can import this
+   app's own `desk` package (`make_item_id` actually lives in
+   `desk.todo_ids`) -- neither holds for a brand-new project Desk, even
+   though TODO fbd0554 already seeds that project with a
+   `development-process.md` whose own "Item IDs" section tells you to
+   run exactly that script. Add seeding it (self-contained, no `desk`
+   package dependency left) to the new-Desk initialization process
+   alongside `development-process.md`, and update `.gitignore`
+   provisioning to also cover what running it produces
+   (`scripts/__pycache__/`).
+   [planned: seed-todo-item-ids-script.md]

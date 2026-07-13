@@ -5,7 +5,11 @@ from pathlib import Path
 
 TEMP_UI_DIRNAME = ".desk_temp"
 DOC_FILENAME = "desk-temporary-ui.md"
-GITIGNORE_ENTRY = ".desk_temp/"
+# **/__pycache__/ covers what running a seeded scripts/todo_item_ids.py
+# (TODO c458012) produces the first time it's invoked -- not specific
+# to .desk_temp, but bundled under the same "Desk-specific patterns"
+# gitignore checkbox since both are provisioned together.
+GITIGNORE_ENTRIES = (".desk_temp/", "**/__pycache__/")
 GITIGNORE_COMMENT = "# Desk-specific"
 
 DOC_TEMPLATE = """# Temporary UI
@@ -404,20 +408,27 @@ def record_lightning_round_answer(path: Path, item_index: int, character: str) -
     return text
 
 
-def _has_entry(text: str) -> bool:
-    return any(line.strip().rstrip("/") == ".desk_temp" for line in text.splitlines())
+def _missing_entries(text: str) -> list[str]:
+    """Which of GITIGNORE_ENTRIES aren't present yet -- checked
+    independently (an existing project that already ignores
+    `.desk_temp/` but not `**/__pycache__/`, from before TODO c458012,
+    gets just the missing one appended, not a duplicate)."""
+    present = {line.strip().rstrip("/") for line in text.splitlines()}
+    return [entry for entry in GITIGNORE_ENTRIES if entry.rstrip("/") not in present]
 
 
 def ensure_gitignore_entry(git_root: Path, ask: Callable[[], bool]) -> None:
-    """Adds `.desk_temp/` to `.gitignore` (creating the file if it
-    doesn't exist), preceded by a blank line and a `# Desk-specific`
-    comment -- in both the create-from-nothing and append-to-existing
-    cases (TODO 4716585), so a brand-new file created by this path
-    does start with one blank line before the comment, a deliberate
-    stylistic choice for consistency, not an oversight."""
+    """Adds whichever of GITIGNORE_ENTRIES are missing to `.gitignore`
+    (creating the file if it doesn't exist), preceded by a blank line
+    and a `# Desk-specific` comment -- in both the create-from-nothing
+    and append-to-existing cases (TODO 4716585), so a brand-new file
+    created by this path does start with one blank line before the
+    comment, a deliberate stylistic choice for consistency, not an
+    oversight."""
     gitignore_path = git_root / ".gitignore"
     existing = gitignore_path.read_text() if gitignore_path.is_file() else ""
-    if _has_entry(existing):
+    missing = _missing_entries(existing)
+    if not missing:
         return
     if not ask():
         return
@@ -427,7 +438,9 @@ def ensure_gitignore_entry(git_root: Path, ask: Callable[[], bool]) -> None:
     # -- re-verify against a fresh read rather than blindly overwriting
     # with a now-stale in-memory copy (TODO 4716585).
     existing = gitignore_path.read_text() if gitignore_path.is_file() else ""
-    if _has_entry(existing):
+    missing = _missing_entries(existing)
+    if not missing:
         return
     prefix = existing if existing.endswith("\n") or not existing else existing + "\n"
-    gitignore_path.write_text(f"{prefix}\n{GITIGNORE_COMMENT}\n{GITIGNORE_ENTRY}\n")
+    block = "\n".join(missing)
+    gitignore_path.write_text(f"{prefix}\n{GITIGNORE_COMMENT}\n{block}\n")
