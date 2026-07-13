@@ -51,23 +51,53 @@ This file captures thoughts and TODO items that arise during work on other thing
   - Add a script to download the chosen model (currently leaning `large-v3-turbo`).
   - Document back-up/manual download instructions in case the script's source is unreachable.
 
-- **TODO item editor may be torn down mid-edit by hot reload**
+- **Hot reload (`PythonWidgetHost._rebuild`) doesn't fully preserve a widget's own state**
 
-  Surfaced while investigating TODO 62e8b05 (see
-  `plans/fix-todo-editor-caret-focus-freeze.md`). `_ItemDialog` is
-  parented to `TodoWidget` (`widgets/todo/widget.py`). If
-  `widgets/todo/widget.py` itself is edited/saved while the item editor
-  is open (plausible during active development on this widget), the hot
-  -reload machinery (`PythonWidgetHost._rebuild`, via `WidgetWatcher`)
-  tears down and replaces the old `TodoWidget`, which would tear down
-  the open `_ItemDialog` (a Qt child) along with it — silently closing
-  the editor, discarding any unsaved text, mid-edit.
+  Two known consequences of `PythonWidgetHost._rebuild` (fired when a
+  widget's own `widget.py` is edited/saved) re-running `build()` to
+  make a fresh instance without fully restoring everything that was
+  true of the old one:
 
-  Not fixed — doesn't match TODO 62e8b05's actual reported symptom (a
-  transient caret blink, not the whole editor vanishing), and is
-  unconfirmed (found by code inspection, not reproduced). Worth
-  revisiting if a "the item editor closed by itself" report ever comes
-  in for real.
+  - **A child dialog can be torn down mid-edit.** Surfaced while
+    investigating TODO 62e8b05 (see
+    `plans/fix-todo-editor-caret-focus-freeze.md`). `_ItemDialog` is
+    parented to `TodoWidget` (`widgets/todo/widget.py`). If
+    `widgets/todo/widget.py` itself is edited/saved while the item
+    editor is open (plausible during active development on this
+    widget), the hot-reload machinery (via `WidgetWatcher`) tears down
+    and replaces the old `TodoWidget`, which would tear down the open
+    `_ItemDialog` (a Qt child) along with it — silently closing the
+    editor, discarding any unsaved text, mid-edit. Not fixed — doesn't
+    match TODO 62e8b05's actual reported symptom (a transient caret
+    blink, not the whole editor vanishing), and is unconfirmed (found
+    by code inspection, not reproduced). Worth revisiting if a "the
+    item editor closed by itself" report ever comes in for real.
+  - **Post-build binding (session/source-file) is lost, and could
+    migrate onto widget-local storage instead.** A general limitation
+    shared by every widget kind that relies on DeskWindow binding
+    something into it *after* `build()`: the Temporary UI widgets
+    (`_bind_temp_ui_widget` → `set_source_file`) and the claude widget
+    (`_bind_claude_widget` → `start_session`, TODO 1d7331b). `_rebuild`
+    does *not* re-run DeskWindow's post-build binding — so a temp-UI
+    widget loses its source file, and a claude widget comes back as a
+    blank shell with no `claude` relaunch (the previous PTY/session is
+    gone regardless, since a rebuild makes a brand-new
+    `TerminalWidget`). Developer-only edge case (only happens while
+    actively editing that widget's code). Could be fixed generally by
+    having `PythonWidgetHost` remember and replay whatever binding
+    DeskWindow applied, or by having DeskWindow re-bind on the
+    broker's `widget_changed` signal. Separately: TODO `fb76057` built
+    a general "widget-local storage" mechanism (`WidgetState.state:
+    dict`, `get_widget_local_storage()`/`set_widget_local_storage()`)
+    originally motivated by the Markdown/Editor widgets remembering
+    their open file (now done, TODO `02eda20`) — the existing per-kind
+    `_bind_temp_ui_widget`/`_bind_claude_widget` special-cases above
+    could migrate onto this same mechanism instead of their current
+    bespoke wiring, which might incidentally fix the hot-reload loss
+    too, but isn't decided or scoped yet.
+
+  Not decided — parking to revisit as its own design discussion, or
+  the next time either symptom is hit for real.
 
 - **`WidgetSpawnMenu._activate_item` has the same emit-then-close
   use-after-delete shape TODO c8f6fb3 just fixed in `_DeskListPopup`**
@@ -148,64 +178,155 @@ This file captures thoughts and TODO items that arise during work on other thing
   **Decision:** Make a new repo for Desk under Inadvisable Adventures
   without the in-repo TODO tracking.
 
-- **Open questions: ownership protocol for TODO items, and whether work
-  tracking belongs in-repo/in-Desk at all**
+- **Process/TODO-tracking meta-questions: ownership protocol, file
+  organization, `TODO.md` formatting, and a per-project glossary**
 
-  Raised alongside the personal-info audit / new-repo decision above.
-  Several related, unresolved questions to think through together next
-  time work tracking comes up:
+  Several related, unresolved questions about how this project's own
+  process/work-tracking materials (`TODO.md`, `PARKINGLOT.md`,
+  `LEARNINGS.md`, `plans/`, etc.) should work, raised alongside the
+  personal-info audit / new-repo decision above — to think through
+  together next time work tracking comes up, rather than deciding
+  piecemeal:
 
-  - **Ownership/in-progress protocol**: right now an item just gets
+  - **Ownership/in-progress protocol.** Right now an item just gets
     `[planned: <file>.md]` appended in place in `TODO.md` while it's
     being worked. Should an item instead get *moved out* of `TODO.md`
     entirely while active — e.g. into an `in_progress_plan/` (or
-    similar) folder — so `TODO.md` only ever shows not-yet-started work,
-    and the "this is currently claimed/being worked" state is visible
-    from the *filesystem* (a file existing in that folder) rather than
-    a marker inside a shared file?
-  - **Process-file organization**: should `TODO.md`, `PARKINGLOT.md`,
+    similar) folder — so `TODO.md` only ever shows not-yet-started
+    work, and the "this is currently claimed/being worked" state is
+    visible from the *filesystem* (a file existing in that folder)
+    rather than a marker inside a shared file?
+  - **Process-file organization.** Should `TODO.md`, `PARKINGLOT.md`,
     `LEARNINGS.md`, `plans/`, etc. (all the "process" scaffolding, as
-    opposed to the app's own source) move out of the repo root into one
-    subdirectory?
-  - **Or should none of it be committed at all** — e.g. live under
-    `.desk_temp/` (already gitignored per TODO a02b001) instead of being
-    tracked in git history in the first place?
-  - **Bigger question**: is a flat Markdown file even the right
-    substrate for this, or should "work item tracking" be a real
+    opposed to the app's own source) move out of the repo root into
+    one subdirectory? Or should none of it be committed at all — e.g.
+    live under `.desk_temp/` (already gitignored per TODO a02b001)
+    instead of being tracked in git history in the first place?
+  - **Bigger question: is a flat Markdown file even the right
+    substrate for this**, or should "work item tracking" be a real
     database or a local microservice that can actually dole out/claim
-    work items (supporting real ownership, concurrent agents, querying,
-    etc.) instead of file-based conventions enforced only by
-    `development-process.md`?
-  - **If so**: do we vibecode that microservice ourselves, and does it
-    become a feature *of Desk* (i.e. Desk grows a built-in work-item-
-    tracking service other tools/agents can talk to), or does it stay a
-    separate, standalone tool?
+    work items (supporting real ownership, concurrent agents,
+    querying, etc.) instead of file-based conventions enforced only by
+    `development-process.md`? If so, do we vibecode that microservice
+    ourselves, and does it become a feature *of Desk* (a built-in
+    work-item-tracking service other tools/agents can talk to), or
+    stay a separate, standalone tool?
+  - **`TODO.md` formatting.** Three narrower, `TODO.md`-specific
+    questions:
+    - **Blank lines between entries.** `TODO.md` doesn't render
+      properly in an ordinary Markdown viewer because there's no
+      blank line between one item and the next (Markdown treats
+      adjacent non-blank lines as one paragraph). Checked whether
+      adding blank lines between entries would break the TODO
+      widget's parsing (`src/desk/todo_file.py`, `parse_todo_file`):
+      it wouldn't — an item's boundary is found by regex-matching the
+      *start* of the *next* item (`ITEM_START_RE`), not by
+      blank-line separation, so an added trailing blank line would
+      just become part of the preceding item's own preserved
+      `raw_text` and round-trip unchanged. Safe to do; not yet done.
+    - **Archiving old items.** Should old (`COMPLETED`/`SUPERSEDED`)
+      items start moving out of `TODO.md` into some kind of archive,
+      now that the file has grown quite long?
+    - **`required-direct-prior: []`/`priority-direct-prior: []`
+      instead of file order.** Right now both an item's priority (its
+      position in the file, top to bottom) and any dependency it has
+      on another item are expressed the same way: physical ordering
+      in the file — conflating "must come after" (a real dependency)
+      with "happens to be prioritized after" (just a preference), and
+      making a pure priority change a cut-and-paste move instead of a
+      simple edit. Idea: give each item explicit
+      `required-direct-prior: [<id>, ...]` (hard dependencies — this
+      item cannot start before those finish) and
+      `priority-direct-prior: [<id>, ...]` (soft ordering preference)
+      lists instead, so reprioritizing is an edit to these lists
+      rather than moving the item's text block, and true dependencies
+      are distinguished from mere priority. Would need working out
+      how the TODO widget/`development-process.md`'s own
+      "Prioritizing TODO Items" section would use these lists to
+      determine actual work order, and how required-vs-priority
+      interacts when they conflict.
+  - **Per-project glossary and active memory management.** For both
+    Desk (the app) and this project's own development process: a
+    per-project glossary, and reorganizing process materials so they
+    don't consume context when irrelevant to the task at hand. More
+    active memory management generally — possibly with dedicated
+    tools for working with memory, connecting to `LEARNINGS.md`,
+    and/or some kind of online shared "useful learnings" tool.
 
   Not decided — parking here to revisit as a real design discussion
   rather than deciding piecemeal mid-task. Connects to the "new repo
   under Inadvisable Adventures without in-repo TODO tracking" decision
-  just above, which may end up being the actual resolution to several
-  of these at once.
+  in the personal-info-audit item above, which may end up being the
+  actual resolution to several of these at once.
 
-- **How should Claude author its own temp-UI DSL and interpreter code?
-  Should temp-UI widgets be real widgets too?**
+- **Desk extensibility: formalizing DSLs, "domain" packages, and
+  widget-composition ("crystallization") packaging**
 
-  Open design question around the Temporary UI feature (TODO a02b001)
-  and its follow-ons (Question / Lightning Round widgets). Right now
-  the temp-UI DSL and its interpreters are hand-written parts of Desk's
-  own codebase; a temp-UI "widget kind" (`question`, `lightning_round`)
-  is a real widget under `widgets/`. Questions to work through:
-  - How do we handle Claude writing its *own* temp-UI DSL and adding
-    the interpreter code for it? I.e. an agent inventing a new temp-UI
-    construct and the code that renders/handles it, rather than only
-    emitting instances of the fixed, pre-built DSL keywords.
-  - Should all temp-UI widgets be actual (first-class, under `widgets/`)
-    widgets too, or should some remain purely DSL-driven/ephemeral? What
-    distinguishes "this deserves to be a real widget" from "this is a
-    one-off temp-UI construct"?
-  - Interacts with the general widget contract (`build() -> QWidget`,
-    hot reload, `instance_id`) and with how much of Desk an agent is
-    allowed/expected to extend at runtime vs. via committed code.
+  Several related, cross-referencing ideas about how far Desk's own
+  extensibility goes and what the authoring surface for it should look
+  like — likely facets of the same underlying design space, parked
+  together to be thought through as one discussion rather than
+  piecemeal:
+
+  - **Claude authoring its own temp-UI DSL/interpreter code; should
+    temp-UI widgets be real widgets too?** Open design question around
+    the Temporary UI feature (TODO a02b001) and its follow-ons
+    (Question / Lightning Round widgets). Right now the temp-UI DSL
+    and its interpreters are hand-written parts of Desk's own
+    codebase; a temp-UI "widget kind" (`question`, `lightning_round`)
+    is a real widget under `widgets/`. How do we handle Claude writing
+    its *own* temp-UI DSL and adding the interpreter code for it —
+    an agent inventing a new temp-UI construct and the code that
+    renders/handles it, rather than only emitting instances of the
+    fixed, pre-built DSL keywords? Should all temp-UI widgets be
+    actual (first-class, under `widgets/`) widgets too, or should some
+    remain purely DSL-driven/ephemeral — what distinguishes "this
+    deserves to be a real widget" from "this is a one-off temp-UI
+    construct"? Interacts with the general widget contract (`build()
+    -> QWidget`, hot reload, `instance_id`) and with how much of Desk
+    an agent is allowed/expected to extend at runtime vs. via
+    committed code. Also connects to a separate, narrower question:
+    how should Claude *watch for* a temp-UI response (moved here from
+    `TODO.md`, was `1d22456`) — when an agent poses a question via
+    Temporary UI, the user's chosen answer is appended back to that
+    same file as an `Answer` line, and the open problem is how the
+    agent notices that answer arrived without polling in an ad-hoc
+    way. Should this be packaged as a Claude Code **skill** (a
+    documented "ask via temp-UI, then wait for the answer" capability)
+    rather than bespoke per-agent watching logic — and if so, does it
+    block/poll the file, use a file watcher, or something else? These
+    may want to be designed together as "the agent ⇄ Desk temp-UI
+    protocol" rather than in isolation.
+  - **"Domain" packages.** A "domain" package could bundle together
+    whatever a particular use case needs — widgets, extensions to any
+    known DSL, entirely new DSLs, and agent instructions for using
+    them — as one distributable, installable unit, rather than each
+    of those being separately authored/wired into Desk by hand. This
+    probably requires formalizing "DSL" as a real concept in Desk
+    first (right now the tempui DSL is a fixed, hand-written set of
+    keywords/interpreters in `src/desk/temp_ui.py`, not a general
+    mechanism other DSLs could plug into). Two sub-parts that
+    formalization would likely need: a DSL for *specifying* a DSL
+    (possibly with embedded code for its interpreter/behavior) — a
+    meta-DSL a domain package author writes to define a new DSL's
+    keywords/grammar/semantics, rather than hand-writing Python
+    interpreter code the way tempui's own keywords are today; and a
+    DSL for *specifying widgets* themselves, as a more declarative
+    alternative to hand-authoring `widget.json` + a `build()` function
+    (or, for `DefineWidget`, hand-authoring/base64-inlining raw HTML).
+  - **Concrete candidate data DSLs.** If/once the DSL formalization
+    above happens, candidate new DSLs to build on it: a file/stream
+    format DSL, a syntax DSL (e.g. a grammar), a database DSL
+    (schema/queries?), and a disk layout DSL.
+  - **Widget-composition/packaging ("crystallization").** Let a group
+    of widgets be composed/packaged into a standalone "app" that
+    doesn't need every one of Desk's own built-in tools available to
+    it — a re-architected, packaged subset rather than the full Desk
+    environment.
+
+  Not designed — a large, open-ended set of directions, parked
+  together as a design space to think about rather than a scoped
+  task.
 
 - **New widget: side-by-side container (two widget instances, swap/
   reorient, cross-widget `postMessage`)**
@@ -238,91 +359,27 @@ This file captures thoughts and TODO items that arise during work on other thing
   container's `postMessage` mechanism, or simply by both pointing at
   the same file with the viewer's file watcher picking up saves).
 
-- **Post-build binding (session/source-file) is lost on a widget's own
-  hot reload**
+- **SVG Viewer widget: further work (in-widget zoom/pan, and wiring
+  other widgets to open in it)**
 
-  A general limitation shared by every widget kind that relies on
-  DeskWindow binding something into it *after* `build()`: the Temporary
-  UI widgets (`_bind_temp_ui_widget` → `set_source_file`) and now the
-  claude widget (`_bind_claude_widget` → `start_session`, TODO
-  1d7331b). `PythonWidgetHost._rebuild` (hot reload, fired when the
-  widget's own `widget.py` is edited) re-runs `build()` to make a fresh
-  instance but does *not* re-run DeskWindow's post-build binding — so a
-  temp-UI widget loses its source file, and a claude widget comes back
-  as a blank shell with no `claude` relaunch (the previous PTY/session
-  is gone regardless, since a rebuild makes a brand-new
-  `TerminalWidget`). Developer-only edge case (only happens while
-  actively editing that widget's code). Could be fixed generally by
-  having `PythonWidgetHost` remember and replay whatever binding
-  DeskWindow applied, or by having DeskWindow re-bind on the broker's
-  `widget_changed` signal — revisit if hot-reloading these widgets
-  mid-use becomes a real annoyance.
-
-- **How should Claude watch for a temp-UI response — and should it all
-  be a skill?**
-
-  Moved here from `TODO.md` (was `1d22456`): "figure out a way to get
-  claude to watch for the response from tempui. should it all be a skill
-  instead?" Open design/research question, not a concrete task yet. When
-  an agent poses a question via Temporary UI (TODO a02b001 — a file in
-  `.desk_temp/` that Desk renders as a Question/Lightning Round widget),
-  the user's chosen answer is appended back to that same file as an
-  `Answer`/answer line. The open problem is how the *agent* notices that
-  answer arrived without polling in an ad-hoc way:
-  - Should this be packaged as a Claude Code **skill** (a documented
-    "ask via temp-UI, then wait for the answer" capability the agent
-    invokes) rather than bespoke per-agent watching logic? The TODO's
-    own "should it all be a skill instead?" points this way.
-  - If a skill: does it block/poll the file, use a file watcher, or
-    something else? How does it fit the existing `.desk_temp` DSL and
-    `desk-temporary-ui.md` doc that already instruct agents?
-  - Connects to the broader parked question above on how Claude should
-    author its own temp-UI DSL/interpreters and whether temp-UI widgets
-    should all be real widgets — these may want to be designed together
-    as "the agent ⇄ Desk temp-UI protocol" rather than piecemeal.
-
-  Not decided — parking to revisit as a deliberate design discussion.
-
-- **Migrate the TempUI/Claude widget bindings onto widget-local storage
-  too, instead of their current bespoke, one-off wiring**
-
-  Surfaced building the Markdown widget (TODO 6bf83a9): it opens/renders
-  a Markdown file the user picks, but — like the Code Editor widget —
-  the chosen file was *not* remembered across a Desk reload. TODO
-  fb76057 built the general mechanism this needed ("widget-local
-  storage": `WidgetState.state: dict`, `get_widget_local_storage()`/
-  `set_widget_local_storage()` duck-typed onto a widget, a generalized
-  post-build binding in `DeskWindow`) — but deliberately scoped to just
-  the mechanism, not wiring any specific widget onto it. The original
-  motivating case (Markdown/Markdown (Old, Basic)/Editor remembering
-  their open file) is now done, under TODO `02eda20`. Still parked: the
-  existing per-kind `_bind_temp_ui_widget`/`_bind_claude_widget`
-  special-cases could migrate onto this same mechanism instead of their
-  current bespoke wiring — a clean answer would simplify both, but isn't
-  decided or scoped yet.
-
-  Not decided — parking to revisit as its own design discussion.
-
-- **In-widget zoom/pan for the SVG Viewer**
-
-  TODO c7d6e4d's SVG Viewer widget (`widgets/svg_viewer/`) only fits
-  the SVG to the widget's own size (aspect-preserved). For a large or
-  detailed diagram, independent zoom/pan within the widget (distinct
-  from the Workspace Canvas's own zoom of the whole widget frame) would
-  help; out of scope for that item, worth its own TODO if it comes up.
-
-- **Wire `.svg` results in the File Explorer / Markdown widgets to open
-  in the SVG Viewer**
-
-  Right now the File Explorer (TODO b927389) always opens a selected
-  file in a new Editor widget instance regardless of extension, and the
-  Markdown widget (TODO a76e723, renamed from "Markdown (Extended)" /
-  `markdown_ex`, TODO 858752b) renders embedded images (including SVG)
-  via `QTextBrowser`'s own native/indirect handling, not the new SVG
-  Viewer widget (TODO c7d6e4d, built after both of those). Neither was
-  asked to integrate with it. Worth revisiting once there's an actual
-  need (e.g. double-clicking a `.svg` in the explorer opening a real
-  vector view instead of raw XML in the Editor).
+  Two follow-on ideas for the SVG Viewer widget (`widgets/svg_viewer/`,
+  TODO `c7d6e4d`):
+  - **In-widget zoom/pan.** It currently only fits the SVG to the
+    widget's own size (aspect-preserved). For a large or detailed
+    diagram, independent zoom/pan within the widget (distinct from the
+    Workspace Canvas's own zoom of the whole widget frame) would help;
+    out of scope for that item, worth its own TODO if it comes up.
+  - **Wire `.svg` results in the File Explorer / Markdown widgets to
+    open in it.** Right now the File Explorer (TODO b927389) always
+    opens a selected file in a new Editor widget instance regardless
+    of extension, and the Markdown widget (TODO a76e723, renamed from
+    "Markdown (Extended)" / `markdown_ex`, TODO 858752b) renders
+    embedded images (including SVG) via `QTextBrowser`'s own
+    native/indirect handling, not the SVG Viewer widget (built after
+    both of those). Neither was asked to integrate with it. Worth
+    revisiting once there's an actual need (e.g. double-clicking a
+    `.svg` in the explorer opening a real vector view instead of raw
+    XML in the Editor).
 
 - **A generalized mechanism for "check immediately before create, abort
   recoverably if it already exists"**
@@ -408,127 +465,81 @@ This file captures thoughts and TODO items that arise during work on other thing
   content area (distinct from the widget frame's own outer border)
   would make that boundary clear.
 
-- **`kind: "html"` widgets with more than one file silently fail to
-  load, because relative-path sub-resource requests lose the auth
-  token**
+- **`kind: "html"` widget robustness and docs (from the hex_flower
+  blank-page investigation)**
 
-  From `DESK_FEEDBACK-2026-07-13T012144.md` (TODO `4ab5875`,
-  investigating `widgets/hex_flower`'s blank page). A widget's main
-  page is loaded with the per-launch token as a query parameter, but a
-  plain relative-path browser reference (`<script src>`, `<link
-  href>`, CSS `url(...)`, `<img src>`) does not carry that query string
-  forward, and a native resource tag can't attach a custom header
-  either -- so every such sub-resource request arrives at
-  `TokenAuthMiddleware` with no credential and gets `401`'d, silently
-  aborting the module/resource graph with no console output. This
-  affects any `kind: "html"` widget built as an ordinary multi-file web
-  project; only tempui `DefineWidget` widgets avoid it today, as a side
-  effect of being forced into one inlined HTML file (TODO `91b3f42`),
-  not because anyone intentionally avoided the bug. The suggested fix:
-  a same-origin cookie set when a widget's main page is served,
-  alongside (not replacing) the existing query-param/`X-Desk-Token`
-  -header checks -- cookies are the one credential mechanism a browser
-  attaches automatically to every same-origin request, including plain
-  `<script src>`/`<link href>` loads. Not designed/implemented yet.
+  A cluster of related findings/suggestions from
+  `DESK_FEEDBACK-2026-07-13T012144.md` (TODO `4ab5875`, investigating
+  `widgets/hex_flower`'s blank page):
 
-- **Reconsider `DefineWidget`'s single-inlined-file requirement, once
-  the relative-path/token gap above is fixed**
-
-  From the same feedback doc. Inlining everything into one base64
-  -encoded HTML document is convenient for an agent to author quickly,
-  but stops working well for anything non-trivial (as `hex_flower`,
-  ported from a real multi-file TypeScript project, illustrates).
-  Once the auth gap above no longer forces this, worth reconsidering
-  whether `DefineWidget` could support a small set of named files (e.g.
-  an HTML entry plus a script and a stylesheet) instead of one inlined
-  document. Depends on the item above; not designed yet.
-
-- **No visible signal when a `kind: "html"` widget fails to load**
-
-  From the same feedback doc. Right now a `kind: "html"` widget that
-  fails for any reason (the token gap above, a script error, whatever)
-  just renders as a silent blank page indistinguishable from several
-  other failure modes, with no console output surfaced anywhere. Worth
-  some visible failure signal -- e.g. surfacing the widget's own
-  `javaScriptConsoleMessage` output somewhere inspectable (a log file,
-  a debug panel), and/or a generic "this widget failed to render"
-  placeholder shown in place of a silent blank page.
-
-- **A known-good, minimal multi-file `kind: "html"` widget template**
-
-  From the same feedback doc. A checked-in (or docs-referenced) minimal
-  example of a working multi-file `kind: "html"` widget would give a
-  future agent building something like `hex_flower` a template to diff
-  against, rather than discovering gaps like the one above the hard way
-  after already doing a real port of an existing project.
-
-- **Document the auth-token requirement for a `kind: "html"` widget's
-  own asset requests**
-
-  From the same feedback doc. `design-docs/architecture.md`'s
-  description of `kind: "html"` widgets doesn't mention the auth token
-  at all. It should state plainly that every request the browser makes
-  for a widget's own page -- not just the top-level navigation -- must
-  carry the per-launch token, and that ordinary relative-path resource
-  references do not carry the token forward and will be rejected, so a
-  widget with more than one file won't load until the underlying gap
-  (above) is fixed.
-
-- **No single doc lays out what does/doesn't work yet for a `kind:
-  "html"` widget built from scratch (as opposed to a tempui
-  `DefineWidget` single-file widget)**
-
-  From the same feedback doc. E.g. "single self-contained HTML file:
-  works"; "multiple files loaded via relative paths: currently broken,
-  see [gap]". Without that, a reasonable, competently-built ordinary
-  web project (exactly what happened with `hex_flower`) silently fails
-  with zero diagnostic signal and no way for whoever built it to have
-  known in advance.
-
-- **No guidance on how to debug a blank `kind: "html"` widget**
-
-  From the same feedback doc. Nothing currently tells a widget author
-  how to tell their widget failed to load. A "how to debug a blank
-  widget" note (start from: is the custom element even defined? check
-  `document.querySelector(...).shadowRoot`; are there failed network
-  requests?) would shorten this kind of investigation considerably --
-  today the failure mode is a silent blank page with no console
-  output, indistinguishable from several other possible failures (bad
-  HTML, a crashed script, wrong entry point, etc.).
-
-- **"Domain" packages: widgets, DSL extensions, new DSLs, and agent
-  instructions bundled and distributed together — probably needs a
-  formalization of DSLs for Desk first**
-
-  Idea: a "domain" package could bundle together whatever a particular
-  use case needs — widgets, extensions to any known DSL, entirely new
-  DSLs, and agent instructions for using them — as one distributable,
-  installable unit, rather than each of those being separately
-  authored/wired into Desk by hand.
-
-  This probably requires formalizing "DSL" as a real concept in Desk
-  first (right now the tempui DSL is a fixed, hand-written set of
-  keywords/interpreters in `src/desk/temp_ui.py`, not a general
-  mechanism other DSLs could plug into). Two sub-parts that formalization
-  would likely need:
-  - A DSL for *specifying* a DSL (possibly with embedded code for its
-    interpreter/behavior) — i.e. a meta-DSL a domain package author
-    writes to define a new DSL's keywords/grammar/semantics, rather
-    than hand-writing Python interpreter code the way tempui's own
-    keywords are today.
-  - A DSL for *specifying widgets* themselves, as a more declarative
-    alternative to hand-authoring `widget.json` + a `build()` function
-    (or, for `DefineWidget`, hand-authoring/base64-inlining raw HTML).
-
-  Connects to the parked question above on how Claude should author
-  its own temp-UI DSL/interpreters and whether temp-UI widgets should
-  all be real widgets — that question and this one are likely facets
-  of the same underlying "how far does Desk's own extensibility go, and
-  what's the authoring surface for it" design space, and may want to be
-  thought through together.
-
-  Not designed — a large, open-ended idea, parking as a direction to
-  think about rather than a scoped task.
+  - **Root cause: relative-path sub-resource requests lose the auth
+    token.** A widget's main page is loaded with the per-launch token
+    as a query parameter, but a plain relative-path browser reference
+    (`<script src>`, `<link href>`, CSS `url(...)`, `<img src>`) does
+    not carry that query string forward, and a native resource tag
+    can't attach a custom header either -- so every such sub-resource
+    request arrives at `TokenAuthMiddleware` with no credential and
+    gets `401`'d, silently aborting the module/resource graph with no
+    console output. This affects any `kind: "html"` widget built as an
+    ordinary multi-file web project; only tempui `DefineWidget`
+    widgets avoid it today, as a side effect of being forced into one
+    inlined HTML file (TODO `91b3f42`), not because anyone
+    intentionally avoided the bug. Suggested fix: a same-origin cookie
+    set when a widget's main page is served, alongside (not replacing)
+    the existing query-param/`X-Desk-Token`-header checks -- cookies
+    are the one credential mechanism a browser attaches automatically
+    to every same-origin request, including plain `<script src>`/
+    `<link href>` loads. Not designed/implemented yet.
+  - **Reconsider `DefineWidget`'s single-inlined-file requirement,
+    once the above is fixed.** Inlining everything into one
+    base64-encoded HTML document is convenient for an agent to author
+    quickly, but stops working well for anything non-trivial (as
+    `hex_flower`, ported from a real multi-file TypeScript project,
+    illustrates). Once the auth gap above no longer forces this, worth
+    reconsidering whether `DefineWidget` could support a small set of
+    named files (e.g. an HTML entry plus a script and a stylesheet)
+    instead of one inlined document. Depends on the item above.
+  - **No visible signal when a `kind: "html"` widget fails to load.**
+    Right now such a widget that fails for any reason (the token gap
+    above, a script error, whatever) just renders as a silent blank
+    page indistinguishable from several other failure modes, with no
+    console output surfaced anywhere. Worth some visible failure
+    signal -- e.g. surfacing the widget's own
+    `javaScriptConsoleMessage` output somewhere inspectable (a log
+    file, a debug panel), and/or a generic "this widget failed to
+    render" placeholder shown in place of a silent blank page.
+  - **A known-good, minimal multi-file `kind: "html"` widget
+    template.** A checked-in (or docs-referenced) minimal example of a
+    working multi-file `kind: "html"` widget would give a future agent
+    building something like `hex_flower` a template to diff against,
+    rather than discovering gaps like the one above the hard way after
+    already doing a real port of an existing project.
+  - **Document the auth-token requirement for a widget's own asset
+    requests.** `design-docs/architecture.md`'s description of `kind:
+    "html"` widgets doesn't mention the auth token at all. It should
+    state plainly that every request the browser makes for a widget's
+    own page -- not just the top-level navigation -- must carry the
+    per-launch token, and that ordinary relative-path resource
+    references do not carry the token forward and will be rejected, so
+    a widget with more than one file won't load until the underlying
+    gap above is fixed.
+  - **No single doc lays out what does/doesn't work yet** for a `kind:
+    "html"` widget built from scratch (as opposed to a tempui
+    `DefineWidget` single-file widget) -- e.g. "single self-contained
+    HTML file: works"; "multiple files loaded via relative paths:
+    currently broken, see [gap]". Without that, a reasonable,
+    competently-built ordinary web project (exactly what happened with
+    `hex_flower`) silently fails with zero diagnostic signal and no
+    way for whoever built it to have known in advance.
+  - **No guidance on how to debug a blank `kind: "html"` widget.**
+    Nothing currently tells a widget author how to tell their widget
+    failed to load. A "how to debug a blank widget" note (start from:
+    is the custom element even defined? check
+    `document.querySelector(...).shadowRoot`; are there failed network
+    requests?) would shorten this kind of investigation considerably
+    -- today the failure mode is a silent blank page with no console
+    output, indistinguishable from several other possible failures
+    (bad HTML, a crashed script, wrong entry point, etc.).
 
 - **A way to end a claude widget's session so it can get new
   instructions — maybe an "end session" button?**
@@ -559,9 +570,7 @@ This file captures thoughts and TODO items that arise during work on other thing
   of just talking in the terminal. Not clear yet whether this is a
   prompt-wording problem, a discoverability problem (the agent doesn't
   realize a given moment calls for one of these), a docs-structure
-  problem (connects to the parked question above on how Claude should
-  watch for a temp-UI response and whether it should be a skill), or
-  something else entirely.
+  problem, or something else entirely.
 
   Not designed/scoped — parking as a direction to investigate (e.g.
   observe real sessions and see where they fail to reach for tempui)
@@ -590,45 +599,6 @@ This file captures thoughts and TODO items that arise during work on other thing
   rather than a scoped task; likely worth deciding before sinking
   effort into fixing the terminal-hosting issues piecemeal.
 
-- **`TODO.md` formatting/structure: blank lines between entries,
-  archiving old items, and priority/dependency lists instead of file
-  order**
-
-  Three related open questions about `TODO.md` itself, not its content:
-
-  - **Blank lines between entries.** `TODO.md` doesn't render properly
-    in an ordinary Markdown viewer because there's no blank line
-    between one item and the next (Markdown treats adjacent
-    non-blank lines as one paragraph). Checked whether adding blank
-    lines between entries would break the TODO widget's parsing
-    (`src/desk/todo_file.py`, `parse_todo_file`): it wouldn't — an
-    item's boundary is found by regex-matching the *start* of the
-    *next* item (`ITEM_START_RE`), not by blank-line separation, so an
-    added trailing blank line would just become part of the preceding
-    item's own preserved `raw_text` and round-trip unchanged. Safe to
-    do; not yet done.
-  - **Archiving old items.** Should old (`COMPLETED`/`SUPERSEDED`)
-    items start moving out of `TODO.md` into some kind of archive, now
-    that the file has grown quite long? Not decided — connects to the
-    already-parked "process-file organization"/new-repo questions
-    above.
-  - **`required-direct-prior: []`/`priority-direct-prior: []` instead
-    of file order.** Right now both an item's priority (its position
-    in the file, top to bottom) and any dependency it has on another
-    item are expressed the same way: physical ordering in the file —
-    conflating "must come after" (a real dependency) with "happens to
-    be prioritized after" (just a preference), and making a pure
-    priority change a cut-and-paste move instead of a simple edit.
-    Idea: give each item explicit `required-direct-prior: [<id>, ...]`
-    (hard dependencies — this item cannot start before those finish)
-    and `priority-direct-prior: [<id>, ...]` (soft ordering preference)
-    lists instead, so reprioritizing is an edit to these lists rather
-    than moving the item's text block, and true dependencies are
-    distinguished from mere priority. Not designed — would need working
-    out how the TODO widget/`development-process.md`'s own "Prioritizing
-    TODO Items" section would use these lists to determine actual work
-    order, and how required-vs-priority interacts when they conflict.
-
 - **PDF viewer**
 
   A widget for viewing PDF files.
@@ -648,18 +618,13 @@ This file captures thoughts and TODO items that arise during work on other thing
   cut tool), with a transcript kept tightly bound to its own audio
   track.
 
-- **Hexsheet tools**
+- **Hexsheet tools, and generalizing them to work for tables too**
 
-  Widget(s) porting/supporting `hexsheet`'s own
-  tools. Connects to `widgets/hex_flower`'s own investigation
-  (TODO `4ab5875`, `DESK_FEEDBACK-2026-07-13T012144.md`) -- an earlier,
-  incomplete attempt at part of this.
-
-- **Generalize hexsheet tools so that they work for tables, too**
-
-  Follow-on to the hexsheet tools idea above -- generalize whatever
-  gets built there to also support ordinary tables, not just hex
-  layouts.
+  Widget(s) porting/supporting `hexsheet`'s own tools. Connects to
+  `widgets/hex_flower`'s own investigation (TODO `4ab5875`,
+  `DESK_FEEDBACK-2026-07-13T012144.md`) -- an earlier, incomplete
+  attempt at part of this. Follow-on: once built, generalize the tools
+  to also support ordinary tables, not just hex layouts.
 
 - **Rich wiki-style linking and editing of markdown**
 
@@ -671,31 +636,9 @@ This file captures thoughts and TODO items that arise during work on other thing
 
   Widget(s) for constructed-language (conlang) work.
 
-- **Composition, sensible re-architecting, and packaging for groupings of widgets into apps (the "crystallization" idea)**
-
-  Let a group of widgets be composed/packaged into a standalone "app"
-  that doesn't need every one of Desk's own built-in tools available
-  to it -- a re-architected, packaged subset rather than the full
-  Desk environment. Connects to the already-parked "domain packages"
-  idea above (widgets + DSL extensions + new DSLs + agent
-  instructions bundled together) -- likely facets of the same
-  packaging/distribution question. I've named this "crystallization."
-
 - **Tools for working with different local models**
 
   Widget(s)/tooling for interacting with local (non-Anthropic) models.
-
-- **Per-project glossary and better organization of process materials, so they don't take up context when not needed; more active memory management**
-
-  For both Desk (the app) and this project's own development process:
-  a per-project glossary, and reorganizing process materials (TODO.md,
-  PARKINGLOT.md, LEARNINGS.md, plans/, etc.) so they don't consume
-  context when irrelevant to the task at hand. More active memory
-  management generally -- possibly with dedicated tools for working
-  with memory, connecting to `LEARNINGS.md`, and/or some kind of
-  online shared "useful learnings" tool. Connects to the already-parked
-  "process-file organization"/ownership-protocol questions above --
-  likely worth resolving together.
 
 - **Move the receipts app to Desk; bring over some pipeline-debugging tools and computer-vision stuff too**
 
@@ -733,14 +676,3 @@ This file captures thoughts and TODO items that arise during work on other thing
   widget for viewing (and maybe editing) that embedded code directly,
   rather than needing an external decode step, would help when
   inspecting or debugging a custom widget's actual implementation.
-
-- **DSLs for dealing with data: file/stream format, syntax, database, and disk layout DSLs**
-
-  A family of DSL ideas for describing/working with data: a DSL for
-  describing a file or stream format, a DSL for describing a syntax
-  (e.g. a grammar), a DSL for describing a database (schema/queries?),
-  and a DSL for describing a disk layout. Connects to the already
-  -parked "formalization of DSLs for Desk" idea above (domain
-  packages, a DSL for specifying a DSL, a DSL for specifying widgets)
-  -- these would likely want to build on whatever that formalization
-  produces, rather than being designed independently.
