@@ -13,6 +13,7 @@ code is about code a Desk user writes for their own kind:"html" widget.
 BRIDGE_CLIENT_TEMPLATE = """
 (function () {
   const WIDGET_ID = "%(widget_id)s";
+  const INSTANCE_ID = "%(instance_id)s";
   const TOKEN = "%(token)s";
 
   async function call(method, path, body) {
@@ -21,6 +22,7 @@ BRIDGE_CLIENT_TEMPLATE = """
       headers: {
         "X-Desk-Token": TOKEN,
         "X-Desk-Widget-Id": WIDGET_ID,
+        "X-Desk-Instance-Id": INSTANCE_ID,
       },
     };
     if (body !== undefined) {
@@ -54,11 +56,13 @@ BRIDGE_CLIENT_TEMPLATE = """
     },
     self: {
       getManifest: () => call("GET", "/api/bridge/self/getManifest"),
+      getLocalStorage: () => call("GET", "/api/bridge/self/getLocalStorage"),
+      setLocalStorage: (data) => call("POST", "/api/bridge/self/setLocalStorage", { data }),
     },
   };
 })();
 """
 
 
-def render_bridge_client(widget_id: str, token: str) -> str:
-    return BRIDGE_CLIENT_TEMPLATE % {"widget_id": widget_id, "token": token}
+def render_bridge_client(widget_id: str, instance_id: str, token: str) -> str:
+    return BRIDGE_CLIENT_TEMPLATE % {"widget_id": widget_id, "instance_id": instance_id, "token": token}

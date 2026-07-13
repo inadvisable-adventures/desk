@@ -80,6 +80,10 @@ class WriteFileRequest(BaseModel):
     contents: str
 
 
+class SetLocalStorageRequest(BaseModel):
+    data: dict
+
+
 def create_app(
     token: str,
     widgets_dir: Path = DEFAULT_WIDGETS_DIR,
@@ -127,6 +131,18 @@ def create_app(
 
         return dependency
 
+    def require_instance_id(x_desk_instance_id: str = Header(...)) -> str:
+        """Identifies the calling *instance*, not just its widget kind
+        (TODO 5734529) -- deliberately not layered on require_caller:
+        that looks the caller up via discover_widgets(widgets_dir),
+        which only ever finds real, on-disk widgets/<id>/ directories
+        and would 400 for a tempui-DSL-defined custom widget kind (see
+        PARKINGLOT.md). self.getLocalStorage/setLocalStorage need no
+        broader capability -- a widget can only ever touch its own
+        per-instance storage, the same "not a privileged operation"
+        reasoning self.getManifest already uses."""
+        return x_desk_instance_id
+
     async def run_on_gui(fn):
         if gui_bridge is None:
             raise HTTPException(503, "GUI bridge not available")
@@ -141,6 +157,18 @@ def create_app(
     @app.get("/api/bridge/self/getManifest")
     async def self_get_manifest(widget: WidgetInfo = Depends(require_caller(None))):
         return _widget_info_dict(widget)
+
+    @app.get("/api/bridge/self/getLocalStorage")
+    async def self_get_local_storage(instance_id: str = Depends(require_instance_id)):
+        data = await run_on_gui(lambda: gui_bridge.window.get_html_widget_local_storage(instance_id))
+        return {"data": data}
+
+    @app.post("/api/bridge/self/setLocalStorage")
+    async def self_set_local_storage(
+        body: SetLocalStorageRequest, instance_id: str = Depends(require_instance_id)
+    ):
+        await run_on_gui(lambda: gui_bridge.window.set_html_widget_local_storage(instance_id, body.data))
+        return {"ok": True}
 
     @app.get("/api/bridge/workspace/getState")
     async def workspace_get_state(widget: WidgetInfo = Depends(require_caller("workspace"))):

@@ -21,14 +21,21 @@ class ChromiumWidget(QWebEngineView):
     run, so it's always available."""
 
     def __init__(
-        self, widget_id: str, url: str, token: str, broker: HotReloadBroker, parent=None
+        self,
+        widget_id: str,
+        instance_id: str,
+        url: str,
+        token: str,
+        broker: HotReloadBroker,
+        parent=None,
     ) -> None:
         super().__init__(parent)
         self.widget_id = widget_id
+        self.instance_id = instance_id
 
         script = QWebEngineScript()
         script.setName(f"desk-bridge-client-{widget_id}")
-        script.setSourceCode(render_bridge_client(widget_id, token))
+        script.setSourceCode(render_bridge_client(widget_id, instance_id, token))
         script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
         script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
         script.setRunsOnSubFrames(False)

@@ -1738,3 +1738,10 @@ f7b1611. COMPLETED: We need to make sure that the tempui md file is up-to-date, 
    is not showing up in the list of active widgets in the add-widget
    context menu, even after reloading the app.
    [planned: fix-tempui-promote-button-and-spawn-menu.md]
+5734529. COMPLETED: Another Claude instance running inside of a Desk was trying to
+   implement a tempui widget, and it had the following feedback: "Not
+   Implemented: state persistence (no widget-local-storage wiring --
+   the Desk Bridge API exists for html widgets but nothing implements
+   save/restore for one yet)." Fix that, including adding a
+   description of the (updated) Bridge API to the tempui md file.
+   [planned: html-widget-local-storage-bridge-api.md]

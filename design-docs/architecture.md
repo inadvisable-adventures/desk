@@ -690,23 +690,42 @@ into each Chromium Widget's page via a `QWebEngineScript` at
 | `desk.fs.readFile(path)` / `writeFile(path, contents)` | Filesystem access | `fs` |
 | `desk.widgets.list()` / `open(widgetId, opts)` / `close(instanceId)` | Manage widget instances | `widgets` |
 | `desk.self.getManifest()` | A widget introspecting its own manifest | none |
+| `desk.self.getLocalStorage()` / `setLocalStorage(data)` | Persist/restore this *instance's* own state across a Desk reload (TODO `5734529`) | none |
 
-Each call (other than `self.getManifest`, not privileged) is checked
-against the calling widget's declared `capabilities` — coarse,
-resource-level strings (`"workspace"`, `"fs"`, `"widgets"`), not one per
-method; see `plans/desk-bridge-api.md`'s Key Design Decisions. The caller
-identifies itself via an `X-Desk-Widget-Id` header the injected client
-library attaches automatically.
+Each call (other than `self.getManifest`/`self.getLocalStorage`/
+`self.setLocalStorage`, none privileged) is checked against the calling
+widget's declared `capabilities` — coarse, resource-level strings
+(`"workspace"`, `"fs"`, `"widgets"`), not one per method; see
+`plans/desk-bridge-api.md`'s Key Design Decisions. The caller identifies
+its *kind* via an `X-Desk-Widget-Id` header the injected client library
+attaches automatically, and (TODO `5734529`) its specific *instance* via
+a sibling `X-Desk-Instance-Id` header — `ChromiumWidget`/the injected
+client are both constructed with a concrete `instance_id` up front (see
+`DeskWindow._place_widget`), the same identity `WidgetState`/`WidgetFrame`
+already carry, just newly threaded all the way to the calling page itself
+(nothing before TODO `5734529` let the server tell two same-kind widget
+instances apart at all, which `self.getLocalStorage`/`setLocalStorage`
+fundamentally needs — `WidgetState.state` is per-*instance*).
+`self.getLocalStorage`/`setLocalStorage` deliberately resolve the caller
+from that header alone, not via the same `discover_widgets(widgets_dir)`
+lookup every other route uses (which only ever finds real, on-disk
+`widgets/<id>/` directories — see `PARKINGLOT.md` for the resulting gap
+this doesn't fully close for tempui-DSL-defined custom widgets and every
+*other* Bridge capability).
 
-`workspace.getState`/`widgets.open`/`widgets.close` touch live
-`DeskWindow`/`WorkspaceView` state, which is GUI-thread-owned while these
-routes run on the Local Web Server's background thread; `desk.shell.bridge
-.GuiBridge` provides a synchronous cross-thread call (emits a Qt signal,
-thread-safe like `HotReloadBroker`, then blocks only the calling thread —
-offloaded to an executor so the asyncio loop isn't stalled — until the GUI
-thread has run the callable and produced a result). `fs.*`/`widgets.list`/
-`self.getManifest` don't need this at all — plain filesystem/manifest
-reads served directly from the request thread.
+`workspace.getState`/`widgets.open`/`widgets.close`/`self.getLocalStorage`/
+`self.setLocalStorage` touch live `DeskWindow`/`WorkspaceView` state
+(the latter two via a new `_html_widget_local_storage: dict[instance_id,
+dict]`, the `kind: "html"` counterpart to the existing `python`-kind
+widget-local-storage duck-typed contract, TODO `fb76057`), which is
+GUI-thread-owned while these routes run on the Local Web Server's
+background thread; `desk.shell.bridge.GuiBridge` provides a synchronous
+cross-thread call (emits a Qt signal, thread-safe like `HotReloadBroker`,
+then blocks only the calling thread — offloaded to an executor so the
+asyncio loop isn't stalled — until the GUI thread has run the callable
+and produced a result). `fs.*`/`widgets.list`/`self.getManifest` don't
+need this at all — plain filesystem/manifest reads served directly from
+the request thread.
 
 `widgets.close(instanceId)` needed real per-instance identity, which
 nothing in the codebase had before this — `WidgetState`/`WidgetFrame` now

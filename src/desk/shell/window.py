@@ -156,6 +156,12 @@ class DeskWindow(QMainWindow):
         self._custom_widget_sources: dict[str, str] = {}
         self._custom_widget_source_paths: dict[str, Path] = {}
 
+        # kind:"html" widget-local storage (TODO 5734529): instance_id
+        # -> whatever that instance's own JS last pushed via the Bridge
+        # API's self.setLocalStorage. See _get_widget_local_storage/
+        # _bind_widget_local_storage.
+        self._html_widget_local_storage: dict[str, dict] = {}
+
         self._temp_ui_manager = TempUiManager()
         self._temp_ui_manager.file_added.connect(self._on_temp_ui_file_added)
         self._temp_ui_manager.file_edited.connect(self._on_temp_ui_file_edited)
@@ -302,8 +308,21 @@ class DeskWindow(QMainWindow):
                 host, title=widget.name, pos=pos, size=size, instance_id=instance_id
             )
         else:
+            # Resolved here, before ChromiumWidget's own construction
+            # (TODO 5734529), rather than left to WidgetFrame's usual
+            # internal default: the Bridge client script's source is
+            # baked in at construction time, so the instance id it
+            # embeds (for the Bridge API's self.getLocalStorage/
+            # setLocalStorage, keyed per-instance) has to be known
+            # before that call, not set retroactively afterward.
+            if instance_id is None:
+                instance_id = uuid.uuid4().hex[:8]
             chromium_widget = ChromiumWidget(
-                widget_id, self._handle.widget_url(widget_id), self._handle.token, self._broker
+                widget_id,
+                instance_id,
+                self._handle.widget_url(widget_id),
+                self._handle.token,
+                self._broker,
             )
             proxy = self.view.add_widget(
                 chromium_widget, title=widget.name, pos=pos, size=size, instance_id=instance_id
@@ -457,29 +476,64 @@ class DeskWindow(QMainWindow):
         only called from the Desk-reload restore path, since a fresh
         placement has no prior data to restore. Duck-typed the same way
         `hasattr(content, "set_file")` already is elsewhere in this
-        file: a widget that doesn't implement `set_widget_local_storage`
-        is a safe no-op, not an error."""
-        if not isinstance(frame.content, PythonWidgetHost):
-            return
-        content = frame.content.current
-        if content is None or not hasattr(content, "set_widget_local_storage"):
-            return
-        content.set_widget_local_storage(data)
+        file: a `python`-kind widget that doesn't implement
+        `set_widget_local_storage` is a safe no-op, not an error.
 
-    @staticmethod
-    def _get_widget_local_storage(frame: WidgetFrame) -> dict:
+        A `kind: "html"` widget (TODO 5734529) has no such Python
+        -level method to call -- its own JS restores itself by calling
+        the Bridge API's `self.getLocalStorage()`, which reads from
+        `_html_widget_local_storage`. Seeding that dict here, *before*
+        `ChromiumWidget.load()`'s page has any chance to run its own
+        startup JS (this call is synchronous Python; the page's script
+        only runs later, asynchronously), means a widget calling
+        `getLocalStorage()` from its own startup code always sees the
+        restored data, never a race against an empty default."""
+        if isinstance(frame.content, PythonWidgetHost):
+            content = frame.content.current
+            if content is None or not hasattr(content, "set_widget_local_storage"):
+                return
+            content.set_widget_local_storage(data)
+        elif isinstance(frame.content, ChromiumWidget):
+            self._html_widget_local_storage[frame.instance_id] = data
+
+    def _get_widget_local_storage(self, frame: WidgetFrame) -> dict:
         """The counterpart read side, called by `_capture_desk_state`
         on every save -- pull-based, not push-based, since a Desk save
         already re-reads every other per-widget field (geometry) fresh
-        at save time rather than tracking live changes. A widget that
-        doesn't implement `get_widget_local_storage` contributes an
-        empty dict, same as it always implicitly had before this TODO."""
-        if not isinstance(frame.content, PythonWidgetHost):
-            return {}
-        content = frame.content.current
-        if content is None or not hasattr(content, "get_widget_local_storage"):
-            return {}
-        return content.get_widget_local_storage()
+        at save time rather than tracking live changes. A `python`-kind
+        widget that doesn't implement `get_widget_local_storage`
+        contributes an empty dict, same as it always implicitly had
+        before this TODO.
+
+        A `kind: "html"` widget (TODO 5734529) instead contributes
+        whatever its own JS most recently pushed via the Bridge API's
+        `self.setLocalStorage(data)` -- `_html_widget_local_storage`,
+        not re-read from the widget itself (there's no synchronous way
+        to ask a browser page "what's your current state" the way a
+        Python method call can)."""
+        if isinstance(frame.content, PythonWidgetHost):
+            content = frame.content.current
+            if content is None or not hasattr(content, "get_widget_local_storage"):
+                return {}
+            return content.get_widget_local_storage()
+        if isinstance(frame.content, ChromiumWidget):
+            return self._html_widget_local_storage.get(frame.instance_id, {})
+        return {}
+
+    def get_html_widget_local_storage(self, instance_id: str) -> dict:
+        """The Bridge API's `self.getLocalStorage` (TODO 5734529),
+        called via `GuiBridge` from the (background-thread) Local Web
+        Server. `{}` for an instance that's never pushed anything yet
+        (a brand-new widget with nothing to restore), not an error."""
+        return self._html_widget_local_storage.get(instance_id, {})
+
+    def set_html_widget_local_storage(self, instance_id: str, data: dict) -> None:
+        """The Bridge API's `self.setLocalStorage` (TODO 5734529) --
+        just updates the in-memory store; like the `python`-kind
+        equivalent, this is pull-based from the *next* actual Desk
+        save (`_get_widget_local_storage` above), not an immediate
+        disk write on every call."""
+        self._html_widget_local_storage[instance_id] = data
 
     def _bind_temp_ui_content(self, content, tempui_path: Path, directory: Path) -> None:
         """Wires a freshly-placed or restored TempUI-backed widget's
@@ -636,6 +690,11 @@ class DeskWindow(QMainWindow):
         self._custom_widget_definitions.clear()
         self._custom_widget_sources.clear()
         self._custom_widget_source_paths.clear()
+        # Per-instance state (TODO 5734529), meaningless once
+        # view.clear_widgets() above already destroyed the frames it
+        # belonged to -- cleared here so it doesn't accumulate stale
+        # entries across many Desk switches in one long session.
+        self._html_widget_local_storage.clear()
         new_desk = load_desk(path) if path.is_file() else Desk(path=path)
         self.current_desk = new_desk
         # Set before _provision_temp_ui/_load_desk_widgets below, both

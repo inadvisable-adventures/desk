@@ -30,7 +30,7 @@ GITIGNORE_COMMENT = "# Desk-specific"
 # decides at edit time, the same spirit as this project's own
 # permanent TODO item ids (assigned once, never recomputed). See
 # ensure_doc_version_current, called before a Desk is opened.
-TEMPUI_DOC_VERSION = 1
+TEMPUI_DOC_VERSION = 2
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -307,6 +307,52 @@ later deleted) and the original `DefineWidget` file here is removed —
 the `.desk` file becomes the sole remaining source of truth.
 Invocation (see above) keeps working exactly the same afterward,
 promoted or not.
+
+### The Desk Bridge API — what your widget's own JS can call
+
+A `DefineWidget` widget's HTML document runs inside a real embedded
+browser page with one extra thing every other web page doesn't have:
+`window.desk`, a small JS client automatically injected before your
+own code runs. It's how your widget talks back to Desk itself —
+notably, **it's the only way to persist your widget's own state
+across a Desk reload** (there is no other storage available — no
+`localStorage`/`IndexedDB`/cookies persist a Chromium widget's page
+across a reload the way you might expect from an ordinary browser tab,
+and even if they did, they wouldn't survive the *page* itself
+reloading on every Desk restart the way `window.desk.self
+.getLocalStorage()` is specifically designed to).
+
+All calls are `async` (they return a `Promise`):
+
+- `desk.self.getLocalStorage()` → `{ data }` — call this once, early,
+  when your widget's page loads, to restore whatever you last saved.
+  `data` is `{}` for a brand-new instance with nothing saved yet.
+- `desk.self.setLocalStorage(data)` → `{ ok: true }` — call this
+  whenever your widget's own state changes (on every meaningful
+  interaction, or debounced if that's too chatty for your case) —
+  `data` must be JSON-serializable. This is **pull-based on Desk's
+  side**: whatever you last pushed here is what actually gets written
+  to the `.desk` file, at the *next* time the Desk itself is saved
+  (not immediately on every call) — call it eagerly and often, don't
+  wait for some separate "save" signal that doesn't exist.
+- `desk.self.getManifest()` → your own widget's manifest (id, name,
+  capabilities, default size).
+
+A few more calls exist for widgets that need them (all require
+declaring the matching capability in your own manifest, unlike the
+`self.*` calls above, which need none):
+
+- `desk.workspace.getState()` (capability `workspace`) — the current
+  Desk's live widget layout.
+- `desk.fs.readFile(path)` / `desk.fs.writeFile(path, contents)`
+  (capability `fs`) — read/write an arbitrary file on disk.
+- `desk.widgets.list()` / `.open(widgetId, opts)` / `.close(instanceId)`
+  (capability `widgets`) — inspect/manage placed widget instances.
+
+See `design-docs/architecture.md`'s "Desk Bridge API" section (if you
+have access to Desk's own source) for the full capability-declaration
+mechanism and REST details — the calls above are almost always all a
+`DefineWidget` widget actually needs.
 
 This file (`desk-temporary-ui.md`) is itself ignored by the file
 watcher — its name isn't a UUID, so it's never mistaken for a temp UI

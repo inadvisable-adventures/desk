@@ -342,3 +342,26 @@ This file captures thoughts and TODO items that arise during work on other thing
   context-manager shape. Not designed yet; revisit once there's a
   second or third widget that would clearly benefit, to avoid guessing
   at the right generalization from just one example.
+
+- **The Bridge API's `require_caller` can't resolve a tempui-DSL
+  -defined custom widget kind at all — every capability-gated call
+  (`workspace.*`/`fs.*`/`widgets.*`) 400s for one**
+
+  Surfaced building TODO `5734529`'s `self.getLocalStorage`/
+  `setLocalStorage` (deliberately *not* built on `require_caller`, for
+  exactly this reason). `require_caller`'s dependency (`src/desk/server
+  /app.py`) looks the calling widget up via `discover_widgets
+  (widgets_dir).get(x_desk_widget_id)` — which only ever scans the
+  real, on-disk `widgets/` directory. A tempui-DSL-defined custom
+  widget (TODO `91b3f42`) has no such directory; its `WidgetInfo` only
+  ever lives in the live `DeskWindow._widgets` catalog. So a custom
+  widget's own JS calling *any* existing Bridge capability —
+  `workspace.getState()`, `fs.readFile`/`writeFile`, `widgets.list`/
+  `open`/`close`, even the technically-uncapabilitied
+  `self.getManifest()` — gets a `400 Unknown widget id` today, not just
+  the state-persistence gap TODO `5734529` fixed. Would need
+  `require_caller` (or a new equivalent) to resolve against the live,
+  `GuiBridge`-reachable catalog instead of (or in addition to)
+  `discover_widgets(widgets_dir)` -- not designed yet; parking rather
+  than guessing at the right generalization from a single specific
+  fix's own narrow workaround.
