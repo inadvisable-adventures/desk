@@ -1296,6 +1296,25 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    click vs. hover), and check for any known-fragile native code path (e.g.
    LEARNINGS.md's QNativeGestureEvent segfault note) that could plausibly be
    involved.
+8c9436b. Crash: segfault while loading an already-existing .desk file
+   from the Desk picker. Full macOS crash report provided (kept out of
+   the repo per explicit instruction, not pasted here or anywhere else
+   in the project) -- same `QAbstractItemView::mouseReleaseEvent` ->
+   `QListView::mouseReleaseEvent` -> `sipQListWidget
+   ::mouseReleaseEvent` crashing-thread shape as the already-fixed New
+   -Desk-flow segfault (TODO 4716585), strongly suggesting the same
+   underlying `_DeskListPopup`/`WA_DeleteOnClose` class of bug, just
+   reached via "load an existing Desk" instead of "create a new one."
+   Likely resolves `b44e8ba` too (same crash shape, that report just
+   never had a crash log to confirm against).
+02eda20. Wire the Markdown and Editor widgets onto widget-local
+   storage (TODO fb76057) so their currently-open file path actually
+   persists and restores across a Desk reload -- currently every
+   widget's `"state"` in a saved `.desk` file is an empty `{}`, even
+   for widgets with an obvious per-instance thing to remember (already
+   tracked in `PARKINGLOT.md`, never wired up for any real widget).
+   Tolerate a since-moved/deleted file gracefully at restore time, not
+   as a crash or silent misbehavior.
 ff6514a. COMPLETED: Small borders around widgets by default, to visually
    distinguish one widget from another and from the canvas.
    [planned: widget-borders.md]
