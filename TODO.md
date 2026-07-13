@@ -1307,6 +1307,7 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    reached via "load an existing Desk" instead of "create a new one."
    Likely resolves `b44e8ba` too (same crash shape, that report just
    never had a crash log to confirm against).
+   [planned: fix-desk-picker-nested-dialog-crash.md]
 02eda20. Wire the Markdown and Editor widgets onto widget-local
    storage (TODO fb76057) so their currently-open file path actually
    persists and restores across a Desk reload -- currently every
