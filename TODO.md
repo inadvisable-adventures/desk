@@ -1783,3 +1783,10 @@ e57ce5f. COMPLETED: It's probably time to split out the tempui md file into mult
    and there's currently nothing prompting an agent to check for that
    mismatch.
    [planned: document-persistence-rewiring-for-ported-widgets.md]
+c0875bc. COMPLETED: tempui DSL addition which enables Desk to initiate a
+   conversation about a parking lot item with a new claude session,
+   where the new session is still given instructions about being
+   embedded in Desk but also is at the end of the intro prompted with
+   something like "let's discuss an item from PARKINGLOT.md: [full
+   parking lot item text]".
+   [planned: tempui-discuss-parking-lot-item.md]

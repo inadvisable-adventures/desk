@@ -32,6 +32,7 @@ from desk.temp_ui import (
     detect_temp_ui_kind,
     is_temp_ui_filename,
     parse_define_widget,
+    parse_discuss_parking_lot_item,
     parse_lightning_round,
     parse_markdown_tempui,
     parse_open_markdown,
@@ -293,6 +294,7 @@ class DeskWindow(QMainWindow):
         size: tuple[int, int] | None,
         instance_id: str | None = None,
         restore: bool = False,
+        claude_extra_instructions: str = "",
     ) -> WidgetFrame:
         if widget_id == CLAUDE_WIDGET_ID and instance_id is None:
             # A claude widget's instance_id doubles as its claude
@@ -329,7 +331,9 @@ class DeskWindow(QMainWindow):
             )
         frame = proxy.widget()
         if widget_id == CLAUDE_WIDGET_ID:
-            self._bind_claude_widget(frame, resume=restore)
+            self._bind_claude_widget(
+                frame, resume=restore, extra_instructions=claude_extra_instructions
+            )
         self._bind_external_indicator(frame)
         # Only while still tempui-sourced (TODO 6857997) -- once
         # promoted, the widget's [TEMPUI] button has nothing left to
@@ -355,17 +359,22 @@ class DeskWindow(QMainWindow):
         content.external_path_changed.connect(frame.set_external)
         content.refresh_external_path_status()
 
-    def _bind_claude_widget(self, frame: WidgetFrame, resume: bool) -> None:
+    def _bind_claude_widget(
+        self, frame: WidgetFrame, resume: bool, extra_instructions: str = ""
+    ) -> None:
         """Launches `claude` in a just-placed claude widget, bound to the
         widget's instance_id as its session id -- fresh (--session-id +
         prompt) or resuming (--resume, no prompt). Duck-typed on
         start_session so window.py needn't import the widget class,
-        matching _bind_temp_ui_widget's style."""
+        matching _bind_temp_ui_widget's style. extra_instructions (TODO
+        c0875bc) is appended to the fresh-launch prompt only -- e.g. a
+        tempui DiscussParkingLotItem file's "let's discuss ..." text --
+        and ignored on resume, same as the rest of the initial prompt."""
         if not isinstance(frame.content, PythonWidgetHost):
             return
         content = frame.content.current
         if content is not None and hasattr(content, "start_session"):
-            content.start_session(frame.instance_id, resume=resume)
+            content.start_session(frame.instance_id, resume=resume, extra_instructions=extra_instructions)
             # Quitting claude ends the PTY (it's exec'd -- see the claude
             # widget); close the widget then, rather than leaving it (TODO
             # 5ddbef0). Deferred so removal doesn't run synchronously
@@ -977,6 +986,10 @@ class DeskWindow(QMainWindow):
                 parsed = parse_markdown_tempui(content_text)
                 if parsed and parsed[0]:
                     text = f"Markdown: {parsed[0]}"
+            elif kind == "discuss_parking_lot_item":
+                parsed = parse_discuss_parking_lot_item(content_text)
+                if parsed and parsed[0]:
+                    text = f"Discuss: {parsed[0]}"
             elif kind.startswith("custom:"):
                 definition = self._custom_widget_definitions.get(kind.split(":", 1)[1])
                 if definition is not None:
@@ -1006,6 +1019,8 @@ class DeskWindow(QMainWindow):
             return MARKDOWN_WIDGET_ID
         if kind == "scratch":
             return SCRATCH_WIDGET_ID
+        if kind == "discuss_parking_lot_item":
+            return CLAUDE_WIDGET_ID
         if kind.startswith("custom:"):
             return kind.split(":", 1)[1]
         return QUESTION_WIDGET_ID
@@ -1030,6 +1045,28 @@ class DeskWindow(QMainWindow):
         if widget is None:
             return
         center = self.view.mapToScene(self.view.viewport().rect().center())
+        if widget_id == CLAUDE_WIDGET_ID:
+            # DiscussParkingLotItem (TODO c0875bc): a claude widget's
+            # session starts *inside* _place_widget itself (see
+            # _bind_claude_widget), before the generic
+            # open_widget_content -> _bind_temp_ui_content two-step
+            # below would get a chance to run -- too late to append the
+            # item text to the prompt by then, so the extra instructions
+            # have to be threaded into _place_widget's own call instead.
+            try:
+                parsed = parse_discuss_parking_lot_item(path.read_text())
+            except OSError:
+                parsed = None
+            item_text = parsed[1] if parsed is not None else ""
+            self._place_widget(
+                widget_id,
+                widget,
+                (center.x(), center.y()),
+                widget.default_size,
+                instance_id=uuid_str,
+                claude_extra_instructions=f"\n\nLet's discuss an item from PARKINGLOT.md: {item_text}",
+            )
+            return
         content = self.open_widget_content(
             widget_id,
             pos=(center.x(), center.y()),

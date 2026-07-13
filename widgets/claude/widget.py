@@ -64,7 +64,7 @@ class ClaudeWidget(TerminalWidget):
         # since exec replaces the process image in place without forking.
         super().__init__(command=["bash"], cwd=current_context.get_current_desk_directory())
 
-    def start_session(self, session_id: str, resume: bool) -> None:
+    def start_session(self, session_id: str, resume: bool, extra_instructions: str = "") -> None:
         # `exec` so bash loads its profile (PATH/aliases/nvm/...) and then
         # replaces itself with claude in the same PTY process: quitting
         # claude ends the PTY (so the widget can close, TODO 5ddbef0)
@@ -73,12 +73,21 @@ class ClaudeWidget(TerminalWidget):
         # preserves the original claude-not-found safety (TODO 6907120).
         if resume:
             # Reload: reconnect to the existing session, and (per TODO
-            # 1d7331b) do not re-send the initial Desk prompt.
+            # 1d7331b) do not re-send the initial Desk prompt (so
+            # extra_instructions -- only meaningful on a fresh launch --
+            # is ignored here too).
             command = f"exec claude --resume {shlex.quote(session_id)} {PERMISSION_MODE_ARGS}\n"
         else:
             # Fresh launch: assign the session id up front (so a later
             # reload can --resume it) and send the initial Desk prompt.
-            prompt = CLAUDE_WIDGET_PROMPT.format(doc_path=_doc_path()) + _development_process_instruction()
+            # extra_instructions (TODO c0875bc) is appended verbatim --
+            # e.g. a tempui DiscussParkingLotItem file's "let's discuss
+            # ..." instruction -- empty for an ordinary launch.
+            prompt = (
+                CLAUDE_WIDGET_PROMPT.format(doc_path=_doc_path())
+                + _development_process_instruction()
+                + extra_instructions
+            )
             command = (
                 f"exec claude --session-id {shlex.quote(session_id)} "
                 f"{PERMISSION_MODE_ARGS} {shlex.quote(prompt)}\n"

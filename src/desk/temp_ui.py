@@ -35,7 +35,7 @@ GITIGNORE_COMMENT = "# Desk-specific"
 # of tempui-*.md files (SPLIT_DOC_CONTENT below), not just this one --
 # bump it for a meaningful change to any of them, and don't add a
 # separate version note to any split file (there isn't one to add).
-TEMPUI_DOC_VERSION = 4
+TEMPUI_DOC_VERSION = 5
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -51,7 +51,7 @@ Each file is named with a bare UUID (e.g.
 `550e8400-e29b-41d4-a716-446655440000`, no extension). Desk watches
 this directory: a newly-created file shows up as a clickable
 notification in the app's upper-right corner; clicking it places a new
-widget on the canvas, centered in the current view. There are six
+widget on the canvas, centered in the current view. There are seven
 built-in file types, distinguished by their first line's keyword:
 
 - `Question` (below) — a quick multiple-choice question, answered by
@@ -68,6 +68,9 @@ built-in file types, distinguished by their first line's keyword:
   kind (invokable by a later tempui file, promotable to the Desk),
   plus the Bridge API your widget's own JS can call. See
   [tempui-custom-widgets.md](./tempui-custom-widgets.md).
+- `DiscussParkingLotItem` — have Desk start a brand-new `claude`
+  session to discuss one `PARKINGLOT.md` item. See
+  [tempui-discuss-parking-lot-item.md](./tempui-discuss-parking-lot-item.md).
 
 Every file named above lives in this same directory.
 
@@ -417,10 +420,48 @@ The calls above are almost always all a `DefineWidget` widget actually
 needs.
 """
 
+_DISCUSS_PARKING_LOT_ITEM_DOC = """# TempUI DSL: DiscussParkingLotItem
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its shared version number -- this file
+just covers the `DiscussParkingLotItem` keyword.
+
+For having Desk kick off a **brand-new** `claude` session specifically
+to discuss one item from this project's own `PARKINGLOT.md` (a parked,
+not-yet-scoped idea or open question) -- rather than continuing the
+current conversation, or expecting the current session to context
+-switch onto it.
+
+- The first line is `DiscussParkingLotItem <label>` — `label` is only
+  used for the notification text, never sent to the new session.
+- Every line after that, verbatim, is the *full* text of the
+  `PARKINGLOT.md` item to discuss — copy it in exactly as it appears
+  there (heading, body, everything), don't summarize or trim it.
+
+Example:
+
+```
+DiscussParkingLotItem A way to end a claude widget's session
+- **A way to end a claude widget's session so it can get new
+  instructions -- maybe an "end session" button?**
+
+  Right now a claude widget is bound to one session for its lifetime...
+```
+
+Clicking the resulting notification places a **new** claude widget
+with a fresh session (not the one that created this file) — its
+initial prompt is the same "you're embedded in Desk" instructions
+every claude widget gets, with the item's text appended as a final
+instruction to discuss it. This is a one-shot trigger, not a live
+-synced document like `Scratch` — there's no `Answer` line, and once
+the new session starts there's nothing more Desk does with this file.
+"""
+
 LIGHTNING_ROUND_DOC_FILENAME = "tempui-lightning-round.md"
 MARKDOWN_DOC_FILENAME = "tempui-markdown.md"
 SCRATCH_DOC_FILENAME = "tempui-scratch.md"
 CUSTOM_WIDGETS_DOC_FILENAME = "tempui-custom-widgets.md"
+DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME = "tempui-discuss-parking-lot-item.md"
 
 # filename -> its static content, for every split-out doc (TODO
 # e57ce5f) -- iterated by write_tempui_docs/ensure_docs_current so
@@ -431,6 +472,7 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     MARKDOWN_DOC_FILENAME: _MARKDOWN_DOC,
     SCRATCH_DOC_FILENAME: _SCRATCH_DOC,
     CUSTOM_WIDGETS_DOC_FILENAME: _CUSTOM_WIDGETS_DOC,
+    DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME: _DISCUSS_PARKING_LOT_ITEM_DOC,
 }
 
 
@@ -518,6 +560,7 @@ OPEN_MARKDOWN_KEYWORD = "OpenMarkdown"
 SCRATCH_KEYWORD = "Scratch"
 MARKDOWN_KEYWORD = "Markdown"
 DEFINE_WIDGET_KEYWORD = "DefineWidget"
+DISCUSS_PARKING_LOT_ITEM_KEYWORD = "DiscussParkingLotItem"
 UNANSWERED = "unanswered"
 
 # Every built-in DSL keyword a DefineWidget can't reuse as its own
@@ -535,6 +578,7 @@ RESERVED_TEMPUI_KEYWORDS = frozenset(
         SCRATCH_KEYWORD,
         MARKDOWN_KEYWORD,
         DEFINE_WIDGET_KEYWORD,
+        DISCUSS_PARKING_LOT_ITEM_KEYWORD,
     }
 )
 
@@ -612,14 +656,15 @@ def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
 
 def detect_temp_ui_kind(text: str, custom_keywords: Collection[str] = ()) -> str:
     """"question" (the original, default type), "lightning_round",
-    "open_markdown", "scratch", "markdown_content", "define_widget", or
-    (if the file's own keyword is a currently-known custom widget --
-    TODO 91b3f42) "custom:<keyword>" -- read from the first non-blank
-    line's keyword. Lets a caller that's seeing a temp-ui file for the
-    first time (a notification, a saved Desk's widget state) know which
-    widget kind to place without assuming "question". Named
-    "markdown_content" (not "markdown") to stay unambiguous against the
-    "markdown" *widget id* it happens to render into (TODO 9743419).
+    "open_markdown", "scratch", "markdown_content", "define_widget",
+    "discuss_parking_lot_item", or (if the file's own keyword is a
+    currently-known custom widget -- TODO 91b3f42) "custom:<keyword>"
+    -- read from the first non-blank line's keyword. Lets a caller
+    that's seeing a temp-ui file for the first time (a notification, a
+    saved Desk's widget state) know which widget kind to place without
+    assuming "question". Named "markdown_content" (not "markdown") to
+    stay unambiguous against the "markdown" *widget id* it happens to
+    render into (TODO 9743419).
 
     `custom_keywords` defaults to empty so every existing call site
     that hasn't opted in still behaves exactly as before -- only
@@ -638,6 +683,8 @@ def detect_temp_ui_kind(text: str, custom_keywords: Collection[str] = ()) -> str
                 return "markdown_content"
             if keyword == DEFINE_WIDGET_KEYWORD:
                 return "define_widget"
+            if keyword == DISCUSS_PARKING_LOT_ITEM_KEYWORD:
+                return "discuss_parking_lot_item"
             if keyword in custom_keywords:
                 return f"custom:{keyword}"
             return "question"
@@ -674,6 +721,26 @@ def parse_scratch(text: str) -> tuple[str, str] | None:
     label = parts[1].strip() if len(parts) > 1 else ""
     body = "\n".join(lines[1:])
     return label, body
+
+
+def parse_discuss_parking_lot_item(text: str) -> tuple[str, str] | None:
+    """Extracts `(label, item_text)` from a DiscussParkingLotItem
+    temp-UI file: the first line is `DiscussParkingLotItem <label>`;
+    every line after it, verbatim, is the full PARKINGLOT.md item text
+    to discuss (not further parsed). Same shape as parse_scratch --
+    `label` is for notification text only, `item_text` is what gets
+    appended to the new claude session's prompt. Returns None if the
+    file doesn't actually start with the DiscussParkingLotItem
+    keyword."""
+    lines = text.splitlines()
+    if not lines:
+        return None
+    parts = lines[0].split(None, 1)
+    if not parts or parts[0] != DISCUSS_PARKING_LOT_ITEM_KEYWORD:
+        return None
+    label = parts[1].strip() if len(parts) > 1 else ""
+    item_text = "\n".join(lines[1:])
+    return label, item_text
 
 
 def parse_markdown_tempui(text: str) -> tuple[str, str] | None:
