@@ -495,3 +495,37 @@ This file captures thoughts and TODO items that arise during work on other thing
   today the failure mode is a silent blank page with no console
   output, indistinguishable from several other possible failures (bad
   HTML, a crashed script, wrong entry point, etc.).
+
+- **"Domain" packages: widgets, DSL extensions, new DSLs, and agent
+  instructions bundled and distributed together — probably needs a
+  formalization of DSLs for Desk first**
+
+  Idea: a "domain" package could bundle together whatever a particular
+  use case needs — widgets, extensions to any known DSL, entirely new
+  DSLs, and agent instructions for using them — as one distributable,
+  installable unit, rather than each of those being separately
+  authored/wired into Desk by hand.
+
+  This probably requires formalizing "DSL" as a real concept in Desk
+  first (right now the tempui DSL is a fixed, hand-written set of
+  keywords/interpreters in `src/desk/temp_ui.py`, not a general
+  mechanism other DSLs could plug into). Two sub-parts that formalization
+  would likely need:
+  - A DSL for *specifying* a DSL (possibly with embedded code for its
+    interpreter/behavior) — i.e. a meta-DSL a domain package author
+    writes to define a new DSL's keywords/grammar/semantics, rather
+    than hand-writing Python interpreter code the way tempui's own
+    keywords are today.
+  - A DSL for *specifying widgets* themselves, as a more declarative
+    alternative to hand-authoring `widget.json` + a `build()` function
+    (or, for `DefineWidget`, hand-authoring/base64-inlining raw HTML).
+
+  Connects to the parked question above on how Claude should author
+  its own temp-UI DSL/interpreters and whether temp-UI widgets should
+  all be real widgets — that question and this one are likely facets
+  of the same underlying "how far does Desk's own extensibility go, and
+  what's the authoring surface for it" design space, and may want to be
+  thought through together.
+
+  Not designed — a large, open-ended idea, parking as a direction to
+  think about rather than a scoped task.
