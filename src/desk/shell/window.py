@@ -172,6 +172,8 @@ class DeskWindow(QMainWindow):
         )
         current_context.set_widget_opener(self.open_widget_content)
         current_context.set_temp_ui_write_recorder(self._temp_ui_manager.record_own_write)
+        current_context.set_main_window(self)
+        current_context.set_widget_path_resolver(self.view.describe_widget_at_global_pos)
         self._provision_temp_ui()
         self._open_crash_log_widgets()
 

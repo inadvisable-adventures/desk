@@ -1,4 +1,4 @@
-# Feedback widget: screenshots + UI-element picker
+# Feedback widget: screenshots + UI-element picker (COMPLETED)
 
 TODO `f2aede6`.
 
@@ -129,4 +129,47 @@ checks):
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `current_context.set_main_window`/
+`get_main_window` and `set_widget_path_resolver`/
+`get_widget_path_resolver` in `src/desk/shell/current_context.py`;
+`WorkspaceView.describe_widget_at_global_pos`/`_describe_widget`/
+`_describe_widget_chain` in `src/desk/shell/canvas.py`;
+`WidgetFrame.title` property in `src/desk/shell/widget_frame.py`; both
+hooks wired in `DeskWindow.__init__` in `src/desk/shell/window.py`;
+new `widgets/feedback/widget.py` (`FeedbackWidget`, `_PickOverlay`)
+and `widgets/feedback/widget.json`. Also adds a new Feedback Widget
+entry (item 22) to `design-docs/architecture.md`.
+
+One fix made during implementation, caught by verification, not left
+as a bug: the plain-widget fallback path in
+`describe_widget_at_global_pos` originally called `self.childAt(...)`
+(the `QGraphicsView`'s own direct children) on a position computed
+relative to `self.viewport()` -- a coordinate-space mismatch, since
+the floating HUD chrome (Desk picker, zoom control, ...) are children
+of the *viewport*, not the view. Fixed to call
+`self.viewport().childAt(...)` instead, confirmed via the blank-canvas
+test (which only passed once the fallback correctly returned `None`
+rather than a coordinate-mismatched false positive).
+
+Verified headlessly (`QT_QPA_PLATFORM=offscreen`, real `QApplication`,
+a real `WorkspaceView` with a real embedded `WidgetFrame`): a click
+over an embedded button resolves to a path naming both the frame's
+title and the button's own label; a click over blank canvas resolves
+to `None`; the two new `current_context` hooks round-trip correctly.
+`FeedbackWidget`: a screenshot inserts a matching image reference and
+records a pixmap, a second screenshot reuses the same base name with
+an incremented index; picking inserts the resolved path text, an
+empty/cancelled pick inserts nothing; Save Feedback writes the `.md`
+and every screenshot PNG with consistent filenames into a real temp
+directory and resets its state afterward; a pre-existing file at the
+resolved path is not overwritten. `_PickOverlay`: a synthetic click
+resolves via a patched path resolver and emits/closes; Escape emits
+nothing and closes.
+
+Regression-checked every other verification script from this session.
+
+No new `LEARNINGS.md` entry -- `QApplication.widgetAt` not resolving
+into `QGraphicsProxyWidget`-embedded content is the *same* documented
+gotcha as `QApplication.focusChanged`'s own entry (added earlier this
+batch for TODO `397770c`), not a new discovery; the code comments here
+cross-reference it directly instead of duplicating the write-up.

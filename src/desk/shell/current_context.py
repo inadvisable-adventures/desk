@@ -20,15 +20,26 @@ Also holds a "temp UI write recorder" hook, same shape again: lets the
 Question Widget (TODO a02b001) tell `TempUiManager` about its own
 answer-append so the manager's file watcher doesn't mistake it for a
 real external edit and fire a spurious notification. See
-`desk.shell.temp_ui_manager.TempUiManager.record_own_write`."""
+`desk.shell.temp_ui_manager.TempUiManager.record_own_write`.
+
+Also holds a "main window" hook and a "widget path resolver" hook
+(TODO f2aede6), same minimal shape again: let the Feedback widget grab
+a screenshot of the app's own window and resolve a global screen
+position to a human-readable description of whichever widget is
+there, without needing to import `desk.shell.window`/
+`desk.shell.canvas` directly (the same decoupling the widget-opener
+hook already gives `open_widget_content`)."""
 from collections.abc import Callable
 from pathlib import Path
 
+from PyQt6.QtCore import QPoint
 from PyQt6.QtWidgets import QWidget
 
 _current_directory: Path | None = None
 _widget_opener: Callable[[str], QWidget | None] | None = None
 _temp_ui_write_recorder: Callable[[Path, str], None] | None = None
+_main_window: QWidget | None = None
+_widget_path_resolver: Callable[[QPoint], str | None] | None = None
 
 
 def set_current_desk_directory(directory: Path) -> None:
@@ -71,3 +82,21 @@ def set_temp_ui_write_recorder(recorder: Callable[[Path, str], None]) -> None:
 
 def get_temp_ui_write_recorder() -> Callable[[Path, str], None] | None:
     return _temp_ui_write_recorder
+
+
+def set_main_window(window: QWidget) -> None:
+    global _main_window
+    _main_window = window
+
+
+def get_main_window() -> QWidget | None:
+    return _main_window
+
+
+def set_widget_path_resolver(resolver: Callable[[QPoint], str | None]) -> None:
+    global _widget_path_resolver
+    _widget_path_resolver = resolver
+
+
+def get_widget_path_resolver() -> Callable[[QPoint], str | None] | None:
+    return _widget_path_resolver

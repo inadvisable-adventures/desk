@@ -463,6 +463,67 @@ class WorkspaceView(QGraphicsView):
             return frame, child.edge
         return None
 
+    def describe_widget_at_global_pos(self, global_pos) -> str | None:
+        """A human-readable "identifying UI path" (TODO f2aede6) for
+        whichever widget is at `global_pos` (real screen coordinates,
+        e.g. from a QMouseEvent.globalPosition()) -- wired to
+        `current_context.set_widget_path_resolver` by `DeskWindow`.
+
+        Not `QApplication.widgetAt`: confirmed directly (see
+        LEARNINGS.md) that it doesn't resolve into anything embedded
+        via `QGraphicsProxyWidget` -- the same category of gotcha
+        already documented for `QApplication.focusChanged`. Goes
+        through the same `itemAt`/`childAt` shape `_hit_test_chrome`
+        already uses, generalized to *any* widget, not just recognized
+        chrome types; falls back to plain `childAt`/`parentWidget`
+        walking for anything that isn't a scene item at all (the
+        floating HUD chrome -- Desk picker, zoom control, ...)."""
+        viewport_pos = self.viewport().mapFromGlobal(global_pos)
+        if not self.viewport().rect().contains(viewport_pos):
+            return None
+        item = self.itemAt(viewport_pos)
+        if isinstance(item, QGraphicsProxyWidget):
+            frame = item.widget()
+            if not isinstance(frame, WidgetFrame):
+                return None
+            scene_pos = self.mapToScene(viewport_pos)
+            local_point = (scene_pos - item.pos()).toPoint()
+            widget = frame.childAt(local_point) or frame
+            return self._describe_widget_chain(widget, frame)
+        # The floating HUD chrome (Desk picker, zoom control, ...) are
+        # children of the viewport, not of the view itself -- childAt
+        # must be called on the same widget viewport_pos is relative to.
+        widget = self.viewport().childAt(viewport_pos)
+        if widget is None:
+            return None
+        return self._describe_widget_chain(widget, self.viewport())
+
+    @staticmethod
+    def _describe_widget(widget: QWidget) -> str:
+        cls = type(widget).__name__
+        if isinstance(widget, WidgetFrame):
+            return f'{cls}["{widget.title}"]'
+        text_fn = getattr(widget, "text", None)
+        if callable(text_fn):
+            try:
+                text = text_fn()
+            except TypeError:
+                text = None
+            if text:
+                return f'{cls}["{text}"]'
+        return cls
+
+    def _describe_widget_chain(self, widget: QWidget, stop_at: QWidget) -> str:
+        parts = []
+        current = widget
+        while current is not None:
+            parts.append(self._describe_widget(current))
+            if current is stop_at:
+                break
+            current = current.parentWidget()
+        parts.reverse()
+        return " > ".join(parts)
+
     def bring_to_front(self, frame: WidgetFrame) -> None:
         proxy = frame.graphicsProxyWidget()
         if proxy is None:

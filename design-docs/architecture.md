@@ -457,6 +457,27 @@ Desk Bridge API.
     *displayed* text, never the file on disk) and a **Delete Log
     File** button (confirmed; deletes the file and closes the widget).
     See `plans/crash-log-widget.md`.
+22. **Feedback Widget** — a built-in `kind: "python"` widget
+    (`widgets/feedback/`). A free-form text area plus a **Screenshot**
+    button (`current_context.get_main_window().grab()` — "internal,"
+    not OS-level screen capture) that inserts a markdown image
+    reference into the text, and a **Pick UI Element** button that
+    shows a full-screen (covering the app's own window, not the OS
+    desktop) translucent `_PickOverlay` — one click resolves a short,
+    human-readable identifying path for whatever's underneath via a
+    new `current_context.get_widget_path_resolver()` hook (wired to
+    `WorkspaceView.describe_widget_at_global_pos`, **not**
+    `QApplication.widgetAt`, which doesn't resolve into anything
+    embedded via `QGraphicsProxyWidget` — the same gotcha already
+    documented for `QApplication.focusChanged`, see `LEARNINGS.md`) and
+    inserts it into the text at the current caret position. **Save
+    Feedback** writes `DESK-feedback-<timestamp>.md` plus any
+    screenshot PNGs into the current Desk's directory (the project
+    root — feedback is meant to be reviewed/shared, unlike a crash log)
+    — one base name, decided once by the first screenshot (or Save
+    Feedback itself if none were taken), reused consistently for the
+    `.md` and every `-screenshot-N.png` rather than a placeholder
+    rewritten later. See `plans/feedback-widget.md`.
 
 ### Widget Model
 

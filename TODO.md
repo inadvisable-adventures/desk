@@ -1305,7 +1305,7 @@ ff6514a. COMPLETED: Small borders around widgets by default, to visually
 cbbb661. COMPLETED: Editor widget needs a different color text caret when
    focused -- black-on-black doesn't work well.
    [planned: editor-dark-mode-and-wrap.md]
-f2aede6. Feedback widget: able to take internal screenshots of the app
+f2aede6. COMPLETED: Feedback widget: able to take internal screenshots of the app
    and make a DESK-feedback-[timestamp].md with the internal
    screenshots attached, and also a temp mode (with full-screen
    overlay) launched by a button which allows UI elements to be

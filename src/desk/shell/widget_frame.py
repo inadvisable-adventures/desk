@@ -266,6 +266,13 @@ class WidgetFrame(QWidget):
         self.locked = locked
         self._titlebar.set_locked(locked)
 
+    @property
+    def title(self) -> str:
+        """Public read access to this widget's own title (TODO
+        f2aede6's UI-element path descriptions want it) -- previously
+        only reachable via the private `_titlebar._title`."""
+        return self._titlebar._title
+
     def remember_focused_widget(self, widget: QWidget) -> None:
         """Records the most recently focused descendant inside
         `content` (TODO 397770c) -- also called by WorkspaceView's
