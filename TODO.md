@@ -1758,3 +1758,11 @@ e57ce5f. COMPLETED: It's probably time to split out the tempui md file into mult
    the original file is mentioned in the code and make sure that all
    of those sites are updated, e.g. desk-load-time checks.
    [planned: split-tempui-doc.md]
+855ca76. COMPLETED: Bug: the Claude widget's prompt tells the agent to follow the
+   tempui doc's links to the other split-out files unconditionally.
+   Instead, tell the agent to follow those links only as needed, e.g.
+   it should only read tempui-lightning-round.md if it needs to run a
+   lightning round; desk-temporary-ui.md should include just enough
+   context for each one that the agent can understand the use cases
+   without opening them.
+   [planned: fix-claude-prompt-tempui-links-wording.md]
