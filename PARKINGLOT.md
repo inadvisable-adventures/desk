@@ -566,3 +566,26 @@ This file captures thoughts and TODO items that arise during work on other thing
   Not designed/scoped — parking as a direction to investigate (e.g.
   observe real sessions and see where they fail to reach for tempui)
   rather than guessing at a fix.
+
+- **The claude widget's hosted terminal has real problems — worth
+  fixing, or should Desk talk to claude a different way entirely?**
+
+  The claude widget (`TerminalWidget`-hosted, `widgets/claude/widget.py`)
+  isn't working quite right as a hosted console app:
+  - Drag-and-drop doesn't work.
+  - Some more-advanced terminal rendering doesn't quite work and
+    causes weird visual artifacts.
+  - The app isn't notified when the console window's size changes
+    (no resize signal reaching the PTY/the app running inside it).
+
+  Open question, not just a bug list: is it worth fixing all of these
+  (which would make Desk's terminal hosting better generally, for
+  `claude` and any other TUI app run in a `TerminalWidget`), or is
+  there a fundamentally different way for Desk to interact with
+  `claude` that sidesteps hosting a full interactive terminal
+  altogether (e.g. driving it more directly/programmatically) and that
+  Desk could integrate with more cleanly than a hosted console app?
+
+  Not designed/decided — parking as a direction to think through
+  rather than a scoped task; likely worth deciding before sinking
+  effort into fixing the terminal-hosting issues piecemeal.
