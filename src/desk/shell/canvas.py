@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 )
 
 from desk.shell.desk_picker import DeskPicker
+from desk.shell.qt_utils import deferred
 from desk.shell.temp_ui_notifications import TempUiNotificationStack
 from desk.shell.widget_frame import (
     MIN_HEIGHT,
@@ -149,10 +150,15 @@ class WorkspaceView(QGraphicsView):
     def contextMenuEvent(self, event) -> None:
         scene_pos = self.mapToScene(event.pos())
         menu = WidgetSpawnMenu(self._widget_catalog, self)
+        # Deferred (TODO 8c9436b): WidgetSpawnMenu, like _DeskListPopup,
+        # is a WA_DeleteOnClose QAbstractItemView (QTreeWidget)-based
+        # popup that closes itself right before emitting -- the same
+        # vulnerable shape, even though neither handler shows a modal
+        # dialog today. See qt_utils.deferred and LEARNINGS.md.
         menu.widget_chosen.connect(
-            lambda widget_id: self.widget_add_requested.emit(widget_id, scene_pos)
+            deferred(lambda widget_id: self.widget_add_requested.emit(widget_id, scene_pos))
         )
-        menu.paste_requested.connect(lambda: self.paste_requested.emit(scene_pos))
+        menu.paste_requested.connect(deferred(lambda: self.paste_requested.emit(scene_pos)))
         menu.move(event.globalPos())
         menu.show()
 

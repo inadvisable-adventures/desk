@@ -550,3 +550,51 @@ question is actually backed by a per-margin-type message
 friends, via `SCI_STYLESETFORE`/`BACK`) before assuming the setter
 didn't work — `SendScintilla` with the matching `SCI_*GET*` message is
 the reliable fallback either way.
+
+## A `WA_DeleteOnClose`, `QAbstractItemView`-based popup (`QListWidget`/`QTreeWidget`) that closes-then-emits can still crash if the receiver shows a modal dialog — closing before emitting isn't the whole fix
+
+`_DeskListPopup` (`desk_picker.py`) already had one fix for this shape
+of bug: call `self.close()` *before* emitting its own signal, not
+after, because a receiver showing a modal dialog can steal
+active-window status, which auto-closes this still-open `Qt.WindowType
+.Popup`, and `WA_DeleteOnClose`'s `deleteLater()` then gets processed
+by the modal's own nested event loop *while the original method is
+still on the call stack* — calling `self.close()` a second time
+afterward crashed with "wrapped C/C++ object … has been deleted."
+
+That fix was necessary but not sufficient. Two real, reproduced
+segfaults (TODO `4716585`, TODO `8c9436b`) came from a related but
+distinct mechanism, confirmed by an identical crashing call chain in
+both real macOS crash reports:
+`QAbstractItemView::mouseReleaseEvent` -> `QListView::mouseReleaseEvent`
+-> `sipQListWidget::mouseReleaseEvent`. The popup's deferred deletion
+being processed by a downstream modal dialog's nested event loop — the
+exact condition the *first* fix's own comment already described — can
+happen *while the native mouse event that triggered the whole chain
+hasn't finished being delivered yet* (press and release aren't
+guaranteed to be delivered to the same widget without any queued event
+in between). If a stale, still-in-flight mouse event for the popup
+arrives after that nested loop has already torn it down, it's
+delivered to an object that's fully freed or mid-teardown — a genuine
+use-after-free/null-deref, not something `self.close()`'s own
+double-call guard protects against, since the crash is in Qt's C++
+event dispatch, never reaching back into this class's own Python code
+at all.
+
+The actual fix: don't let *anything* downstream of this popup's own
+signal run synchronously, in the same call stack as the click that
+triggered it. Defer the popup's own outgoing re-emission via
+`QTimer.singleShot(0, ...)` (`desk.shell.qt_utils.deferred`) at the
+point where its *container* (the long-lived, never-destroyed widget
+that owns/creates the popup, e.g. `DeskPicker`) re-emits it —
+fixed once, at the source, rather than requiring every eventual
+receiver to remember to defer its own handling. This applies to *any*
+`WA_DeleteOnClose`, `QAbstractItemView`-based popup, not just this one
+— `WidgetSpawnMenu` (the only other one in this codebase) got the same
+treatment defensively, even though neither of its current handlers
+happens to show a modal dialog today. A plain-`QWidget`-with-ordinary
+-controls popup (`NewDeskDialog`, `_ItemDialog`, `_AnswerDialog`,
+`_PickOverlay`) doesn't have this specific vulnerable code path
+(`QAbstractItemView`'s own mouse handling) — no reason to believe the
+same fix is needed there absent an actual, confirmed crash report
+naming that code path.

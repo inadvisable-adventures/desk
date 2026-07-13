@@ -15,7 +15,24 @@ opening a `.desk` file. Code review (see
   `~/Library/Logs/DiagnosticReports/`) with a real native stack trace?
   That would let this be root-caused directly instead of guessed at.
 
-(Answer: )
+(Answer: resolved without a direct answer to the questions above --
+two later crash reports (TODO 4716585, TODO 8c9436b) provided full
+macOS crash logs for what turned out to be the same crashing call
+chain inside Qt's own QListWidget mouse-event handling
+(QAbstractItemView::mouseReleaseEvent), both traced to the same root
+cause: a WA_DeleteOnClose, QListWidget-based popup (_DeskListPopup,
+also reached "while interacting with the Desk picker") whose deferred
+deletion could be processed by a downstream modal dialog's own nested
+event loop while a stale, still-in-flight mouse event still targeted
+it. Fixed under TODO 8c9436b (deferring the popup's own outgoing
+signal re-emission via QTimer.singleShot, so nothing downstream ever
+runs nested inside the same call stack as the originating click) --
+see LEARNINGS.md and plans/fix-desk-picker-nested-dialog-crash.md for
+the full mechanism. This item's own crash was never independently
+reproduced, but the crashing code path, the widget involved, and the
+"interacting with the Desk picker" trigger all match closely enough
+that it's being closed as resolved by the same fix rather than left
+open waiting for a third occurrence.)
 
 ## TODO `96013cf`/`858752b`: both name their rename target `markdown_old_basic` -- conflict
 

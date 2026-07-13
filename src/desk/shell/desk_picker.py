@@ -4,6 +4,8 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QWidget
 
+from desk.shell.qt_utils import deferred
+
 BROWSE_LABEL = "…  Open another Desk…"
 NEW_DESK_LABEL = "＋  New Desk…"
 RENAME_LABEL = "✎  Rename current Desk…"
@@ -185,11 +187,22 @@ class DeskPicker(QWidget):
         layout.addWidget(self._directory_label)
 
     def _on_name_clicked(self) -> None:
+        # Deferred (TODO 8c9436b), not a direct signal-to-signal
+        # connection: _DeskListPopup is a WA_DeleteOnClose QListWidget
+        # -based popup that closes itself right before emitting -- a
+        # receiver that shows a modal dialog synchronously (as
+        # DeskWindow's own handlers do) would nest that dialog's own
+        # event loop inside the same call stack as the popup's click,
+        # which is exactly what let a stale event reach the
+        # already-closing popup and crash. Deferring here, once, at the
+        # source, protects every current and future receiver without
+        # each one needing to remember to. See qt_utils.deferred and
+        # LEARNINGS.md.
         popup = _DeskListPopup(self._mru_entries, self._current_path, self)
-        popup.desk_chosen.connect(self.desk_chosen)
-        popup.browse_requested.connect(self.browse_requested)
-        popup.new_desk_requested.connect(self.new_desk_requested)
-        popup.rename_requested.connect(self.rename_requested)
+        popup.desk_chosen.connect(deferred(self.desk_chosen.emit))
+        popup.browse_requested.connect(deferred(self.browse_requested.emit))
+        popup.new_desk_requested.connect(deferred(self.new_desk_requested.emit))
+        popup.rename_requested.connect(deferred(self.rename_requested.emit))
         popup.move(self.mapToGlobal(self._name_label.geometry().bottomLeft()))
         popup.show()
 

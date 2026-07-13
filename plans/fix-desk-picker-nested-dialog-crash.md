@@ -1,4 +1,4 @@
-# Fix Desk-picker nested-dialog segfault (generalizing the New Desk flow fix)
+# Fix Desk-picker nested-dialog segfault (generalizing the New Desk flow fix) (COMPLETED)
 
 TODO `8c9436b`. Very likely also resolves `b44e8ba` (same crash shape,
 that report never had a crash log to confirm against until now).
@@ -56,35 +56,44 @@ matching this report exactly.
 
 ## Fix
 
-**Defer every `DeskPicker`-originated signal handler in `DeskWindow`**
-via a new `_deferred(fn)` helper (`QTimer.singleShot(0, ...)`), so any
-modal dialog it might show always runs on a *fresh* event-loop
-iteration -- never nested inside the same call stack as the
-originating click. This is the correct, general fix for the actual
-mechanism (a modal dialog's nested event loop processing a
-`WA_DeleteOnClose` popup's deferred deletion while a stale event for
-it might still be in flight), not a New-Desk-specific one:
+**Defer at the source: where each `WA_DeleteOnClose` popup's own
+signal gets re-emitted by its stable, long-lived container**, via a
+new shared `deferred(fn)` helper (`QTimer.singleShot(0, ...)`) --
+rather than at every downstream connection point that happens to show
+a dialog today. This is both simpler (one wrap per popup, not one per
+eventual receiver) and more robust (any *future* receiver of
+`DeskPicker.desk_chosen`/etc. -- not just today's `DeskWindow`
+handlers -- automatically inherits the protection, with nothing for
+that future code to remember):
 
-```python
-self.view.desk_picker.desk_chosen.connect(self._deferred(self._on_desk_chosen))
-self.view.desk_picker.browse_requested.connect(self._deferred(self._on_browse_requested))
-self.view.desk_picker.new_desk_requested.connect(self._deferred(self._on_new_desk_requested))
-self.view.desk_picker.rename_requested.connect(self._deferred(self._on_rename_requested))
-self.view.desk_picker.directory_change_requested.connect(self._deferred(self._on_directory_change_requested))
-```
+- `desk_picker.py`, `DeskPicker._on_name_clicked`: the four
+  `popup.<signal>.connect(self.<signal>)` re-emission connections
+  become `popup.<signal>.connect(deferred(self.<signal>.emit))` (or
+  the `path`-carrying variant for `desk_chosen`).
+- `canvas.py`, `WorkspaceView.contextMenuEvent`: `menu.widget_chosen`/
+  `menu.paste_requested`'s re-emission lambdas get wrapped the same
+  way.
 
-All five, not just the four with an obviously-reachable modal dialog
-today -- `_on_new_desk_requested` (now a non-modal `.show()`, safe on
-its own) gets it too, defensively, so a future change to that handler
-can't silently reintroduce this exact bug without anyone noticing.
+Once `DeskPicker.desk_chosen`/etc. themselves only ever fire from
+within an already-deferred call (a fresh event-loop iteration), every
+downstream receiver -- `DeskWindow`'s handlers included -- is safe
+without needing its own wrapping. `DeskWindow`'s existing
+`self.view.desk_picker.<signal>.connect(self._on_...)` connections are
+therefore **unchanged**.
 
-**Also applied to `WidgetSpawnMenu`** (`widget_chosen`/
-`paste_requested`, connected in `WorkspaceView.contextMenuEvent`) --
-the *only other* `WA_DeleteOnClose`, `QAbstractItemView` (a
-`QTreeWidget`)-based popup in the codebase, i.e. the only other one
-with the exact vulnerable shape. Neither of its current handlers shows
-a modal dialog today, so this is purely preventive, for the same
-"don't let a future change silently reintroduce this" reason.
+**`deferred` lives in a new, tiny, dependency-free
+`src/desk/shell/qt_utils.py`**, not in `canvas.py` or `window.py`
+directly -- `desk_picker.py` and `canvas.py` both need it, and
+`window.py` already imports from `canvas.py` (not the reverse), so
+neither existing module can be the shared home without risking a
+circular import as more callers show up.
+
+**Also applied to `WidgetSpawnMenu`** (the *only other*
+`WA_DeleteOnClose`, `QAbstractItemView` (`QTreeWidget`)-based popup in
+the codebase -- the only other one with the exact vulnerable shape).
+Neither of its current handlers shows a modal dialog today, so this is
+purely preventive, for the same "don't let a future change silently
+reintroduce this" reason.
 
 **Not applied everywhere `WA_DeleteOnClose` appears.** `NewDeskDialog`,
 `_PickOverlay` (Feedback widget), `_ItemDialog` (TODO widget),
@@ -100,11 +109,12 @@ ever does turn out to matter elsewhere.
 
 ## Prevention mechanism (as requested)
 
-- **`DeskWindow._deferred(fn)`**: a small, named, reusable helper --
-  the go-to answer for "a `WA_DeleteOnClose` list/tree-view popup's
-  signal handler needs to show a modal dialog." Any *future* popup of
-  this shape should wrap its DeskWindow-side connections with it from
-  the start, not rediscover the bug first.
+- **`desk.shell.qt_utils.deferred(fn)`**: a small, named, reusable,
+  importable-from-anywhere-in-`desk.shell` helper -- the go-to answer
+  for "a `WA_DeleteOnClose` list/tree-view popup needs to re-emit a
+  signal that might eventually reach a modal dialog." Any *future*
+  popup of this shape should wrap its own outgoing re-emission with it
+  from the start, not rediscover the bug first.
 - **`LEARNINGS.md` entry** (see below) documenting the actual
   mechanism precisely, cross-referencing both this fix and TODO
   4716585's, so a future "segfault in `QAbstractItemView
@@ -120,15 +130,12 @@ ever does turn out to matter elsewhere.
 
 ## Affected files
 
-- `src/desk/shell/canvas.py` -- new module-level `deferred(fn)`
-  helper (lives here, not `window.py`, since `window.py` already
-  imports from `canvas.py` and not the other way around -- putting it
-  in `canvas.py` lets both modules use the one implementation without
-  a circular import); `WidgetSpawnMenu` signal connections in
-  `contextMenuEvent` wrapped with it.
-- `src/desk/shell/window.py` -- imports `deferred` from
-  `desk.shell.canvas`; `DeskPicker` signal connections in `__init__`
-  wrapped with it.
+- `src/desk/shell/qt_utils.py` (new) -- `deferred(fn)`.
+- `src/desk/shell/desk_picker.py` -- `DeskPicker._on_name_clicked`'s
+  four popup-signal re-emission connections wrapped with `deferred`.
+- `src/desk/shell/canvas.py` -- `WorkspaceView.contextMenuEvent`'s two
+  `WidgetSpawnMenu`-signal re-emission connections wrapped with
+  `deferred`.
 - `LEARNINGS.md` -- new entry.
 - `TODO.md` -- `b44e8ba` resolved alongside this (same crash shape,
   now with a confirmed mechanism and fix).
@@ -155,4 +162,29 @@ fix.
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: new `src/desk/shell/qt_utils.py` (`deferred`);
+`DeskPicker._on_name_clicked`'s four popup-signal re-emission
+connections wrapped with it in `src/desk/shell/desk_picker.py`;
+`WorkspaceView.contextMenuEvent`'s two `WidgetSpawnMenu`-signal
+re-emission connections wrapped the same way in
+`src/desk/shell/canvas.py`. `DeskWindow`'s own connection points are
+unchanged, since the fix is applied at the source. Also updates
+`design-docs/widget-ux.md`'s Desk Picker and Add Widget Menu sections,
+and resolves `b44e8ba` (marked `COMPLETED` in `TODO.md`, answered in
+`QUESTIONS.md` explaining the resolution without a direct repro).
+
+Verified headlessly (`QT_QPA_PLATFORM=offscreen`, real `QApplication`):
+`deferred(fn)` itself doesn't call `fn` synchronously and does call it
+once the event loop processes the next iteration, with arguments
+forwarded correctly. End-to-end: a real `DeskPicker` with a real
+`_DeskListPopup` shown and an item activated confirms
+`DeskPicker.desk_chosen` doesn't fire synchronously from the popup
+click and does fire once deferred; a real `WorkspaceView.contextMenuEvent`
+confirms `widget_add_requested` behaves the same way through
+`WidgetSpawnMenu`. Regression-checked every other verification script
+from this session.
+
+No new `LEARNINGS.md` entry beyond the one already added for this
+fix's own mechanism (see above) -- it directly extends, rather than
+contradicts, the existing `_DeskListPopup` close-before-emit comment's
+own documented reasoning.

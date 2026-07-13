@@ -1284,7 +1284,7 @@ c7d6e4d. COMPLETED: Implement an SVG-rendering widget.
 42dd260. COMPLETED: Add new tempui capabilities to allow claude to
    open markdown files in the GUI.
    [planned: tempui-open-markdown.md]
-b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
+b44e8ba. COMPLETED: Crash: segfault while interacting with the Desk picker.
    Console output before the crash: `python -m desk` started normally,
    discovered widgets `browser`, `claude`, `console`, `demo`, `editor`,
    `git_status`, `lightning_round`, `question`, `scratch`, `todo`, opened
@@ -1295,8 +1295,13 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
    the exact picker interaction that triggered it (name click vs. directory
    click vs. hover), and check for any known-fragile native code path (e.g.
    LEARNINGS.md's QNativeGestureEvent segfault note) that could plausibly be
-   involved.
-8c9436b. Crash: segfault while loading an already-existing .desk file
+   involved. Resolved by TODO 8c9436b: two later crash reports pinned
+   the same crashing call chain (QAbstractItemView::mouseReleaseEvent,
+   a QListWidget-based Desk-picker popup) with full crash logs, never
+   independently reproduced from this item's own report but a close
+   enough match to close as resolved by the same fix. See
+   QUESTIONS.md's own entry for this item.
+8c9436b. COMPLETED: Crash: segfault while loading an already-existing .desk file
    from the Desk picker. Full macOS crash report provided (kept out of
    the repo per explicit instruction, not pasted here or anywhere else
    in the project) -- same `QAbstractItemView::mouseReleaseEvent` ->

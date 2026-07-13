@@ -361,7 +361,16 @@ entry was picked), `browse_requested()` (the "Open another Desk…" action
 was picked — the picker itself doesn't own a `QFileDialog`),
 `new_desk_requested()` / `rename_requested()` (the "New Desk…" /
 "Rename current Desk…" actions), and `directory_change_requested()`
-(the directory chip was clicked); `DeskWindow` (which owns the actual
+(the directory chip was clicked) — each one re-emitted from
+`_DeskListPopup`'s own identically-named signal via
+`desk.shell.qt_utils.deferred` (TODO `8c9436b`), not a direct
+signal-to-signal connection: `_DeskListPopup` is a `WA_DeleteOnClose`,
+`QListWidget`-based popup, and a receiver showing a modal dialog
+synchronously (as several of `DeskWindow`'s own handlers do) risks a
+real, reproduced segfault — the modal's own nested event loop
+processes the popup's deferred deletion while a stale, still-in-flight
+native mouse event might still target it. See `LEARNINGS.md`.
+`DeskWindow` (which owns the actual
 current-Desk state and the canvas) decides what to do with each —
 including confirmation before acting, since switching Desks or changing
 the current Desk's directory both need to confirm first. `DeskWindow`
@@ -436,7 +445,12 @@ click-away/focus-loss auto-close behavior as a real `QMenu`) rather than a
 construction (`set_widget_catalog` — the only piece of the wider widget
 catalog the canvas itself needs to know), positions it at the right-click
 location, and — on a choice — emits `widget_add_requested(widget_id,
-scene_pos)`. `DeskWindow` handles that by placing a new instance through
+scene_pos)`, re-emitted from the menu's own signal via `desk.shell
+.qt_utils.deferred` (TODO `8c9436b`) — `WidgetSpawnMenu`, like
+`_DeskListPopup`, is a `WA_DeleteOnClose`, `QAbstractItemView`
+(`QTreeWidget`)-based popup, the same shape a real, reproduced segfault
+was confirmed against; see `LEARNINGS.md`. `DeskWindow` handles the
+(deferred) signal by placing a new instance through
 the *same* `_place_widget` path already used for loading a Desk's saved
 widgets and the fresh-desk fallback, so this can't drift out of sync with
 how widgets are placed anywhere else in the app.
