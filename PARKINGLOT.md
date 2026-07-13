@@ -628,3 +628,77 @@ This file captures thoughts and TODO items that arise during work on other thing
     out how the TODO widget/`development-process.md`'s own "Prioritizing
     TODO Items" section would use these lists to determine actual work
     order, and how required-vs-priority interacts when they conflict.
+
+- **PDF viewer**
+
+  A widget for viewing PDF files.
+
+- **SVG editor**
+
+  A widget for editing SVG files -- distinct from the existing SVG
+  Viewer widget (`widgets/svg_viewer/`, TODO `c7d6e4d`, view-only).
+
+- **Pixel editor**
+
+  A widget for pixel-art/raster image editing.
+
+- **Nonlinear soundtrack/video editor with associated tight-bound per-audio-track transcript**
+
+  An editor for audio/video, non-linear (not a simple single-timeline
+  cut tool), with a transcript kept tightly bound to its own audio
+  track.
+
+- **Hexsheet tools**
+
+  Widget(s) porting/supporting `hexsheet`'s own
+  tools. Connects to `widgets/hex_flower`'s own investigation
+  (TODO `4ab5875`, `DESK_FEEDBACK-2026-07-13T012144.md`) -- an earlier,
+  incomplete attempt at part of this.
+
+- **Generalize hexsheet tools so that they work for tables, too**
+
+  Follow-on to the hexsheet tools idea above -- generalize whatever
+  gets built there to also support ordinary tables, not just hex
+  layouts.
+
+- **Rich wiki-style linking and editing of markdown**
+
+  Markdown editing with wiki-style linking between documents (e.g.
+  `[[Some Page]]`-style cross-references, backlinks) -- richer than
+  the existing Markdown widget's plain rendering.
+
+- **Conlanging tools**
+
+  Widget(s) for constructed-language (conlang) work.
+
+- **Composition, sensible re-architecting, and packaging for groupings of widgets into apps (the "crystallization" idea)**
+
+  Let a group of widgets be composed/packaged into a standalone "app"
+  that doesn't need every one of Desk's own built-in tools available
+  to it -- a re-architected, packaged subset rather than the full
+  Desk environment. Connects to the already-parked "domain packages"
+  idea above (widgets + DSL extensions + new DSLs + agent
+  instructions bundled together) -- likely facets of the same
+  packaging/distribution question. I've named this "crystallization."
+
+- **Tools for working with different local models**
+
+  Widget(s)/tooling for interacting with local (non-Anthropic) models.
+
+- **Per-project glossary and better organization of process materials, so they don't take up context when not needed; more active memory management**
+
+  For both Desk (the app) and this project's own development process:
+  a per-project glossary, and reorganizing process materials (TODO.md,
+  PARKINGLOT.md, LEARNINGS.md, plans/, etc.) so they don't consume
+  context when irrelevant to the task at hand. More active memory
+  management generally -- possibly with dedicated tools for working
+  with memory, connecting to `LEARNINGS.md`, and/or some kind of
+  online shared "useful learnings" tool. Connects to the already-parked
+  "process-file organization"/ownership-protocol questions above --
+  likely worth resolving together.
+
+- **Move the receipts app to Desk; bring over some pipeline-debugging tools and computer-vision stuff too**
+
+  Port the existing (external) receipts app into Desk, and pull in
+  some of its pipeline-debugging tooling and computer-vision-related
+  capabilities as Desk widgets/tools as well.
