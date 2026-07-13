@@ -1311,6 +1311,7 @@ f2aede6. Feedback widget: able to take internal screenshots of the app
    overlay) launched by a button which allows UI elements to be
    clicked and an identifying UI path will be pasted into the feedback
    either at the current caret position or at the end.
+   [planned: feedback-widget.md]
 397770c. COMPLETED: Introduce the idea of focus in the app: individual controls
    in a widget can have focus, and if so the widget itself is also
    focused. The titlebar of a widget should change slightly when the
