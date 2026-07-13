@@ -1,4 +1,4 @@
-# Lock widgets in place
+# Lock widgets in place (COMPLETED)
 
 TODO `8d05920`.
 
@@ -91,4 +91,36 @@ Headless (`QT_QPA_PLATFORM=offscreen`, real `QApplication`, real
 
 ## Status
 
-Not yet implemented.
+Implemented as planned: `WidgetState.locked` in `src/desk/desks.py`;
+`_LockButton`/`_UnlockButton`, `_TitleBar.set_locked`, `WidgetFrame
+.locked`/`set_locked` in `src/desk/shell/widget_frame.py`;
+`_hit_test_chrome`/`_BUTTON_KINDS`/`mousePressEvent`/
+`mouseReleaseEvent` updates in `src/desk/shell/canvas.py`;
+`_capture_desk_state`/`_load_desk_widgets` threading `locked` through
+in `src/desk/shell/window.py`. Also adds a new Lock Widgets section to
+`design-docs/widget-ux.md`.
+
+Verified headlessly (`QT_QPA_PLATFORM=offscreen`, real `QApplication`,
+real `WidgetFrame`s embedded via a real `WorkspaceView`): `set_locked`
+toggles button visibility correctly in both directions;
+`_hit_test_chrome` resolves the lock/unlock buttons' real on-screen
+positions correctly (via the same proxy/scene mapping
+`widgets/todo/widget.py`'s own `_screen_point` already established,
+since `QWidget.mapTo` doesn't work across the `QGraphicsProxyWidget`
+embedding boundary -- confirmed directly); a synthetic click on each
+button actually locks/unlocks the frame; a locked frame's titlebar
+press does not start a drag but still tracks the click-to-focus
+candidate (confirmed a subsequent release still focuses content); a
+locked frame's resize-handle press is swallowed (no resize starts);
+`WidgetState.locked` round-trips through a real dataclass construction
+and defaults `False` for an old-shaped dict with no `"locked"` key;
+`_capture_desk_state` (unbound method on a fake double, the
+established pattern for `DeskWindow`-dependent logic) captures each
+frame's `locked` flag correctly into its own `WidgetState`.
+Regression-checked every other verification script from this session.
+
+No `LEARNINGS.md` entry needed for the lock feature itself -- the one
+genuinely non-obvious fact hit during its own verification (`QWidget
+.mapTo` failing across the `QGraphicsProxyWidget` boundary) was
+already documented for the *drag* case; this just confirms the same
+boundary applies to any descendant, not a new discovery.

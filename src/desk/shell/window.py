@@ -207,6 +207,8 @@ class DeskWindow(QMainWindow):
                     # _open_crash_log_widgets treating it as new.
                     self._bind_crash_log_widget(frame, desk.directory, state.instance_id)
                 self._bind_widget_local_storage(frame, state.state)
+                if state.locked:
+                    frame.set_locked(True)
         else:
             self._seed_new_desk_widgets(desk)
 
@@ -531,6 +533,7 @@ class DeskWindow(QMainWindow):
                     size.height(),
                     instance_id=frame.instance_id,
                     state=self._get_widget_local_storage(frame),
+                    locked=frame.locked,
                 )
             )
         pan_x, pan_y, scale = self.view.get_view_state()

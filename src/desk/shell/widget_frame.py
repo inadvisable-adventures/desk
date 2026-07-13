@@ -61,6 +61,16 @@ class _SendToBackButton(_TitlebarButton):
         super().__init__("▼", parent)
 
 
+class _LockButton(_TitlebarButton):
+    def __init__(self, parent=None) -> None:
+        super().__init__("🔒", parent)
+
+
+class _UnlockButton(_TitlebarButton):
+    def __init__(self, parent=None) -> None:
+        super().__init__("🔓", parent)
+
+
 class _TitleBar(QWidget):
     """Purely visual: background, cursor shape, and a non-selectable title
     label. Dragging is handled centrally by WorkspaceView (not by this
@@ -80,12 +90,17 @@ class _TitleBar(QWidget):
         self._update_label_text()
         layout.addWidget(self._label)
         layout.addStretch()
+        self.lock_button = _LockButton()
+        layout.addWidget(self.lock_button)
         self.bring_to_front_button = _BringToFrontButton()
         layout.addWidget(self.bring_to_front_button)
         self.send_to_back_button = _SendToBackButton()
         layout.addWidget(self.send_to_back_button)
         self.close_button = _CloseButton()
         layout.addWidget(self.close_button)
+        self.unlock_button = _UnlockButton()
+        layout.addWidget(self.unlock_button)
+        self.set_locked(False)
 
         self.apply_scale(1.0)
 
@@ -104,10 +119,21 @@ class _TitleBar(QWidget):
         small, not a bold color swap that would compete with the
         widget's own default border (TODO ff6514a) or read as an
         error/warning state. Driven by WorkspaceView's app-wide
-        QApplication.focusChanged tracking, not anything this class
-        decides on its own."""
+        QGraphicsScene.focusItemChanged tracking, not anything this
+        class decides on its own."""
         color = FOCUSED_TITLEBAR_COLOR if focused else UNFOCUSED_TITLEBAR_COLOR
         self.setStyleSheet(f"background-color: {color};")
+
+    def set_locked(self, locked: bool) -> None:
+        """Shows only the title and an unlock icon while locked (TODO
+        8d05920) -- every other button collapses away (a hidden
+        QHBoxLayout child takes zero space by default), not just
+        visually de-emphasized."""
+        self.lock_button.setVisible(not locked)
+        self.bring_to_front_button.setVisible(not locked)
+        self.send_to_back_button.setVisible(not locked)
+        self.close_button.setVisible(not locked)
+        self.unlock_button.setVisible(locked)
 
     def apply_scale(self, view_scale: float) -> None:
         """Counter-scales this titlebar's local height/font so that, once
@@ -118,9 +144,11 @@ class _TitleBar(QWidget):
         self.setFixedHeight(max(1, round(TITLEBAR_HEIGHT / view_scale)))
         font_pt = max(1, round(TITLEBAR_FONT_PT / view_scale))
         self._label.setStyleSheet(f"color: #e8e8e8; font-size: {font_pt}pt;")
+        self.lock_button.apply_scale(view_scale)
         self.bring_to_front_button.apply_scale(view_scale)
         self.send_to_back_button.apply_scale(view_scale)
         self.close_button.apply_scale(view_scale)
+        self.unlock_button.apply_scale(view_scale)
 
 
 class _ResizeHandle(QWidget):
@@ -196,6 +224,7 @@ class WidgetFrame(QWidget):
 
         self.content = content
         self._last_focused_widget: QWidget | None = None
+        self.locked = False
         self._apply_border_scale(1.0)
 
     def _apply_border_scale(self, view_scale: float) -> None:
@@ -224,9 +253,18 @@ class WidgetFrame(QWidget):
 
     def set_focused(self, focused: bool) -> None:
         """TODO 397770c -- called by WorkspaceView's app-wide
-        QApplication.focusChanged tracking, not decided by this class
-        itself."""
+        QGraphicsScene.focusItemChanged tracking, not decided by this
+        class itself."""
         self._titlebar.set_focused(focused)
+
+    def set_locked(self, locked: bool) -> None:
+        """Locks/unlocks this widget in place (TODO 8d05920): while
+        locked, its titlebar shows only the title and an unlock icon
+        (`_TitleBar.set_locked`), and WorkspaceView's mouse handling
+        skips starting a drag or resize for it (still allows a
+        titlebar click to focus its content, TODO a1c701d)."""
+        self.locked = locked
+        self._titlebar.set_locked(locked)
 
     def remember_focused_widget(self, widget: QWidget) -> None:
         """Records the most recently focused descendant inside

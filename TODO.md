@@ -1299,7 +1299,7 @@ b44e8ba. PENDING: Crash: segfault while interacting with the Desk picker.
 ff6514a. COMPLETED: Small borders around widgets by default, to visually
    distinguish one widget from another and from the canvas.
    [planned: widget-borders.md]
-8d05920. Lock widgets in place so that only the title and an unlock
+8d05920. COMPLETED: Lock widgets in place so that only the title and an unlock
    icon show in the top bar of the widget -- unable to be moved,
    resized, or moved in z order while locked. [planned: lock-widgets.md]
 cbbb661. Editor widget needs a different color text caret when

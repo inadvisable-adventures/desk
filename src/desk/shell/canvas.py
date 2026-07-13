@@ -19,9 +19,11 @@ from desk.shell.widget_frame import (
     WidgetFrame,
     _BringToFrontButton,
     _CloseButton,
+    _LockButton,
     _ResizeHandle,
     _SendToBackButton,
     _TitleBar,
+    _UnlockButton,
 )
 from desk.shell.widget_spawn_menu import WidgetSpawnMenu
 from desk.shell.zoom_control import ZoomControl
@@ -40,7 +42,7 @@ SCALE_EPSILON = 1e-6
 # Chrome buttons handled as an ordinary click (press-then-release-on
 # -the-same-button), not a drag -- see _hit_test_chrome/mousePressEvent/
 # mouseReleaseEvent (TODO cdf45cb generalized this from just "close").
-_BUTTON_KINDS = {"close", "bring_to_front", "send_to_back"}
+_BUTTON_KINDS = {"close", "bring_to_front", "send_to_back", "lock", "unlock"}
 
 # Max total mouse displacement (view-space px) between a titlebar press
 # and its release still counted as a click (TODO a1c701d), not a drag.
@@ -320,9 +322,18 @@ class WorkspaceView(QGraphicsView):
                 if edge is None:
                     # Titlebar: always tracked as a click candidate
                     # (TODO a1c701d), independent of whether a drag
-                    # also starts below.
+                    # also starts below -- a locked widget (TODO
+                    # 8d05920) skips the drag but keeps click-to-focus.
                     self._titlebar_click_frame = frame
                     self._titlebar_click_pos = event.position()
+                    if frame.locked:
+                        event.accept()
+                        return
+                elif frame.locked:
+                    # A resize-handle press on a locked widget (TODO
+                    # 8d05920): swallow it, no resize.
+                    event.accept()
+                    return
                 self._drag_frame, self._drag_edge = hit
                 self._drag_last_pos = event.position()
                 event.accept()
@@ -354,6 +365,10 @@ class WorkspaceView(QGraphicsView):
                     self.bring_to_front(frame)
                 elif kind == "send_to_back":
                     self.send_to_back(frame)
+                elif kind == "lock":
+                    frame.set_locked(True)
+                elif kind == "unlock":
+                    frame.set_locked(False)
             event.accept()
             return
         if self._drag_frame is not None:
@@ -419,7 +434,16 @@ class WorkspaceView(QGraphicsView):
         local_point = (scene_pos - item.pos()).toPoint()
         child = frame.childAt(local_point)
         while child is not None and not isinstance(
-            child, (_CloseButton, _BringToFrontButton, _SendToBackButton, _TitleBar, _ResizeHandle)
+            child,
+            (
+                _CloseButton,
+                _BringToFrontButton,
+                _SendToBackButton,
+                _LockButton,
+                _UnlockButton,
+                _TitleBar,
+                _ResizeHandle,
+            ),
         ):
             child = child.parentWidget()
 
@@ -429,6 +453,10 @@ class WorkspaceView(QGraphicsView):
             return frame, "bring_to_front"
         if isinstance(child, _SendToBackButton):
             return frame, "send_to_back"
+        if isinstance(child, _LockButton):
+            return frame, "lock"
+        if isinstance(child, _UnlockButton):
+            return frame, "unlock"
         if isinstance(child, _TitleBar):
             return frame, None
         if isinstance(child, _ResizeHandle):

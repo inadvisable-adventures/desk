@@ -25,6 +25,12 @@ class WidgetState:
     # desk.shell.window.DeskWindow's get/set_widget_local_storage
     # binding.
     state: dict = field(default_factory=dict)
+    # Whether this widget is locked in place (TODO 8d05920) -- a
+    # chrome-level concept WidgetFrame itself owns, not routed through
+    # widget-local storage above (which is for the wrapped *content*
+    # widget's own data). Defaults False so an old .desk file with no
+    # "locked" key still loads correctly.
+    locked: bool = False
 
 
 @dataclass
@@ -82,6 +88,7 @@ def desk_state_dict(desk: Desk) -> dict:
                 "width": w.width,
                 "height": w.height,
                 "state": w.state,
+                "locked": w.locked,
             }
             for w in desk.widgets
         ],

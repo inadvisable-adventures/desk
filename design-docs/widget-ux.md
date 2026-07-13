@@ -271,6 +271,30 @@ titlebar press/position pair kept separate from the drag-tracking
 state, so a locked widget (TODO `8d05920`, which skips starting an
 actual drag on its titlebar) still supports click-to-focus.
 
+### Lock Widgets
+
+A widget can be locked in place (TODO `8d05920`) via a `_LockButton`
+("🔒") among the titlebar's usual button row. While locked, `_TitleBar
+.set_locked(True)` hides every other titlebar button (lock,
+bring-to-front, send-to-back, close — a hidden `QHBoxLayout` child
+takes zero space by default, so the row genuinely collapses down to
+just the title and a `_UnlockButton` ("🔓"), not merely a visual
+de-emphasis) and `WorkspaceView` stops treating its titlebar press as
+drag-eligible and its resize-handle presses as resize-eligible
+(swallowed instead). Click-to-focus (see Widget Focus above) still
+works, since that's tracked separately from the drag state. `"lock"`/
+`"unlock"` are two more `_hit_test_chrome` button kinds sharing the
+exact same press-then-release-on-target click machinery
+close/bring-to-front/send-to-back already use.
+
+Unlike z-order (session-only, see Bring to Front / Send to Back
+above), locked state **is** persisted — a `locked: bool` field on
+`WidgetState` (`desks.py`, defaulting `False` so an old `.desk` file
+loads unaffected), captured in `_capture_desk_state` and reapplied in
+`_load_desk_widgets`. It's a chrome-level concept `WidgetFrame` itself
+owns, not routed through the "widget-local storage" mechanism (TODO
+fb76057), which is for the wrapped *content* widget's own data.
+
 ### Zoom Control
 
 A `ZoomControl(QWidget)` is a plain child widget of `WorkspaceView
