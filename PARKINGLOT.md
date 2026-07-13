@@ -723,3 +723,13 @@ This file captures thoughts and TODO items that arise during work on other thing
   specific term for it. Connects to the already-parked "per-project
   glossary" idea above -- this is exactly the kind of term such a
   glossary would want to capture.
+
+- **Viewer / (editor?) for code stored base64-encoded in `.desk_temp` and `.desk` files**
+
+  `DefineWidget` tempui files and promoted custom widgets (TODO
+  `91b3f42`) store their entire HTML implementation as base64-encoded
+  text, both in `.desk_temp` files and in the `.desk` file itself --
+  currently opaque/unreadable without manually decoding it by hand. A
+  widget for viewing (and maybe editing) that embedded code directly,
+  rather than needing an external decode step, would help when
+  inspecting or debugging a custom widget's actual implementation.
