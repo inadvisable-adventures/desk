@@ -529,3 +529,21 @@ This file captures thoughts and TODO items that arise during work on other thing
 
   Not designed — a large, open-ended idea, parking as a direction to
   think about rather than a scoped task.
+
+- **A way to end a claude widget's session so it can get new
+  instructions — maybe an "end session" button?**
+
+  Right now a claude widget (`widgets/claude/widget.py`) is bound to
+  one `claude --session-id`/`--resume` session for its lifetime
+  (`ClaudeWidget.start_session`) — the initial `CLAUDE_WIDGET_PROMPT`
+  is only ever sent once, on first launch. There's no way from the
+  widget itself to end that session and start a fresh one with new
+  instructions, short of destroying and re-placing the whole widget.
+  An "end session" button (or similar) that lets the current session
+  end and a new one begin — presumably resending the initial Desk
+  prompt, the same as a fresh launch — would let a claude widget be
+  reused for a new task without a full widget teardown/recreate.
+
+  Not designed — how this interacts with `--resume`, the persisted
+  `instance_id`-as-session-id (see `plans/claude-widget-session-resume.md`),
+  and the widget's own PTY/`exec` lifecycle isn't worked out yet.
