@@ -42,6 +42,10 @@ SCALE_EPSILON = 1e-6
 # mouseReleaseEvent (TODO cdf45cb generalized this from just "close").
 _BUTTON_KINDS = {"close", "bring_to_front", "send_to_back"}
 
+# Max total mouse displacement (view-space px) between a titlebar press
+# and its release still counted as a click (TODO a1c701d), not a drag.
+TITLEBAR_CLICK_THRESHOLD = 4
+
 # A large, fixed bound for the "infinite" canvas. Without this,
 # QGraphicsView derives its scene rect from the current items' bounding
 # box, which clamps centerOn() to wherever widgets currently are —
@@ -83,6 +87,24 @@ class WorkspaceView(QGraphicsView):
         # mouseReleaseEvent below).
         self._button_press: tuple[WidgetFrame, str] | None = None
         self._forwarding_wheel = False
+        # A titlebar press is always tracked here (TODO a1c701d),
+        # separately from _drag_frame -- so a locked widget's titlebar
+        # (TODO 8d05920, which skips setting _drag_frame) still supports
+        # click-to-focus even though it never drags.
+        self._titlebar_click_frame: WidgetFrame | None = None
+        self._titlebar_click_pos: QPointF | None = None
+
+        # Not QApplication.focusChanged: confirmed directly that it
+        # reports the QGraphicsView itself (not the embedded widget) for
+        # any QGraphicsProxyWidget-embedded content, since the proxy is
+        # the one real top-level-focusable native widget as far as
+        # QApplication's own focus tracking is concerned. QGraphicsScene
+        # .focusItemChanged is the right level: it reports exactly the
+        # QGraphicsProxyWidget whose *embedded* hierarchy now holds
+        # focus, and that widget's own .focusWidget() (a QWidget method,
+        # not QApplication's) correctly returns the specific focused
+        # descendant within it. See LEARNINGS.md and TODO 397770c.
+        self.scene().focusItemChanged.connect(self._on_scene_focus_item_changed)
 
         self.zoom_control = ZoomControl(self.viewport())
         self.zoom_control.fit_requested.connect(self.zoom_to_fit)
@@ -295,6 +317,12 @@ class WorkspaceView(QGraphicsView):
                     self._button_press = (frame, edge)
                     event.accept()
                     return
+                if edge is None:
+                    # Titlebar: always tracked as a click candidate
+                    # (TODO a1c701d), independent of whether a drag
+                    # also starts below.
+                    self._titlebar_click_frame = frame
+                    self._titlebar_click_pos = event.position()
                 self._drag_frame, self._drag_edge = hit
                 self._drag_last_pos = event.position()
                 event.accept()
@@ -333,8 +361,47 @@ class WorkspaceView(QGraphicsView):
             self._drag_edge = None
             self._drag_last_pos = None
             event.accept()
+        if self._titlebar_click_frame is not None:
+            # TODO a1c701d: a titlebar press that ends with little-to-no
+            # movement counts as a click (re-focuses the widget's last
+            # -focused inner control), not a drag -- checked here rather
+            # than in mouseMoveEvent so a drag that returns almost to its
+            # start still counts as a drag, not a click.
+            frame = self._titlebar_click_frame
+            start = self._titlebar_click_pos
+            self._titlebar_click_frame = None
+            self._titlebar_click_pos = None
+            if start is not None and (event.position() - start).manhattanLength() <= TITLEBAR_CLICK_THRESHOLD:
+                frame.focus_last_widget()
+            event.accept()
             return
         super().mouseReleaseEvent(event)
+
+    def _on_scene_focus_item_changed(self, new_item, old_item, _reason) -> None:
+        """TODO 397770c: whenever scene-level focus moves, mark whichever
+        WidgetFrame the newly-focused item is (and the previously
+        -focused one, if different) as focused/unfocused, and remember
+        the specific embedded widget that now has focus for TODO
+        a1c701d's titlebar-click-to-focus. A focus change not involving
+        any WidgetFrame at all (e.g. no item, or a chrome-only proxy)
+        just leaves both frames as `None` -- harmless, no styling
+        changes applied."""
+        old_frame = self._frame_for_item(old_item)
+        new_frame = self._frame_for_item(new_item)
+        if old_frame is not None and old_frame is not new_frame:
+            old_frame.set_focused(False)
+        if new_frame is not None:
+            new_frame.set_focused(True)
+            focused_widget = new_frame.focusWidget()
+            if focused_widget is not None:
+                new_frame.remember_focused_widget(focused_widget)
+
+    @staticmethod
+    def _frame_for_item(item) -> WidgetFrame | None:
+        if not isinstance(item, QGraphicsProxyWidget):
+            return None
+        widget = item.widget()
+        return widget if isinstance(widget, WidgetFrame) else None
 
     def _hit_test_chrome(self, view_pos: QPointF) -> tuple[WidgetFrame, str | None] | None:
         """Determines whether a press at this viewport position landed on a

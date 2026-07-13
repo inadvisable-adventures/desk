@@ -244,6 +244,33 @@ not just paint order. Session-only — no z-order field exists on
 (everything reverts to implicit insertion-order stacking on next load).
 See `plans/widget-z-order-buttons.md`.
 
+### Widget Focus
+
+A widget is considered "focused" (TODO `397770c`) whenever any control
+inside its content currently has real Qt keyboard focus — its titlebar
+background shifts slightly (`#3a3d41` unfocused -> `#4a4e54` focused)
+to show that. Driven centrally, once, by `WorkspaceView` — not
+something any individual widget kind implements itself — via
+`QGraphicsScene.focusItemChanged`, **not** `QApplication.focusChanged`:
+confirmed directly that the latter reports the `QGraphicsView` itself,
+never the specific embedded control, for anything placed via
+`QGraphicsProxyWidget` (see `LEARNINGS.md`). The scene-level signal
+correctly reports the `QGraphicsProxyWidget` whose embedded hierarchy
+now holds focus; `proxy.widget().focusWidget()` (a plain `QWidget`
+method) then resolves the specific focused descendant within it, which
+`WidgetFrame` remembers (`remember_focused_widget`).
+
+Clicking then releasing a widget's titlebar without dragging (TODO
+`a1c701d`, `WorkspaceView`'s existing `TITLEBAR_CLICK_THRESHOLD`-based
+click-vs-drag distinction — the same shape as the close/bring-to-front
+/send-to-back buttons' own press-then-release-on-target matching)
+re-focuses whichever control most recently had focus inside that
+widget (`WidgetFrame.focus_last_widget`), falling back to `content`
+itself if nothing has been focused inside it yet. Tracked via a
+titlebar press/position pair kept separate from the drag-tracking
+state, so a locked widget (TODO `8d05920`, which skips starting an
+actual drag on its titlebar) still supports click-to-focus.
+
 ### Zoom Control
 
 A `ZoomControl(QWidget)` is a plain child widget of `WorkspaceView

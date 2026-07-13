@@ -11,6 +11,8 @@ MIN_WIDTH = 200
 MIN_HEIGHT = 120
 BORDER_THICKNESS = 1
 BORDER_COLOR = "#4a4d51"
+UNFOCUSED_TITLEBAR_COLOR = "#3a3d41"
+FOCUSED_TITLEBAR_COLOR = "#4a4e54"
 
 
 class _TitlebarButton(QWidget):
@@ -67,9 +69,9 @@ class _TitleBar(QWidget):
     def __init__(self, title: str, parent=None) -> None:
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.SizeAllCursor)
-        self.setStyleSheet("background-color: #3a3d41;")
         self._title = title
         self._external = False
+        self.set_focused(False)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 0, 8, 0)
@@ -96,6 +98,16 @@ class _TitleBar(QWidget):
         directory."""
         self._external = is_external
         self._update_label_text()
+
+    def set_focused(self, focused: bool) -> None:
+        """A subtle background-color shift (TODO 397770c) -- deliberately
+        small, not a bold color swap that would compete with the
+        widget's own default border (TODO ff6514a) or read as an
+        error/warning state. Driven by WorkspaceView's app-wide
+        QApplication.focusChanged tracking, not anything this class
+        decides on its own."""
+        color = FOCUSED_TITLEBAR_COLOR if focused else UNFOCUSED_TITLEBAR_COLOR
+        self.setStyleSheet(f"background-color: {color};")
 
     def apply_scale(self, view_scale: float) -> None:
         """Counter-scales this titlebar's local height/font so that, once
@@ -183,6 +195,7 @@ class WidgetFrame(QWidget):
         outer.addWidget(self._bottom_handle)
 
         self.content = content
+        self._last_focused_widget: QWidget | None = None
         self._apply_border_scale(1.0)
 
     def _apply_border_scale(self, view_scale: float) -> None:
@@ -208,3 +221,27 @@ class WidgetFrame(QWidget):
         a053e3a). See `desk.shell.window.DeskWindow`'s generic
         `external_changed`-signal binding in `_place_widget`."""
         self._titlebar.set_external(is_external)
+
+    def set_focused(self, focused: bool) -> None:
+        """TODO 397770c -- called by WorkspaceView's app-wide
+        QApplication.focusChanged tracking, not decided by this class
+        itself."""
+        self._titlebar.set_focused(focused)
+
+    def remember_focused_widget(self, widget: QWidget) -> None:
+        """Records the most recently focused descendant inside
+        `content` (TODO 397770c) -- also called by WorkspaceView's
+        app-wide focus tracking, for `focus_last_widget` (TODO
+        a1c701d) to restore later."""
+        self._last_focused_widget = widget
+
+    def focus_last_widget(self) -> None:
+        """Re-focuses whichever control most recently had focus inside
+        this widget (TODO a1c701d) -- triggered by a titlebar click, not
+        a drag (see WorkspaceView.mouseReleaseEvent). Falls back to
+        `content` itself if nothing has been focused inside this widget
+        yet -- harmless even for a widget with no explicit focus proxy
+        (Qt just makes the container itself the focus item), correct
+        and useful for one that has."""
+        target = self._last_focused_widget or self.content
+        target.setFocus(Qt.FocusReason.MouseFocusReason)

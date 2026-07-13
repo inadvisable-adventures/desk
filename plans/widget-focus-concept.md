@@ -1,4 +1,4 @@
-# Widget focus concept + titlebar-click-to-focus
+# Widget focus concept + titlebar-click-to-focus (COMPLETED)
 
 TODOs `397770c` (focus concept) and `a1c701d` (titlebar click focuses
 the inner control) -- implemented together since the second is a
@@ -97,4 +97,43 @@ the real one):
 
 ## Status
 
-Not yet implemented.
+Implemented, with one deliberate deviation from the design above,
+caught during verification: **`QApplication.focusChanged` turned out
+to be the wrong signal.** Confirmed directly (see `LEARNINGS.md`) that
+it reports the enclosing `QGraphicsView` itself, never the specific
+embedded control, for anything placed via `QGraphicsProxyWidget` --
+which is every actual Desk widget. Switched to
+`QGraphicsScene.focusItemChanged`, wired once in
+`WorkspaceView.__init__`: it correctly reports the
+`QGraphicsProxyWidget` whose embedded hierarchy now holds focus, and
+`proxy.widget().focusWidget()` (a plain `QWidget` method) resolves the
+specific focused descendant within it. `_enclosing_frame(widget)` (a
+plain-QWidget parent-chain walk) became `_frame_for_item(item)` (an
+`isinstance(item, QGraphicsProxyWidget)` check plus `.widget()`) to
+match. Everything else -- `WidgetFrame.set_focused`/
+`remember_focused_widget`/`focus_last_widget`, the titlebar
+background-color shift, the click-vs-drag displacement threshold for
+`a1c701d` -- landed exactly as designed.
+
+Implemented: `UNFOCUSED_TITLEBAR_COLOR`/`FOCUSED_TITLEBAR_COLOR`,
+`_TitleBar.set_focused`, `WidgetFrame.set_focused`/
+`remember_focused_widget`/`focus_last_widget` in
+`src/desk/shell/widget_frame.py`; `TITLEBAR_CLICK_THRESHOLD`,
+`WorkspaceView._on_scene_focus_item_changed`/`_frame_for_item`, and
+`_titlebar_click_frame`/`_titlebar_click_pos` tracking in
+`mousePressEvent`/`mouseReleaseEvent`, in `src/desk/shell/canvas.py`.
+Also adds a new Widget Focus section to `design-docs/widget-ux.md`.
+
+Verified headlessly (`QT_QPA_PLATFORM=offscreen`, real `QApplication`,
+real `WidgetFrame`s embedded via a real `WorkspaceView`/
+`QGraphicsScene`, with a focusable `QLineEdit` as content): focusing a
+descendant marks its enclosing frame's titlebar focused and remembers
+that control; moving focus to a different frame's descendant
+transfers both; moving focus to something outside any frame unfocuses
+without focusing anything new; `_frame_for_item` resolves a frame's own
+proxy correctly and returns `None` for `None`; a synthetic titlebar
+press+release with small displacement re-focuses the remembered
+control; the same press with a large displacement (a drag) does not;
+a widget with nothing ever focused inside it falls back to focusing
+`content` itself. Regression-checked every other verification script
+from this session.

@@ -1310,11 +1310,11 @@ f2aede6. Feedback widget: able to take internal screenshots of the app
    overlay) launched by a button which allows UI elements to be
    clicked and an identifying UI path will be pasted into the feedback
    either at the current caret position or at the end.
-397770c. Introduce the idea of focus in the app: individual controls
+397770c. COMPLETED: Introduce the idea of focus in the app: individual controls
    in a widget can have focus, and if so the widget itself is also
    focused. The titlebar of a widget should change slightly when the
    widget is focused. [planned: widget-focus-concept.md]
-a1c701d. Clicking then releasing the title bar of a widget should
+a1c701d. COMPLETED: Clicking then releasing the title bar of a widget should
    activate/focus the current caret inside of it.
    [planned: widget-focus-concept.md]
 17a2720. The white background on the editor line numbers is good for

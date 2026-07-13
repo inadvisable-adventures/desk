@@ -482,3 +482,33 @@ the app quits." Don't assume two different Qt signals' relative timing
 without checking; make the cleanup itself tolerant of running in
 either order instead (here: treat a `KeyError` from an already
 -cleared native watch as "nothing left to do," not a bug).
+
+## `QApplication.focusChanged` reports the enclosing `QGraphicsView`, not the specific widget, for anything embedded via `QGraphicsProxyWidget`
+
+While building the widget-focus concept (TODO `397770c`), the natural
+first approach -- connect to `QApplication.focusChanged` and inspect
+the `new` widget it reports -- silently gave the wrong answer for any
+widget embedded in the canvas (i.e. every actual Desk widget): `new`
+was always the `WorkspaceView` (the `QGraphicsView`) itself, never the
+specific embedded control (a `QLineEdit`, `QsciScintilla`, etc.) that
+actually received focus, confirmed directly by printing
+`app.focusWidget()` right after `content.setFocus()` on an embedded
+widget. `content.hasFocus()` was `True` at the same moment -- Qt's own
+per-widget focus bookkeeping is correct, but `QApplication`'s
+app-wide focus tracking only names the one real, top-level-focusable
+native widget as far as the OS/window-manager is concerned, which for
+scene-embedded content is the view, not anything inside it.
+
+The reliable alternative, confirmed directly: `QGraphicsScene
+.focusItemChanged(new_item, old_item, reason)` operates at the correct
+level -- `new_item`/`old_item` are the `QGraphicsProxyWidget` whose
+*embedded* widget hierarchy now holds (or just lost) focus. From
+there, `proxy.widget().focusWidget()` (a plain `QWidget` method, nothing
+to do with `QApplication`) correctly returns the specific focused
+descendant within that one proxy's own hierarchy. If a feature needs
+to know "which embedded widget/frame currently has focus" for
+anything canvas-embedded, use the scene-level signal, not
+`QApplication.focusChanged` -- the same category of gotcha as this
+file's other "mouse/focus/geometry APIs don't reflect what you'd
+expect once something is embedded via `QGraphicsProxyWidget`" entries
+above; check before assuming the plain top-level API applies.
