@@ -702,3 +702,24 @@ This file captures thoughts and TODO items that arise during work on other thing
   Port the existing (external) receipts app into Desk, and pull in
   some of its pipeline-debugging tooling and computer-vision-related
   capabilities as Desk widgets/tools as well.
+
+- **Widget docking (becomes a collapsing panel attached to a side of the viewport)**
+
+  Let a widget be "docked" to an edge of the viewport instead of
+  floating freely on the canvas -- turning it into a collapsible side
+  panel rather than an ordinary placed widget.
+
+- **Easy screenshot of the view inside Desk, turned into a `.desk_temp` file opened as a Scratch**
+
+  A quick way to screenshot the current canvas view from within Desk
+  itself, saved as a file in `.desk_temp` and opened as a Scratch
+  widget (or similar) -- rather than needing an external screenshot
+  tool and a separate import step.
+
+- **Introduce "scrap" into the project's own vocabulary -- basically "scratch," but Desk-specific**
+
+  A naming idea: "scrap" would mean essentially the same thing as
+  "scratch" (arbitrary free-form notes/content), but as Desk's own
+  specific term for it. Connects to the already-parked "per-project
+  glossary" idea above -- this is exactly the kind of term such a
+  glossary would want to capture.
