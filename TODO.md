@@ -1731,3 +1731,10 @@ f7b1611. COMPLETED: We need to make sure that the tempui md file is up-to-date, 
    is no version, that means that it is out of date; be certain not to
    clobber the DSL extensions, if there are any.
    [planned: tempui-doc-versioning.md]
+6857997. COMPLETED: Bug: [TEMPUI] should only be shown if the widget definition is
+   in .desk_temp, not if it is in the .desk file.
+   [planned: fix-tempui-promote-button-and-spawn-menu.md]
+2b2a642. COMPLETED: Bug: promoted a temp widget and it is in the .desk file, but it
+   is not showing up in the list of active widgets in the add-widget
+   context menu, even after reloading the app.
+   [planned: fix-tempui-promote-button-and-spawn-menu.md]

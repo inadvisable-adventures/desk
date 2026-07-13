@@ -312,7 +312,11 @@ class DeskWindow(QMainWindow):
         if widget_id == CLAUDE_WIDGET_ID:
             self._bind_claude_widget(frame, resume=restore)
         self._bind_external_indicator(frame)
-        if widget_id in self._custom_widget_definitions:
+        # Only while still tempui-sourced (TODO 6857997) -- once
+        # promoted, the widget's [TEMPUI] button has nothing left to
+        # offer, so it never shows for a "desk"-sourced instance,
+        # freshly placed or restored alike.
+        if self._custom_widget_sources.get(widget_id) == "tempui":
             frame.set_tempui_promotable(True)
         return frame
 
@@ -1160,7 +1164,12 @@ class DeskWindow(QMainWindow):
             entry="index.html",
             capabilities=[],
             default_size=definition.default_size,
-            tempui_only=True,
+            # Only a still-tempui-sourced widget is excluded from the
+            # spawn menu (TODO 6857997/2b2a642) -- once promoted
+            # (source="desk"), it's a permanent, first-class part of
+            # this Desk and should be placeable the normal way too, not
+            # just re-invokable via tempui.
+            tempui_only=(source == "tempui"),
         )
         self._widgets[keyword] = info
         self._custom_widget_definitions[keyword] = definition
@@ -1271,6 +1280,18 @@ class DeskWindow(QMainWindow):
         source_path = self._custom_widget_source_paths.pop(keyword, None)
         if source_path is not None and source_path.is_file():
             source_path.unlink()
+        # TODO 6857997/2b2a642: the widget is now a permanent, first
+        # -class part of this Desk -- flip the already-registered
+        # WidgetInfo in place (no need to re-materialize/re-mount,
+        # neither of which promotion changes) so it's no longer
+        # excluded from the spawn menu, refresh the catalog so that
+        # takes effect immediately, and hide this frame's own button
+        # (nothing left for it to offer).
+        info = self._widgets.get(keyword)
+        if info is not None:
+            info.tempui_only = False
+        self.view.set_widget_catalog(self._widgets)
+        frame.set_tempui_promotable(False)
         self._sync_tempui_doc()
 
     def _on_rename_requested(self) -> None:
