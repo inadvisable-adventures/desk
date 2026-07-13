@@ -547,3 +547,22 @@ This file captures thoughts and TODO items that arise during work on other thing
   Not designed — how this interacts with `--resume`, the persisted
   `instance_id`-as-session-id (see `plans/claude-widget-session-resume.md`),
   and the widget's own PTY/`exec` lifecycle isn't worked out yet.
+
+- **How to get claude to better engage with tempui's communication
+  capabilities when running inside Desk**
+
+  Open question: a `claude` session running inside a claude widget
+  (`CLAUDE_WIDGET_PROMPT`, pointing it at `desk-temporary-ui.md`) does
+  not reliably make good use of what tempui actually offers it for
+  communicating back to the user — e.g. asking a `Question`, running a
+  `LightningRound`, or otherwise using the Temporary UI channel instead
+  of just talking in the terminal. Not clear yet whether this is a
+  prompt-wording problem, a discoverability problem (the agent doesn't
+  realize a given moment calls for one of these), a docs-structure
+  problem (connects to the parked question above on how Claude should
+  watch for a temp-UI response and whether it should be a skill), or
+  something else entirely.
+
+  Not designed/scoped — parking as a direction to investigate (e.g.
+  observe real sessions and see where they fail to reach for tempui)
+  rather than guessing at a fix.
