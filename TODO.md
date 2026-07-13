@@ -1301,7 +1301,7 @@ ff6514a. COMPLETED: Small borders around widgets by default, to visually
    [planned: widget-borders.md]
 8d05920. Lock widgets in place so that only the title and an unlock
    icon show in the top bar of the widget -- unable to be moved,
-   resized, or moved in z order while locked.
+   resized, or moved in z order while locked. [planned: lock-widgets.md]
 cbbb661. Editor widget needs a different color text caret when
    focused -- black-on-black doesn't work well.
 f2aede6. Feedback widget: able to take internal screenshots of the app
