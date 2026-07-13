@@ -1745,3 +1745,16 @@ f7b1611. COMPLETED: We need to make sure that the tempui md file is up-to-date, 
    save/restore for one yet)." Fix that, including adding a
    description of the (updated) Bridge API to the tempui md file.
    [planned: html-widget-local-storage-bridge-api.md]
+e57ce5f. COMPLETED: It's probably time to split out the tempui md file into multiple
+   pieces. Keep the original file, but split out the content of some
+   of the less-general sections into other files and reference them
+   with relative paths. The version number in the "main" (original)
+   file will stand for all of the files, they don't each need their
+   own. Keep the list of tempui DSL extensions in the main file, in
+   its own section at the bottom, as it is, now. Also, none of the
+   documents should mention Desk source code or repo documents (e.g.
+   do not mention the Desk architecture document); the documents Desk
+   provides in .desk_temp should be sufficient. Check for places where
+   the original file is mentioned in the code and make sure that all
+   of those sites are updated, e.g. desk-load-time checks.
+   [planned: split-tempui-doc.md]

@@ -9,10 +9,10 @@ from desk.git_utils import find_git_root
 from desk.temp_ui import (
     DOC_FILENAME,
     TEMP_UI_DIRNAME,
-    ensure_doc_version_current,
+    ensure_docs_current,
     ensure_gitignore_entry,
     is_temp_ui_filename,
-    render_static_doc,
+    write_tempui_docs,
 )
 from desk_services.file_watcher import WatchHandle, get_service
 
@@ -34,7 +34,8 @@ class _DirectoryHandler:
     """Watches a whole directory (unlike the TODO widget's single-file
     watcher) for UUID-named files being created or modified, debouncing
     per-path bursts. Ignores non-UUID filenames (including
-    desk-temporary-ui.md, which naturally fails the UUID check) and
+    desk-temporary-ui.md and the other tempui-*.md docs it references,
+    TODO e57ce5f -- all of which naturally fail the UUID check) and
     self-recorded writes (the Question Widget's own answer-append).
 
     Was a watchdog FileSystemEventHandler before TODO 578cb6b's
@@ -129,12 +130,15 @@ class TempUiManager(QObject):
 
         doc_path = temp_dir / DOC_FILENAME
         if not doc_path.is_file():
-            doc_path.write_text(render_static_doc())
+            # TODO e57ce5f: writes the main doc plus every split-out
+            # tempui-*.md doc it references, fresh.
+            write_tempui_docs(temp_dir)
         else:
-            # TODO f7b1611: before opening a Desk, make sure an
-            # already-existing doc's main content isn't a stale copy
-            # from before some later improvement to DOC_TEMPLATE.
-            ensure_doc_version_current(doc_path)
+            # TODO f7b1611/e57ce5f: before opening a Desk, make sure
+            # the already-existing doc set's main content -- and every
+            # split-out file -- isn't a stale/missing copy from before
+            # some later improvement.
+            ensure_docs_current(temp_dir)
 
         self._start_watching(temp_dir)
         return temp_dir

@@ -8,7 +8,9 @@ from desk.terminal_widget import TerminalWidget
 
 CLAUDE_WIDGET_PROMPT = (
     "You are running inside of Desk. Please read this document to "
-    "understand the implications of that: {doc_path}"
+    "understand the implications of that: {doc_path} -- it links to "
+    "further tempui-*.md files (in that same directory) for specific "
+    "capabilities; follow those links too, not just this one file."
 )
 
 # claude's --permission-mode has an "auto" choice; launching with it puts

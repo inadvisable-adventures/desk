@@ -29,14 +29,19 @@ GITIGNORE_COMMENT = "# Desk-specific"
 # and a new DSL section can touch the same number of lines) -- a human
 # decides at edit time, the same spirit as this project's own
 # permanent TODO item ids (assigned once, never recomputed). See
-# ensure_doc_version_current, called before a Desk is opened.
-TEMPUI_DOC_VERSION = 2
+# ensure_docs_current, called before a Desk is opened.
+#
+# TODO e57ce5f: this one version number now stands for the *whole* set
+# of tempui-*.md files (SPLIT_DOC_CONTENT below), not just this one --
+# bump it for a meaningful change to any of them, and don't add a
+# separate version note to any split file (there isn't one to add).
+TEMPUI_DOC_VERSION = 3
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
 DOC_TEMPLATE = """# Temporary UI
 
-<!-- desk-temporary-ui.md version: {{TEMPUI_DOC_VERSION}} -- do not edit this line by hand; Desk uses it to detect when this file's own main content is out of date and needs refreshing. See TEMPUI_DOC_VERSION in src/desk/temp_ui.py. -->
+<!-- desk-temporary-ui.md version: {{TEMPUI_DOC_VERSION}} -- do not edit this line by hand; Desk uses it to detect when this file's own main content (and the other tempui-*.md files it references) is out of date and needs refreshing. -->
 
 This directory holds "temporary UI" files: a lightweight way for an
 agent (or any external process) to ask a question through Desk's own
@@ -47,11 +52,24 @@ Each file is named with a bare UUID (e.g.
 this directory: a newly-created file shows up as a clickable
 notification in the app's upper-right corner; clicking it places a new
 widget on the canvas, centered in the current view. There are six
-built-in file types, distinguished by their first line's keyword —
-`Question` (below), `LightningRound` (further down), `OpenMarkdown`
-(further down still), `Scratch` (further down still), `Markdown`
-(further down still), or `DefineWidget` (further down still, which
-itself adds *more* keywords beyond these six — see that section).
+built-in file types, distinguished by their first line's keyword:
+
+- `Question` (below) — a quick multiple-choice question, answered by
+  clicking an option.
+- `LightningRound` — the same multiple-choice question asked
+  repeatedly over a list of items. See
+  [tempui-lightning-round.md](./tempui-lightning-round.md).
+- `OpenMarkdown` / `Markdown` — open an existing Markdown file, or
+  render Markdown content given directly in the tempui file itself.
+  See [tempui-markdown.md](./tempui-markdown.md).
+- `Scratch` — arbitrary free-form notes shown in a Scratch widget. See
+  [tempui-scratch.md](./tempui-scratch.md).
+- `DefineWidget` — introduce a brand-new, entirely in-browser widget
+  kind (invokable by a later tempui file, promotable to the Desk),
+  plus the Bridge API your widget's own JS can call. See
+  [tempui-custom-widgets.md](./tempui-custom-widgets.md).
+
+Every file named above lives in this same directory.
 
 ## Questions for the user: use QUESTIONS.md, not this DSL
 
@@ -108,7 +126,26 @@ Option Blue
 Answer Green
 ```
 
-## The TempUI DSL: LightningRound
+This file (`desk-temporary-ui.md`), and the other `tempui-*.md` files
+it links to above, are themselves ignored by the file watcher — none
+of their names are UUIDs, so none are ever mistaken for a temp UI
+file.
+"""
+
+# The less-general DSL sections split out of DOC_TEMPLATE (TODO
+# e57ce5f), each a sibling file in the same .desk_temp directory as
+# desk-temporary-ui.md, linked from its intro above. None of these
+# carry their own version note -- TEMPUI_DOC_VERSION covers the whole
+# set (see the comment on that constant). Grouped by feature area, not
+# strictly one keyword per file: OpenMarkdown/Markdown already
+# cross-reference each other; DefineWidget/invocation/promotion/the
+# Bridge API are one cohesive feature, not four unrelated ones.
+
+_LIGHTNING_ROUND_DOC = """# TempUI DSL: LightningRound
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its shared version number -- this file
+just covers the `LightningRound` keyword.
 
 For asking the *same* multiple-choice question repeatedly over a list of
 items (e.g. classifying a batch of words, reviewing a batch of files),
@@ -116,7 +153,7 @@ one at a time, answerable by clicking a button or pressing a single
 keyboard key — instead of writing one `Question` file per item.
 
 Lines with more than one value are **tab**-separated (not
-space-separated like `Question`/`Option`/`Answer` above), since a name,
+space-separated like `Question`/`Option`/`Answer`), since a name,
 prompt, or description may itself contain spaces:
 
 - `LightningRound<TAB>name<TAB>prompt` — **must be the first line**.
@@ -156,8 +193,15 @@ Option A
 LRItem	run	V
 LRItem	quick	unanswered
 ```
+"""
 
-## The TempUI DSL: OpenMarkdown
+_MARKDOWN_DOC = """# TempUI DSL: OpenMarkdown and Markdown
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its shared version number -- this file
+just covers the `OpenMarkdown` and `Markdown` keywords.
+
+## OpenMarkdown
 
 For telling Desk to open a Markdown file in the Markdown widget — a
 fire-and-forget instruction, not a question: there is no `Answer`
@@ -179,37 +223,13 @@ OpenMarkdown ./diagrams.md
 Clicking the notification opens `path` in a new Markdown widget
 instance, centered in the current view.
 
-## The TempUI DSL: Scratch
-
-For giving Desk arbitrary free-form notes to show in a Scratch widget —
-a fire-and-forget instruction, not a question: there is no `Answer`
-line, and Desk never writes back to this file.
-
-- The first line is `Scratch <label>` — `label` becomes the widget's
-  title (`Scratch: <label>`).
-- Every line after that, verbatim, becomes the widget's initial body
-  text (not further parsed — write whatever you want here).
-
-Example:
-
-```
-Scratch Investigation notes
-Found the bug in file_watch.py line 42.
-Still need to check the TempUiManager path.
-```
-
-If the user says "scratch" in conversation, this capability is almost
-certainly what's meant — not some other, more generic sense of the
-word — unless a clearly more pressing local meaning has already been
-established earlier in the current conversation.
-
-## The TempUI DSL: Markdown
+## Markdown
 
 For giving Desk markdown *content* directly, rendered in the Markdown
 widget — unlike `OpenMarkdown` above, there is no separate target file:
 this file's own content *is* the markdown. Fire-and-forget, same as
-`OpenMarkdown`/`Scratch`: there is no `Answer` line, and Desk never
-writes back to this file.
+`OpenMarkdown`: there is no `Answer` line, and Desk never writes back
+to this file.
 
 - The first line is `Markdown <label>` — `label` is used for the
   notification text; it is *not* used for anything saved to disk.
@@ -233,10 +253,45 @@ filename derived from the *rendered content's own first line*
 (kebab-case-slugified, e.g. `# Investigation summary` becomes
 `investigation-summary.md`) — not from `<label>` above. Saving opens
 the new file in a separate, ordinary Markdown widget instance; this
-tempui-bound instance stays open, unaffected. See
-`markdown-rendering.md`.
+tempui-bound instance stays open, unaffected.
+"""
 
-## The TempUI DSL: DefineWidget
+_SCRATCH_DOC = """# TempUI DSL: Scratch
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its shared version number -- this file
+just covers the `Scratch` keyword.
+
+For giving Desk arbitrary free-form notes to show in a Scratch widget —
+a fire-and-forget instruction, not a question: there is no `Answer`
+line, and Desk never writes back to this file.
+
+- The first line is `Scratch <label>` — `label` becomes the widget's
+  title (`Scratch: <label>`).
+- Every line after that, verbatim, becomes the widget's initial body
+  text (not further parsed — write whatever you want here).
+
+Example:
+
+```
+Scratch Investigation notes
+Found the bug in file_watch.py line 42.
+Still need to check the TempUiManager path.
+```
+
+If the user says "scratch" in conversation, this capability is almost
+certainly what's meant — not some other, more generic sense of the
+word — unless a clearly more pressing local meaning has already been
+established earlier in the current conversation.
+"""
+
+_CUSTOM_WIDGETS_DOC = """# TempUI DSL: DefineWidget
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its shared version number -- this file
+covers the `DefineWidget` keyword, invoking a widget it defines,
+promoting one to the Desk, and the Bridge API your widget's own JS can
+call.
 
 For introducing a brand-new *kind* of widget to the current Desk —
 entirely in-browser (HTML/CSS/JS, rendered in an embedded browser
@@ -277,7 +332,7 @@ A `keyword` that collides with one of this DSL's own built-in keywords
 (`Question`, `LightningRound`, `DefineWidget`, ...) or an existing
 widget id is refused (logged, not an error) — pick something else.
 
-### Invoking a defined widget
+## Invoking a defined widget
 
 A separate tempui file whose **entire first line is just the
 keyword**, nothing else, places one instance of that widget kind —
@@ -297,7 +352,7 @@ A widget placed this way **can only ever be placed via tempui** — it
 never appears in the canvas's right-click "Add widget" menu, unlike
 every ordinary widget in `widgets/`.
 
-### Promoting a defined widget to the Desk
+## Promoting a defined widget to the Desk
 
 Every placed instance of a `DefineWidget`-defined widget shows a
 `[TEMPUI]` button in its titlebar. Clicking it offers to **promote**
@@ -308,7 +363,7 @@ the `.desk` file becomes the sole remaining source of truth.
 Invocation (see above) keeps working exactly the same afterward,
 promoted or not.
 
-### The Desk Bridge API — what your widget's own JS can call
+## The Desk Bridge API — what your widget's own JS can call
 
 A `DefineWidget` widget's HTML document runs inside a real embedded
 browser page with one extra thing every other web page doesn't have:
@@ -349,15 +404,25 @@ declaring the matching capability in your own manifest, unlike the
 - `desk.widgets.list()` / `.open(widgetId, opts)` / `.close(instanceId)`
   (capability `widgets`) — inspect/manage placed widget instances.
 
-See `design-docs/architecture.md`'s "Desk Bridge API" section (if you
-have access to Desk's own source) for the full capability-declaration
-mechanism and REST details — the calls above are almost always all a
-`DefineWidget` widget actually needs.
-
-This file (`desk-temporary-ui.md`) is itself ignored by the file
-watcher — its name isn't a UUID, so it's never mistaken for a temp UI
-file.
+The calls above are almost always all a `DefineWidget` widget actually
+needs.
 """
+
+LIGHTNING_ROUND_DOC_FILENAME = "tempui-lightning-round.md"
+MARKDOWN_DOC_FILENAME = "tempui-markdown.md"
+SCRATCH_DOC_FILENAME = "tempui-scratch.md"
+CUSTOM_WIDGETS_DOC_FILENAME = "tempui-custom-widgets.md"
+
+# filename -> its static content, for every split-out doc (TODO
+# e57ce5f) -- iterated by write_tempui_docs/ensure_docs_current so
+# adding a future split file is a one-line addition here, not a new
+# call site to remember elsewhere.
+SPLIT_DOC_CONTENT: dict[str, str] = {
+    LIGHTNING_ROUND_DOC_FILENAME: _LIGHTNING_ROUND_DOC,
+    MARKDOWN_DOC_FILENAME: _MARKDOWN_DOC,
+    SCRATCH_DOC_FILENAME: _SCRATCH_DOC,
+    CUSTOM_WIDGETS_DOC_FILENAME: _CUSTOM_WIDGETS_DOC,
+}
 
 
 def render_static_doc() -> str:
@@ -378,35 +443,58 @@ def parse_doc_version(text: str) -> int | None:
     return int(match.group(1)) if match is not None else None
 
 
-def ensure_doc_version_current(doc_path: Path) -> None:
-    """Refreshes desk-temporary-ui.md's *static* main content in place
-    if it's missing a version note or carries an old one (TODO
-    f7b1611) -- called before opening a Desk (see
+def write_tempui_docs(temp_dir: Path) -> None:
+    """Writes desk-temporary-ui.md (its *static* content only -- no
+    custom-widgets section; see sync_custom_widgets_doc_section, called
+    separately) plus every split-out doc in SPLIT_DOC_CONTENT, fresh
+    (TODO e57ce5f). Used both for a brand-new `.desk_temp`
+    (TempUiManager.provision) and by ensure_docs_current's refresh
+    path below."""
+    (temp_dir / DOC_FILENAME).write_text(render_static_doc())
+    for filename, content in SPLIT_DOC_CONTENT.items():
+        (temp_dir / filename).write_text(content)
+
+
+def ensure_docs_current(temp_dir: Path) -> None:
+    """Refreshes the *whole* tempui doc set in place if stale (TODO
+    e57ce5f, generalizing TODO f7b1611 once the docs split across
+    multiple files) -- called before opening a Desk (see
     desk.shell.temp_ui_manager.TempUiManager.provision), right
     alongside the analogous check TODO 91b3f42 already does for the
-    dynamic custom-widgets section. A no-op if the file doesn't exist
-    at all (nothing to refresh -- first creation is `provision`'s own
-    job, via render_static_doc) or if its version already matches.
+    dynamic custom-widgets section. A no-op if desk-temporary-ui.md
+    doesn't exist at all (nothing to refresh -- first creation is
+    `provision`'s own job, via write_tempui_docs).
 
-    Preserves the custom-widgets section verbatim if present (extracted
-    before rewriting, re-appended after) -- "be certain not to clobber
-    the DSL extensions." A file that predates the custom-widgets
-    feature too (no markers at all) has nothing to preserve; it's just
-    fully rewritten, which is safe even in isolation since
-    DeskWindow._sync_tempui_doc runs immediately afterward in the real
-    startup/Desk-switch flow and inserts a fresh section regardless."""
+    The main file's version note stands for the *entire* set, per the
+    request -- so this refreshes everything (not just the main file)
+    if either its version doesn't match, *or* any split file is
+    missing (e.g. a user deleted one) -- there's no per-file staleness
+    concept to check independently.
+
+    Preserves the main file's custom-widgets section verbatim if
+    present (extracted before rewriting, re-appended after) -- "be
+    certain not to clobber the DSL extensions." A file that predates
+    the custom-widgets feature too (no markers at all) has nothing to
+    preserve; it's just fully rewritten, which is safe even in
+    isolation since DeskWindow._sync_tempui_doc runs immediately
+    afterward in the real startup/Desk-switch flow and inserts a fresh
+    section regardless."""
+    doc_path = temp_dir / DOC_FILENAME
     if not doc_path.is_file():
         return
     text = doc_path.read_text()
-    if parse_doc_version(text) == TEMPUI_DOC_VERSION:
+    version_current = parse_doc_version(text) == TEMPUI_DOC_VERSION
+    all_split_docs_present = all((temp_dir / filename).is_file() for filename in SPLIT_DOC_CONTENT)
+    if version_current and all_split_docs_present:
         return
-    new_text = render_static_doc()
+    custom_section = None
     if CUSTOM_WIDGETS_SECTION_START in text and CUSTOM_WIDGETS_SECTION_END in text:
         start = text.index(CUSTOM_WIDGETS_SECTION_START)
         end = text.index(CUSTOM_WIDGETS_SECTION_END) + len(CUSTOM_WIDGETS_SECTION_END)
         custom_section = text[start:end]
-        new_text = new_text.rstrip("\n") + "\n\n" + custom_section + "\n"
-    doc_path.write_text(new_text)
+    write_tempui_docs(temp_dir)
+    if custom_section is not None:
+        doc_path.write_text(doc_path.read_text().rstrip("\n") + "\n\n" + custom_section + "\n")
 
 
 @dataclass

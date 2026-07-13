@@ -535,7 +535,8 @@ Desk widgets, regardless of implementation language, are defined by a
   no `widgets/<id>/` directory at all. An agent (or any process writing
   into `.desk_temp/`) can introduce a brand-new widget kind at runtime
   via the `DefineWidget` tempui DSL keyword (see
-  `desk-temporary-ui.md`'s own "DefineWidget" section): its entire
+  `desk-temporary-ui.md`'s own split-out `tempui-custom-widgets.md`,
+  TODO `e57ce5f`): its entire
   implementation is one self-contained, base64-encoded HTML document
   (`desk.temp_ui.CustomWidgetDefinition`), decoded to a real directory
   (`desk.custom_widgets.materialize`, cached under

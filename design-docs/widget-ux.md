@@ -315,8 +315,9 @@ fb76057), which is for the wrapped *content* widget's own data.
 ### TempUI Custom Widgets and the [TEMPUI] Button
 
 TODO `91b3f42`. The tempui DSL's `DefineWidget` keyword (see
-`desk-temporary-ui.md`'s own section on it, and
-`design-docs/architecture.md`'s Widget Model section) lets an agent
+`desk-temporary-ui.md`'s own split-out `tempui-custom-widgets.md`,
+TODO `e57ce5f`, and `design-docs/architecture.md`'s Widget Model
+section) lets an agent
 introduce a brand-new, entirely in-browser (`kind: "html"`) widget kind
 at runtime, with its own new invocation keyword — a form of the tempui
 DSL extending itself. A widget kind defined this way is
