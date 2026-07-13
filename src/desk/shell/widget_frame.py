@@ -1,6 +1,6 @@
 import uuid
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 TITLEBAR_HEIGHT = 28
@@ -290,3 +290,46 @@ class WidgetFrame(QWidget):
         and useful for one that has."""
         target = self._last_focused_widget or self.content
         target.setFocus(Qt.FocusReason.MouseFocusReason)
+
+    def focusNextPrevChild(self, next: bool) -> bool:
+        """Traps Tab/Shift+Tab within this widget's own content (TODO
+        e69f209) instead of letting Qt's default handling escalate an
+        exhausted local search out to the next/previous item in the
+        shared canvas `QGraphicsScene` -- every widget here is meant to
+        behave like an independent floating window, not a tab stop in
+        some canvas-wide sequence, and the default escalation can hand
+        keyboard focus to a completely unrelated widget elsewhere on
+        the canvas. Especially easy to miss mid-typing when that widget
+        happens to visually overlap this one -- see LEARNINGS.md.
+
+        The escape isn't reliably visible synchronously here (confirmed
+        directly: `super().focusNextPrevChild()` can return `True` --
+        "handled, nothing to escalate" -- while the actual scene-level
+        handoff to a sibling item still happens moments later; the same
+        "QGraphicsProxyWidget's own focus resolution runs after this
+        call, not during it" shape already documented for the Lightning
+        Round widget's click-to-focus fix). So this always claims the
+        event, then defers one event-loop iteration and reclaims focus
+        if it landed outside this widget's own subtree -- there's no
+        case where handing focus to a sibling WidgetFrame is actually
+        wanted, so there's nothing to conditionally allow."""
+        target_before = self.focusWidget()
+        super().focusNextPrevChild(next)
+        QTimer.singleShot(0, lambda: self._reclaim_focus_if_escaped(next, target_before))
+        return True
+
+    def _reclaim_focus_if_escaped(self, next: bool, fallback: QWidget | None) -> None:
+        proxy = self.graphicsProxyWidget()
+        if proxy is None:
+            return
+        scene = proxy.scene()
+        if scene is None or scene.focusItem() is proxy:
+            return
+        focusable = [
+            w
+            for w in self.findChildren(QWidget)
+            if w.focusPolicy() != Qt.FocusPolicy.NoFocus and w.isVisible()
+        ]
+        target = (focusable[0] if next else focusable[-1]) if focusable else fallback
+        if target is not None:
+            target.setFocus(Qt.FocusReason.TabFocusReason)

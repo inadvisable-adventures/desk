@@ -598,3 +598,71 @@ happens to show a modal dialog today. A plain-`QWidget`-with-ordinary
 (`QAbstractItemView`'s own mouse handling) — no reason to believe the
 same fix is needed there absent an actual, confirmed crash report
 naming that code path.
+
+## Pressing Tab in a `QGraphicsProxyWidget`-embedded widget can silently hand keyboard focus to an unrelated sibling widget elsewhere on the canvas
+
+Reported (TODO `e69f209`) as "when widgets with carets overlap
+visually, sometimes focus seems to switch between them while typing."
+Reproduced directly, headlessly, with a real `QGraphicsScene`/
+`QGraphicsProxyWidget` (not a guess): two `WidgetFrame`s placed on the
+canvas, each wrapping a `QLineEdit`. Typing ordinary characters never
+moves focus. Pressing **Tab** does — every time, unconditionally, with
+no relationship between the two widgets beyond both being embedded in
+the same scene. `QLineEdit` (unlike `QPlainTextEdit`/`QScintilla`,
+which consume Tab themselves to insert an actual tab character)
+doesn't handle Tab itself, so once its own local search is exhausted,
+Qt's default `focusNextPrevChild` chain runs — and for a
+`QGraphicsProxyWidget`-embedded widget, that chain doesn't stop at
+"this widget's own subtree, nothing else here." It escalates to the
+*scene* level and hands keyboard focus to a different sibling
+`QGraphicsProxyWidget` item — in this app, a completely unrelated
+widget that happens to sit next in the scene's internal item list, not
+anything spatially or logically related to the widget just being typed
+into. The **visual overlap** in the report isn't a separate
+precondition, just what makes the bug legible: the stolen widget's
+caret appears in the same screen region the user was just looking at,
+reading as "focus flickered" rather than "focus silently jumped to
+some unrelated widget," which is the same bug either way — just easier
+to notice when the two widgets don't overlap and the caret visibly
+teleports across the screen.
+
+**A synchronous fix inside an overridden `focusNextPrevChild` doesn't
+work**, confirmed directly — the same non-obvious shape already
+documented above for the Lightning Round widget's click-to-focus fix,
+one layer removed: `super().focusNextPrevChild()` can return `True`
+("handled, nothing to escalate further") and `self.focusWidget()` can
+still report the *correct* widget immediately afterward, in the same
+call — and the scene's real focus item still ends up on a different
+`WidgetFrame` a moment later anyway. `QGraphicsProxyWidget` resolves
+which embedded widget actually owns scene-level focus *after*
+whatever ran synchronously for the triggering key event, not during
+it, exactly like the click-to-focus case — so nothing checked
+synchronously inside `focusNextPrevChild` can see (or prevent) the
+real outcome.
+
+The fix (`WidgetFrame.focusNextPrevChild`/`_reclaim_focus_if_escaped`
+in `src/desk/shell/widget_frame.py`): let the normal `super()` call run
+(so cycling between multiple focusable controls *within* the same
+widget, e.g. the Stack widget's per-frame fields, still works), then
+schedule a `QTimer.singleShot(0, ...)` check for *after* whatever
+resolves scene-level focus has actually run. If this widget's own
+`QGraphicsProxyWidget` is no longer `scene().focusItem()`, focus
+escaped — reclaim it by re-focusing the first (Tab) or last
+(Shift+Tab) still-focusable descendant instead of leaving it on the
+sibling. If a widget only has one focusable control, this is a
+harmless idempotent re-affirm of the same control (which is also what
+finally traps the single-control case — an unconditional `return True`
+alone, discarding `super()`'s actual side effects, was tried first and
+is *not* enough on its own).
+
+General lesson: **any widget embedded via `QGraphicsProxyWidget` that's
+meant to behave like an independent floating window (not a tab stop in
+some scene-wide sequence) needs to explicitly trap its own Tab/Shift
++Tab focus chain** — Qt has no way to know your app's intent here, and
+its default behavior (hand off to the next scene item once a local
+chain is exhausted) is exactly backwards for that case. Don't trust a
+synchronous check/return value from `focusNextPrevChild` to reflect
+what actually happens — verify with `QTimer.singleShot(0, ...)` and a
+real embedded `QGraphicsProxyWidget`, the same as any other focus
+-resolution timing question in this codebase (see this file's other
+`QGraphicsProxyWidget` focus entries).

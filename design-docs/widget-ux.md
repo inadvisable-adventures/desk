@@ -271,6 +271,23 @@ titlebar press/position pair kept separate from the drag-tracking
 state, so a locked widget (TODO `8d05920`, which skips starting an
 actual drag on its titlebar) still supports click-to-focus.
 
+`WidgetFrame.focusNextPrevChild` also traps Tab/Shift+Tab within a
+widget's own content (TODO `e69f209`) — Qt's default handling, left
+alone, escalates an exhausted local Tab search out to the next/
+previous item in the shared `QGraphicsScene`, handing keyboard focus
+to a completely unrelated widget elsewhere on the canvas (every widget
+here is meant to behave like an independent floating window, not a
+tab stop in some canvas-wide sequence). Reported as "focus seems to
+switch between them while typing" when the stolen widget happens to
+visually overlap the one just being typed into. Internal cycling
+between multiple focusable controls in the same widget (e.g. the Stack
+widget's per-frame fields) still works via the normal `super()` call;
+only the exhausted-local-chain escape is trapped, via a deferred
+(`QTimer.singleShot(0, ...)`) reclaim check — the escape isn't
+reliably visible synchronously (same "`QGraphicsProxyWidget` resolves
+scene-level focus after this call, not during it" timing as the
+click-to-focus fix above). See `LEARNINGS.md`.
+
 ### Lock Widgets
 
 A widget can be locked in place (TODO `8d05920`) via a `_LockButton`

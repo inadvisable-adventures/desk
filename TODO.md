@@ -1695,3 +1695,6 @@ c458012. COMPLETED: `scripts/todo_item_ids.py` only works when run from a direct
    provisioning to also cover what running it produces
    (`scripts/__pycache__/`).
    [planned: seed-todo-item-ids-script.md]
+e69f209. COMPLETED: Bug: when widgets with carets overlap visually, sometimes
+   focus seems to switch between them while typing.
+   [planned: trap-widget-tab-focus.md]
