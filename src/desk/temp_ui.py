@@ -1,3 +1,4 @@
+import re
 import uuid
 from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
@@ -12,7 +13,30 @@ DOC_FILENAME = "desk-temporary-ui.md"
 GITIGNORE_ENTRIES = (".desk_temp/", "**/__pycache__/")
 GITIGNORE_COMMENT = "# Desk-specific"
 
+# desk-temporary-ui.md's *static* main content (DOC_TEMPLATE below) is
+# only ever written once, the first time a directory's .desk_temp is
+# provisioned -- an older Desk directory otherwise keeps whatever
+# stale copy it got at creation time forever, even after this file's
+# own content has since improved (a new DSL section, a correction).
+# TEMPUI_DOC_VERSION (TODO f7b1611) is a plain, manually-bumped
+# integer that fixes this: bump it by exactly 1 any time DOC_TEMPLATE's
+# static content changes in a way that would matter to an agent
+# reading it (a new section, a real correction) -- NOT for whitespace
+# -only tidying, and NOT for the separate, dynamically-generated
+# custom-widgets section (TODO 91b3f42), which is already kept in sync
+# on its own regardless of this version. There's no reliable automatic
+# way to detect "did this edit change the doc's *meaning*" (a typo fix
+# and a new DSL section can touch the same number of lines) -- a human
+# decides at edit time, the same spirit as this project's own
+# permanent TODO item ids (assigned once, never recomputed). See
+# ensure_doc_version_current, called before a Desk is opened.
+TEMPUI_DOC_VERSION = 1
+_DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
+_DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
+
 DOC_TEMPLATE = """# Temporary UI
+
+<!-- desk-temporary-ui.md version: {{TEMPUI_DOC_VERSION}} -- do not edit this line by hand; Desk uses it to detect when this file's own main content is out of date and needs refreshing. See TEMPUI_DOC_VERSION in src/desk/temp_ui.py. -->
 
 This directory holds "temporary UI" files: a lightweight way for an
 agent (or any external process) to ask a question through Desk's own
@@ -288,6 +312,55 @@ This file (`desk-temporary-ui.md`) is itself ignored by the file
 watcher — its name isn't a UUID, so it's never mistaken for a temp UI
 file.
 """
+
+
+def render_static_doc() -> str:
+    """DOC_TEMPLATE with its version placeholder filled in (TODO
+    f7b1611) -- plain string substitution, not str.format(): the
+    template is free-form Markdown prose that could plausibly contain
+    a literal `{`/`}` some day (e.g. a JSON example), which .format()
+    would silently misinterpret as a field reference."""
+    return DOC_TEMPLATE.replace(_DOC_VERSION_PLACEHOLDER, str(TEMPUI_DOC_VERSION))
+
+
+def parse_doc_version(text: str) -> int | None:
+    """Extracts the integer version from desk-temporary-ui.md's own
+    version note (TODO f7b1611) -- None if the note is missing
+    entirely (an unversioned file, including every file written before
+    this TODO, is always treated as out of date) or malformed."""
+    match = _DOC_VERSION_RE.search(text)
+    return int(match.group(1)) if match is not None else None
+
+
+def ensure_doc_version_current(doc_path: Path) -> None:
+    """Refreshes desk-temporary-ui.md's *static* main content in place
+    if it's missing a version note or carries an old one (TODO
+    f7b1611) -- called before opening a Desk (see
+    desk.shell.temp_ui_manager.TempUiManager.provision), right
+    alongside the analogous check TODO 91b3f42 already does for the
+    dynamic custom-widgets section. A no-op if the file doesn't exist
+    at all (nothing to refresh -- first creation is `provision`'s own
+    job, via render_static_doc) or if its version already matches.
+
+    Preserves the custom-widgets section verbatim if present (extracted
+    before rewriting, re-appended after) -- "be certain not to clobber
+    the DSL extensions." A file that predates the custom-widgets
+    feature too (no markers at all) has nothing to preserve; it's just
+    fully rewritten, which is safe even in isolation since
+    DeskWindow._sync_tempui_doc runs immediately afterward in the real
+    startup/Desk-switch flow and inserts a fresh section regardless."""
+    if not doc_path.is_file():
+        return
+    text = doc_path.read_text()
+    if parse_doc_version(text) == TEMPUI_DOC_VERSION:
+        return
+    new_text = render_static_doc()
+    if CUSTOM_WIDGETS_SECTION_START in text and CUSTOM_WIDGETS_SECTION_END in text:
+        start = text.index(CUSTOM_WIDGETS_SECTION_START)
+        end = text.index(CUSTOM_WIDGETS_SECTION_END) + len(CUSTOM_WIDGETS_SECTION_END)
+        custom_section = text[start:end]
+        new_text = new_text.rstrip("\n") + "\n\n" + custom_section + "\n"
+    doc_path.write_text(new_text)
 
 
 @dataclass

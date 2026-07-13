@@ -8,10 +8,11 @@ from desk.file_watch import SelfWriteMemory
 from desk.git_utils import find_git_root
 from desk.temp_ui import (
     DOC_FILENAME,
-    DOC_TEMPLATE,
     TEMP_UI_DIRNAME,
+    ensure_doc_version_current,
     ensure_gitignore_entry,
     is_temp_ui_filename,
+    render_static_doc,
 )
 from desk_services.file_watcher import WatchHandle, get_service
 
@@ -128,7 +129,12 @@ class TempUiManager(QObject):
 
         doc_path = temp_dir / DOC_FILENAME
         if not doc_path.is_file():
-            doc_path.write_text(DOC_TEMPLATE)
+            doc_path.write_text(render_static_doc())
+        else:
+            # TODO f7b1611: before opening a Desk, make sure an
+            # already-existing doc's main content isn't a stale copy
+            # from before some later improvement to DOC_TEMPLATE.
+            ensure_doc_version_current(doc_path)
 
         self._start_watching(temp_dir)
         return temp_dir

@@ -1721,3 +1721,13 @@ e69f209. COMPLETED: Bug: when widgets with carets overlap visually, sometimes
    includes information about all of the tempui DSL extensions in the
    .desk_temp folder or in the .desk file.
    [planned: tempui-custom-widgets.md]
+f7b1611. COMPLETED: We need to make sure that the tempui md file is up-to-date, not
+   just with the tempui DSL but with new versions of the rest of the
+   document. Introduce a version number as a note at the top, with a
+   simple integer version number that gets manually updated as the
+   content changes (include a comment in the code that explains the
+   versioning process). Before opening a Desk, ensure that the tempui
+   md main content is up-to-date with the expected version; if there
+   is no version, that means that it is out of date; be certain not to
+   clobber the DSL extensions, if there are any.
+   [planned: tempui-doc-versioning.md]
