@@ -1,0 +1,7 @@
+{
+  "name": "Hex Flower",
+  "kind": "html",
+  "entry": "index.html",
+  "capabilities": [],
+  "default_size": { "width": 780, "height": 640 }
+}

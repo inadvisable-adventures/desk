@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hex Flower</title>
+  <style>
+    :root {
+      --col-bg-0: #1a1a2e;
+      --col-bg-1: #0f172a;
+      --col-bg-2: #1e293b;
+      --col-bg-3: #374151;
+      --col-bd-1: #374151;
+      --col-bd-2: #4b5563;
+      --col-bd-3: #64748b;
+      --col-tx-1: #f1f5f9;
+      --col-tx-2: #e2e8f0;
+      --col-tx-3: #cbd5e1;
+      --col-tx-4: #94a3b8;
+      --col-tx-5: #64748b;
+      --col-tx-6: #4b5563;
+      --col-re-3: #f87171;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      background: var(--col-bg-1);
+      color: var(--col-tx-1);
+      display: flex;
+      justify-content: center;
+      padding: 16px;
+    }
+  </style>
+</head>
+<body>
+  <hex-flower></hex-flower>
+  <script type="module" src="dist/main.js"></script>
+
+  <template id="dice-pool">
+    <link rel="stylesheet" href="dice-pool.css">
+    <div class="container">
+      <div class="header">
+        <div class="view-controls">
+          <button class="roll-btn non-embedded-btn">Roll</button>
+          <button class="edit-btn non-embedded-btn">Edit</button>
+        </div>
+        <div class="edit-controls">
+          <button class="done-btn non-embedded-btn">Done</button>
+          <div class="notation-wrap">
+            <input class="notation-input" type="text" placeholder="e.g. 2d6+1d8">
+            <span class="invalid-msg" hidden>invalid</span>
+          </div>
+        </div>
+      </div>
+      <p class="pool"></p>
+      <div class="palette" hidden></div>
+    </div>
+  </template>
+
+  <template id="hex-direction-map">
+    <link rel="stylesheet" href="hex-direction-map.css">
+    <div class="wrap"></div>
+  </template>
+</body>
+</html>

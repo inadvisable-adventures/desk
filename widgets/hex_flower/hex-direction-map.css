@@ -1,0 +1,15 @@
+button { user-select: none; }
+:host { display: block; }
+.wrap { display: flex; gap: 12px; align-items: flex-start; }
+.table-wrap { overflow-y: auto; max-height: 220px; border: 1px solid var(--col-bd-1); border-radius: 4px; flex: 0 0 auto; }
+table { border-collapse: collapse; }
+td { padding: 2px 6px; }
+.result-cell { font-family: monospace; font-weight: bold; font-size: 12px; color: var(--col-tx-3); min-width: 28px; }
+tr:nth-child(even) { background: var(--col-bg-1); }
+.dir-select { font-size: 11px; border: 1px solid var(--col-bd-2); border-radius: 3px; padding: 1px 2px; cursor: pointer; }
+.empty-msg { font-size: 12px; color: var(--col-tx-6); margin: 0; padding: 4px 0; }
+.hex-vis { touch-action: none; overflow: visible; display: block; }
+.chip-draggable { cursor: grab; }
+.chips-disabled { pointer-events: none; cursor: default; }
+.zone-lbl { font-size: 9px; font-family: sans-serif; text-anchor: middle; dominant-baseline: middle; pointer-events: none; font-weight: 600; }
+.chip-lbl { font-size: 7px; font-family: sans-serif; text-anchor: middle; dominant-baseline: middle; fill: white; pointer-events: none; font-weight: 500; }

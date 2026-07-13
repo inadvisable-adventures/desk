@@ -1,0 +1,29 @@
+button { user-select: none; color: inherit; }
+:host { display: block; font-family: sans-serif; }
+:host([embedded]) .non-embedded-btn { display: none; }
+.container { display: inline-block; border: 1px solid var(--col-bd-1); border-radius: 8px; padding: 12px; }
+.header { display: flex; align-items: center; min-height: 28px; }
+.view-controls { display: flex; gap: 6px; }
+.edit-controls { display: none; width: 100%; }
+.edit-controls.active { display: flex; align-items: center; gap: 6px; }
+.roll-btn { font-size: 12px; padding: 3px 10px; border: 1px solid #6366f1; border-radius: 4px; background: #6366f1; color: white; cursor: pointer; }
+.roll-btn:hover:not(:disabled) { background: #4f46e5; border-color: #4f46e5; }
+.roll-btn:disabled { opacity: 0.4; cursor: default; }
+.edit-btn { font-size: 12px; padding: 3px 10px; border: 1px solid var(--col-bd-3); border-radius: 4px; background: var(--col-bg-2); cursor: pointer; }
+.edit-btn:hover { background: var(--col-bg-3); }
+.done-btn { font-size: 12px; padding: 3px 10px; border: 1px solid var(--col-bd-3); border-radius: 4px; background: var(--col-bg-2); cursor: pointer; }
+.done-btn:hover { background: var(--col-bg-3); }
+.notation-wrap { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.notation-input { font-family: monospace; font-size: 13px; padding: 3px 7px; border: 1px solid var(--col-bd-3); border-radius: 4px; width: 150px; }
+.notation-input.invalid { border-color: var(--col-re-3); }
+.invalid-msg { font-size: 12px; color: var(--col-re-3); }
+p.pool { width: 300px; margin: 0; padding: 2px 0; font-size: 0; line-height: 0; min-height: 58px; }
+.pool-die { display: inline-block; margin: 3px; vertical-align: top; overflow: visible; cursor: default; }
+.pool-die.removable { cursor: pointer; }
+.pool-die.removable:hover { opacity: 0.6; }
+.pool-number { font-size: 15px; font-family: sans-serif; font-weight: bold; fill: white; text-anchor: middle; dominant-baseline: central; pointer-events: none; user-select: none; }
+.empty { display: inline-block; color: var(--col-tx-6); font-size: 13px; line-height: 1; padding: 8px 0; vertical-align: middle; }
+.palette { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 10px; margin-top: 8px; border-top: 1px solid var(--col-bd-1); }
+.palette-btn { background: none; border: none; padding: 2px; cursor: pointer; border-radius: 6px; line-height: 0; }
+.palette-btn:hover { opacity: 0.75; }
+.palette-label { font-size: 13px; font-family: sans-serif; font-weight: bold; fill: white; text-anchor: middle; dominant-baseline: central; pointer-events: none; user-select: none; }
