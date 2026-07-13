@@ -589,3 +589,42 @@ This file captures thoughts and TODO items that arise during work on other thing
   Not designed/decided — parking as a direction to think through
   rather than a scoped task; likely worth deciding before sinking
   effort into fixing the terminal-hosting issues piecemeal.
+
+- **`TODO.md` formatting/structure: blank lines between entries,
+  archiving old items, and priority/dependency lists instead of file
+  order**
+
+  Three related open questions about `TODO.md` itself, not its content:
+
+  - **Blank lines between entries.** `TODO.md` doesn't render properly
+    in an ordinary Markdown viewer because there's no blank line
+    between one item and the next (Markdown treats adjacent
+    non-blank lines as one paragraph). Checked whether adding blank
+    lines between entries would break the TODO widget's parsing
+    (`src/desk/todo_file.py`, `parse_todo_file`): it wouldn't — an
+    item's boundary is found by regex-matching the *start* of the
+    *next* item (`ITEM_START_RE`), not by blank-line separation, so an
+    added trailing blank line would just become part of the preceding
+    item's own preserved `raw_text` and round-trip unchanged. Safe to
+    do; not yet done.
+  - **Archiving old items.** Should old (`COMPLETED`/`SUPERSEDED`)
+    items start moving out of `TODO.md` into some kind of archive, now
+    that the file has grown quite long? Not decided — connects to the
+    already-parked "process-file organization"/new-repo questions
+    above.
+  - **`required-direct-prior: []`/`priority-direct-prior: []` instead
+    of file order.** Right now both an item's priority (its position
+    in the file, top to bottom) and any dependency it has on another
+    item are expressed the same way: physical ordering in the file —
+    conflating "must come after" (a real dependency) with "happens to
+    be prioritized after" (just a preference), and making a pure
+    priority change a cut-and-paste move instead of a simple edit.
+    Idea: give each item explicit `required-direct-prior: [<id>, ...]`
+    (hard dependencies — this item cannot start before those finish)
+    and `priority-direct-prior: [<id>, ...]` (soft ordering preference)
+    lists instead, so reprioritizing is an edit to these lists rather
+    than moving the item's text block, and true dependencies are
+    distinguished from mere priority. Not designed — would need working
+    out how the TODO widget/`development-process.md`'s own "Prioritizing
+    TODO Items" section would use these lists to determine actual work
+    order, and how required-vs-priority interacts when they conflict.
