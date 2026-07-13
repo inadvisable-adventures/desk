@@ -35,7 +35,7 @@ GITIGNORE_COMMENT = "# Desk-specific"
 # of tempui-*.md files (SPLIT_DOC_CONTENT below), not just this one --
 # bump it for a meaningful change to any of them, and don't add a
 # separate version note to any split file (there isn't one to add).
-TEMPUI_DOC_VERSION = 3
+TEMPUI_DOC_VERSION = 4
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -392,6 +392,15 @@ All calls are `async` (they return a `Promise`):
   wait for some separate "save" signal that doesn't exist.
 - `desk.self.getManifest()` → your own widget's manifest (id, name,
   capabilities, default size).
+
+If you're porting an existing web app/component into a `DefineWidget`
+widget, it likely already has its own persistence mechanism (custom
+events, a global variable, `localStorage`, whatever the original
+project used) — that mechanism does **not** work here (see above: it
+won't survive a reload) and porting the widget does not rewire it for
+you. You need to explicitly replace it with calls to
+`desk.self.getLocalStorage`/`setLocalStorage` above; don't assume the
+old approach just keeps working because the rest of the port succeeded.
 
 A few more calls exist for widgets that need them (all require
 declaring the matching capability in your own manifest, unlike the

@@ -1774,3 +1774,12 @@ e57ce5f. COMPLETED: It's probably time to split out the tempui md file into mult
    the future, and (b) make additional improvements to the tempui
    widget feature to help this kind of work go better in the future.
    [planned: investigate-hex-flower-blank-page.md]
+411d0e0. COMPLETED: Whatever guidance covers the Bridge API's local-storage calls
+   should make clear that a ported widget's own prior persistence
+   mechanism (custom events, global variables, whatever the original
+   project used) needs to be explicitly re-wired to
+   `self.getLocalStorage`/`setLocalStorage` -- porting a widget doesn't
+   make its old persistence approach work inside Desk automatically,
+   and there's currently nothing prompting an agent to check for that
+   mismatch.
+   [planned: document-persistence-rewiring-for-ported-widgets.md]

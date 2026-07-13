@@ -693,6 +693,15 @@ into each Chromium Widget's page via a `QWebEngineScript` at
 | `desk.self.getManifest()` | A widget introspecting its own manifest | none |
 | `desk.self.getLocalStorage()` / `setLocalStorage(data)` | Persist/restore this *instance's* own state across a Desk reload (TODO `5734529`) | none |
 
+A widget ported from an existing project (e.g. `widgets/hex_flower`,
+see `DESK_FEEDBACK-2026-07-13T012144.md`/TODO `4ab5875`) very likely
+already has its own persistence mechanism (custom events, a global
+variable, `localStorage`, whatever the original project used) — none
+of that survives a Desk reload here, and porting the widget does not
+rewire it automatically. It must be explicitly replaced with
+`self.getLocalStorage`/`setLocalStorage` calls above; don't assume the
+old mechanism keeps working just because the rest of the port did.
+
 Each call (other than `self.getManifest`/`self.getLocalStorage`/
 `self.setLocalStorage`, none privileged) is checked against the calling
 widget's declared `capabilities` — coarse, resource-level strings
