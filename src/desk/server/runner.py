@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import uvicorn
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from desk.server.app import DEFAULT_WIDGETS_DIR, create_app
 from desk.shell.bridge import GuiBridge
@@ -27,6 +29,7 @@ class ServerHandle:
     gui_bridge: GuiBridge
     _server: uvicorn.Server
     _thread: threading.Thread
+    _app: FastAPI
 
     @property
     def url(self) -> str:
@@ -34,6 +37,24 @@ class ServerHandle:
 
     def widget_url(self, widget_id: str) -> str:
         return f"http://{self.host}:{self.port}/widgets/{widget_id}/?token={self.token}"
+
+    def mount_html_widget(self, widget_id: str, directory: Path, info: WidgetInfo) -> None:
+        """Mounts a widget whose kind:"html" content lives at
+        `directory` (materialized from a tempui/.desk-embedded base64
+        payload -- see desk.custom_widgets, TODO 91b3f42) onto this
+        already-running server, so widget_url(widget_id) serves real
+        content immediately. Safe after the server has already started
+        handling requests: Starlette resolves routes by walking
+        self.routes fresh on every request, not from some compiled
+        -at-startup table, so appending here (the same call
+        create_app's own startup-time mounting loop makes) takes effect
+        for the very next request."""
+        self.widgets[widget_id] = info
+        self._app.mount(
+            f"/widgets/{widget_id}",
+            StaticFiles(directory=directory, html=True),
+            name=f"widget-{widget_id}",
+        )
 
     def stop(self, timeout: float = 5.0) -> None:
         self._server.should_exit = True
@@ -79,6 +100,7 @@ def start_server(
         gui_bridge=gui_bridge,
         _server=server,
         _thread=thread,
+        _app=app,
     )
 
 

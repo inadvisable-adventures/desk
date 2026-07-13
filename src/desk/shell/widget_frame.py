@@ -71,6 +71,37 @@ class _UnlockButton(_TitlebarButton):
         super().__init__("🔓", parent)
 
 
+class _TempuiPromoteButton(QWidget):
+    """Shown only on a placed instance of a tempui-DSL-defined custom
+    widget (TODO 91b3f42) -- offers to promote it into the current
+    .desk file. Unlike _TitlebarButton (a fixed-square single glyph:
+    ✕/▲/▼/🔒/🔓), this shows the literal, longer "[TEMPUI]" label, so
+    it isn't a _TitlebarButton subclass -- fixed height (matches the
+    titlebar), width sized to its own text instead of a fixed square.
+    Clicking is handled centrally by WorkspaceView, same as every other
+    titlebar button -- see design-docs/widget-ux.md."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 0, 4, 0)
+        self._label = QLabel("[TEMPUI]")
+        self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        layout.addWidget(self._label)
+
+        self.apply_scale(1.0)
+
+    def apply_scale(self, view_scale: float) -> None:
+        """See _TitleBar.apply_scale: keeps this button a constant
+        on-screen size regardless of the WorkspaceView's current zoom."""
+        view_scale = view_scale or 1.0
+        self.setFixedHeight(max(1, round(TITLEBAR_HEIGHT / view_scale)))
+        font_pt = max(1, round(TITLEBAR_FONT_PT / view_scale))
+        self._label.setStyleSheet(f"color: #e8e8e8; font-size: {font_pt}pt;")
+
+
 class _TitleBar(QWidget):
     """Purely visual: background, cursor shape, and a non-selectable title
     label. Dragging is handled centrally by WorkspaceView (not by this
@@ -90,6 +121,9 @@ class _TitleBar(QWidget):
         self._update_label_text()
         layout.addWidget(self._label)
         layout.addStretch()
+        self.tempui_promote_button = _TempuiPromoteButton()
+        self.tempui_promote_button.setVisible(False)
+        layout.addWidget(self.tempui_promote_button)
         self.lock_button = _LockButton()
         layout.addWidget(self.lock_button)
         self.bring_to_front_button = _BringToFrontButton()
@@ -135,6 +169,15 @@ class _TitleBar(QWidget):
         self.close_button.setVisible(not locked)
         self.unlock_button.setVisible(locked)
 
+    def set_tempui_promotable(self, promotable: bool) -> None:
+        """Shows/hides the [TEMPUI] button (TODO 91b3f42) -- set once,
+        right after a custom widget's frame is placed
+        (DeskWindow._place_widget), never toggled off afterward even
+        once promoted (a second click on an already-promoted instance
+        just shows an informational message -- see
+        DeskWindow._on_tempui_promote_requested)."""
+        self.tempui_promote_button.setVisible(promotable)
+
     def apply_scale(self, view_scale: float) -> None:
         """Counter-scales this titlebar's local height/font so that, once
         the WorkspaceView multiplies by view_scale when rendering, it lands
@@ -144,6 +187,7 @@ class _TitleBar(QWidget):
         self.setFixedHeight(max(1, round(TITLEBAR_HEIGHT / view_scale)))
         font_pt = max(1, round(TITLEBAR_FONT_PT / view_scale))
         self._label.setStyleSheet(f"color: #e8e8e8; font-size: {font_pt}pt;")
+        self.tempui_promote_button.apply_scale(view_scale)
         self.lock_button.apply_scale(view_scale)
         self.bring_to_front_button.apply_scale(view_scale)
         self.send_to_back_button.apply_scale(view_scale)
@@ -265,6 +309,11 @@ class WidgetFrame(QWidget):
         titlebar click to focus its content, TODO a1c701d)."""
         self.locked = locked
         self._titlebar.set_locked(locked)
+
+    def set_tempui_promotable(self, promotable: bool) -> None:
+        """Shows/hides the [TEMPUI] button (TODO 91b3f42) -- see
+        `desk.shell.window.DeskWindow._place_widget`."""
+        self._titlebar.set_tempui_promotable(promotable)
 
     @property
     def title(self) -> str:

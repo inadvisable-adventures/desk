@@ -1,5 +1,5 @@
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -22,11 +22,12 @@ Each file is named with a bare UUID (e.g.
 `550e8400-e29b-41d4-a716-446655440000`, no extension). Desk watches
 this directory: a newly-created file shows up as a clickable
 notification in the app's upper-right corner; clicking it places a new
-widget on the canvas, centered in the current view. There are five
-file types, distinguished by their first line's keyword — `Question`
-(below), `LightningRound` (further down), `OpenMarkdown` (further down
-still), `Scratch` (further down still), or `Markdown` (further down
-still).
+widget on the canvas, centered in the current view. There are six
+built-in file types, distinguished by their first line's keyword —
+`Question` (below), `LightningRound` (further down), `OpenMarkdown`
+(further down still), `Scratch` (further down still), `Markdown`
+(further down still), or `DefineWidget` (further down still, which
+itself adds *more* keywords beyond these six — see that section).
 
 ## Questions for the user: use QUESTIONS.md, not this DSL
 
@@ -211,6 +212,78 @@ the new file in a separate, ordinary Markdown widget instance; this
 tempui-bound instance stays open, unaffected. See
 `markdown-rendering.md`.
 
+## The TempUI DSL: DefineWidget
+
+For introducing a brand-new *kind* of widget to the current Desk —
+entirely in-browser (HTML/CSS/JS, rendered in an embedded browser
+view), **never Python** — without touching the project's own
+`widgets/` directory. Once defined, the new kind gets its own new
+tempui DSL keyword that a *separate*, later tempui file can use to
+place an instance of it (see "Invoking a defined widget" below) — this
+is how the tempui DSL itself gets extended at runtime.
+
+Lines are **tab**-separated (like `LightningRound`), since a label may
+contain spaces:
+
+- `DefineWidget<TAB>keyword<TAB>label` — **must be the first line**.
+  `keyword` becomes both the new DSL keyword used to invoke this widget
+  kind (see below) and its internal widget id — pick something
+  CamelCase-ish with no spaces, matching the shape of this DSL's own
+  built-in keywords (`LightningRound`, `OpenMarkdown`, ...). `label` is
+  the human-friendly name shown in the widget's titlebar and anywhere
+  else it's listed — never a UUID or the raw `keyword`.
+- `Size<TAB>width<TAB>height` — optional. The new widget kind's default
+  placement size in pixels.
+- `Html<TAB>base64-chunk` — the widget's entire implementation: **one
+  self-contained HTML document** (inline `<style>`/`<script>` cover
+  CSS/JS — there's no separate CSS/JS file), **base64-encoded**. Split
+  across as many `Html` lines as needed (each is just a chunk,
+  concatenated in file order before decoding) — a single line doesn't
+  have to hold the whole file. At least one `Html` line is required.
+
+Example:
+
+```
+DefineWidget	KanbanBoard	Kanban Board
+Size	600	400
+Html	PGh0bWw+PGJvZHk+PGgxPkthbmJhbjwvaDE+PC9ib2R5PjwvaHRtbD4=
+```
+
+A `keyword` that collides with one of this DSL's own built-in keywords
+(`Question`, `LightningRound`, `DefineWidget`, ...) or an existing
+widget id is refused (logged, not an error) — pick something else.
+
+### Invoking a defined widget
+
+A separate tempui file whose **entire first line is just the
+keyword**, nothing else, places one instance of that widget kind —
+centered in the current view, same as every other tempui-placed
+widget:
+
+```
+KanbanBoard
+```
+
+There's no per-instance content or label here — a defined widget's
+titlebar always shows its *type's* own `label` from the `DefineWidget`
+line above. If you need different-looking instances, define separate
+widget kinds with separate keywords.
+
+A widget placed this way **can only ever be placed via tempui** — it
+never appears in the canvas's right-click "Add widget" menu, unlike
+every ordinary widget in `widgets/`.
+
+### Promoting a defined widget to the Desk
+
+Every placed instance of a `DefineWidget`-defined widget shows a
+`[TEMPUI]` button in its titlebar. Clicking it offers to **promote**
+the widget: on confirm, its definition is saved permanently into the
+current `.desk` file (surviving even if this `DefineWidget` file is
+later deleted) and the original `DefineWidget` file here is removed —
+the `.desk` file becomes the sole remaining source of truth.
+Invocation (see above) keeps working exactly the same afterward,
+promoted or not.
+
 This file (`desk-temporary-ui.md`) is itself ignored by the file
 watcher — its name isn't a UUID, so it's never mistaken for a temp UI
 file.
@@ -228,7 +301,26 @@ LIGHTNING_ROUND_KEYWORD = "LightningRound"
 OPEN_MARKDOWN_KEYWORD = "OpenMarkdown"
 SCRATCH_KEYWORD = "Scratch"
 MARKDOWN_KEYWORD = "Markdown"
+DEFINE_WIDGET_KEYWORD = "DefineWidget"
 UNANSWERED = "unanswered"
+
+# Every built-in DSL keyword a DefineWidget can't reuse as its own
+# invocation keyword (TODO 91b3f42) -- checked at registration, not
+# here, but kept as one shared set so it can't drift out of sync with
+# the keywords actually recognized above.
+RESERVED_TEMPUI_KEYWORDS = frozenset(
+    {
+        "Question",
+        "Option",
+        "Answer",
+        LIGHTNING_ROUND_KEYWORD,
+        "LRItem",
+        OPEN_MARKDOWN_KEYWORD,
+        SCRATCH_KEYWORD,
+        MARKDOWN_KEYWORD,
+        DEFINE_WIDGET_KEYWORD,
+    }
+)
 
 
 @dataclass
@@ -245,15 +337,78 @@ class LightningRoundDocument:
     items: list[LightningRoundItem] = field(default_factory=list)
 
 
-def detect_temp_ui_kind(text: str) -> str:
+@dataclass
+class CustomWidgetDefinition:
+    """A tempui-DSL-defined custom widget kind (TODO 91b3f42, the
+    `DefineWidget` keyword) -- entirely in-browser (HTML/CSS/JS,
+    `kind: "html"`), never Python. `keyword` is both the new DSL
+    keyword a later tempui file invokes and the widget catalog id;
+    `label` is the human-friendly name shown in the UI (never a UUID or
+    the raw `keyword`); `html_b64` is the widget's entire
+    implementation -- one self-contained, base64-encoded HTML
+    document."""
+
+    keyword: str
+    label: str
+    html_b64: str
+    default_size: tuple[int, int] | None = None
+
+
+def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
+    """Extracts a CustomWidgetDefinition from a DefineWidget temp-UI
+    file: `DefineWidget<TAB>keyword<TAB>label` (must be the first
+    line), an optional `Size<TAB>width<TAB>height` line, and one or
+    more `Html<TAB>base64-chunk` lines (concatenated in file order
+    before decoding -- decoding itself happens later, in
+    desk.custom_widgets.materialize, not here). Returns None if the
+    file doesn't start with the DefineWidget keyword, has no keyword of
+    its own, or has no Html content at all."""
+    lines = text.splitlines()
+    if not lines:
+        return None
+    first = lines[0].split("\t")
+    if not first or first[0] != DEFINE_WIDGET_KEYWORD:
+        return None
+    keyword = first[1].strip() if len(first) > 1 else ""
+    if not keyword:
+        return None
+    label = first[2].strip() if len(first) > 2 else keyword
+
+    size: tuple[int, int] | None = None
+    html_chunks: list[str] = []
+    for line in lines[1:]:
+        if line.startswith("Size\t"):
+            parts = line.split("\t")
+            if len(parts) >= 3:
+                try:
+                    size = (int(parts[1]), int(parts[2]))
+                except ValueError:
+                    size = None
+        elif line.startswith("Html\t"):
+            html_chunks.append(line.split("\t", 1)[1])
+
+    if not html_chunks:
+        return None
+    return CustomWidgetDefinition(
+        keyword=keyword, label=label, html_b64="".join(html_chunks), default_size=size
+    )
+
+
+def detect_temp_ui_kind(text: str, custom_keywords: Collection[str] = ()) -> str:
     """"question" (the original, default type), "lightning_round",
-    "open_markdown", "scratch", or "markdown_content", read from the
-    first non-blank line's keyword -- lets a caller that's seeing a
-    temp-ui file for the first time (a notification, a saved Desk's
-    widget state) know which widget kind to place without assuming
-    "question". Named "markdown_content" (not "markdown") to stay
-    unambiguous against the "markdown" *widget id* it happens to
-    render into (TODO 9743419)."""
+    "open_markdown", "scratch", "markdown_content", "define_widget", or
+    (if the file's own keyword is a currently-known custom widget --
+    TODO 91b3f42) "custom:<keyword>" -- read from the first non-blank
+    line's keyword. Lets a caller that's seeing a temp-ui file for the
+    first time (a notification, a saved Desk's widget state) know which
+    widget kind to place without assuming "question". Named
+    "markdown_content" (not "markdown") to stay unambiguous against the
+    "markdown" *widget id* it happens to render into (TODO 9743419).
+
+    `custom_keywords` defaults to empty so every existing call site
+    that hasn't opted in still behaves exactly as before -- only
+    `desk.shell.window.DeskWindow`, which actually tracks the current
+    set of registered custom widgets, passes a real one."""
     for line in text.splitlines():
         if line.strip():
             keyword = line.split(None, 1)[0]
@@ -265,6 +420,10 @@ def detect_temp_ui_kind(text: str) -> str:
                 return "scratch"
             if keyword == MARKDOWN_KEYWORD:
                 return "markdown_content"
+            if keyword == DEFINE_WIDGET_KEYWORD:
+                return "define_widget"
+            if keyword in custom_keywords:
+                return f"custom:{keyword}"
             return "question"
     return "question"
 
@@ -406,6 +565,71 @@ def record_lightning_round_answer(path: Path, item_index: int, character: str) -
     text = "".join(lines)
     path.write_text(text)
     return text
+
+
+CUSTOM_WIDGETS_SECTION_START = "<!-- BEGIN: registered custom widgets (auto-generated, do not edit by hand) -->"
+CUSTOM_WIDGETS_SECTION_END = "<!-- END: registered custom widgets -->"
+
+
+def render_custom_widgets_section(entries: list[tuple["CustomWidgetDefinition", str]]) -> str:
+    """The dynamic "currently registered custom widgets" section (TODO
+    91b3f42) -- every `DefineWidget` definition currently known,
+    whether its source is a still-live `.desk_temp` file (`"tempui"`)
+    or this Desk's own saved `.desk` file (`"desk"`), so an agent
+    reading this doc always sees the real, current set instead of just
+    the six built-in DSL keywords documented statically above.
+    Delimited by CUSTOM_WIDGETS_SECTION_START/END so
+    sync_custom_widgets_doc_section can patch just this section in
+    place without touching anything else in the file."""
+    lines = [CUSTOM_WIDGETS_SECTION_START, ""]
+    if not entries:
+        lines.append("*(none registered yet)*")
+    else:
+        for definition, source in sorted(entries, key=lambda pair: pair[0].label.lower()):
+            source_text = (
+                "this Desk's saved `.desk` file" if source == "desk" else "a `DefineWidget` tempui file"
+            )
+            size_text = (
+                f"{definition.default_size[0]}x{definition.default_size[1]}"
+                if definition.default_size
+                else "default"
+            )
+            lines.append(
+                f"- **{definition.label}** -- invoke with `{definition.keyword}`, "
+                f"default size {size_text}, defined by {source_text}."
+            )
+    lines.append("")
+    lines.append(CUSTOM_WIDGETS_SECTION_END)
+    return "\n".join(lines)
+
+
+def sync_custom_widgets_doc_section(
+    doc_path: Path, entries: list[tuple["CustomWidgetDefinition", str]]
+) -> None:
+    """Keeps desk-temporary-ui.md's dynamic custom-widgets section
+    current (TODO 91b3f42) -- called at startup and whenever a new
+    DefineWidget item is registered. Patches the section in place
+    (between CUSTOM_WIDGETS_SECTION_START/END) rather than overwriting
+    the whole file, so any of the user's own edits elsewhere in the doc
+    are never clobbered -- matching this codebase's general "never
+    silently overwrite existing content" posture (e.g.
+    ensure_gitignore_entry above). A no-op if the doc doesn't exist yet
+    at all (nothing to patch into -- the doc's own first-creation path,
+    desk.shell.temp_ui_manager.TempUiManager.provision, writes
+    DOC_TEMPLATE, and this gets called again once that exists)."""
+    if not doc_path.is_file():
+        return
+    section = render_custom_widgets_section(entries)
+    text = doc_path.read_text()
+    if CUSTOM_WIDGETS_SECTION_START in text and CUSTOM_WIDGETS_SECTION_END in text:
+        before = text.split(CUSTOM_WIDGETS_SECTION_START)[0]
+        after = text.split(CUSTOM_WIDGETS_SECTION_END)[1]
+        text = before + section + after
+    else:
+        # Predates this feature (or this is the very first sync right
+        # after DOC_TEMPLATE's own first write) -- append once.
+        text = text.rstrip("\n") + "\n\n" + section + "\n"
+    doc_path.write_text(text)
 
 
 def _missing_entries(text: str) -> list[str]:

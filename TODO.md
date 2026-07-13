@@ -1698,3 +1698,26 @@ c458012. COMPLETED: `scripts/todo_item_ids.py` only works when run from a direct
 e69f209. COMPLETED: Bug: when widgets with carets overlap visually, sometimes
    focus seems to switch between them while typing.
    [planned: trap-widget-tab-focus.md]
+91b3f42. COMPLETED: Feature: New widgets and extension of tempui DSL inside the
+   .desk_temp. Only in-browser (html/css/js) widgets (no python) can be
+   loaded this way. Introduce new tempui DSL for introducing new types
+   of widgets to be used in the current Desk. All code should be
+   base64 encoded when it is embedded in another file. Widgets defined
+   in tempui can only be added to the Desk by tempui. Additionally,
+   add constructs to the tempui DSL to allow the extension of the
+   tempui DSL, so that a tempui-based widget can be invoked by tempui.
+   In tempui-defined widgets' titlebar, add a button that says
+   [TEMPUI], which, if pressed, offers to promote the widget to the
+   Desk; if user confirms, then store the widget in the .desk file and
+   also include the tempui DSL extension in a list in the .desk file,
+   as well, re-pointing it towards the .desk file version of the
+   widget, and removing it from tempui. Widgets in the .desk file
+   should be registered just like built-in widgets at startup and
+   after being added. All widgets and tempui DSL extensions must have
+   a human-friendly label that can be shown in the UI (i.e. no UUIDs
+   for widget names). Ensure the tempui md file explains the tempui
+   side of things so that agents can use this feature. On startup or
+   when a new tempui DSL item is added, ensure that the tempui md file
+   includes information about all of the tempui DSL extensions in the
+   .desk_temp folder or in the .desk file.
+   [planned: tempui-custom-widgets.md]

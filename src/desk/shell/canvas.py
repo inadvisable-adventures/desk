@@ -23,6 +23,7 @@ from desk.shell.widget_frame import (
     _LockButton,
     _ResizeHandle,
     _SendToBackButton,
+    _TempuiPromoteButton,
     _TitleBar,
     _UnlockButton,
 )
@@ -43,7 +44,7 @@ SCALE_EPSILON = 1e-6
 # Chrome buttons handled as an ordinary click (press-then-release-on
 # -the-same-button), not a drag -- see _hit_test_chrome/mousePressEvent/
 # mouseReleaseEvent (TODO cdf45cb generalized this from just "close").
-_BUTTON_KINDS = {"close", "bring_to_front", "send_to_back", "lock", "unlock"}
+_BUTTON_KINDS = {"close", "bring_to_front", "send_to_back", "lock", "unlock", "tempui_promote"}
 
 # Max total mouse displacement (view-space px) between a titlebar press
 # and its release still counted as a click (TODO a1c701d), not a drag.
@@ -69,6 +70,7 @@ class WorkspaceView(QGraphicsView):
     widget_close_requested = pyqtSignal(WidgetFrame)
     files_dropped = pyqtSignal(list, QPointF)  # list[Path], scene pos
     paste_requested = pyqtSignal(QPointF)  # scene pos of the click that opened the menu
+    tempui_promote_requested = pyqtSignal(WidgetFrame)  # TODO 91b3f42
 
     def __init__(self, parent=None) -> None:
         super().__init__(QGraphicsScene(parent), parent)
@@ -149,7 +151,15 @@ class WorkspaceView(QGraphicsView):
 
     def contextMenuEvent(self, event) -> None:
         scene_pos = self.mapToScene(event.pos())
-        menu = WidgetSpawnMenu(self._widget_catalog, self)
+        # Excludes tempui-DSL-defined custom widgets (TODO 91b3f42,
+        # WidgetInfo.tempui_only) -- those can only ever be placed via
+        # tempui, never this menu. Filtered here (the one place this
+        # menu is constructed), not inside WidgetSpawnMenu itself, so
+        # the "who's allowed to see this" decision stays in one place.
+        spawnable_catalog = {
+            widget_id: info for widget_id, info in self._widget_catalog.items() if not info.tempui_only
+        }
+        menu = WidgetSpawnMenu(spawnable_catalog, self)
         # Deferred (TODO 8c9436b): WidgetSpawnMenu, like _DeskListPopup,
         # is a WA_DeleteOnClose QAbstractItemView (QTreeWidget)-based
         # popup that closes itself right before emitting -- the same
@@ -375,6 +385,8 @@ class WorkspaceView(QGraphicsView):
                     frame.set_locked(True)
                 elif kind == "unlock":
                     frame.set_locked(False)
+                elif kind == "tempui_promote":
+                    self.tempui_promote_requested.emit(frame)
             event.accept()
             return
         if self._drag_frame is not None:
@@ -447,6 +459,7 @@ class WorkspaceView(QGraphicsView):
                 _SendToBackButton,
                 _LockButton,
                 _UnlockButton,
+                _TempuiPromoteButton,
                 _TitleBar,
                 _ResizeHandle,
             ),
@@ -463,6 +476,8 @@ class WorkspaceView(QGraphicsView):
             return frame, "lock"
         if isinstance(child, _UnlockButton):
             return frame, "unlock"
+        if isinstance(child, _TempuiPromoteButton):
+            return frame, "tempui_promote"
         if isinstance(child, _TitleBar):
             return frame, None
         if isinstance(child, _ResizeHandle):

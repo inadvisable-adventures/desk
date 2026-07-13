@@ -20,6 +20,13 @@ class WidgetInfo:
     capabilities: list[str]
     default_size: tuple[int, int] | None
     deprecated: bool = False
+    # Set only for a tempui-DSL-defined custom widget (TODO 91b3f42,
+    # desk.temp_ui's DefineWidget keyword) -- never by _parse_manifest
+    # below, so every widget discovered from a real widgets/<id>/
+    # directory always has this False. Excludes it from the right
+    # -click "Add widget" catalog (see WorkspaceView.contextMenuEvent):
+    # a widget defined this way can only ever be placed via tempui.
+    tempui_only: bool = False
 
 
 def _parse_manifest(manifest_path: Path) -> WidgetInfo:

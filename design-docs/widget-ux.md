@@ -312,6 +312,42 @@ loads unaffected), captured in `_capture_desk_state` and reapplied in
 owns, not routed through the "widget-local storage" mechanism (TODO
 fb76057), which is for the wrapped *content* widget's own data.
 
+### TempUI Custom Widgets and the [TEMPUI] Button
+
+TODO `91b3f42`. The tempui DSL's `DefineWidget` keyword (see
+`desk-temporary-ui.md`'s own section on it, and
+`design-docs/architecture.md`'s Widget Model section) lets an agent
+introduce a brand-new, entirely in-browser (`kind: "html"`) widget kind
+at runtime, with its own new invocation keyword — a form of the tempui
+DSL extending itself. A widget kind defined this way is
+`WidgetInfo.tempui_only=True`: it's filtered out of the catalog handed
+to `WidgetSpawnMenu` at its one construction site
+(`WorkspaceView.contextMenuEvent`), so it never appears in the
+right-click "Add widget" menu — the *only* way to place an instance is
+a later tempui file invoking its keyword.
+
+Every placed instance of such a widget shows a `_TempuiPromoteButton`
+("[TEMPUI]", literal text rather than a single glyph, so it isn't a
+`_TitlebarButton` subclass like the others on this page) among the
+titlebar's usual button row — shown via `WidgetFrame
+.set_tempui_promotable(True)`, set once in `_place_widget` right after
+placement, never toggled back off. `"tempui_promote"` is one more
+`_hit_test_chrome` button kind sharing the same press-then-release-on
+-target click machinery as close/bring-to-front/send-to-back/lock
+/unlock; `WorkspaceView.tempui_promote_requested` fires the click
+through to `DeskWindow._on_tempui_promote_requested`.
+
+Clicking it offers to **promote** the widget: on confirm, its
+definition (label, keyword, base64 HTML, default size) is appended to
+`Desk.custom_widgets` and saved immediately (not deferred to the next
+natural save point), and the tempui file that originally defined it is
+deleted — the `.desk` file becomes the sole remaining source of truth,
+with no re-mounting needed (the served content is cached at the same
+`.desk_temp/custom_widgets/<keyword>/` directory regardless of which
+side is authoritative). Clicking it again on an already-promoted
+instance just shows an informational message — the button itself
+doesn't track visible-vs-hidden state per promotion status.
+
 ### Zoom Control
 
 A `ZoomControl(QWidget)` is a plain child widget of `WorkspaceView

@@ -3,6 +3,8 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from desk.temp_ui import CustomWidgetDefinition
+
 DESK_SUFFIX = ".desk"
 DEFAULT_DESK_NAME = "default" + DESK_SUFFIX
 
@@ -40,6 +42,12 @@ class Desk:
     pan_x: float = 0.0
     pan_y: float = 0.0
     scale: float = 1.0
+    # Promoted tempui-DSL-defined custom widgets (TODO 91b3f42) -- once
+    # a DefineWidget definition is promoted via a placed instance's
+    # [TEMPUI] titlebar button, it's stored here (and the original
+    # .desk_temp definition file removed) so it survives independently
+    # of whatever tempui file originally defined it.
+    custom_widgets: list[CustomWidgetDefinition] = field(default_factory=list)
 
     @property
     def name(self) -> str:
@@ -61,16 +69,39 @@ def discover_desk_files(directory: Path) -> list[Path]:
     return sorted(files, key=lambda p: p.stat().st_mtime, reverse=True)
 
 
+def _load_custom_widget(data: dict) -> CustomWidgetDefinition:
+    size = data.get("default_size")
+    return CustomWidgetDefinition(
+        keyword=data["keyword"],
+        label=data["label"],
+        html_b64=data["html_b64"],
+        default_size=(size["width"], size["height"]) if size else None,
+    )
+
+
 def load_desk(path: Path) -> Desk:
     data = json.loads(path.read_text())
     widgets = [WidgetState(**w) for w in data.get("widgets", [])]
+    custom_widgets = [_load_custom_widget(cw) for cw in data.get("custom_widgets", [])]
     return Desk(
         path=path,
         widgets=widgets,
         pan_x=data.get("pan_x", 0.0),
         pan_y=data.get("pan_y", 0.0),
         scale=data.get("scale", 1.0),
+        custom_widgets=custom_widgets,
     )
+
+
+def _custom_widget_dict(cw: CustomWidgetDefinition) -> dict:
+    return {
+        "keyword": cw.keyword,
+        "label": cw.label,
+        "html_b64": cw.html_b64,
+        "default_size": (
+            {"width": cw.default_size[0], "height": cw.default_size[1]} if cw.default_size else None
+        ),
+    }
 
 
 def desk_state_dict(desk: Desk) -> dict:
@@ -95,6 +126,7 @@ def desk_state_dict(desk: Desk) -> dict:
         "pan_x": desk.pan_x,
         "pan_y": desk.pan_y,
         "scale": desk.scale,
+        "custom_widgets": [_custom_widget_dict(cw) for cw in desk.custom_widgets],
     }
 
 

@@ -530,6 +530,29 @@ Desk widgets, regardless of implementation language, are defined by a
   serving uses `StaticFiles(..., html=True)`, which always serves
   `index.html` specifically; a custom `entry` for `html`-kind isn't
   supported yet.
+- **Tempui-DSL-defined custom widgets** (TODO `91b3f42`) are a third,
+  dynamic way a `kind: "html"` `WidgetInfo` enters the live catalog —
+  no `widgets/<id>/` directory at all. An agent (or any process writing
+  into `.desk_temp/`) can introduce a brand-new widget kind at runtime
+  via the `DefineWidget` tempui DSL keyword (see
+  `desk-temporary-ui.md`'s own "DefineWidget" section): its entire
+  implementation is one self-contained, base64-encoded HTML document
+  (`desk.temp_ui.CustomWidgetDefinition`), decoded to a real directory
+  (`desk.custom_widgets.materialize`, cached under
+  `.desk_temp/custom_widgets/<keyword>/`) and mounted onto the
+  already-running Local Web Server
+  (`ServerHandle.mount_html_widget`) — otherwise rendered exactly like
+  any other `kind: "html"` widget. `WidgetInfo.tempui_only=True`
+  excludes it from the right-click "Add widget" catalog: it can only
+  ever be placed via a later tempui file invoking its own new keyword,
+  never through the ordinary catalog. Its placed instance's `[TEMPUI]`
+  titlebar button offers to promote the definition into the current
+  `.desk` file's own `custom_widgets` list — see `design-docs
+  /widget-ux.md`'s "TempUI Custom Widgets and the [TEMPUI] Button"
+  section for the button itself, and
+  `desk.shell.window.DeskWindow._register_custom_widget` for the
+  registration path shared by both tempui- and `.desk`-file-sourced
+  definitions.
 
 Widgets declare **capabilities** in their manifest; the Desk Bridge only
 grants the Bridge API surface a `kind: "html"` widget actually declared

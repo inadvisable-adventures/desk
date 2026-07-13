@@ -1,3 +1,4 @@
+import logging
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -7,6 +8,7 @@ from pathlib import Path
 from PyQt6.QtCore import QPointF, Qt, QTimer
 from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QWidget
 
+from desk.custom_widgets import materialize
 from desk.desks import DESK_SUFFIX, Desk, WidgetState, desk_state_dict, load_desk, save_desk
 from desk.file_watch import SingleFileWatcher
 from desk.hotreload import HotReloadBroker
@@ -21,17 +23,25 @@ from desk.shell.python_widget import PythonWidgetHost
 from desk.shell.temp_ui_manager import TempUiManager
 from desk.shell.widget_frame import WidgetFrame
 from desk.temp_ui import (
+    CustomWidgetDefinition,
+    DOC_FILENAME,
     MARKDOWN_KEYWORD,
+    RESERVED_TEMPUI_KEYWORDS,
     SCRATCH_KEYWORD,
     TEMP_UI_DIRNAME,
     detect_temp_ui_kind,
+    is_temp_ui_filename,
+    parse_define_widget,
     parse_lightning_round,
     parse_markdown_tempui,
     parse_open_markdown,
     parse_scratch,
     parse_temp_ui,
+    sync_custom_widgets_doc_section,
 )
 from desk.widgets import WidgetInfo, discover_widgets
+
+logger = logging.getLogger(__name__)
 
 QUESTION_WIDGET_ID = "question"
 LIGHTNING_ROUND_WIDGET_ID = "lightning_round"
@@ -134,8 +144,17 @@ class DeskWindow(QMainWindow):
         self.view.widget_close_requested.connect(self._on_widget_close_requested)
         self.view.files_dropped.connect(self._on_files_dropped)
         self.view.paste_requested.connect(self._on_paste_requested)
+        self.view.tempui_promote_requested.connect(self._on_tempui_promote_requested)
         if widgets_dir is not None:
             broker.widget_changed.connect(self._on_widget_changed_refresh_catalog)
+
+        # Tempui-DSL-defined custom widgets (TODO 91b3f42): keyword ->
+        # its CustomWidgetDefinition/source ("tempui" | "desk")/
+        # originating .desk_temp file path (tempui-sourced only, used
+        # to delete it on promotion). See _register_custom_widget.
+        self._custom_widget_definitions: dict[str, CustomWidgetDefinition] = {}
+        self._custom_widget_sources: dict[str, str] = {}
+        self._custom_widget_source_paths: dict[str, Path] = {}
 
         self._temp_ui_manager = TempUiManager()
         self._temp_ui_manager.file_added.connect(self._on_temp_ui_file_added)
@@ -166,6 +185,22 @@ class DeskWindow(QMainWindow):
         # fires on initial load -- see plans/fix-todo-widget-load
         # -regression.md.
         self._refresh_picker()
+        # Registers this Desk's own promoted custom widgets (TODO
+        # 91b3f42) before _provision_temp_ui/_load_desk_widgets below --
+        # doesn't need .desk_temp to exist at all (sourced from the
+        # .desk file itself). _provision_temp_ui now runs before
+        # _load_desk_widgets (matching switch_desk's own, already
+        # -existing ordering below -- this was a harmless asymmetry
+        # between the two, not an intentional constraint: the one
+        # documented ordering requirement near here is about
+        # _refresh_picker above, unaffected by moving this), so a
+        # still-tempui-sourced (not yet promoted) custom widget's
+        # .desk_temp definition file can be scanned and registered too,
+        # in time for _load_desk_widgets to resolve any already-placed
+        # instance of it.
+        self._register_custom_widgets_from_desk(self.current_desk)
+        self._provision_temp_ui()
+        self._register_custom_widgets_from_desk_temp(self.current_desk.directory)
         self._load_desk_widgets(self.current_desk)
         self.view.set_view_state(
             self.current_desk.pan_x, self.current_desk.pan_y, self.current_desk.scale
@@ -174,7 +209,7 @@ class DeskWindow(QMainWindow):
         current_context.set_temp_ui_write_recorder(self._temp_ui_manager.record_own_write)
         current_context.set_main_window(self)
         current_context.set_widget_path_resolver(self.view.describe_widget_at_global_pos)
-        self._provision_temp_ui()
+        self._sync_tempui_doc()
         self._open_crash_log_widgets()
 
     def _load_desk_widgets(self, desk: Desk) -> None:
@@ -277,6 +312,8 @@ class DeskWindow(QMainWindow):
         if widget_id == CLAUDE_WIDGET_ID:
             self._bind_claude_widget(frame, resume=restore)
         self._bind_external_indicator(frame)
+        if widget_id in self._custom_widget_definitions:
+            frame.set_tempui_promotable(True)
         return frame
 
     def _bind_external_indicator(self, frame: WidgetFrame) -> None:
@@ -540,7 +577,17 @@ class DeskWindow(QMainWindow):
             )
         pan_x, pan_y, scale = self.view.get_view_state()
         return Desk(
-            path=self.current_desk.path, widgets=widget_states, pan_x=pan_x, pan_y=pan_y, scale=scale
+            path=self.current_desk.path,
+            widgets=widget_states,
+            pan_x=pan_x,
+            pan_y=pan_y,
+            scale=scale,
+            # Carried over from the current in-memory Desk, not
+            # re-derived from anything on the canvas -- promoted custom
+            # widget definitions (TODO 91b3f42) aren't placed widget
+            # instances themselves, so there's nothing in view._frames
+            # to capture them from.
+            custom_widgets=self.current_desk.custom_widgets,
         )
 
     def get_state_dict(self) -> dict:
@@ -572,6 +619,19 @@ class DeskWindow(QMainWindow):
             return
         self.save_current_desk()
         self.view.clear_widgets()
+        # Custom widget definitions (TODO 91b3f42) are per-Desk-directory
+        # state, unlike the real widgets/ catalog (shared app-wide) --
+        # forget the previous Desk's before registering the new one's,
+        # so a keyword from the Desk being left doesn't linger and
+        # resolve for the new one. The old mounted server route (if
+        # any) is simply orphaned, not actively torn down -- harmless,
+        # since removing it from self._widgets already makes it
+        # unreachable via any placement/dispatch path in this app.
+        for keyword in list(self._custom_widget_definitions):
+            self._widgets.pop(keyword, None)
+        self._custom_widget_definitions.clear()
+        self._custom_widget_sources.clear()
+        self._custom_widget_source_paths.clear()
         new_desk = load_desk(path) if path.is_file() else Desk(path=path)
         self.current_desk = new_desk
         # Set before _provision_temp_ui/_load_desk_widgets below, both
@@ -585,9 +645,12 @@ class DeskWindow(QMainWindow):
         # stays at the end, after add_to_mru -- that's cosmetic, not a
         # construction-time dependency.
         current_context.set_current_desk_directory(new_desk.directory)
+        self._register_custom_widgets_from_desk(new_desk)
         self._provision_temp_ui(provisioning)
+        self._register_custom_widgets_from_desk_temp(new_desk.directory)
         self._load_desk_widgets(new_desk)
         self.view.set_view_state(new_desk.pan_x, new_desk.pan_y, new_desk.scale)
+        self._sync_tempui_doc()
         add_to_mru(path)
         self._refresh_picker()
 
@@ -789,9 +852,13 @@ class DeskWindow(QMainWindow):
             self.view.centerOn(proxy.sceneBoundingRect().center())
 
     def _on_temp_ui_file_added(self, path: Path) -> None:
+        if self._handle_define_widget_file(path):
+            return
         self._notify_temp_ui(path)
 
     def _on_temp_ui_file_edited(self, path: Path) -> None:
+        if self._handle_define_widget_file(path):
+            return
         if self._refresh_live_temp_ui(path):
             return
         self._notify_temp_ui(path)
@@ -830,7 +897,7 @@ class DeskWindow(QMainWindow):
         text = f"New question: {path.name}"
         try:
             content_text = path.read_text()
-            kind = detect_temp_ui_kind(content_text)
+            kind = detect_temp_ui_kind(content_text, self._custom_widget_definitions.keys())
             if kind == "lightning_round":
                 lr_doc = parse_lightning_round(content_text)
                 if lr_doc.prompt or lr_doc.name:
@@ -847,6 +914,10 @@ class DeskWindow(QMainWindow):
                 parsed = parse_markdown_tempui(content_text)
                 if parsed and parsed[0]:
                     text = f"Markdown: {parsed[0]}"
+            elif kind.startswith("custom:"):
+                definition = self._custom_widget_definitions.get(kind.split(":", 1)[1])
+                if definition is not None:
+                    text = f"New {definition.label}"
             else:
                 doc = parse_temp_ui(content_text)
                 if doc.question:
@@ -863,7 +934,7 @@ class DeskWindow(QMainWindow):
         file can't be read (e.g. TOCTOU: deleted between the watcher
         firing and this running)."""
         try:
-            kind = detect_temp_ui_kind(path.read_text())
+            kind = detect_temp_ui_kind(path.read_text(), self._custom_widget_definitions.keys())
         except OSError:
             kind = "question"
         if kind == "lightning_round":
@@ -872,6 +943,8 @@ class DeskWindow(QMainWindow):
             return MARKDOWN_WIDGET_ID
         if kind == "scratch":
             return SCRATCH_WIDGET_ID
+        if kind.startswith("custom:"):
+            return kind.split(":", 1)[1]
         return QUESTION_WIDGET_ID
 
     def _activate_temp_ui(self, path: Path) -> None:
@@ -924,6 +997,9 @@ class DeskWindow(QMainWindow):
 
     def _warn(self, title: str, message: str) -> None:
         QMessageBox.warning(self, title, message)
+
+    def _info(self, title: str, message: str) -> None:
+        QMessageBox.information(self, title, message)
 
     def _warn_with_selectable_text(self, title: str, message: str) -> None:
         """Like _warn, but the message text is selectable/copyable --
@@ -1040,6 +1116,163 @@ class DeskWindow(QMainWindow):
         destination.write_text(source.read_text())
         destination.chmod(0o755)
 
+    # -- TempUI-defined custom widgets (TODO 91b3f42) --------------------
+
+    def _register_custom_widget(self, definition: CustomWidgetDefinition, source: str) -> bool:
+        """Registers a tempui-DSL-defined custom widget kind: decodes
+        its base64 HTML to a real directory (desk.custom_widgets
+        .materialize), adds a `kind: "html"` WidgetInfo to the live
+        catalog, and mounts it on the already-running Local Web Server
+        -- the same three steps regardless of whether `definition` came
+        from a .desk_temp DefineWidget file (source="tempui") or this
+        Desk's own saved .desk file (source="desk"). Refuses (logs,
+        returns False, doesn't raise) to shadow a built-in DSL keyword
+        or an existing widget catalog id from a *different* source --
+        matching this DSL's general "unrecognized/conflicting input is
+        ignored" posture. Re-registering the same keyword from the
+        *same* source (e.g. a DefineWidget file being edited) just
+        refreshes it in place."""
+        keyword = definition.keyword
+        if keyword in RESERVED_TEMPUI_KEYWORDS:
+            logger.warning("Refusing to register custom widget %r: a reserved DSL keyword", keyword)
+            return False
+        existing_source = self._custom_widget_sources.get(keyword)
+        if existing_source is None and keyword in self._widgets:
+            logger.warning("Refusing to register custom widget %r: shadows an existing widget id", keyword)
+            return False
+        if existing_source is not None and existing_source != source:
+            logger.warning(
+                "Custom widget %r already registered from %r; ignoring redefinition from %r",
+                keyword,
+                existing_source,
+                source,
+            )
+            return False
+
+        directory = materialize(self.current_desk.directory / TEMP_UI_DIRNAME, definition)
+        if directory is None:
+            return False
+        info = WidgetInfo(
+            id=keyword,
+            path=directory,
+            kind="html",
+            name=definition.label,
+            entry="index.html",
+            capabilities=[],
+            default_size=definition.default_size,
+            tempui_only=True,
+        )
+        self._widgets[keyword] = info
+        self._custom_widget_definitions[keyword] = definition
+        self._custom_widget_sources[keyword] = source
+        self._handle.mount_html_widget(keyword, directory, info)
+        self.view.set_widget_catalog(self._widgets)
+        return True
+
+    def _register_custom_widgets_from_desk(self, desk: Desk) -> None:
+        """Registers every custom widget already promoted into `desk`'s
+        own saved .desk file (TODO 91b3f42) -- "registered just like
+        built-in widgets," at startup and on Desk switch."""
+        for definition in desk.custom_widgets:
+            self._register_custom_widget(definition, source="desk")
+
+    def _register_custom_widgets_from_desk_temp(self, directory: Path) -> None:
+        """Scans `directory/.desk_temp` for any not-yet-promoted
+        DefineWidget tempui files and registers each (TODO 91b3f42) --
+        a no-op if `.desk_temp` doesn't exist (nothing provisioned, or
+        the user declined to create it). Runs at startup and on Desk
+        switch, after _provision_temp_ui, so a still-tempui-sourced
+        custom widget's own catalog entry is ready before
+        _load_desk_widgets tries to resolve any already-placed instance
+        of it."""
+        temp_dir = directory / TEMP_UI_DIRNAME
+        if not temp_dir.is_dir():
+            return
+        for path in sorted(temp_dir.iterdir()):
+            if not path.is_file() or not is_temp_ui_filename(path.name):
+                continue
+            try:
+                text = path.read_text()
+            except OSError:
+                continue
+            if detect_temp_ui_kind(text) != "define_widget":
+                continue
+            definition = parse_define_widget(text)
+            if definition is None:
+                continue
+            if self._register_custom_widget(definition, source="tempui"):
+                self._custom_widget_source_paths[definition.keyword] = path
+
+    def _handle_define_widget_file(self, path: Path) -> bool:
+        """Returns True if `path` is a DefineWidget tempui file (TODO
+        91b3f42) -- handled entirely here (register + doc sync), never
+        as an openable widget notification, since a widget *type*
+        definition has nothing to open. Called first from both
+        _on_temp_ui_file_added/_on_temp_ui_file_edited; False for
+        anything else, so the caller falls through to the normal
+        notify/live-refresh flow."""
+        try:
+            text = path.read_text()
+        except OSError:
+            return False
+        if detect_temp_ui_kind(text) != "define_widget":
+            return False
+        definition = parse_define_widget(text)
+        if definition is None:
+            return False
+        if self._register_custom_widget(definition, source="tempui"):
+            self._custom_widget_source_paths[definition.keyword] = path
+            self._sync_tempui_doc()
+        return True
+
+    def _sync_tempui_doc(self) -> None:
+        """Keeps desk-temporary-ui.md's dynamic custom-widgets section
+        current (TODO 91b3f42) -- called at startup, on Desk switch,
+        and whenever a new DefineWidget item is registered live. A
+        no-op if the doc doesn't exist yet at all (e.g. the user
+        declined to create .desk_temp) -- see
+        desk.temp_ui.sync_custom_widgets_doc_section."""
+        doc_path = self.current_desk.directory / TEMP_UI_DIRNAME / DOC_FILENAME
+        entries = [
+            (definition, self._custom_widget_sources.get(keyword, "tempui"))
+            for keyword, definition in self._custom_widget_definitions.items()
+        ]
+        sync_custom_widgets_doc_section(doc_path, entries)
+
+    def _on_tempui_promote_requested(self, frame: WidgetFrame) -> None:
+        """The [TEMPUI] titlebar button's handler (TODO 91b3f42): on
+        confirm, saves the widget's definition permanently into the
+        current .desk file, removes the original DefineWidget tempui
+        file (the .desk file becomes the sole remaining source of
+        truth), and re-syncs the doc. No re-mounting is needed --
+        materialize always regenerates the same shared
+        .desk_temp/custom_widgets/<keyword>/ cache directory regardless
+        of source, so the already-mounted server route keeps serving
+        the exact same content uninterrupted; only which side is
+        authoritative changes."""
+        if not isinstance(frame.content, ChromiumWidget):
+            return
+        keyword = frame.content.widget_id
+        definition = self._custom_widget_definitions.get(keyword)
+        if definition is None:
+            return
+        if self._custom_widget_sources.get(keyword) == "desk":
+            self._info("Already part of the Desk", f"“{definition.label}” is already saved in this Desk.")
+            return
+        if not self._confirm_fn(
+            "Promote to Desk",
+            f"Save “{definition.label}” permanently in this Desk, and remove its "
+            "definition from tempui?",
+        )():
+            return
+        self.current_desk.custom_widgets.append(definition)
+        self._custom_widget_sources[keyword] = "desk"
+        self.save_current_desk()
+        source_path = self._custom_widget_source_paths.pop(keyword, None)
+        if source_path is not None and source_path.is_file():
+            source_path.unlink()
+        self._sync_tempui_doc()
+
     def _on_rename_requested(self) -> None:
         name = self._prompt_fn(
             "Rename Desk", "New name for this Desk:", self.current_desk.name
@@ -1139,6 +1372,19 @@ class DeskWindow(QMainWindow):
         widget_ids) live: a directory added/removed/changed under
         widgets_dir has no effect until this re-runs discover_widgets() --
         see plans/generalized-hot-reload.md. Cheap: a handful of small
-        widget.json reads, on every debounced widget-changed event."""
+        widget.json reads, on every debounced widget-changed event.
+
+        discover_widgets only ever scans the real widgets_dir, so it
+        knows nothing about tempui-DSL-defined custom widgets (TODO
+        91b3f42) -- snapshot their current catalog entries first and
+        merge them back in, or a hot-reload triggered by an unrelated
+        real widget's own source change would otherwise silently drop
+        every custom widget from the live catalog."""
+        custom_entries = {
+            keyword: self._widgets[keyword]
+            for keyword in self._custom_widget_definitions
+            if keyword in self._widgets
+        }
         self._widgets = discover_widgets(self._widgets_dir)
+        self._widgets.update(custom_entries)
         self.view.set_widget_catalog(self._widgets)
