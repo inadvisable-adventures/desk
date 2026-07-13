@@ -1766,3 +1766,11 @@ e57ce5f. COMPLETED: It's probably time to split out the tempui md file into mult
    context for each one that the agent can understand the use cases
    without opening them.
    [planned: fix-claude-prompt-tempui-links-wording.md]
+4ab5875. COMPLETED: widgets/hex_flower (another Claude instance's port of
+   ../../claude-projects/hexsheet's hexflower sheet item) renders a
+   blank page when run locally. Investigate what is failing and write
+   a DESK_FEEDBACK-[timestamp].md file with suggestions for how to (a)
+   update the documentation so that similar issues do not happen in
+   the future, and (b) make additional improvements to the tempui
+   widget feature to help this kind of work go better in the future.
+   [planned: investigate-hex-flower-blank-page.md]
