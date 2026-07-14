@@ -774,3 +774,38 @@ placed via `setItemWidget`. Instead, give the specific child widget
 that needs to respond its own signal for the interaction (e.g. a small
 `QLabel` subclass overriding `mouseDoubleClickEvent` to emit a
 `pyqtSignal`, as done here) and connect to that directly.
+
+## A headless `QApplication.processEvents()` loop doesn't reliably run a `deleteLater()`-scheduled deletion, even after many iterations
+
+TODO `6f9c51b`: verifying that `desk.shell.event_broker
+.EventSubscription`'s `destroyed`-triggered cleanup (unsubscribing from
+the event mediator) actually fires when its parent widget is removed,
+a headless test called `parent.deleteLater()` then looped
+`app.processEvents()` up to 20 times with short sleeps in between —
+and the child `EventSubscription` was never actually destroyed
+(`sip.isdeleted()` stayed `False`, `destroyed` never fired, cleanup
+never ran), even though the exact same code path works correctly in
+the real, running app.
+
+`deleteLater()` doesn't delete synchronously — it posts a
+`QEvent.Type.DeferredDelete` event for later. A real app's own running
+event loop (`QApplication.exec()`) processes every posted event kind,
+`DeferredDelete` included, as a matter of course. A synthetic
+`processEvents()` loop in a headless test is not guaranteed to do the
+same — in this environment, plain `processEvents()` calls alone left
+`DeferredDelete` events sitting unprocessed indefinitely, regardless of
+how many iterations or how much sleep was added between them (a
+plausible-looking "just poll longer" fix would not have worked).
+
+The fix: explicitly drain `DeferredDelete` events too, in the same
+loop: `QCoreApplication.sendPostedEvents(None,
+QEvent.Type.DeferredDelete)`, alongside `app.processEvents()`. Once
+added, cleanup fired immediately.
+
+Any headless test that deletes a `QObject` via `deleteLater()` (rather
+than `del`/going out of scope, which Qt handles differently) and then
+asserts something about its destruction — a `destroyed` signal firing,
+a child cleanup running, a parent's child list shrinking — needs this
+explicit drain in the test harness itself, not just `processEvents()`,
+or it will report a false negative that looks exactly like a real bug
+in the code under test.

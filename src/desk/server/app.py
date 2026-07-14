@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from desk.event_mediator import EventMediator
 from desk.shell.bridge import GuiBridge
 from desk.widgets import WidgetInfo, discover_widgets
 
@@ -84,10 +85,29 @@ class SetLocalStorageRequest(BaseModel):
     data: dict
 
 
+class EventNamesRequest(BaseModel):
+    names: list[str]
+
+
+class EventPublishRequest(BaseModel):
+    name: str
+    payload: object = None
+
+
+def _event_dict(event) -> dict:
+    return {
+        "timestamp": event.timestamp,
+        "name": event.name,
+        "sender_instance_id": event.sender_instance_id,
+        "payload": event.payload,
+    }
+
+
 def create_app(
     token: str,
     widgets_dir: Path = DEFAULT_WIDGETS_DIR,
     gui_bridge: GuiBridge | None = None,
+    event_mediator: EventMediator | None = None,
 ) -> FastAPI:
     """Serves only kind:"html" widgets (plus the Bridge API). kind:"python"
     widgets render natively in the Shell and never go through this server —
@@ -154,6 +174,11 @@ def create_app(
         except KeyError as e:
             raise HTTPException(400, f"Unknown widget id: {e}") from e
 
+    def require_mediator() -> EventMediator:
+        if event_mediator is None:
+            raise HTTPException(503, "Event mediator not available")
+        return event_mediator
+
     @app.get("/api/bridge/self/getManifest")
     async def self_get_manifest(widget: WidgetInfo = Depends(require_caller(None))):
         return _widget_info_dict(widget)
@@ -210,6 +235,58 @@ def create_app(
     ):
         closed = await run_on_gui(lambda: gui_bridge.window.close_widget_by_instance_id(body.instance_id))
         return {"closed": closed}
+
+    # --- events (TODO 6f9c51b) -- the mediator-topology message channel:
+    # widgets never talk to each other directly, only ever to the shared
+    # EventMediator, identified by instance id (require_instance_id, not
+    # require_caller's widget-definition id) same as self.*. publish/poll
+    # can block (queue operations), so both run via run_in_executor rather
+    # than inline on the event loop -- subscribe/unsubscribe are cheap
+    # enough (lock + set mutation) to call directly.
+
+    @app.post("/api/bridge/events/subscribe")
+    async def events_subscribe(
+        body: EventNamesRequest,
+        widget: WidgetInfo = Depends(require_caller("events")),
+        instance_id: str = Depends(require_instance_id),
+    ):
+        mediator = require_mediator()
+        for name in body.names:
+            mediator.subscribe(instance_id, name)
+        return {"ok": True}
+
+    @app.post("/api/bridge/events/unsubscribe")
+    async def events_unsubscribe(
+        body: EventNamesRequest,
+        widget: WidgetInfo = Depends(require_caller("events")),
+        instance_id: str = Depends(require_instance_id),
+    ):
+        mediator = require_mediator()
+        for name in body.names:
+            mediator.unsubscribe(instance_id, name)
+        return {"ok": True}
+
+    @app.post("/api/bridge/events/publish")
+    async def events_publish(
+        body: EventPublishRequest,
+        widget: WidgetInfo = Depends(require_caller("events")),
+        instance_id: str = Depends(require_instance_id),
+    ):
+        mediator = require_mediator()
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, mediator.publish, body.name, body.payload, instance_id)
+        return {"ok": True}
+
+    @app.get("/api/bridge/events/poll")
+    async def events_poll(
+        timeout: float = 25.0,
+        widget: WidgetInfo = Depends(require_caller("events")),
+        instance_id: str = Depends(require_instance_id),
+    ):
+        mediator = require_mediator()
+        loop = asyncio.get_event_loop()
+        event = await loop.run_in_executor(None, mediator.poll, instance_id, timeout)
+        return {"event": _event_dict(event) if event is not None else None}
 
     for widget_id, widget in html_widgets.items():
         app.mount(

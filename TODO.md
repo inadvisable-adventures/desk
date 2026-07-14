@@ -1991,21 +1991,91 @@ fc17b55. COMPLETED: Bug: a claude launch prompt built by
    dedicated isolated test.
    [planned: fix-discuss-claude-prompt-file-based-instructions.md]
 
-6f9c51b. Add an event message channel service to Desk, following the
-   "mediator" topology (a component of Desk itself acts as mediator --
-   widgets never talk to each other directly). Via the Bridge API,
-   widgets should be able to register for and receive named messages,
-   and to send named messages. The Bridge API should handle identity
-   details (use the widget's *instance* id, not its widget-definition
-   id). Events are logged by default into a file called
-   MEDIATED-EVENT-LOG.tsv. Also build a python widget to view logged
-   events, with a "live tail" mode and functionality to clear the log
-   (with confirmation). Add a description of the usage of these events
-   to the Bridge API document (the `DefineWidget`/Bridge API section of
-   the tempui docs, `tempui-custom-widgets.md`), following the existing
-   versioning process for updating tempui documents
-   (`TEMPUI_DOC_VERSION` in `src/desk/temp_ui.py`).
-   **Prioritized ahead of all other items** (there are currently no
-   other open items, so this is a no-op in practice, but recorded per
+6f9c51b. COMPLETED: Add an event message channel service to Desk,
+   following the "mediator" topology (a component of Desk itself acts
+   as mediator -- widgets never talk to each other directly). Via the
+   Bridge API, widgets should be able to register for and receive
+   named messages, and to send named messages. The Bridge API should
+   handle identity details (use the widget's *instance* id, not its
+   widget-definition id). Events are logged by default into a file
+   called MEDIATED-EVENT-LOG.tsv. Also build a python widget to view
+   logged events, with a "live tail" mode and functionality to clear
+   the log (with confirmation). Add a description of the usage of
+   these events to the Bridge API document (the `DefineWidget`/Bridge
+   API section of the tempui docs, `tempui-custom-widgets.md`),
+   following the existing versioning process for updating tempui
+   documents (`TEMPUI_DOC_VERSION` in `src/desk/temp_ui.py`).
+   **Prioritized ahead of all other items** (there were no other open
+   items at the time, so this was a no-op in practice, but recorded per
    the request).
+
+   Shipped as: a new, Qt-free `desk.event_mediator.EventMediator`
+   (thread-safe via a lock plus one `queue.Queue` per subscribed
+   *instance* id, never the widget-definition id) -- one shared
+   instance for the whole app run, constructed in
+   `desk.server.runner.start_server` alongside the existing
+   `GuiBridge`, and reachable both from the Local Web Server's new
+   `POST/GET /api/bridge/events/{subscribe,unsubscribe,publish,poll}`
+   routes (`events` capability; `poll` is a clamped-to-30s long-poll,
+   not a true WebSocket -- browser `WebSocket` can't attach the custom
+   `X-Desk-*` auth/identity headers every other Bridge route already
+   relies on) for `kind: "html"` widgets, and from `kind: "python"`
+   widgets directly in-process via a new
+   `desk.shell.event_broker.EventSubscription` (a `QTimer`-polled Qt
+   wrapper, never blocking the GUI thread) reached through a new,
+   generically-called `DeskWindow._bind_event_mediator` duck-typed
+   hook (`bind_event_mediator(instance_id, mediator)`, mirroring
+   `_bind_claude_widget`'s existing "resolved after `build()`, not
+   through it" shape -- no widget currently had any way to learn its
+   own instance id from `build()`'s signature alone). The mediator's
+   own `MEDIATED-EVENT-LOG.tsv` (in the current Desk directory, kept in
+   sync via the same `_refresh_picker` choke point
+   `current_context.set_current_desk_directory` already uses) logs
+   every publish regardless of origin, JSON-encoding the payload (which
+   also makes the TSV row safe for free, since `json.dumps` escapes any
+   literal tab/newline inside a string value). The sender never
+   receives its own publish back (a documented, deliberate default, not
+   specified by the request). New `widgets/event_log/`: a read-only
+   `QTableWidget` view of the log, kept fresh by a `SingleFileWatcher`
+   (same reused component the TODO widget already watches `TODO.md`
+   with) regardless of a "Live Tail" toggle, which controls only
+   whether a refresh auto-scrolls to the bottom; a Clear action
+   (`QMessageBox`-confirmed, split into its own headlessly-testable
+   `_confirm_clear` method, matching `CrashLogWidget`'s
+   `_confirm_delete`) routes through the live mediator when one is
+   wired up (reusing its write lock, so it can't race a concurrent
+   publish's own log append) rather than writing the file itself.
+   `tempui-custom-widgets.md` (source: `_CUSTOM_WIDGETS_DOC` in
+   `src/desk/temp_ui.py`) gained a new "Sending and receiving named
+   messages" section describing `desk.events.*`, per the existing
+   `TEMPUI_DOC_VERSION` process (bumped 6 -> 7, so every
+   already-provisioned Desk directory picks up the refreshed doc via
+   the existing `ensure_docs_current` mechanism, not a special case).
+   `design-docs/architecture.md`'s Bridge API section and capability
+   table updated to match.
+
+   Verified headlessly throughout (`QT_QPA_PLATFORM=offscreen`; a real
+   running server via `desk.server.runner.start_server` for the REST
+   surface, since `httpx`/`starlette.testclient` isn't installed --
+   `urllib.request` against the real server instead, arguably closer to
+   the real integration boundary anyway): the mediator core (sender
+   -exclusion, subscribe/unsubscribe/unsubscribe_all/clear_all,
+   non-blocking `drain`, genuinely-blocking `poll` receiving a real
+   cross-thread publish and correctly timing out, tab/newline-safe TSV
+   logging, `clear_log`); the four REST routes end to end including a
+   403 on a missing `events` capability and fully independent
+   subscriptions between two instances of the same widget id;
+   `EventSubscription`'s Qt-signal delivery and its
+   `destroyed`-triggered cleanup; `DeskWindow._bind_event_mediator` end
+   to end via a real `DeskWindow` and a scratch widget (distinct
+   instance ids, cross-instance delivery, sender exclusion, and
+   subscription cleanup on close, all via the real, generic binding
+   path -- no widget-specific code in `window.py`); the Event Log
+   widget's parsing/formatting/live-tail/clear-confirmation behavior,
+   including the lock-safe mediator-routed clear path specifically; a
+   full real-app-shaped boot against this project's own actual
+   `widgets/` directory (all ~20 shipped widgets) placing a real Event
+   Log widget that live-picks-up a real publish landing in a real,
+   on-disk log file; and `ensure_docs_current` refreshing a
+   version-6-stuck doc directory to 7 with the new section present.
    [planned: event-mediator-channel.md]

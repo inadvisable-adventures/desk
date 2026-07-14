@@ -690,6 +690,7 @@ into each Chromium Widget's page via a `QWebEngineScript` at
 | `desk.workspace.getState()` | Read the current Desk's live widget layout | `workspace` |
 | `desk.fs.readFile(path)` / `writeFile(path, contents)` | Filesystem access | `fs` |
 | `desk.widgets.list()` / `open(widgetId, opts)` / `close(instanceId)` | Manage widget instances | `widgets` |
+| `desk.events.subscribe(names)` / `unsubscribe(names)` / `publish(name, payload)` / `onMessage(callback)` | Send/receive named messages via Desk's own mediator (TODO `6f9c51b`) | `events` |
 | `desk.self.getManifest()` | A widget introspecting its own manifest | none |
 | `desk.self.getLocalStorage()` / `setLocalStorage(data)` | Persist/restore this *instance's* own state across a Desk reload (TODO `5734529`) | none |
 
@@ -742,11 +743,25 @@ nothing in the codebase had before this — `WidgetState`/`WidgetFrame` now
 carry a short `instance_id` (generated at placement time, persisted,
 backward-compatible with `.desk` files saved before it existed).
 
-**No WebSocket/push channel yet** (`onStateChange()`-style
-subscriptions) — deferred; see `plans/desk-bridge-api.md`'s Scope section.
-None of the implemented calls are inherently streaming, and the strongest
-originally-cited case (a Chromium-hosted Console widget streaming PTY
-output) is moot now that the Console widget resolved native-Qt.
+**Still no true WebSocket/push channel** (`onStateChange()`-style
+subscriptions) — the original reasoning for deferring one still holds
+(see `plans/desk-bridge-api.md`'s Scope section: none of
+workspace/fs/widgets/self are inherently streaming, and the strongest
+originally-cited case, a Chromium-hosted Console widget streaming PTY
+output, is moot now that the Console widget resolved native-Qt). `events`
+(TODO `6f9c51b`) is the first Bridge API capability with a genuine push
+shape, but it's delivered via a long-polled REST route
+(`GET /api/bridge/events/poll`, clamped server-side to 30s), not the
+existing `/ws` echo endpoint — a real `WebSocket` handshake can't attach
+the custom `X-Desk-*` headers `require_caller`/`require_instance_id`
+already rely on for every other route (only cookies/query-string are
+available at handshake time), so reusing REST plus those two existing
+dependencies unchanged won this over a bespoke WebSocket auth path. See
+`desk.event_mediator`/`plans/event-mediator-channel.md` for the
+mediator-pattern pub/sub core this sits on top of, shared unchanged by
+`kind: "python"` widgets via direct import
+(`desk.shell.event_broker.EventSubscription`) rather than this REST
+surface.
 
 ## Security Considerations
 

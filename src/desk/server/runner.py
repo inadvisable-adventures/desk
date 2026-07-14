@@ -9,6 +9,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from desk.event_mediator import EventMediator
 from desk.server.app import DEFAULT_WIDGETS_DIR, create_app
 from desk.shell.bridge import GuiBridge
 from desk.widgets import WidgetInfo, discover_widgets
@@ -27,6 +28,7 @@ class ServerHandle:
     token: str
     widgets: dict[str, WidgetInfo]  # kind:"html" widgets served by this server
     gui_bridge: GuiBridge
+    event_mediator: EventMediator
     _server: uvicorn.Server
     _thread: threading.Thread
     _app: FastAPI
@@ -68,7 +70,13 @@ def start_server(
     port = _free_port()
     token = secrets.token_urlsafe(32)
     gui_bridge = GuiBridge()  # must be constructed on the GUI thread -- see desk.shell.bridge
-    app = create_app(token, widgets_dir=widgets_dir, gui_bridge=gui_bridge)
+    # Unlike GuiBridge, EventMediator has no GUI-thread requirement (it's
+    # plain-Python/thread-safe, see desk.event_mediator) -- constructed
+    # here anyway, once for the whole app run, so both this server and
+    # DeskWindow (via ServerHandle.event_mediator) share the exact same
+    # instance, the same "one shared mediator" shape GuiBridge itself uses.
+    event_mediator = EventMediator()
+    app = create_app(token, widgets_dir=widgets_dir, gui_bridge=gui_bridge, event_mediator=event_mediator)
 
     config = uvicorn.Config(app, host=host, port=port, log_level="warning")
     server = uvicorn.Server(config)
@@ -98,6 +106,7 @@ def start_server(
         token=token,
         widgets=html_widgets,
         gui_bridge=gui_bridge,
+        event_mediator=event_mediator,
         _server=server,
         _thread=thread,
         _app=app,

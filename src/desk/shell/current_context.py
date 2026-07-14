@@ -38,12 +38,26 @@ tempui `DiscussParkingLotItem` keyword (TODO c0875bc) -- see
 `desk.shell.window.DeskWindow.start_discussion`. Its optional third
 argument (`parking_lot_line`, TODO 624ff3a) lets a caller that already
 knows a PARKINGLOT.md item's starting line reference it that way
-instead of passing the item's full text."""
+instead of passing the item's full text.
+
+Also holds an "event mediator" hook (TODO 6f9c51b), same shape again:
+lets a `python` widget reach the shared `desk.event_mediator
+.EventMediator` instance directly (no HTTP, matching every other
+python-widget-facing capability here) -- though a widget wanting to
+subscribe/receive should generally go through
+`desk.shell.event_broker.EventSubscription` (a Qt-friendly wrapper)
+rather than calling the mediator's own blocking `poll()` directly from
+the GUI thread. See `desk.shell.window.DeskWindow._bind_event_mediator`
+for how a widget's own instance id reaches it (the same
+"resolved after `build()`, not through it" shape `_bind_claude_widget`
+already established)."""
 from collections.abc import Callable
 from pathlib import Path
 
 from PyQt6.QtCore import QPoint
 from PyQt6.QtWidgets import QWidget
+
+from desk.event_mediator import EventMediator
 
 _current_directory: Path | None = None
 _widget_opener: Callable[[str], QWidget | None] | None = None
@@ -51,6 +65,7 @@ _temp_ui_write_recorder: Callable[[Path, str], None] | None = None
 _main_window: QWidget | None = None
 _widget_path_resolver: Callable[[QPoint], str | None] | None = None
 _discuss_starter: Callable[[str, str, int | None], None] | None = None
+_event_mediator: EventMediator | None = None
 
 
 def set_current_desk_directory(directory: Path) -> None:
@@ -120,3 +135,12 @@ def set_discuss_starter(starter: Callable[[str, str, int | None], None]) -> None
 
 def get_discuss_starter() -> Callable[[str, str, int | None], None] | None:
     return _discuss_starter
+
+
+def set_event_mediator(mediator: EventMediator) -> None:
+    global _event_mediator
+    _event_mediator = mediator
+
+
+def get_event_mediator() -> EventMediator | None:
+    return _event_mediator

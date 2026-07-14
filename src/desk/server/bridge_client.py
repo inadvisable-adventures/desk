@@ -37,6 +37,34 @@ BRIDGE_CLIENT_TEMPLATE = """
     return response.json();
   }
 
+  // events.onMessage (TODO 6f9c51b): a long-poll loop, started lazily by
+  // the first onMessage call and left running for the page's lifetime --
+  // there's no offMessage in this first cut, since the whole page (and
+  // its in-flight fetch) is torn down when the widget closes, so there's
+  // nothing to leak in the common case.
+  const eventListeners = [];
+  let polling = false;
+
+  async function pollEvents() {
+    if (polling) return;
+    polling = true;
+    while (eventListeners.length > 0) {
+      let event = null;
+      try {
+        ({ event } = await call("GET", "/api/bridge/events/poll?timeout=25"));
+      } catch (e) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        continue;
+      }
+      if (event) {
+        for (const listener of eventListeners) {
+          listener(event.name, event.payload, event.sender_instance_id);
+        }
+      }
+    }
+    polling = false;
+  }
+
   window.desk = {
     workspace: {
       getState: () => call("GET", "/api/bridge/workspace/getState"),
@@ -53,6 +81,15 @@ BRIDGE_CLIENT_TEMPLATE = """
         call("POST", "/api/bridge/widgets/open", { widget_id: widgetId, ...(opts || {}) }),
       close: (instanceId) =>
         call("POST", "/api/bridge/widgets/close", { instance_id: instanceId }),
+    },
+    events: {
+      subscribe: (names) => call("POST", "/api/bridge/events/subscribe", { names }),
+      unsubscribe: (names) => call("POST", "/api/bridge/events/unsubscribe", { names }),
+      publish: (name, payload) => call("POST", "/api/bridge/events/publish", { name, payload }),
+      onMessage: (callback) => {
+        eventListeners.push(callback);
+        pollEvents();
+      },
     },
     self: {
       getManifest: () => call("GET", "/api/bridge/self/getManifest"),

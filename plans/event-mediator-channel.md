@@ -1,4 +1,4 @@
-# Event message channel service (mediator topology)
+# COMPLETED: Event message channel service (mediator topology)
 
 TODO `6f9c51b`.
 
@@ -220,13 +220,15 @@ contract.
 
 - Resolves its log path the same way the TODO widget resolves
   `TODO.md`: `current_context.get_current_desk_directory() /
-  desk.event_mediator.LOG_FILENAME`. Does **not** go through the live
-  `EventMediator` instance for reading/clearing — it reads/truncates
-  the TSV file directly, the same "just read/write the well-known
-  file" shape the TODO/Parking Lot/Questions widgets already use. This
-  keeps it decoupled from whether a mediator happens to be wired up at
-  all, and matches how none of those other file-backed widgets go
-  through some other live in-memory owner either.
+  desk.event_mediator.LOG_FILENAME`. Reads/live-tails the TSV file
+  directly (the same "just read the well-known file" shape the
+  TODO/Parking Lot/Questions widgets already use) — but Clear routes
+  through the live `EventMediator` (`current_context
+  .get_event_mediator()`) rather than writing the file itself, since
+  `EventMediator.clear_log()` already holds the same lock a concurrent
+  publish's file append uses (see Status: a refinement made during
+  implementation, not the original plan here). Falls back to a direct
+  truncating write only if no mediator happens to be wired up.
 - Display: a read-only `QTableWidget` (Timestamp / Event / Sender /
   Payload columns), parsed via `csv.reader(..., delimiter="\t")`
   (skip the header row), the same tabular-display building block the
@@ -369,4 +371,91 @@ function/`TestClient` tests otherwise):
 
 ## Status
 
-Not yet implemented — plan written first per `development-process.md`.
+Implemented as designed above. One small, deliberate refinement made
+during implementation, not in the original design: the Event Log
+widget's Clear action goes through the live `EventMediator` (via
+`current_context.get_event_mediator()`) when one is wired up, rather
+than always writing the file directly — `EventMediator.clear_log()`
+already holds the same `_log_lock` a concurrent `publish()`'s file
+append uses, so routing Clear through it avoids a possible torn/
+interleaved write; a direct-write fallback remains for the (untested
+-in-production) case of no mediator being available at all. Reading/
+live-tailing still reads the file directly, unaffected.
+
+Verified headlessly (`QT_QPA_PLATFORM=offscreen` throughout; a real
+`QApplication`/`QTimer` for every Qt-involving piece, a real running
+uvicorn server — via `desk.server.runner.start_server` — for the REST
+surface, since `httpx` isn't installed and `starlette.testclient`
+requires it; `urllib.request` against the real server instead, which
+is arguably a more realistic check anyway):
+
+- `EventMediator` core: sender never receives its own publish;
+  subscribe/unsubscribe/unsubscribe_all/clear_all all correctly gate
+  delivery; `drain` is non-blocking and empties correctly; `poll`
+  genuinely blocks (confirmed via elapsed-time assertions) and
+  correctly receives a publish from a real second thread, and times
+  out correctly when nothing arrives; the log file gets a header plus
+  one well-formed TSV row per publish, including a payload containing
+  a literal tab and newline (confirmed it round-trips through
+  `parse_log` intact and never produces a malformed >4-field row); a
+  non-JSON-serializable payload doesn't crash publish/logging;
+  `clear_log` leaves exactly the header, and a publish afterward
+  appends correctly with no duplicate header.
+- Bridge API REST routes, against a real running server: subscribe →
+  publish from a second simulated instance → poll returns it, with the
+  correct sender instance id; sender excluded from its own publish
+  over the real REST path too; two instances of the *same* widget id
+  have fully independent subscriptions; unsubscribe stops delivery;
+  missing `events` capability → 403 on both subscribe and publish; a
+  short poll timeout returns promptly rather than hanging.
+- `EventSubscription` (the Qt wrapper): a real `QTimer`-driven instance
+  receives a cross-object publish via its Qt signal; its `publish()`
+  convenience method sends with the correct sender instance id; its
+  `destroyed`-triggered cleanup genuinely calls `unsubscribe_all` (this
+  needed `QCoreApplication.sendPostedEvents(None,
+  QEvent.Type.DeferredDelete)` in the *test* to force a
+  `deleteLater()`-scheduled deletion to actually run within a plain
+  `processEvents()` loop -- a real app's own running event loop handles
+  this natively; not a bug in the implementation, a harness nuance
+  worth recording here in case a future headless test hits the same
+  false negative).
+- `DeskWindow._bind_event_mediator`, end to end via a real `DeskWindow`
+  (a scratch `pinger` widget defining `bind_event_mediator`): each
+  placed instance gets its own real, distinct instance id; a publish
+  from one instance is received by a second subscribed instance and
+  not by the sender itself; closing a widget instance removes its
+  subscription from the mediator (via the `destroyed`-signal path, not
+  an explicit call from `window.py`); a publish from the surviving
+  instance after its peer closed doesn't error.
+- `widgets/event_log`: parses an existing on-disk log on construction;
+  a `null` payload renders as an empty cell, a JSON payload renders as
+  compact JSON text (not Python `repr`); cells are non-editable; Live
+  Tail defaults on; a real `SingleFileWatcher`-driven external append
+  is picked up live; declining the Clear confirmation leaves the log
+  untouched; confirming it truncates to just the header, both via the
+  no-mediator fallback path and via a real wired-up `EventMediator`
+  (confirming the lock-safe routing refinement above actually takes
+  that path when available).
+- A full, real-app-shaped boot: a genuine `DeskWindow` constructed
+  against this project's own real `widgets/` directory (all ~20
+  shipped widgets, not a scratch fixture) confirms `event_log` is
+  discovered in the real catalog, places without error, resolves its
+  log path against a real scratch Desk directory, and live-picks-up a
+  publish that lands in a real, on-disk `MEDIATED-EVENT-LOG.tsv`.
+- `ensure_docs_current`: a doc directory stuck at version 6 gets
+  refreshed to 7, with `tempui-custom-widgets.md`'s freshly-rewritten
+  content containing the new "Sending and receiving named messages"
+  section, `desk.events.subscribe`, and the documented sender
+  -exclusion rule.
+- Full import-chain sanity check (`desk.app`, `desk.server.app`,
+  `desk.server.runner`, `desk.shell.window`, `desk.shell.event_broker`,
+  `desk.shell.current_context`, `desk.event_mediator`) -- no circular
+  -import regressions from the new modules' placement.
+
+No browser/`kind: "html"` widget step was skipped -- the REST surface
+was exercised against a real running server exactly as a real Chromium
+widget's injected JS client would call it (same headers, same routes),
+which is the actual integration boundary; a literal `QWebEngineView`
+loading the injected `desk.events.*` JS wasn't additionally driven, on
+the same "unnecessary once the real boundary is already covered"
+reasoning past plans in this codebase have used for the REST layer.

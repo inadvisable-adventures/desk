@@ -35,7 +35,10 @@ GITIGNORE_COMMENT = "# Desk-specific"
 # of tempui-*.md files (SPLIT_DOC_CONTENT below), not just this one --
 # bump it for a meaningful change to any of them, and don't add a
 # separate version note to any split file (there isn't one to add).
-TEMPUI_DOC_VERSION = 6
+#
+# TODO 6f9c51b: bumped 6 -> 7 for a new "Sending and receiving named
+# messages" section in _CUSTOM_WIDGETS_DOC (the events capability).
+TEMPUI_DOC_VERSION = 7
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -415,9 +418,58 @@ declaring the matching capability in your own manifest, unlike the
   (capability `fs`) — read/write an arbitrary file on disk.
 - `desk.widgets.list()` / `.open(widgetId, opts)` / `.close(instanceId)`
   (capability `widgets`) — inspect/manage placed widget instances.
+- `desk.events.subscribe(names)` / `.unsubscribe(names)` /
+  `.publish(name, payload)` / `.onMessage(callback)` (capability
+  `events`) — send and receive named messages to/from other widgets.
+  See "Sending and receiving named messages" below.
 
 The calls above are almost always all a `DefineWidget` widget actually
 needs.
+
+## Sending and receiving named messages
+
+Desk has its own built-in event message channel: a **mediator**
+(a component of Desk itself) that every widget talks to instead of ever
+talking to another widget directly. This is how one widget can tell
+another "something happened" without either needing to know the other
+exists.
+
+- `desk.events.subscribe(names)` → `{ ok: true }` — `names` is an array
+  of message names (arbitrary strings you and whatever you want to
+  talk to agree on, e.g. `"todo.item_added"`) you want to receive.
+- `desk.events.unsubscribe(names)` → `{ ok: true }` — stop receiving
+  the given names.
+- `desk.events.publish(name, payload)` → `{ ok: true }` — sends a named
+  message to every *other* widget instance currently subscribed to
+  `name`. `payload` is any JSON-serializable value (or omit it for
+  `null`). **You never receive your own publish back**, even if you're
+  also subscribed to the same name — this avoids a widget accidentally
+  reacting to its own message.
+- `desk.events.onMessage(callback)` — registers `callback(name,
+  payload, senderInstanceId)`, called for every message you're
+  currently subscribed to, for as long as your widget's page stays
+  open. Call `subscribe` first, then `onMessage`; there's no way to
+  unregister a single callback in this first version (your whole page,
+  and its polling, is torn down when the widget closes).
+
+Identity here is always your widget's own **instance** id — the one
+specific placed copy of your widget, not "your widget's `keyword`/type"
+— the same identity `self.getLocalStorage`/`setLocalStorage` already
+use per instance. If two instances of the same widget kind are both
+placed, they have entirely independent subscriptions.
+
+Every published message (regardless of which widget sent or received
+it) is logged to `MEDIATED-EVENT-LOG.tsv` in the current Desk's
+directory — a plain, tab-separated `timestamp / event_name /
+sender_instance_id / payload` history of everything sent over the
+channel, viewable live in Desk's built-in **Event Log** widget (which
+also has a "clear the log" action, with confirmation).
+
+`kind: "python"` widgets can use this same channel too, just not
+through this JS API — they get it via a direct Python import instead
+(`desk.shell.event_broker.EventSubscription`), the same "REST for html
+widgets, direct Python for python widgets" split every other Bridge API
+capability already follows.
 """
 
 _DISCUSS_PARKING_LOT_ITEM_DOC = """# TempUI DSL: DiscussParkingLotItem

@@ -163,6 +163,14 @@ class DeskWindow(QMainWindow):
         # _bind_widget_local_storage.
         self._html_widget_local_storage: dict[str, dict] = {}
 
+        # The event mediator message channel (TODO 6f9c51b) -- the same
+        # instance the Local Web Server's Bridge API routes already use
+        # (constructed once in desk.server.runner.start_server, shared via
+        # handle.event_mediator), so a publish from a kind:"html" widget
+        # and a subscribe from a kind:"python" widget go through the exact
+        # same mediator. See _bind_event_mediator/_refresh_picker below.
+        self._event_mediator = handle.event_mediator
+
         self._temp_ui_manager = TempUiManager()
         self._temp_ui_manager.file_added.connect(self._on_temp_ui_file_added)
         self._temp_ui_manager.file_edited.connect(self._on_temp_ui_file_edited)
@@ -217,6 +225,7 @@ class DeskWindow(QMainWindow):
         current_context.set_main_window(self)
         current_context.set_widget_path_resolver(self.view.describe_widget_at_global_pos)
         current_context.set_discuss_starter(self.start_discussion)
+        current_context.set_event_mediator(self._event_mediator)
         self._sync_tempui_doc()
         self._open_crash_log_widgets()
 
@@ -336,6 +345,7 @@ class DeskWindow(QMainWindow):
                 frame, resume=restore, extra_instructions=claude_extra_instructions
             )
         self._bind_external_indicator(frame)
+        self._bind_event_mediator(frame)
         # Only while still tempui-sourced (TODO 6857997) -- once
         # promoted, the widget's [TEMPUI] button has nothing left to
         # offer, so it never shows for a "desk"-sourced instance,
@@ -359,6 +369,23 @@ class DeskWindow(QMainWindow):
             return
         content.external_path_changed.connect(frame.set_external)
         content.refresh_external_path_status()
+
+    def _bind_event_mediator(self, frame: WidgetFrame) -> None:
+        """Wires a freshly-placed python widget to the event mediator
+        message channel (TODO 6f9c51b), duck-typed the same way as
+        _bind_external_indicator: any widget exposing
+        `bind_event_mediator(instance_id, mediator)` gets it called with
+        its own real instance id (never the widget-definition id) and the
+        shared EventMediator instance -- the same "resolved after
+        build(), not through it" shape _bind_claude_widget already
+        established for start_session. A widget that doesn't define this
+        method is simply left alone; publishing/subscribing is opt-in."""
+        if not isinstance(frame.content, PythonWidgetHost):
+            return
+        content = frame.content.current
+        if content is None or not hasattr(content, "bind_event_mediator"):
+            return
+        content.bind_event_mediator(frame.instance_id, self._event_mediator)
 
     def _bind_claude_widget(
         self, frame: WidgetFrame, resume: bool, extra_instructions: str = ""
@@ -722,6 +749,11 @@ class DeskWindow(QMainWindow):
         if frame is None:
             return False
         self.view.remove_widget(frame)
+        # Belt-and-suspenders for kind:"html" widgets specifically (TODO
+        # 6f9c51b): they have no destroyed-signal-based cleanup path the
+        # way a python widget's own EventSubscription does -- harmless
+        # no-op if that already ran first.
+        self._event_mediator.unsubscribe_all(instance_id)
         self.save_current_desk()
         return True
 
@@ -807,6 +839,9 @@ class DeskWindow(QMainWindow):
         # belonged to -- cleared here so it doesn't accumulate stale
         # entries across many Desk switches in one long session.
         self._html_widget_local_storage.clear()
+        # Same reasoning, same spot (TODO 6f9c51b): every subscription
+        # belonged to a frame view.clear_widgets() just destroyed.
+        self._event_mediator.clear_all()
         new_desk = load_desk(path) if path.is_file() else Desk(path=path)
         self.current_desk = new_desk
         # Set before _provision_temp_ui/_load_desk_widgets below, both
@@ -836,6 +871,7 @@ class DeskWindow(QMainWindow):
         if not confirm():
             return
         self.view.remove_widget(frame)
+        self._event_mediator.unsubscribe_all(frame.instance_id)
         self.save_current_desk()
 
     def change_current_desk_directory(self, new_directory: Path, confirm: Confirm | None = None) -> None:
@@ -1225,6 +1261,9 @@ class DeskWindow(QMainWindow):
         # (see desk.shell.current_context, deferred since item 18) in sync
         # with everything else this method already refreshes.
         current_context.set_current_desk_directory(self.current_desk.directory)
+        # Same choke point, for the same reason (TODO 6f9c51b): keeps
+        # MEDIATED-EVENT-LOG.tsv's location in sync with the current Desk.
+        self._event_mediator.set_log_directory(self.current_desk.directory)
 
     def _on_desk_chosen(self, path: Path) -> None:
         """Guards against an MRU entry whose file vanished between the
