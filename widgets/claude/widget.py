@@ -12,7 +12,7 @@ CLAUDE_WIDGET_PROMPT = (
     "further tempui-*.md files (in that same directory) with more "
     "detail on specific capabilities; only open one of those if you "
     "actually need that particular capability (e.g. only read "
-    "tempui-lightning-round.md if you're about to run a lightning "
+    "tempui-lightning-round.md if you are about to run a lightning "
     "round), not unconditionally."
 )
 

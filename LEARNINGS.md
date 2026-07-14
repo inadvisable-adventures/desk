@@ -713,6 +713,37 @@ sees one argument once the whole line is submitted — it says nothing
 about what happens to raw bytes of that string while an interactive
 terminal is still receiving them one at a time.
 
+**Update (TODO `51be2bc`):** the canonical-mode-line-length-limit gap
+flagged but never confirmed above turned out to be real too, and hit
+independently of the `\n` bug TODO `fc17b55` fixed — a *sufficiently
+long single line with no embedded `\n` at all* can still corrupt the
+delivery. Confirmed directly, in isolation (a plain `bash -c 'read
+line'`, no `shlex.quote`/`printf` involved): this environment's PTY
+`termios` canonical-mode line limit (`os.fpathconf(fd, "PC_MAX_CANON")`)
+is exactly 1024 bytes, and writing a single unterminated line longer
+than that gets truncated at exactly that boundary, with every byte past
+it — bell-and-dropped by the kernel's tty driver, *including the line's
+own terminating `\n` if the line is long enough that the `\n` itself
+falls past the 1024-byte mark*. That last part is the trap: it's not
+"the line arrives truncated," it's "the line may never arrive at all,"
+since a `read`/`readline` blocked waiting for a line-ending `\n` has no
+way to know one was ever sent — indistinguishable from the terminal
+just hanging, not misbehaving. A second, independent gap surfaced while
+isolating this: `TerminalWidget.type_into_shell`'s single `os.write` to
+its non-blocking PTY master fd never checked its return value, so a
+short write (confirmed directly: also happens in practice on this fd,
+separately from the 1024-byte canonical-mode limit above) silently
+dropped its own unwritten remainder too. Both are now guarded against
+(`type_into_shell` retries on a short write; the Discuss-launch prompt
+was redesigned to reference a file instead of splicing unbounded
+content into the command line at all, so the command's length no
+longer depends on content length). The actionable lesson: *any* single
+line typed whole into an interactive PTY has a hard, kernel-enforced
+size ceiling regardless of correct quoting or newline-freedom — check
+`PC_MAX_CANON` (`os.fpathconf`) rather than assuming "no `\n`, so it's
+safe," and prefer a bounded, fixed-shape command (e.g. "read this file")
+over inlining anything whose length isn't bounded by the caller.
+
 ## `QListWidget.setItemWidget` content never reaches `itemDoubleClicked` (or any other item-click signal)
 
 TODO `a48e968`: the Parking Lot widget needed each row's title to

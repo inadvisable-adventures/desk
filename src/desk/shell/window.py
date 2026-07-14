@@ -409,8 +409,11 @@ class DeskWindow(QMainWindow):
         this path hasn't shown the same launch problem). Either way, a
         shared trailing instruction tells the new session to have the
         discussion right there instead of starting another new Desk
-        discussion of its own. Returns None (placing nothing) if the
-        "claude" widget kind isn't registered."""
+        discussion of its own -- delivered via a standalone
+        `.desk_temp` instructions file, not spliced into the launch
+        command line itself (TODO 51be2bc, see
+        _write_discuss_instructions_file). Returns None (placing
+        nothing) if the "claude" widget kind isn't registered."""
         widget = self._widgets.get(CLAUDE_WIDGET_ID)
         if widget is None:
             return None
@@ -424,18 +427,14 @@ class DeskWindow(QMainWindow):
             )
         else:
             what = f"an item from {source_label}: {item_text}"
-        # A leading space, not a literal newline -- see TODO fc17b55:
-        # this string is typed, whole, into an interactive PTY's
-        # readline (ClaudeWidget.type_into_shell), where every raw
-        # "\n" byte is treated as pressing Enter regardless of
-        # shell-quote state, breaking the still-open shlex.quote'd
-        # command it's embedded in.
-        instructions = (
-            f" Let's discuss {what}. Have this discussion here, in this "
-            f"session -- don't immediately start a new Desk discussion of your "
-            f"own about it (e.g. by writing another DiscussParkingLotItem tempui "
-            f"file) unless the user explicitly asks you to."
+        instructions_body = (
+            f"Discuss {what}.\n\n"
+            f"Have this discussion here, in this session -- do not "
+            f"immediately start a new Desk discussion of your own about it "
+            f"(for example by writing another DiscussParkingLotItem tempui "
+            f"file) unless the user explicitly asks for that."
         )
+        extra_instructions = self._write_discuss_instructions_file(instructions_body)
         center = self.view.mapToScene(self.view.viewport().rect().center())
         return self._place_widget(
             CLAUDE_WIDGET_ID,
@@ -443,8 +442,36 @@ class DeskWindow(QMainWindow):
             (center.x(), center.y()),
             widget.default_size,
             instance_id=instance_id,
-            claude_extra_instructions=instructions,
+            claude_extra_instructions=extra_instructions,
         )
+
+    def _write_discuss_instructions_file(self, body: str) -> str:
+        """Writes a Discuss session's actual instructions to a
+        standalone file under `.desk_temp`, rather than splicing them
+        into the claude launch command line -- see TODO 51be2bc. A
+        long, hand-written-prose command line typed whole into an
+        interactive PTY in one shot (ClaudeWidget.type_into_shell) is
+        risky regardless of correct shell-quoting (TODO fc17b55/TODO
+        51be2bc): this sidesteps that entirely by keeping the command
+        line itself short and free of any `'` character, no matter how
+        long or apostrophe-heavy the actual discussion content is.
+        Returns the short instruction to splice in instead. The file's
+        name is deliberately not a bare UUID (a random hex token with a
+        prefix and extension instead), so the temp-ui file watcher --
+        which treats any bare-UUID-named file in this directory as a
+        new temp-ui widget, see is_temp_ui_filename -- never mistakes
+        it for one."""
+        directory = current_context.get_current_desk_directory()
+        if directory is None:
+            # No current Desk directory known yet (an edge case, not
+            # the normal path) -- fall back to the old inline approach
+            # rather than crashing the whole widget placement.
+            return f" {body}"
+        temp_dir = directory / TEMP_UI_DIRNAME
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        path = temp_dir / f"discuss-instructions-{uuid.uuid4().hex}.md"
+        path.write_text(body, encoding="utf-8")
+        return f" Read the file at {path} now and follow its instructions for what to discuss and how."
 
     def start_discussion(
         self, source_label: str, item_text: str = "", parking_lot_line: int | None = None

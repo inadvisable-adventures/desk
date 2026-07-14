@@ -1942,3 +1942,51 @@ fc17b55. COMPLETED: Bug: a claude launch prompt built by
    exactly, while the fixed instructions plus the new normalization
    produce a single clean line with no continuation prompt.
    [planned: fix-embedded-newline-breaks-claude-launch-prompt.md]
+
+51be2bc. COMPLETED: Bug: after TODO fc17b55's fix, starting a Parking Lot
+   "Discuss" session still gets stuck -- the shell just sits there, and
+   typing a stray `'` plus Enter is enough to unstick it and launch
+   claude. Root cause confirmed directly (not just the suspected
+   mid-command truncation TODO fc17b55's own investigation flagged but
+   never confirmed): this environment's PTY canonical-mode line limit
+   (`PC_MAX_CANON`) is exactly 1024 bytes, and a single unterminated
+   line longer than that is truncated at that boundary -- critically,
+   including the line's own terminating newline if it falls past the
+   boundary, which leaves a blocked shell `read`/`readline` with no way
+   to ever see a complete line (matching the reported "just sits
+   there" symptom exactly). `_place_discuss_claude_widget`'s
+   apostrophe-heavy hand-written instructions (plus the shared
+   `CLAUDE_WIDGET_PROMPT`, which had one too) made an already-long
+   command line long enough to risk crossing that boundary. Fixed per
+   direct instruction: stop splicing the actual discussion instructions
+   into the command line at all -- `_place_discuss_claude_widget` now
+   writes them to a standalone file under `.desk_temp`
+   (`_write_discuss_instructions_file`) and passes only a short,
+   fixed-shape, apostrophe-free instruction pointing at that file, so
+   the command line's length no longer depends on the discussion
+   content's length at all (confirmed: the real, realistic assembled
+   command is 711 bytes, regardless of how long the referenced file's
+   content is). `CLAUDE_WIDGET_PROMPT`'s own remaining apostrophe was
+   also reworded away. Investigating the exact mechanism also surfaced
+   a second, independent gap in the same delivery path:
+   `TerminalWidget.type_into_shell`'s single `os.write` to a
+   non-blocking PTY master fd never checked how many bytes it actually
+   wrote, silently dropping any unwritten remainder forever -- fixed
+   with a bounded retry loop (defense in depth; it can't rescue a line
+   that's fundamentally longer than the kernel's own line buffer, which
+   is what the file-based redesign actually fixes). Verified
+   headlessly: the built `claude_extra_instructions`/prompt contain no
+   `'` character for either Discuss-launch path, the written file
+   exists with the exact expected content and isn't mistaken for a
+   temp-ui widget file, a real live PTY test directly isolated and
+   confirmed the 1024-byte truncation-eats-the-newline mechanism, and a
+   simulated genuine short-write test confirmed `type_into_shell`'s new
+   retry loop actually recovers a payload the old single-call code
+   would have silently truncated. A clean live before/after repro of
+   the exact original "stuck" symptom via the old apostrophe-heavy
+   command was attempted but didn't reproduce consistently in this
+   session's sandboxed environment (see the plan's Verification section
+   for why) -- a weaker result than a clean repro, though the
+   underlying mechanism is independently confirmed above via a
+   dedicated isolated test.
+   [planned: fix-discuss-claude-prompt-file-based-instructions.md]

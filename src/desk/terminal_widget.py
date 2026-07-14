@@ -2,9 +2,11 @@ import fcntl
 import logging
 import os
 import pty
+import select
 import struct
 import subprocess
 import termios
+import time
 from pathlib import Path
 
 import pyte
@@ -14,6 +16,13 @@ from PyQt6.QtWidgets import QPlainTextEdit
 
 PTY_ROWS = 24
 PTY_COLS = 80
+
+# Bound on how long type_into_shell will retry a short write before giving
+# up and dropping the remainder -- see type_into_shell's own docstring
+# (TODO 51be2bc). Long enough to absorb a real transient short write, short
+# enough not to freeze the GUI thread noticeably for the pathological case
+# where `text` is fundamentally longer than the kernel's own line buffer.
+_TYPE_INTO_SHELL_TIMEOUT_S = 1.0
 
 KEY_BYTES = {
     Qt.Key.Key_Return: b"\r",
@@ -292,11 +301,51 @@ class TerminalWidget(QPlainTextEdit):
         -spawned shell (see the Claude widget) rather than exec-ing it as
         the PTY's own process directly, so the shell's own startup/profile
         (PATH, aliases, etc.) loads first, the same way a user typing at a
-        real terminal would get it."""
-        try:
-            os.write(self._master_fd, text.encode("utf-8"))
-        except OSError:
-            pass
+        real terminal would get it.
+
+        Retries on a short write instead of a single `os.write` call --
+        see TODO 51be2bc. `self._master_fd` is non-blocking (see
+        `__init__`'s `os.set_blocking(self._master_fd, False)`), and a
+        non-blocking `os.write` to a PTY master is free to accept fewer
+        bytes than requested rather than raising, once the kernel's
+        canonical-mode line buffer starts filling up -- confirmed
+        directly (a 4KB write landed only ~1KB before returning). A
+        single unchecked `os.write` silently dropped the unwritten
+        remainder forever: the shell never saw a terminating newline, so
+        it sat with no visible prompt change at all (indistinguishable
+        from "just sitting there"), until a stray manually-typed
+        character plus Enter happened to complete *some* line and get
+        submitted. Retrying here fixes any genuinely transient short
+        write; it does not (cannot) fix a `text` that is fundamentally
+        longer than the kernel's own single-line buffer, since nothing
+        drains that buffer until the shell reads a complete line -- for
+        that case this still eventually gives up after
+        `_TYPE_INTO_SHELL_TIMEOUT_S` and drops the remainder, same as
+        before, which is why callers building long content (e.g. the
+        Claude widget's launch prompt) should keep what they type here
+        short in the first place rather than relying on this retry loop
+        alone."""
+        data = text.encode("utf-8")
+        written = 0
+        deadline = time.monotonic() + _TYPE_INTO_SHELL_TIMEOUT_S
+        while written < len(data):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                logging.warning(
+                    "type_into_shell: timed out after writing %d/%d bytes; dropping the rest",
+                    written,
+                    len(data),
+                )
+                return
+            _, writable, _ = select.select([], [self._master_fd], [], remaining)
+            if not writable:
+                continue
+            try:
+                written += os.write(self._master_fd, data[written:])
+            except BlockingIOError:
+                continue
+            except OSError:
+                return
 
     def _on_readable(self) -> None:
         try:
