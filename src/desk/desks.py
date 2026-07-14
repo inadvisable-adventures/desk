@@ -76,6 +76,11 @@ def _load_custom_widget(data: dict) -> CustomWidgetDefinition:
         label=data["label"],
         html_b64=data["html_b64"],
         default_size=(size["width"], size["height"]) if size else None,
+        # Defaults to [] for a .desk file saved before TODO f693275
+        # added capabilities to CustomWidgetDefinition -- no
+        # "capabilities" key at all there, same as a widget.json with
+        # none declared.
+        capabilities=data.get("capabilities", []),
     )
 
 
@@ -101,6 +106,7 @@ def _custom_widget_dict(cw: CustomWidgetDefinition) -> dict:
         "default_size": (
             {"width": cw.default_size[0], "height": cw.default_size[1]} if cw.default_size else None
         ),
+        "capabilities": cw.capabilities,
     }
 
 

@@ -2080,7 +2080,7 @@ fc17b55. COMPLETED: Bug: a claude launch prompt built by
    version-6-stuck doc directory to 7 with the new section present.
    [planned: event-mediator-channel.md]
 
-f693275. Bug: reported live -- after restarting Desk, the tempui-DSL
+f693275. COMPLETED: Bug: reported live -- after restarting Desk, the tempui-DSL
    -defined `Alice`/`Bob`/`Starter` widgets (built for TODO 6f9c51b) all
    fail with `subscribe failed: ... (400): {"detail":"Unknown widget
    id: 'Alice'"}`. Root cause already flagged in PARKINGLOT.md (the
@@ -2105,4 +2105,32 @@ f693275. Bug: reported live -- after restarting Desk, the tempui-DSL
    single specific fix's own narrow workaround").
    **Prioritized ahead of all other items** (live-blocking a feature
    the user is actively using right now).
+
+   Fixed: `require_caller` (`src/desk/server/app.py`) now falls back
+   to the live, `GuiBridge`-reachable widget catalog (a new
+   `DeskWindow.get_widget_info` accessor) when `discover_widgets
+   (widgets_dir)`'s on-disk scan misses -- resolving every existing
+   capability (`workspace`/`fs`/`widgets`) for a tempui-DSL-defined
+   custom widget, not just `events`. The `DefineWidget` tempui DSL
+   gained a new, repeatable `Capability<TAB>name` line;
+   `CustomWidgetDefinition` carries it through to the `WidgetInfo`
+   `_register_custom_widget` builds (previously always `capabilities=
+   []`), and `.desk`-file persistence round-trips it (defaulting to
+   `[]` for a pre-existing `.desk` file with no such key, so old files
+   keep loading fine). `tempui-custom-widgets.md` documents the new
+   line (`TEMPUI_DOC_VERSION` 7 -> 8); the now-resolved PARKINGLOT.md
+   entry removed. This project's own live `Alice`/`Bob`/`Starter`
+   `DefineWidget` files (`.desk_temp/`, untracked) were edited in place
+   to add `Capability\tevents`, so they'll work again once Desk is
+   restarted (this fix is in `src/desk/**`, which only takes effect on
+   restart, unlike widget source).
+
+   Verified headlessly, including against a real `DeskWindow` + real
+   running server reproducing the exact originally-reported failure
+   (now fixed) alongside a regression check that a custom widget
+   *without* the right capability still correctly 403s, a truly
+   -unknown widget id still 400s, and a real on-disk widget's own fast
+   -path resolution is unaffected. See the plan's Status section for a
+   testing note on a real GuiBridge-threading deadlock hit (and fixed)
+   in the verification script itself, not the implementation.
    [planned: fix-custom-widget-bridge-capability-resolution.md]

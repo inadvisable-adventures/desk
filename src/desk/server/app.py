@@ -139,8 +139,19 @@ def create_app(
     # relevant resource-level capability in its own widget.json.
 
     def require_caller(capability: str | None):
-        def dependency(x_desk_widget_id: str = Header(...)) -> WidgetInfo:
+        async def dependency(x_desk_widget_id: str = Header(...)) -> WidgetInfo:
             widget = discover_widgets(widgets_dir).get(x_desk_widget_id)
+            if widget is None:
+                # Falls back to the live, GuiBridge-reachable widget
+                # catalog (TODO f693275) -- discover_widgets(widgets_dir)
+                # is a pure filesystem scan of the real widgets/
+                # directory, so it can never find a tempui-DSL-defined
+                # custom widget (TODO 91b3f42), whose WidgetInfo only
+                # ever lives in DeskWindow._widgets. A genuinely-missing
+                # gui_bridge/not-yet-attached window still correctly
+                # surfaces run_on_gui's own 503 here, not a misleading
+                # "unknown widget id" 400.
+                widget = await run_on_gui(lambda: gui_bridge.window.get_widget_info(x_desk_widget_id))
             if widget is None:
                 raise HTTPException(400, f"Unknown widget id: {x_desk_widget_id!r}")
             if capability is not None and capability not in widget.capabilities:
@@ -154,13 +165,14 @@ def create_app(
     def require_instance_id(x_desk_instance_id: str = Header(...)) -> str:
         """Identifies the calling *instance*, not just its widget kind
         (TODO 5734529) -- deliberately not layered on require_caller:
-        that looks the caller up via discover_widgets(widgets_dir),
-        which only ever finds real, on-disk widgets/<id>/ directories
-        and would 400 for a tempui-DSL-defined custom widget kind (see
-        PARKINGLOT.md). self.getLocalStorage/setLocalStorage need no
-        broader capability -- a widget can only ever touch its own
-        per-instance storage, the same "not a privileged operation"
-        reasoning self.getManifest already uses."""
+        self.getLocalStorage/setLocalStorage need no broader capability
+        at all -- a widget can only ever touch its own per-instance
+        storage, the same "not a privileged operation" reasoning
+        self.getManifest already uses -- so there's nothing to check
+        here beyond the header itself, regardless of whether
+        require_caller can also resolve a tempui-DSL-defined custom
+        widget (TODO f693275; it couldn't, before that fix -- see
+        PARKINGLOT.md's former entry on this)."""
         return x_desk_instance_id
 
     async def run_on_gui(fn):

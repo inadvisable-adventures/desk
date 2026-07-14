@@ -38,7 +38,11 @@ GITIGNORE_COMMENT = "# Desk-specific"
 #
 # TODO 6f9c51b: bumped 6 -> 7 for a new "Sending and receiving named
 # messages" section in _CUSTOM_WIDGETS_DOC (the events capability).
-TEMPUI_DOC_VERSION = 7
+#
+# TODO f693275: bumped 7 -> 8 for a new `Capability` DefineWidget DSL
+# line in _CUSTOM_WIDGETS_DOC (a DefineWidget widget can now declare
+# Bridge API capabilities, e.g. to use events.*).
+TEMPUI_DOC_VERSION = 8
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -319,6 +323,13 @@ contain spaces:
   else it's listed — never a UUID or the raw `keyword`.
 - `Size<TAB>width<TAB>height` — optional. The new widget kind's default
   placement size in pixels.
+- `Capability<TAB>name` — optional, repeatable. Grants this widget kind
+  a Bridge API capability (`workspace`, `fs`, `widgets`, `events`, ...)
+  — same coarse, resource-level strings a real `widgets/<id>/widget.json`
+  manifest's own `capabilities` list uses. Without this, your widget's
+  JS can only call the always-available `self.*` calls (see "The Desk
+  Bridge API" below) — anything else (including `events.*`) fails with
+  a 403 unless you declare the matching capability here.
 - `Html<TAB>base64-chunk` — the widget's entire implementation: **one
   self-contained HTML document** (inline `<style>`/`<script>` cover
   CSS/JS — there's no separate CSS/JS file), **base64-encoded**. Split
@@ -331,6 +342,7 @@ Example:
 ```
 DefineWidget	KanbanBoard	Kanban Board
 Size	600	400
+Capability	workspace
 Html	PGh0bWw+PGJvZHk+PGgxPkthbmJhbjwvaDE+PC9ib2R5PjwvaHRtbD4=
 ```
 
@@ -665,20 +677,28 @@ class CustomWidgetDefinition:
     `label` is the human-friendly name shown in the UI (never a UUID or
     the raw `keyword`); `html_b64` is the widget's entire
     implementation -- one self-contained, base64-encoded HTML
-    document."""
+    document. `capabilities` (TODO f693275) are the Bridge API
+    capabilities (`"workspace"`, `"fs"`, `"widgets"`, `"events"`, ...)
+    this widget kind is allowed to use -- same coarse, resource-level
+    strings a real `widgets/<id>/widget.json`'s own `capabilities`
+    list already uses; defaults to none declared, same as a manifest
+    with no `capabilities` key."""
 
     keyword: str
     label: str
     html_b64: str
     default_size: tuple[int, int] | None = None
+    capabilities: list[str] = field(default_factory=list)
 
 
 def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
     """Extracts a CustomWidgetDefinition from a DefineWidget temp-UI
     file: `DefineWidget<TAB>keyword<TAB>label` (must be the first
-    line), an optional `Size<TAB>width<TAB>height` line, and one or
-    more `Html<TAB>base64-chunk` lines (concatenated in file order
-    before decoding -- decoding itself happens later, in
+    line), an optional `Size<TAB>width<TAB>height` line, zero or more
+    `Capability<TAB>name` lines (TODO f693275 -- same shape as `Size`,
+    repeatable, collected in file order), and one or more
+    `Html<TAB>base64-chunk` lines (concatenated in file order before
+    decoding -- decoding itself happens later, in
     desk.custom_widgets.materialize, not here). Returns None if the
     file doesn't start with the DefineWidget keyword, has no keyword of
     its own, or has no Html content at all."""
@@ -694,6 +714,7 @@ def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
     label = first[2].strip() if len(first) > 2 else keyword
 
     size: tuple[int, int] | None = None
+    capabilities: list[str] = []
     html_chunks: list[str] = []
     for line in lines[1:]:
         if line.startswith("Size\t"):
@@ -703,13 +724,21 @@ def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
                     size = (int(parts[1]), int(parts[2]))
                 except ValueError:
                     size = None
+        elif line.startswith("Capability\t"):
+            name = line.split("\t", 1)[1].strip()
+            if name:
+                capabilities.append(name)
         elif line.startswith("Html\t"):
             html_chunks.append(line.split("\t", 1)[1])
 
     if not html_chunks:
         return None
     return CustomWidgetDefinition(
-        keyword=keyword, label=label, html_b64="".join(html_chunks), default_size=size
+        keyword=keyword,
+        label=label,
+        html_b64="".join(html_chunks),
+        default_size=size,
+        capabilities=capabilities,
     )
 
 

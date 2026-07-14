@@ -666,6 +666,16 @@ class DeskWindow(QMainWindow):
         (a brand-new widget with nothing to restore), not an error."""
         return self._html_widget_local_storage.get(instance_id, {})
 
+    def get_widget_info(self, widget_id: str) -> WidgetInfo | None:
+        """The Bridge API's `require_caller` fallback (TODO f693275),
+        called via `GuiBridge` from the (background-thread) Local Web
+        Server: `self._widgets` holds both real, on-disk widgets *and*
+        registered tempui-DSL-defined custom widgets (TODO 91b3f42,
+        `_register_custom_widget`), unlike `discover_widgets(widgets_dir)`
+        (a pure filesystem scan), which can never find the latter --
+        see PARKINGLOT.md's former entry on this, now resolved here."""
+        return self._widgets.get(widget_id)
+
     def set_html_widget_local_storage(self, instance_id: str, data: dict) -> None:
         """The Bridge API's `self.setLocalStorage` (TODO 5734529) --
         just updates the in-memory store; like the `python`-kind
@@ -1402,7 +1412,11 @@ class DeskWindow(QMainWindow):
             kind="html",
             name=definition.label,
             entry="index.html",
-            capabilities=[],
+            # TODO f693275: previously always [] -- a DefineWidget
+            # tempui file now has its own Capability line(s), the same
+            # coarse, resource-level capability strings a real
+            # widgets/<id>/widget.json declares.
+            capabilities=definition.capabilities,
             default_size=definition.default_size,
             # Only a still-tempui-sourced widget is excluded from the
             # spawn menu (TODO 6857997/2b2a642) -- once promoted

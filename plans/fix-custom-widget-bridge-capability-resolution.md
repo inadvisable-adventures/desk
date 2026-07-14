@@ -1,4 +1,4 @@
-# Fix: Bridge API can't resolve a tempui-DSL-defined custom widget for any capability check
+# COMPLETED: Fix: Bridge API can't resolve a tempui-DSL-defined custom widget for any capability check
 
 TODO `f693275`.
 
@@ -133,4 +133,57 @@ Headless:
 
 ## Status
 
-Not yet implemented — plan written first per `development-process.md`.
+Implemented as designed above.
+
+Verified headlessly:
+
+- `parse_define_widget`: zero, one, and multiple `Capability` lines all
+  parse correctly (in file order); a blank `Capability` value is
+  skipped rather than appended as an empty string; `Size` still parses
+  fine alongside it.
+- `.desk` round-trip: a promoted custom widget's `capabilities` survive
+  a real save/load cycle intact; loading a `.desk` file with no
+  `capabilities` key at all in a `custom_widgets` entry (pre-TODO
+  shape) defaults to `[]` without raising.
+- Against a real `DeskWindow` + real running server (the same shape as
+  TODO `6f9c51b`'s own verification, extended to actually drive a
+  `GuiBridge`-routed request this time -- see the note below):
+  `get_widget_info` resolves a registered custom widget (and correctly
+  returns `None` for a genuinely unknown one); a custom widget's
+  `WidgetInfo.capabilities` reflect its `Capability` lines instead of
+  the old hardcoded `[]`; **the exact originally-reported failure is
+  gone** — a tempui-DSL custom widget declaring `events` can now call
+  `events.subscribe` (previously a `400`); a custom widget declaring
+  *no* capability still correctly `403`s (confirming this is a real
+  fix, not a blanket bypass); a widget id unknown to *both* the
+  on-disk catalog and the live GUI catalog still correctly `400`s; and
+  a real on-disk widget's `self.getManifest()` still works via the
+  original fast path, unaffected by the new fallback.
+- `ensure_docs_current`: a doc directory stuck at version 7 refreshes
+  to 8, with `tempui-custom-widgets.md` documenting the new
+  `Capability` line and its updated example.
+- This project's own live `Alice`/`Bob`/`Starter` `DefineWidget` files
+  (`.desk_temp/`, untracked) were edited in place to add
+  `Capability\tevents`, then re-parsed to confirm they're still
+  well-formed and now declare the capability — including confirming
+  Bob's HTML still carries the positive-only-integer filter added
+  earlier in the same session, unaffected by this edit. Takes effect
+  on Desk's next restart (this fix lives in `src/desk/**`, which is
+  only imported once at process startup — unlike widget source, which
+  hot-reloads).
+
+**Testing note, not a code finding:** the first attempt at the
+real-server verification above deadlocked — driving a `GuiBridge`
+-routed HTTP call synchronously from the same thread that owns the Qt
+`QApplication` blocks that thread on the network call, so it can never
+also pump the event loop `GuiBridge.call` needs to actually respond
+(`TimeoutError: GUI thread did not respond in time`). In the real app
+this never happens (`app.exec()` runs continuously on the GUI thread,
+genuinely concurrent with whatever separate thread/process issued the
+request). Fixed in the test itself by driving the HTTP call from a
+background thread while the main thread keeps calling
+`processEvents()` — not a LEARNINGS.md-worthy gotcha (straightforward
+once diagnosed, and `GuiBridge`'s own docstring already states the
+threading contract this violated), just recorded here since a future
+verification of any *other* GuiBridge-routed Bridge route should
+default to this same threaded-HTTP-caller shape from the start.
