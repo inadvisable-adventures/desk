@@ -1990,3 +1990,22 @@ fc17b55. COMPLETED: Bug: a claude launch prompt built by
    underlying mechanism is independently confirmed above via a
    dedicated isolated test.
    [planned: fix-discuss-claude-prompt-file-based-instructions.md]
+
+6f9c51b. Add an event message channel service to Desk, following the
+   "mediator" topology (a component of Desk itself acts as mediator --
+   widgets never talk to each other directly). Via the Bridge API,
+   widgets should be able to register for and receive named messages,
+   and to send named messages. The Bridge API should handle identity
+   details (use the widget's *instance* id, not its widget-definition
+   id). Events are logged by default into a file called
+   MEDIATED-EVENT-LOG.tsv. Also build a python widget to view logged
+   events, with a "live tail" mode and functionality to clear the log
+   (with confirmation). Add a description of the usage of these events
+   to the Bridge API document (the `DefineWidget`/Bridge API section of
+   the tempui docs, `tempui-custom-widgets.md`), following the existing
+   versioning process for updating tempui documents
+   (`TEMPUI_DOC_VERSION` in `src/desk/temp_ui.py`).
+   **Prioritized ahead of all other items** (there are currently no
+   other open items, so this is a no-op in practice, but recorded per
+   the request).
+   [planned: event-mediator-channel.md]
