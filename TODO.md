@@ -2134,3 +2134,4 @@ f693275. COMPLETED: Bug: reported live -- after restarting Desk, the tempui-DSL
    testing note on a real GuiBridge-threading deadlock hit (and fixed)
    in the verification script itself, not the implementation.
    [planned: fix-custom-widget-bridge-capability-resolution.md]
+9767c1a. add a Bridge API service by which a widget (with permission from the Desk user) can get a tree-view snapshot of the dom and console log of an html-based widget.
