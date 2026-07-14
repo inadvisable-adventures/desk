@@ -424,8 +424,14 @@ class DeskWindow(QMainWindow):
             )
         else:
             what = f"an item from {source_label}: {item_text}"
+        # A leading space, not a literal newline -- see TODO fc17b55:
+        # this string is typed, whole, into an interactive PTY's
+        # readline (ClaudeWidget.type_into_shell), where every raw
+        # "\n" byte is treated as pressing Enter regardless of
+        # shell-quote state, breaking the still-open shlex.quote'd
+        # command it's embedded in.
         instructions = (
-            f"\n\nLet's discuss {what}. Have this discussion here, in this "
+            f" Let's discuss {what}. Have this discussion here, in this "
             f"session -- don't immediately start a new Desk discussion of your "
             f"own about it (e.g. by writing another DiscussParkingLotItem tempui "
             f"file) unless the user explicitly asks you to."

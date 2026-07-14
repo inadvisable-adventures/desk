@@ -1921,3 +1921,24 @@ a48e968. COMPLETED: New widget: Parking Lot. Reads the nearest `PARKINGLOT.md` a
    `claude` binary launch from the Discuss button (same limitation
    noted in every prior widget/claude-launch TODO in this project).
    [planned: parking-lot-widget.md]
+
+fc17b55. COMPLETED: Bug: a claude launch prompt built by
+   `_place_discuss_claude_widget` embeds a literal `\n\n` in the middle
+   of the prompt string. When typed into an interactive bash/readline
+   PTY, each raw `\n` byte is treated as pressing Enter regardless of
+   shell-quote state, breaking the still-open `shlex.quote`d command
+   and leaving the shell stuck at a `>` continuation prompt instead of
+   launching claude. Reported live via the new Parking Lot widget's
+   Discuss button. Fixed at the source (`_place_discuss_claude_widget`'s
+   leading `f"\n\n..."` replaced with a plain leading space, matching
+   `_development_process_instruction()`'s existing convention) and
+   defensively at the actual boundary (`ClaudeWidget.start_session` now
+   replaces any stray `\n` in the assembled prompt with a space before
+   `shlex.quote`, so any future caller of `extra_instructions` can't
+   reintroduce this). Verified with a real, live PTY (`pty.openpty()` +
+   `subprocess.Popen(["bash", ...])`, one `os.write` of the whole
+   command exactly like `type_into_shell`): the old buggy instructions
+   reproduce the reported stuck-at-`CONT>`-continuation-prompt behavior
+   exactly, while the fixed instructions plus the new normalization
+   produce a single clean line with no continuation prompt.
+   [planned: fix-embedded-newline-breaks-claude-launch-prompt.md]

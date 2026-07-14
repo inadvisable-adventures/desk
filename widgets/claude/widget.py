@@ -88,6 +88,22 @@ class ClaudeWidget(TerminalWidget):
                 + _development_process_instruction()
                 + extra_instructions
             )
+            # A literal "\n" byte anywhere in here is not safe, even
+            # once shlex.quote'd below: this whole prompt is typed,
+            # whole, into an interactive PTY's readline (see
+            # type_into_shell at the bottom of this method), where
+            # every raw "\n" is treated as pressing Enter regardless of
+            # shell-quote state -- breaking the still-open quoted
+            # command it's embedded in and leaving the shell stuck at a
+            # "> " continuation prompt (TODO fc17b55, caught via a
+            # caller that built extra_instructions with an embedded
+            # "\n\n"). shlex.quote only guarantees the *shell parser*
+            # sees one argument once the whole line is submitted; it
+            # says nothing about what an interactive terminal does with
+            # a raw newline arriving mid-stream. Normalized here, not
+            # just at today's one call site, since any future caller of
+            # start_session could reintroduce this the same way.
+            prompt = prompt.replace("\n", " ")
             command = (
                 f"exec claude --session-id {shlex.quote(session_id)} "
                 f"{PERMISSION_MODE_ARGS} {shlex.quote(prompt)}\n"
