@@ -31,10 +31,14 @@ there, without needing to import `desk.shell.window`/
 hook already gives `open_widget_content`).
 
 Also holds a "discuss starter" hook (TODO 46e1b42), same shape again:
-lets a `python` widget (the Questions widget's own "Discuss" button)
-kick off the same new-claude-session discussion flow as the tempui
-`DiscussParkingLotItem` keyword (TODO c0875bc) -- see
-`desk.shell.window.DeskWindow.start_discussion`."""
+lets a `python` widget (the Questions widget's own "Discuss" button,
+and the Parking Lot widget's own per-row "Discuss" button, TODO
+a48e968) kick off the same new-claude-session discussion flow as the
+tempui `DiscussParkingLotItem` keyword (TODO c0875bc) -- see
+`desk.shell.window.DeskWindow.start_discussion`. Its optional third
+argument (`parking_lot_line`, TODO 624ff3a) lets a caller that already
+knows a PARKINGLOT.md item's starting line reference it that way
+instead of passing the item's full text."""
 from collections.abc import Callable
 from pathlib import Path
 
@@ -46,7 +50,7 @@ _widget_opener: Callable[[str], QWidget | None] | None = None
 _temp_ui_write_recorder: Callable[[Path, str], None] | None = None
 _main_window: QWidget | None = None
 _widget_path_resolver: Callable[[QPoint], str | None] | None = None
-_discuss_starter: Callable[[str, str], None] | None = None
+_discuss_starter: Callable[[str, str, int | None], None] | None = None
 
 
 def set_current_desk_directory(directory: Path) -> None:
@@ -109,10 +113,10 @@ def get_widget_path_resolver() -> Callable[[QPoint], str | None] | None:
     return _widget_path_resolver
 
 
-def set_discuss_starter(starter: Callable[[str, str], None]) -> None:
+def set_discuss_starter(starter: Callable[[str, str, int | None], None]) -> None:
     global _discuss_starter
     _discuss_starter = starter
 
 
-def get_discuss_starter() -> Callable[[str, str], None] | None:
+def get_discuss_starter() -> Callable[[str, str, int | None], None] | None:
     return _discuss_starter

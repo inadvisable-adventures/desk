@@ -1,0 +1,7 @@
+{
+  "name": "Parking Lot",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": [],
+  "default_size": { "width": 560, "height": 600 }
+}

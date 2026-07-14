@@ -695,3 +695,34 @@ typed into the shell short and structurally simple — e.g. a reference
 the receiving program can go read for itself (a file path, a line
 number) — over splicing the actual content into the command line at
 all.
+
+## `QListWidget.setItemWidget` content never reaches `itemDoubleClicked` (or any other item-click signal)
+
+TODO `a48e968`: the Parking Lot widget needed each row's title to
+respond to a double-click, and each row is placed via
+`QListWidget.setItemWidget(item, row_widget)` (a real child `QWidget`
+covering the item's whole rect, needed for the row's "Discuss" button
+column). The natural-looking approach — connect
+`itemDoubleClicked`/`itemClicked` and expect it to fire for clicks
+landing anywhere in the row — silently never fires for a row that has
+an `itemWidget` set: Qt delivers mouse events to whichever real widget
+is under the cursor, and once a child widget occupies that area, the
+`QAbstractItemView` underneath never sees the event at all (there's no
+DOM-style "bubbling" a plain `QWidget` does by default when it doesn't
+override the event and just lets the base implementation ignore it).
+This only shows up once a row actually needs an embedded interactive
+child (a button, in this case) — a `QListWidgetItem` with only plain
+text has no `itemWidget` and `itemDoubleClicked` fires normally, which
+is why this wasn't hit by earlier widgets (`widgets/todo/`,
+`widgets/questions/`) that use `setItemWidget` far more sparingly.
+
+Confirmed directly: a real `QMouseEvent(MouseButtonDblClick, ...)` sent
+to the row's title `QLabel` never reached the `QListWidget`'s own
+`itemDoubleClicked` signal in a headless (`QT_QPA_PLATFORM=offscreen`)
+test, regardless of `QListWidget` mouse-tracking settings.
+
+Don't rely on an item-level click/double-click signal for content
+placed via `setItemWidget`. Instead, give the specific child widget
+that needs to respond its own signal for the interaction (e.g. a small
+`QLabel` subclass overriding `mouseDoubleClickEvent` to emit a
+`pyqtSignal`, as done here) and connect to that directly.

@@ -1851,3 +1851,73 @@ c0875bc. COMPLETED: tempui DSL addition which enables Desk to initiate a
    short prompt (~1000 chars, well short of anything that was ~1500-
    3000+ chars with a real item's full text spliced in).
    [planned: fix-discuss-parking-lot-item-launch-prompt.md]
+
+a48e968. COMPLETED: New widget: Parking Lot. Reads the nearest `PARKINGLOT.md` and
+   displays each item's title in a scrollable list. Each row has a
+   "Discuss" button in a column on the right that launches a new
+   claude session to discuss that item. Double-clicking a row's title
+   instead opens just that one item in a Markdown widget, via the
+   tempui mechanism.
+
+   Implemented as a new `src/desk/parking_lot_file.py` parser (mirrors
+   `desk.questions_file`'s shape: dataclass + regex parser) that reads
+   PARKINGLOT.md's top-level `- **Title**` bullets into
+   `ParkingLotEntry(title, line_number, raw_text)` -- `line_number`
+   uses the exact same "starting `- **Title**` bullet line" definition
+   the tempui `DiscussParkingLotItem` keyword's own doc already
+   established (TODO 624ff3a), so it's directly usable by
+   `_place_discuss_claude_widget`'s existing `parking_lot_line`
+   parameter. A wrapped (multi-line) title, e.g. this file's own
+   `WidgetSpawnMenu._activate_item` entry, collapses correctly to one
+   line.
+
+   New `widgets/parking_lot/` widget, modeled on
+   `widgets/questions/widget.py`'s shape (file watching,
+   `external_path_changed`) but read-only. Each row is a
+   `setItemWidget`-placed `QLabel` (title) + fixed-width `QPushButton`
+   ("Discuss") -- a real column of Discuss buttons down the right edge,
+   as asked for, rather than the Questions widget's single floating
+   hover button (which doesn't fit that description). Since
+   `setItemWidget` content doesn't reach `QListWidget.itemDoubleClicked`
+   (mouse events over a child widget go straight to that child, not
+   the list view underneath), the title label is a small `_TitleLabel`
+   subclass that reports its own `mouseDoubleClickEvent` as a signal.
+   Double-clicking writes a `Markdown <title>` tempui file (the
+   existing keyword/format from `desk.temp_ui.parse_markdown_tempui`)
+   into `.desk_temp/`, reusing Desk's existing tempui notification/
+   placement flow rather than placing a Markdown widget directly --
+   matches "loads ... as tempui" literally. The Discuss button calls
+   the `current_context` "discuss starter" hook with the item's line
+   number, not its full text, avoiding a repeat of the exact
+   launch-prompt-length problem TODO 624ff3a fixed.
+
+   `DeskWindow.start_discussion` (the discuss-starter hook, TODO
+   46e1b42) widened to accept an optional `parking_lot_line` parameter
+   (and `item_text` given a default of `""`), forwarding both straight
+   through to the already-`parking_lot_line`-aware
+   `_place_discuss_claude_widget`. The existing Questions-widget call
+   site (`starter("QUESTIONS.md", entry.raw_text)`) is untouched and
+   still works unchanged. `current_context.py`'s discuss-starter hook
+   type/docstring updated to match.
+
+   Verified headlessly (`QT_QPA_PLATFORM=offscreen`, real
+   `QApplication`): `parse_parking_lot_file` against this project's own
+   real PARKINGLOT.md (33 items, correct title/line_number/raw_text for
+   the first and a wrapped-title item); constructing the real widget
+   against a synthetic PARKINGLOT.md shows the right rows; a real Qt
+   `QMouseEvent` double-click dispatched to the title label (not just a
+   direct method call) fires `_open_item` and writes a tempui file
+   whose content round-trips through `parse_markdown_tempui` back to
+   `(title, raw_text)`; clicking a row's Discuss button (direct call)
+   reaches a fake discuss-starter hook with `("PARKINGLOT.md", "",
+   line_number)`; `DeskWindow.start_discussion`'s widened signature
+   verified both in its new kwarg-only call style and the existing
+   Questions-widget two-positional-arg style (unbound-method-on-a-
+   double pattern); `discover_widgets` picks up the new
+   `widgets/parking_lot/` directory correctly.
+
+   Not exercised: right-clicking the canvas / actually placing the
+   widget from the spawn menu in a live GUI session, and a real
+   `claude` binary launch from the Discuss button (same limitation
+   noted in every prior widget/claude-launch TODO in this project).
+   [planned: parking-lot-widget.md]

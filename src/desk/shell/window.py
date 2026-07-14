@@ -440,16 +440,22 @@ class DeskWindow(QMainWindow):
             claude_extra_instructions=instructions,
         )
 
-    def start_discussion(self, source_label: str, item_text: str) -> None:
+    def start_discussion(
+        self, source_label: str, item_text: str = "", parking_lot_line: int | None = None
+    ) -> None:
         """The current_context "discuss starter" hook (TODO 46e1b42) --
         lets a python widget (the Questions widget's own Discuss
-        button) kick off the same new-claude-session discussion flow
-        as the tempui DiscussParkingLotItem keyword, without needing to
-        import desk.shell.window directly. Each call is an independent,
-        fresh session (no instance_id/dedup -- unlike a tempui file,
-        there's no natural stable identity to dedup a button click
-        against)."""
-        self._place_discuss_claude_widget(source_label, item_text)
+        button, and the Parking Lot widget's own per-row Discuss
+        button, TODO a48e968) kick off the same new-claude-session
+        discussion flow as the tempui DiscussParkingLotItem keyword,
+        without needing to import desk.shell.window directly. Each call
+        is an independent, fresh session (no instance_id/dedup --
+        unlike a tempui file, there's no natural stable identity to
+        dedup a button click against). `item_text` defaults to "" so a
+        caller that already has a reliable `parking_lot_line` (TODO
+        624ff3a) doesn't need to pass an unused positional -- see
+        _place_discuss_claude_widget for how the two are used."""
+        self._place_discuss_claude_widget(source_label, item_text, parking_lot_line)
 
     def open_widget(
         self,
