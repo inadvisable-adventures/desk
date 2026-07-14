@@ -2079,3 +2079,30 @@ fc17b55. COMPLETED: Bug: a claude launch prompt built by
    on-disk log file; and `ensure_docs_current` refreshing a
    version-6-stuck doc directory to 7 with the new section present.
    [planned: event-mediator-channel.md]
+
+f693275. Bug: reported live -- after restarting Desk, the tempui-DSL
+   -defined `Alice`/`Bob`/`Starter` widgets (built for TODO 6f9c51b) all
+   fail with `subscribe failed: ... (400): {"detail":"Unknown widget
+   id: 'Alice'"}`. Root cause already flagged in PARKINGLOT.md (the
+   "The Bridge API's `require_caller` can't resolve a tempui-DSL
+   -defined custom widget kind at all" entry, surfaced back when TODO
+   `5734529` built self.getLocalStorage/setLocalStorage): `require_
+   caller` (`src/desk/server/app.py`) resolves the calling widget only
+   via `discover_widgets(widgets_dir).get(x_desk_widget_id)`, which
+   only ever scans the real, on-disk `widgets/` directory -- a
+   tempui-DSL-defined custom widget (TODO `91b3f42`) has no such
+   directory; its `WidgetInfo` only lives in the live `DeskWindow
+   ._widgets` catalog. This blocks *any* capability-gated Bridge call
+   (`workspace.*`/`fs.*`/`widgets.*`/the new `events.*`) for a custom
+   widget, not just `events`. Separately, even a fixed lookup wouldn't
+   be enough on its own: `_register_custom_widget` always registers a
+   custom widget with `capabilities=[]` hardcoded, since the
+   `DefineWidget` tempui DSL has no way to declare any -- needs a new
+   `Capability` DSL line too. Now that a second real feature (`events`)
+   is blocked by this, worth actually designing and fixing rather than
+   re-parking (see the PARKINGLOT.md entry's own "not designed yet;
+   parking rather than guessing at the right generalization from a
+   single specific fix's own narrow workaround").
+   **Prioritized ahead of all other items** (live-blocking a feature
+   the user is actively using right now).
+   [planned: fix-custom-widget-bridge-capability-resolution.md]
