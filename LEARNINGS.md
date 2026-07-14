@@ -696,6 +696,23 @@ the receiving program can go read for itself (a file path, a line
 number) — over splicing the actual content into the command line at
 all.
 
+**Update (TODO `fc17b55`):** the exact mechanism (not just a
+possibility) turned out to be neither of the two speculated above — it
+was simpler: a literal `\n` *character* embedded in the middle of an
+otherwise-correctly-`shlex.quote`d string. To an interactive shell's
+`readline`, every raw `\n` byte arriving on stdin means "the user
+pressed Enter," regardless of whether the line submitted so far is
+inside a still-open, unterminated quoted string — so an embedded `\n`
+splits one intended command into multiple `readline` submissions, and
+bash falls back to its `PS2` (`> `) continuation prompt mid-command.
+Confirmed directly with a real, live PTY (`pty.openpty()` +
+`subprocess.Popen(["bash", ...])`, one `os.write` of the whole command,
+exactly mirroring `TerminalWidget.type_into_shell`). The general lesson
+holds either way: `shlex.quote` only guarantees the shell's *parser*
+sees one argument once the whole line is submitted — it says nothing
+about what happens to raw bytes of that string while an interactive
+terminal is still receiving them one at a time.
+
 ## `QListWidget.setItemWidget` content never reaches `itemDoubleClicked` (or any other item-click signal)
 
 TODO `a48e968`: the Parking Lot widget needed each row's title to
