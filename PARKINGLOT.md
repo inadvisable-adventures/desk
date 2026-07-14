@@ -138,46 +138,6 @@ This file captures thoughts and TODO items that arise during work on other thing
   worth doing proactively or the next time a "wrong directory after
   switching Desks" symptom is reported for real.
 
-- **Personal information audit: one leaked absolute path with local
-  username**
-
-  Searched the working tree and the full commit history (`git log --all
-  -p`) for personal information beyond the commit author name/email
-  (the standard git identity used for commits). Found exactly one hit:
-  `TODO.md` (inside the `COMPLETED` item `fa288ce`) contains a pasted
-  console traceback with a literal local absolute path, revealing the
-  local macOS username and folder layout. It appears in this one spot
-  only — never introduced or removed anywhere else in history. No other
-  emails, hostnames, machine names, or `~`-relative paths beyond the
-  generic (non-personal) `~/.desk/` convention mentioned in
-  `design-docs/architecture.md` and `plans/desk-concept.md`. Also noted:
-  `.git/config`'s `origin` remote contains the GitHub username, but
-  that's just the repo's public clone URL, not something embedded in a
-  commit. Redacting the current `TODO.md` line is a normal edit;
-  actually scrubbing it from history would require a destructive
-  history rewrite (`git filter-repo` or similar) — not done here,
-  pending explicit direction.
-
-  **Update:** a second instance turned up after this audit was written —
-  TODO `b44e8ba` (the Desk-picker segfault report) quotes console output
-  containing the same kind of local absolute path, the same
-  username/folder-layout leak, again inside pasted terminal output. Same
-  disposition as the first: harmless as a redaction (just descriptive
-  text in a bug report), but would need a history rewrite to actually
-  remove from git history. Worth a single redaction pass over both
-  spots (and anything similar added in the future) rather than fixing
-  piecemeal, if/when the history-rewrite question above is ever acted
-  on.
-
-  **Update 2 (2026-07-07):** both spots above, plus a third instance in
-  `plans/todo-parser-checkbox-format.md`, were redacted to `~`-relative
-  paths with the local username and folder name removed. This repo has
-  no prior commits containing these files, so no history rewrite was
-  needed.
-
-  **Decision:** Make a new repo for Desk under Inadvisable Adventures
-  without the in-repo TODO tracking.
-
 - **Process/TODO-tracking meta-questions: ownership protocol, file
   organization, `TODO.md` formatting, and a per-project glossary**
 
