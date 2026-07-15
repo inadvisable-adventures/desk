@@ -1,4 +1,4 @@
-# Plan: TODO 5995ffd — custom widget content-hash staleness detection
+# Plan: TODO 5995ffd (COMPLETED) — custom widget content-hash staleness detection
 
 See design-docs/custom-widget-authoring.md section 3 for the full
 rationale.

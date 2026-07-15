@@ -61,6 +61,11 @@ def _widget_info_dict(widget: WidgetInfo) -> dict:
             if widget.default_size
             else None
         ),
+        # None for an ordinary widgets/<id>/widget.json-backed widget --
+        # only a tempui-DSL-defined custom widget (TODO 5995ffd) has
+        # one, so its own JS can call self.getManifest() to check which
+        # version of its definition is currently registered.
+        "content_hash": widget.content_hash,
     }
 
 

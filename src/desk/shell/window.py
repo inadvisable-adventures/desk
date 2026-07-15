@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import uuid
 from collections.abc import Callable
@@ -171,6 +172,12 @@ class DeskWindow(QMainWindow):
         self._custom_widget_definitions: dict[str, CustomWidgetDefinition] = {}
         self._custom_widget_sources: dict[str, str] = {}
         self._custom_widget_source_paths: dict[str, Path] = {}
+        # keyword -> a short content hash of its currently-registered
+        # definition (TODO 5995ffd). See _register_custom_widget (who
+        # computes it) and _refresh_stale_indicators_for (who compares
+        # it against every already-placed instance's own
+        # WidgetFrame.placed_content_hash).
+        self._custom_widget_content_hash: dict[str, str] = {}
 
         # kind:"html" widget-local storage (TODO 5734529): instance_id
         # -> whatever that instance's own JS last pushed via the Bridge
@@ -288,6 +295,16 @@ class DeskWindow(QMainWindow):
                 self._bind_widget_local_storage(frame, state.state)
                 if state.locked:
                     frame.set_locked(True)
+                if state.placed_content_hash is not None:
+                    # TODO 5995ffd: apply the hash this instance was
+                    # placed with, then compare against whatever's
+                    # currently registered for this keyword -- the main
+                    # case this whole feature is for: a Desk reopened
+                    # after the widget's source changed since this
+                    # instance was last saved.
+                    frame.placed_content_hash = state.placed_content_hash
+                    current_hash = self._custom_widget_content_hash.get(state.widget_id)
+                    frame.set_stale(current_hash is not None and current_hash != state.placed_content_hash)
         else:
             self._seed_new_desk_widgets(desk)
 
@@ -377,6 +394,16 @@ class DeskWindow(QMainWindow):
         # freshly placed or restored alike.
         if self._custom_widget_sources.get(widget_id) == "tempui":
             frame.set_tempui_promotable(True)
+        # TODO 5995ffd: a *fresh* placement is always current by
+        # construction -- it's about to load whatever's registered
+        # right now. A restored instance instead gets its saved hash
+        # applied by _load_desk_widgets, since that's the one that can
+        # legitimately be stale.
+        if not restore:
+            current_hash = self._custom_widget_content_hash.get(widget_id)
+            if current_hash is not None:
+                frame.placed_content_hash = current_hash
+                frame.set_stale(False)
         return frame
 
     def _bind_external_indicator(self, frame: WidgetFrame) -> None:
@@ -913,6 +940,7 @@ class DeskWindow(QMainWindow):
                     instance_id=frame.instance_id,
                     state=self._get_widget_local_storage(frame),
                     locked=frame.locked,
+                    placed_content_hash=frame.placed_content_hash,
                 )
             )
         pan_x, pan_y, scale = self.view.get_view_state()
@@ -1559,6 +1587,11 @@ class DeskWindow(QMainWindow):
         directory = materialize(self.current_desk.directory / TEMP_UI_DIRNAME, definition)
         if directory is None:
             return False
+        # TODO 5995ffd: hashing the already-available base64 text
+        # directly (a deterministic encoding of the decoded HTML) is
+        # equivalent to hashing the decoded document itself, and avoids
+        # a second decode here.
+        content_hash = hashlib.md5(definition.html_b64.encode("ascii")).hexdigest()[:12]
         info = WidgetInfo(
             id=keyword,
             path=directory,
@@ -1577,13 +1610,35 @@ class DeskWindow(QMainWindow):
             # this Desk and should be placeable the normal way too, not
             # just re-invokable via tempui.
             tempui_only=(source == "tempui"),
+            content_hash=content_hash,
         )
         self._widgets[keyword] = info
         self._custom_widget_definitions[keyword] = definition
         self._custom_widget_sources[keyword] = source
+        self._custom_widget_content_hash[keyword] = content_hash
         self._handle.mount_html_widget(keyword, directory, info)
         self.view.set_widget_catalog(self._widgets)
+        self._refresh_stale_indicators_for(keyword)
         return True
+
+    def _refresh_stale_indicators_for(self, keyword: str) -> None:
+        """Recomputes the "[STALE]" marker (TODO 5995ffd) on every
+        already-placed instance of `keyword`, against its
+        just-registered content hash -- called at the end of every
+        _register_custom_widget call (fresh or a same-source refresh).
+        This is what catches a *live* edit to an already-registered
+        DefineWidget file while an instance is already on the canvas:
+        that instance's own placed_content_hash still holds whatever
+        was true when it was placed, so it now differs from the
+        keyword's newly-updated hash. A no-op for a frame whose
+        placed_content_hash is still None (never set -- an ordinary
+        widget, or a custom widget instance placed before this field
+        existed)."""
+        current_hash = self._custom_widget_content_hash.get(keyword)
+        for frame in self.view._frames:
+            if frame.content.widget_id != keyword or frame.placed_content_hash is None:
+                continue
+            frame.set_stale(current_hash is not None and current_hash != frame.placed_content_hash)
 
     def _register_custom_widgets_from_desk(self, desk: Desk) -> None:
         """Registers every custom widget already promoted into `desk`'s

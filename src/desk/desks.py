@@ -33,6 +33,16 @@ class WidgetState:
     # widget's own data). Defaults False so an old .desk file with no
     # "locked" key still loads correctly.
     locked: bool = False
+    # The tempui-DSL-defined custom widget definition's content hash
+    # (TODO 5995ffd, desk.shell.window.DeskWindow
+    # ._custom_widget_content_hash) at the moment *this instance* was
+    # placed -- None for an ordinary widget, or a custom widget's
+    # instance placed before this field existed. Lets a restored
+    # instance be compared against the definition's current hash to
+    # show a passive "this instance predates the currently-registered
+    # definition" indicator, without requiring a widget author to
+    # write any code themselves.
+    placed_content_hash: str | None = None
 
 
 @dataclass
@@ -126,6 +136,7 @@ def desk_state_dict(desk: Desk) -> dict:
                 "height": w.height,
                 "state": w.state,
                 "locked": w.locked,
+                "placed_content_hash": w.placed_content_hash,
             }
             for w in desk.widgets
         ],

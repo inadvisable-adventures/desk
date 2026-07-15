@@ -2553,7 +2553,7 @@ b324217. COMPLETED: Author `DefineWidget` custom widgets from a real per-widget
    (a hardcoded doc-version-11 assertion, now stale since this bumped
    it to 12 -- not a real regression, that scratchpad script isn't
    part of the shipped code), 0 other new failures.
-5995ffd. Give a placed `DefineWidget` custom widget instance a way to
+5995ffd. COMPLETED: Give a placed `DefineWidget` custom widget instance a way to
    report which version of its code it's actually running: compute a
    content hash when a definition is registered, expose the current
    hash via `desk.self.getManifest()`, and track the hash a placed
@@ -2561,6 +2561,37 @@ b324217. COMPLETED: Author `DefineWidget` custom widgets from a real per-widget
    instance predates the currently-registered definition. See
    design-docs/custom-widget-authoring.md section 3.
    [planned: custom-widget-content-hash.md]
+
+   Added WidgetInfo.content_hash (an md5(html_b64)[:12] hash, computed
+   in _register_custom_widget) exposed via getManifest's
+   _widget_info_dict, and WidgetState.placed_content_hash tracked
+   per-instance on WidgetFrame (set at fresh placement, applied from
+   the saved .desk state on restore). A new
+   _refresh_stale_indicators_for(keyword), called at the end of every
+   _register_custom_widget, recomputes a "[STALE]" titlebar marker
+   (mirroring the existing "[EXTERNAL]" marker mechanism) on every
+   already-placed instance of that keyword -- catching both the live
+   -edit-while-placed case and the reopen-after-source-changed case.
+
+   Verified via the same real-WorkspaceView unbound-method-on-a-fake
+   -double pattern as prior items: registration computes/stores/
+   exposes the hash and changes it on redefinition; a fresh placement
+   is never stale; a live redefinition immediately marks an
+   already-placed instance stale (and a newly-placed one after the
+   edit is not); a restored instance is stale or not depending on
+   whether its saved hash matches the current one;
+   WidgetState.placed_content_hash round-trips through save/load/
+   desk_state_dict, and an old .desk file with no such key defaults to
+   None. Found and fixed one genuine regression during verification:
+   src/desk/shell/window.py's _capture_desk_state now reads
+   frame.placed_content_hash unconditionally, which broke an older
+   scratchpad verification script's own lightweight _FakeFrame double
+   (missing the new attribute) -- fixed by adding it there, confirmed
+   via git stash that this was a real regression (passed before,
+   failed after) unlike the other pre-existing failures. Full
+   regression suite back to the same 9 pre-existing failures plus one
+   already-known-stale doc-version assertion in my own earlier
+   b324217 script, 0 other new failures.
 c892403. Resolve relative `desk.fs.readFile`/`writeFile` paths against
    the current Desk's own directory instead of the server process's
    ambient working directory (or reject relative paths with a clear

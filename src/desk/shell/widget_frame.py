@@ -215,6 +215,7 @@ class _TitleBar(QWidget):
         self.setCursor(Qt.CursorShape.SizeAllCursor)
         self._title = title
         self._external = False
+        self._stale = False
         self._locked = False
         self._tempui_promotable = False
         self._buttons_hidden = False  # True in the title_only chrome state (TODO 33d3e8d)
@@ -247,13 +248,35 @@ class _TitleBar(QWidget):
         self.apply_scale(1.0)
 
     def _update_label_text(self) -> None:
-        self._label.setText(f"{self._title} [EXTERNAL]" if self._external else self._title)
+        markers = "".join(
+            marker
+            for condition, marker in ((self._external, " [EXTERNAL]"), (self._stale, " [STALE]"))
+            if condition
+        )
+        self._label.setText(f"{self._title}{markers}")
 
     def set_external(self, is_external: bool) -> None:
         """Shows/hides the "[EXTERNAL]" marker (TODO a053e3a) -- for a
         widget whose loaded file is outside the current Desk's
         directory."""
         self._external = is_external
+        self._update_label_text()
+
+    def set_stale(self, is_stale: bool) -> None:
+        """Shows/hides the "[STALE]" marker (TODO 5995ffd) -- for a
+        tempui-DSL-defined custom widget instance whose
+        placed_content_hash no longer matches the currently-registered
+        definition's content hash (see
+        DeskWindow._refresh_stale_indicators_for). A tooltip on the
+        title label explains what to do, since the marker alone doesn't
+        say how to fix it."""
+        self._stale = is_stale
+        self._label.setToolTip(
+            "This instance predates the currently-registered widget definition -- "
+            "close it and place a fresh one to run the latest code."
+            if is_stale
+            else ""
+        )
         self._update_label_text()
 
     def set_focused(self, focused: bool) -> None:
@@ -480,6 +503,13 @@ class WidgetFrame(QWidget):
         content.setStyleSheet(CONTENT_ZOOM_SAFE_STYLESHEET)
         self._last_focused_widget: QWidget | None = None
         self.locked = False
+        # The tempui-DSL-defined custom widget definition's content hash
+        # at the moment this instance was placed (TODO 5995ffd) -- None
+        # for an ordinary widget. See DeskWindow._place_widget/
+        # _load_desk_widgets (who sets this) and
+        # _refresh_stale_indicators_for (who compares it against the
+        # live definition later).
+        self.placed_content_hash: str | None = None
         self._view_scale = 1.0
         self._chrome_state = "full"
         self._apply_border_scale(1.0)
@@ -560,6 +590,11 @@ class WidgetFrame(QWidget):
         `desk.shell.window.DeskWindow._place_widget`."""
         self._titlebar.set_tempui_promotable(promotable)
         self._update_chrome_state()
+
+    def set_stale(self, is_stale: bool) -> None:
+        """Shows/hides the titlebar's "[STALE]" marker (TODO 5995ffd) --
+        see `desk.shell.window.DeskWindow._refresh_stale_indicators_for`."""
+        self._titlebar.set_stale(is_stale)
 
     @property
     def title(self) -> str:

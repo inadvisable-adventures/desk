@@ -27,6 +27,14 @@ class WidgetInfo:
     # -click "Add widget" catalog (see WorkspaceView.contextMenuEvent):
     # a widget defined this way can only ever be placed via tempui.
     tempui_only: bool = False
+    # A short content hash of the currently-registered definition (TODO
+    # 5995ffd) -- set only for a tempui-DSL-defined custom widget (see
+    # DeskWindow._register_custom_widget), never by _parse_manifest
+    # below. Surfaced over the Bridge API's self.getManifest() so a
+    # widget's own JS can compare it against what it expects, and used
+    # internally to detect a placed instance that predates the current
+    # definition (see WidgetFrame.placed_content_hash).
+    content_hash: str | None = None
 
 
 def _parse_manifest(manifest_path: Path) -> WidgetInfo:
