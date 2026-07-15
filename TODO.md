@@ -3274,3 +3274,112 @@ da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    -doc-version checks from this batch, 0 other new failures --
    notably, the pre-existing `verify_tempui_doc_versioning.py` now
    passes cleanly for the first time after the design-docs fix above.
+585d235. Move `MEDIATED-EVENT-LOG.tsv` (`desk.event_mediator`, TODO
+   `6f9c51b`) into `.desk_temp/` instead of the current Desk's project
+   directory — it's an ambient, Desk-generated log for the whole event
+   bus, the same category of thing `.desk_temp` already holds (crash
+   logs, tempui docs, custom-widget source) rather than something that
+   belongs alongside the user's own project files. Two call sites read/
+   write its location today: `DeskWindow._refresh_picker`'s
+   `self._event_mediator.set_log_directory(self.current_desk.directory)`
+   needs `/ TEMP_UI_DIRNAME` added; `widgets/event_log/widget.py`
+   independently computes its own watched path from
+   `current_context.get_current_desk_directory()` and needs the same.
+   Note `EventMediator._log`'s existing
+   `path.parent.mkdir(parents=True, exist_ok=True)` means `.desk_temp`
+   would get silently created the moment any event is first published,
+   if it doesn't already exist — bypassing the confirm-gated
+   `.desk_temp`-creation flow elsewhere (TODO `4716585`). Acceptable in
+   practice (`.desk_temp` is already ensured by the time a Desk is open
+   in the normal flow), but call it out explicitly in the plan rather
+   than letting it be a silent side effect.
+4d21e7c. Integrate SVG viewing into the Image Viewer widget (raster +
+   vector) and retire the standalone SVG Viewer widget. See
+   `design-docs/svg-viewing-and-editing.md`'s "Image Viewer: raster +
+   vector" section for the full design: Image Viewer keeps both
+   rendering backends (`QPixmap`-based, `QSvgRenderer`-based) and picks
+   one per loaded file by extension, swapped via an internal view-swap
+   (the same page-swap shape as greeked-widget chrome,
+   `design-docs/widget-ux.md`) behind the one common toolbar/label/
+   watcher/Edit-button plumbing `set_file`/`_reload` already drive.
+   `IMAGE_FILTER` gains `*.svg *.svgz`;
+   `file_type_registry.BUILTIN_VIEW_WIDGET_BY_SUFFIX[".svg"]` changes
+   from `"svg_viewer"` to `"image_viewer"`; `widgets/svg_viewer/` is
+   deleted entirely (no migration attempted for a previously-placed
+   instance, matching the TODO `8385dcc` File Explorer → Project Files
+   precedent). Also update forward-looking docs that still describe a
+   separate SVG Viewer widget (`design-docs/architecture.md`'s widget
+   list at minimum; check for others at implementation time) — not
+   historical `plans/`/`TODO.md`/`LEARNINGS.md` mentions, which stay as
+   history.
+7076af5. New SVG Editor widget (`widgets/svg_editor/`) with a basic
+   visual-object toolbox and point/shape editing tools. See
+   `design-docs/svg-viewing-and-editing.md`'s "Supported element types"
+   and "SVG Editor widget" sections: a closed set of editable object
+   types (`<rect>`, `<circle>`, `<ellipse>`, `<line>`, `<polyline>`,
+   `<polygon>`, `<path>`, `<text>`), a create-tool per type in the
+   toolbox, and two mutually-exclusive editing tools — Points (drag a
+   path/polyline/polygon's individual vertices) and Shapes (select a
+   whole object to move/resize/transform and edit its fill/stroke/
+   stroke-width as a unit). `kind: "python"`, same Open/file-watcher/
+   auto-reload/Save shape as every other file-backed widget here;
+   `xml.etree.ElementTree` for parsing/serializing (no new dependency,
+   per `CLAUDE.md`), a `QGraphicsScene` with one custom `QGraphicsItem`
+   subclass per supported type. Also add
+   `file_type_registry.BUILTIN_EDIT_WIDGET_BY_SUFFIX = {".svg":
+   "svg_editor"}` and have `find_edit_handler` fall back to it the same
+   way `find_view_handler` already falls back to
+   `BUILTIN_VIEW_WIDGET_BY_SUFFIX` — otherwise Image Viewer's Edit
+   button would keep opening `.svg` files in the plain text Editor by
+   default even after this widget exists. Depends on TODO `4d21e7c`
+   (so Image Viewer is the thing whose Edit button actually exercises
+   this) but not blocked by it — can be implemented in either order.
+d28885f. New side-by-side widget container: two widget-instance slots in
+   one `WidgetFrame`, a button to swap which slot is on which side, and
+   a horizontal/vertical orientation toggle — the parking-lot design
+   (moved out of `PARKINGLOT.md`), except inter-widget communication
+   uses the *existing* mediated event system (`desk.event_mediator`,
+   TODO `6f9c51b`) instead of inventing a new `postMessage`-modeled
+   protocol. Key points, confirmed by reading the current widget
+   -hosting code before adding this item:
+   - No widget today hosts another widget's content nested inside
+     itself — instance ids are minted 1:1 with a `WidgetFrame`'s own
+     construction (`canvas.add_widget`), and `DeskWindow
+     ._bind_event_mediator` only ever wires the *top-level* hosted
+     content, never anything a widget builds internally. This
+     container has to replicate that wiring itself for each of its two
+     slots: mint its own instance id per slot, and call
+     `content.bind_event_mediator(instance_id, mediator)` on each
+     slot's content if it exposes the hook (same duck-typed shape
+     `DeskWindow` already uses), tearing down via
+     `mediator.unsubscribe_all(instance_id)` when a slot's widget
+     changes or the container itself is destroyed.
+   - Each slot's instance id must be **persisted** on `WidgetState`
+     (alongside the container's own top-level instance id) and reused
+     verbatim on reload, not re-minted — otherwise a child widget that
+     keeps its own per-instance-id persisted state (e.g. which file
+     it has open) would silently lose it every session.
+   - `current_context` has no hook today for a widget to enumerate the
+     available widget catalog. Add one (mirroring the existing
+     `set_widget_opener` pattern) so each slot can offer a "choose a
+     widget type" picker; scope the catalog this container offers to
+     `kind: "python"` widgets only for this first pass — nesting a
+     `kind: "html"` widget's own `QWebEngineView`/browser-profile
+     overhead inside another widget's layout is a bigger, separate
+     concern, out of scope here.
+   - Reuse `PythonWidgetHost` directly per slot (constructed by the
+     container itself, not through `DeskWindow._place_widget`, since
+     slot content never gets its own canvas placement) so each slot
+     gets ordinary hot-reload-on-source-change behavior for free.
+   - `EventMediator` is plain name-based pub/sub (broadcast to every
+     subscriber of a name except the sender) with no parent/child or
+     point-to-point concept — this container doesn't need to invent one
+     either: it just ensures both slots are properly bound to the
+     shared mediator with stable instance ids, the same as any other
+     placed widget. Any actual message protocol between two specific
+     widget types (e.g. the parked "editor-with-view" pairing) is that
+     pairing's own concern, not something this container defines.
+   - A `QSplitter` (horizontal or vertical per the orientation toggle)
+     is a natural fit for the two slots — gives a draggable divider for
+     free, and swapping sides is just re-inserting the same two child
+     widgets in the other order, no rebuild needed.

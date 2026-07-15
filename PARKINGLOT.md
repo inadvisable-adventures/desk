@@ -309,58 +309,29 @@ This file captures thoughts and TODO items that arise during work on other thing
   together as a design space to think about rather than a scoped
   task.
 
-- **New widget: side-by-side container (two widget instances, swap/
-  reorient, cross-widget `postMessage`)**
-
-  A container widget with two side-by-side spots, one widget instance
-  in each. Requirements:
-  - Two spots for two different widget instances, one on each side.
-  - A button to swap which widget is on which side.
-  - Switchable between horizontal (side-by-side) and vertical (stacked)
-    orientation.
-  - The two contained widgets can communicate with each other via an
-    implementation of the browser `postMessage()` protocol (main-thread
-    /worker-style message passing — see the standard `postMessage`/
-    `onmessage` + structured-clone model). Widgets can *optionally*
-    publish their API for `postMessage`/`onmessage` messages so the
-    other side knows what it can send/expects to receive.
-  - Depends on / motivates a Desk-side inter-widget messaging mechanism
-    modeled on `postMessage`; think about how that relates to the
-    existing Bridge API and `current_context` hooks.
-
 - **New widget: editor-with-view (a side-by-side of the editor + the
   markdown viewer)**
 
-  A concrete instance of the side-by-side container above: the code
-  editor widget on one side and the markdown renderer widget (TODO
-  `6bf83a9`) on the other, so editing a Markdown file shows a live
-  rendered preview beside it. Blocked on both the side-by-side
-  container widget and the markdown renderer widget existing first
-  (and, for a *live* preview, on the two communicating — e.g. via the
-  container's `postMessage` mechanism, or simply by both pointing at
-  the same file with the viewer's file watcher picking up saves).
+  A concrete instance of the side-by-side container widget (TODO
+  `d28885f`): the code editor widget on one side and the markdown
+  renderer widget (TODO `6bf83a9`) on the other, so editing a Markdown
+  file shows a live rendered preview beside it. Blocked on the markdown
+  renderer widget existing first (it already does) and, for a *live*
+  preview, on the two communicating — e.g. via the container's
+  mediated-event-based messaging (TODO `d28885f`), or simply by both
+  pointing at the same file with the viewer's file watcher picking up
+  saves.
 
-- **SVG Viewer widget: further work (in-widget zoom/pan, and wiring
-  other widgets to open in it)**
+- **SVG Viewer widget: in-widget zoom/pan**
 
-  Two follow-on ideas for the SVG Viewer widget (`widgets/svg_viewer/`,
-  TODO `c7d6e4d`):
-  - **In-widget zoom/pan.** It currently only fits the SVG to the
-    widget's own size (aspect-preserved). For a large or detailed
-    diagram, independent zoom/pan within the widget (distinct from the
-    Workspace Canvas's own zoom of the whole widget frame) would help;
-    out of scope for that item, worth its own TODO if it comes up.
-  - **Wire `.svg` results in the Project Files / Markdown widgets to
-    open in it.** Project Files (TODO b927389) used to always
-    opens a selected file in a new Editor widget instance regardless
-    of extension, and the Markdown widget (TODO a76e723, renamed from
-    "Markdown (Extended)" / `markdown_ex`, TODO 858752b) renders
-    embedded images (including SVG) via `QTextBrowser`'s own
-    native/indirect handling, not the SVG Viewer widget (built after
-    both of those). Neither was asked to integrate with it. Worth
-    revisiting once there's an actual need (e.g. double-clicking a
-    `.svg` in the explorer opening a real vector view instead of raw
-    XML in the Editor).
+  It currently only fits the SVG to the widget's own size (aspect
+  -preserved). For a large or detailed diagram, independent zoom/pan
+  within the widget (distinct from the Workspace Canvas's own zoom of
+  the whole widget frame) would help. This rendering now lives in the
+  Image Viewer widget rather than a standalone SVG Viewer widget (see
+  `design-docs/svg-viewing-and-editing.md`, TODOs `4d21e7c`/`7076af5`)
+  — still out of scope for those items, worth its own TODO if it comes
+  up.
 
 - **A generalized mechanism for "check immediately before create, abort
   recoverably if it already exists"**
@@ -560,11 +531,6 @@ This file captures thoughts and TODO items that arise during work on other thing
 - **PDF viewer**
 
   A widget for viewing PDF files.
-
-- **SVG editor**
-
-  A widget for editing SVG files -- distinct from the existing SVG
-  Viewer widget (`widgets/svg_viewer/`, TODO `c7d6e4d`, view-only).
 
 - **Pixel editor**
 
