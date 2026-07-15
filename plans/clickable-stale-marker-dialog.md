@@ -1,4 +1,4 @@
-# Plan: TODO 3e2c4f2 — clickable `[STALE]` marker with a hash/reload dialog
+# Plan: TODO 3e2c4f2 (COMPLETED) — clickable `[STALE]` marker with a hash/reload dialog
 
 ## Summary
 

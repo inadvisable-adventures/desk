@@ -165,6 +165,7 @@ class DeskWindow(QMainWindow):
         self.view.files_dropped.connect(self._on_files_dropped)
         self.view.paste_requested.connect(self._on_paste_requested)
         self.view.tempui_promote_requested.connect(self._on_tempui_promote_requested)
+        self.view.widget_stale_clicked.connect(self._on_widget_stale_clicked)
         if widgets_dir is not None:
             broker.widget_changed.connect(self._on_widget_changed_refresh_catalog)
 
@@ -1642,6 +1643,43 @@ class DeskWindow(QMainWindow):
             if frame.content.widget_id != keyword or frame.placed_content_hash is None:
                 continue
             frame.set_stale(current_hash is not None and current_hash != frame.placed_content_hash)
+
+    def _on_widget_stale_clicked(self, frame: WidgetFrame) -> None:
+        """The `[STALE]` titlebar button's handler (TODO 3e2c4f2): shows
+        both content hashes and offers to reload *this specific
+        instance* now, or leave it running its current content. Reloads
+        only `frame.content` directly, never via
+        `HotReloadBroker.widget_changed` -- that would reload every
+        placed instance of this keyword, defeating the whole point of a
+        per-instance choice."""
+        if not isinstance(frame.content, ChromiumWidget):
+            return
+        keyword = frame.content.widget_id
+        current_hash = self._custom_widget_content_hash.get(keyword)
+        if current_hash is None or current_hash == frame.placed_content_hash:
+            # Nothing stale anymore -- e.g. already reloaded, or the
+            # definition changed back to what this instance already has.
+            return
+        if not self._confirm_stale_reload(frame.placed_content_hash, current_hash):
+            return
+        frame.content.reload()
+        frame.placed_content_hash = current_hash
+        frame.set_stale(False)
+
+    def _confirm_stale_reload(self, placed_hash: str | None, current_hash: str) -> bool:
+        """Split out so headless verification can monkeypatch just this
+        one method instead of driving a real modal QMessageBox --
+        mirrors widgets/event_log/widget.py's own _confirm_clear."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Widget Content Updated")
+        box.setText(
+            "This widget instance predates the currently-registered definition for its kind."
+        )
+        box.setInformativeText(f"Placed with: {placed_hash}\nCurrently registered: {current_hash}")
+        reload_button = box.addButton("Reload Now", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Keep for Now", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        return box.clickedButton() is reload_button
 
     def _register_custom_widgets_from_desk(self, desk: Desk) -> None:
         """Registers every custom widget already promoted into `desk`'s

@@ -24,6 +24,7 @@ from desk.shell.widget_frame import (
     _LockButton,
     _ResizeHandle,
     _SendToBackButton,
+    _StaleIndicatorButton,
     _TempuiPromoteButton,
     _TitleBar,
     _UnlockButton,
@@ -56,6 +57,7 @@ _BUTTON_KINDS = {
     "lock",
     "unlock",
     "tempui_promote",
+    "stale",
     "eye",
     "greeked",
 }
@@ -85,6 +87,7 @@ class WorkspaceView(QGraphicsView):
     files_dropped = pyqtSignal(list, QPointF)  # list[Path], scene pos
     paste_requested = pyqtSignal(QPointF)  # scene pos of the click that opened the menu
     tempui_promote_requested = pyqtSignal(WidgetFrame)  # TODO 91b3f42
+    widget_stale_clicked = pyqtSignal(WidgetFrame)  # TODO 3e2c4f2
 
     def __init__(self, parent=None) -> None:
         super().__init__(QGraphicsScene(parent), parent)
@@ -401,6 +404,8 @@ class WorkspaceView(QGraphicsView):
                     frame.set_locked(False)
                 elif kind == "tempui_promote":
                     self.tempui_promote_requested.emit(frame)
+                elif kind == "stale":
+                    self.widget_stale_clicked.emit(frame)
                 elif kind in ("eye", "greeked"):
                     self.zoom_to_widget(frame)
             event.accept()
@@ -484,6 +489,7 @@ class WorkspaceView(QGraphicsView):
                 _LockButton,
                 _UnlockButton,
                 _TempuiPromoteButton,
+                _StaleIndicatorButton,
                 _EyeButton,
                 _TitleBar,
                 _ResizeHandle,
@@ -503,6 +509,8 @@ class WorkspaceView(QGraphicsView):
             return frame, "unlock"
         if isinstance(child, _TempuiPromoteButton):
             return frame, "tempui_promote"
+        if isinstance(child, _StaleIndicatorButton):
+            return frame, "stale"
         if isinstance(child, _EyeButton):
             return frame, "eye"
         if isinstance(child, _TitleBar):

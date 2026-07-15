@@ -190,18 +190,57 @@ class _TempuiPromoteButton(QWidget):
         self._label.setStyleSheet(f"color: #e8e8e8; font-size: {font_pt}pt;")
 
 
+class _StaleIndicatorButton(QWidget):
+    """Shown only on a placed tempui-DSL-defined custom widget instance
+    whose placed_content_hash no longer matches its keyword's currently
+    -registered content hash (TODO 5995ffd/3e2c4f2). Clicking it (handled
+    centrally by WorkspaceView, same as every other titlebar button)
+    shows both hashes and offers to reload this specific instance now or
+    leave it running its current content -- see
+    DeskWindow._on_widget_stale_clicked. Same variable-width-sized-to
+    -its-own-text shape as _TempuiPromoteButton, not a _TitlebarButton
+    -style fixed square."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip(
+            "This instance predates the currently-registered widget definition -- "
+            "click for details."
+        )
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(TEMPUI_BUTTON_MARGIN, 0, TEMPUI_BUTTON_MARGIN, 0)
+        self._label = QLabel("[STALE]")
+        self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        layout.addWidget(self._label)
+
+        self.apply_scale(1.0)
+
+    def apply_scale(self, view_scale: float) -> None:
+        """See _TitleBar.apply_scale: keeps this button a constant
+        on-screen size regardless of the WorkspaceView's current zoom."""
+        view_scale = view_scale or 1.0
+        self.setFixedHeight(max(1, round(TITLEBAR_HEIGHT / view_scale)))
+        font_pt = max(1, round(TITLEBAR_FONT_PT / view_scale))
+        self._label.setStyleSheet(f"color: #e8e8e8; font-size: {font_pt}pt;")
+
+
 def _button_target_width(button: QWidget) -> int:
     """TODO 33d3e8d: this button's own fixed on-screen width -- the same
     width it always renders at once counter-scaled (apply_scale), so this
     is measured independent of the WorkspaceView's current zoom. Every
     _TitlebarButton (close/lock/unlock/bring-to-front/send-to-back/eye)
-    is a fixed CLOSE_BUTTON_SIZE square; _TempuiPromoteButton is sized to
-    its own "[TEMPUI]" text at the titlebar's fixed on-screen font size."""
-    if isinstance(button, _TempuiPromoteButton):
-        font = QFont()
-        font.setPointSize(TITLEBAR_FONT_PT)
-        text_width = QFontMetrics(font).horizontalAdvance("[TEMPUI]")
-        return text_width + TEMPUI_BUTTON_MARGIN * 2
+    is a fixed CLOSE_BUTTON_SIZE square; _TempuiPromoteButton/
+    _StaleIndicatorButton are sized to their own text at the titlebar's
+    fixed on-screen font size."""
+    text_by_type = {_TempuiPromoteButton: "[TEMPUI]", _StaleIndicatorButton: "[STALE]"}
+    for button_type, text in text_by_type.items():
+        if isinstance(button, button_type):
+            font = QFont()
+            font.setPointSize(TITLEBAR_FONT_PT)
+            text_width = QFontMetrics(font).horizontalAdvance(text)
+            return text_width + TEMPUI_BUTTON_MARGIN * 2
     return CLOSE_BUTTON_SIZE
 
 
@@ -231,6 +270,8 @@ class _TitleBar(QWidget):
         layout.addStretch()
         self.tempui_promote_button = _TempuiPromoteButton()
         layout.addWidget(self.tempui_promote_button)
+        self.stale_button = _StaleIndicatorButton()
+        layout.addWidget(self.stale_button)
         self.lock_button = _LockButton()
         layout.addWidget(self.lock_button)
         self.bring_to_front_button = _BringToFrontButton()
@@ -248,12 +289,7 @@ class _TitleBar(QWidget):
         self.apply_scale(1.0)
 
     def _update_label_text(self) -> None:
-        markers = "".join(
-            marker
-            for condition, marker in ((self._external, " [EXTERNAL]"), (self._stale, " [STALE]"))
-            if condition
-        )
-        self._label.setText(f"{self._title}{markers}")
+        self._label.setText(f"{self._title} [EXTERNAL]" if self._external else self._title)
 
     def set_external(self, is_external: bool) -> None:
         """Shows/hides the "[EXTERNAL]" marker (TODO a053e3a) -- for a
@@ -263,21 +299,16 @@ class _TitleBar(QWidget):
         self._update_label_text()
 
     def set_stale(self, is_stale: bool) -> None:
-        """Shows/hides the "[STALE]" marker (TODO 5995ffd) -- for a
-        tempui-DSL-defined custom widget instance whose
-        placed_content_hash no longer matches the currently-registered
-        definition's content hash (see
-        DeskWindow._refresh_stale_indicators_for). A tooltip on the
-        title label explains what to do, since the marker alone doesn't
-        say how to fix it."""
+        """Shows/hides the clickable `[STALE]` titlebar button (TODO
+        5995ffd/3e2c4f2) -- for a tempui-DSL-defined custom widget
+        instance whose placed_content_hash no longer matches the
+        currently-registered definition's content hash (see
+        DeskWindow._refresh_stale_indicators_for). Clicking it is
+        handled centrally by WorkspaceView, same as every other
+        titlebar button -- see DeskWindow._on_widget_stale_clicked for
+        what it actually does."""
         self._stale = is_stale
-        self._label.setToolTip(
-            "This instance predates the currently-registered widget definition -- "
-            "close it and place a fresh one to run the latest code."
-            if is_stale
-            else ""
-        )
-        self._update_label_text()
+        self._refresh_button_visibility()
 
     def set_focused(self, focused: bool) -> None:
         """A subtle background-color shift (TODO 397770c) -- deliberately
@@ -319,6 +350,7 @@ class _TitleBar(QWidget):
     def _refresh_button_visibility(self) -> None:
         show = not self._buttons_hidden
         self.tempui_promote_button.setVisible(show and self._tempui_promotable)
+        self.stale_button.setVisible(show and self._stale)
         self.lock_button.setVisible(show and not self._locked)
         self.bring_to_front_button.setVisible(show and not self._locked)
         self.send_to_back_button.setVisible(show and not self._locked)
@@ -339,6 +371,8 @@ class _TitleBar(QWidget):
         buttons: list[QWidget] = []
         if self._tempui_promotable:
             buttons.append(self.tempui_promote_button)
+        if self._stale:
+            buttons.append(self.stale_button)
         if self._locked:
             buttons.append(self.unlock_button)
         else:
@@ -379,6 +413,7 @@ class _TitleBar(QWidget):
         font_pt = max(1, round(TITLEBAR_FONT_PT / view_scale))
         self._label.setStyleSheet(f"color: #e8e8e8; font-size: {font_pt}pt;")
         self.tempui_promote_button.apply_scale(view_scale)
+        self.stale_button.apply_scale(view_scale)
         self.lock_button.apply_scale(view_scale)
         self.bring_to_front_button.apply_scale(view_scale)
         self.send_to_back_button.apply_scale(view_scale)
@@ -592,9 +627,11 @@ class WidgetFrame(QWidget):
         self._update_chrome_state()
 
     def set_stale(self, is_stale: bool) -> None:
-        """Shows/hides the titlebar's "[STALE]" marker (TODO 5995ffd) --
-        see `desk.shell.window.DeskWindow._refresh_stale_indicators_for`."""
+        """Shows/hides the titlebar's clickable `[STALE]` button (TODO
+        5995ffd/3e2c4f2) -- see
+        `desk.shell.window.DeskWindow._refresh_stale_indicators_for`."""
         self._titlebar.set_stale(is_stale)
+        self._update_chrome_state()
 
     @property
     def title(self) -> str:

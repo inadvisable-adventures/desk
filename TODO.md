@@ -2719,7 +2719,7 @@ c892403. COMPLETED: Resolve relative `desk.fs.readFile`/`writeFile` paths agains
    pre-existing failures plus three already-known-stale doc-version
    assertions from earlier TODOs in this same batch, 0 other new
    failures.
-3e2c4f2. Change the `[STALE]` titlebar marker (TODO 5995ffd) from a
+3e2c4f2. COMPLETED: Change the `[STALE]` titlebar marker (TODO 5995ffd) from a
    passive label into something clickable: clicking it pops up a
    dialog showing both content hashes (the one this instance was
    placed with, and the one currently registered for its keyword) and
@@ -2728,6 +2728,34 @@ c892403. COMPLETED: Resolve relative `desk.fs.readFile`/`writeFile` paths agains
    leave the instance as-is, still marked `[STALE]`, until they decide
    later).
    [planned: clickable-stale-marker-dialog.md]
+
+   Replaced the append-to-title-label `[STALE]` marker with a real
+   clickable titlebar button (_StaleIndicatorButton, styled like
+   _TempuiPromoteButton), wired through WorkspaceView's existing
+   centralized chrome-click dispatch (_hit_test_chrome/
+   mousePressEvent/mouseReleaseEvent) exactly like every other titlebar
+   button, via a new widget_stale_clicked signal. DeskWindow's new
+   _on_widget_stale_clicked shows both hashes via a new
+   _confirm_stale_reload (QMessageBox, "Reload Now"/"Keep for Now",
+   split out for headless-testability like _confirm_clear) and, on
+   Reload Now, calls .reload() on *only that specific frame's*
+   ChromiumWidget -- deliberately not via HotReloadBroker.widget_changed,
+   which would reload every placed instance of that keyword regardless
+   of which one's marker was clicked.
+
+   Verified on a real WorkspaceView: the button shows/hides correctly
+   and contributes to min_full_width_px like the promote button does;
+   a real hit-test at the button's actual on-screen position resolves
+   to ("stale", frame); Reload Now reloads only the clicked instance
+   (a second, independently-placed instance of the same keyword is
+   untouched), updates placed_content_hash, and clears the marker;
+   Keep for Now changes nothing; a non-ChromiumWidget frame or an
+   instance that's no longer actually stale are both no-ops with no
+   dialog shown. Updated TODO 5995ffd's own verification script's
+   stale-state assertions from checking label text to checking the new
+   button's visibility. Full regression suite: the same 9 pre-existing
+   failures plus three already-known-stale doc-version assertions from
+   earlier TODOs in this batch, 0 other new failures.
 efdad99. Change the File Explorer widget's (`widgets/file_explorer/`)
    double-click handling (currently `_open_index`, which always opens
    the Editor widget unconditionally) to a fallback chain: (1) if a
