@@ -2134,7 +2134,20 @@ f693275. COMPLETED: Bug: reported live -- after restarting Desk, the tempui-DSL
    testing note on a real GuiBridge-threading deadlock hit (and fixed)
    in the verification script itself, not the implementation.
    [planned: fix-custom-widget-bridge-capability-resolution.md]
-1e75140. write a document about the starter/alice/bob experiment and store it in design-docs.
+1e75140. COMPLETED: write a document about the starter/alice/bob
+   experiment and store it in design-docs. Shipped as
+   `design-docs/alice-bob-starter-experiment.md`: what the three
+   widgets do, the reaction rule (Alice reacts to any integer < 10,
+   Bob additionally requires it be positive), why Bob's extra
+   condition is necessary (the mediator excludes only the sender from
+   its own publish, not every other subscriber -- both Alice and Bob
+   receive Starter's seed `0` since neither is its sender, so without
+   the filter both would react and produce a duplicate branch), the
+   resulting 0->10 chain, the `Capability` DSL line each widget
+   declares (TODO f693275), and a pointer to where `DefineWidget`
+   widgets actually live (a Desk directory's own gitignored
+   `.desk_temp/`, not source control -- there is no checked-in copy of
+   the exact HTML).
    [planned: starter-alice-bob-experiment-doc.md]
 e35bcf0. pop-ups from inside the browser widget show up in a separate macos window. is there any way to avoid that? could they be fully contained within the widget frame, instead?
 9767c1a. add a Bridge API service by which a widget (with permission from the Desk user) can get a tree-view snapshot of the dom and console log of an html-based widget.

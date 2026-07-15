@@ -1,4 +1,4 @@
-# Document the Alice/Bob/Starter experiment
+# COMPLETED: Document the Alice/Bob/Starter experiment
 
 TODO `1e75140`.
 
@@ -74,4 +74,20 @@ relying on memory of what was built earlier in the session.
 
 ## Status
 
-Not yet implemented — plan written first per `development-process.md`.
+Implemented as designed above:
+`design-docs/alice-bob-starter-experiment.md` written, covering what
+the three widgets are, the reaction rule (Alice unconditional, Bob
+positive-only), why Bob's extra condition is necessary (both Alice and
+Bob receive Starter's seed `0` since neither is its sender —
+sender-exclusion only rules out the one specific sender, not every
+other subscriber), the resulting 0→10 chain, the `Capability events`
+DSL line each widget declares (TODO `f693275`), that trio's role in
+surfacing that TODO's bug, and a pointer to where `DefineWidget`
+widgets actually live (a Desk directory's own gitignored `.desk_temp/`,
+not source control).
+
+Re-read the actual, currently-live `.desk_temp/` `DefineWidget` files
+(this project's own Desk directory) before writing, confirming all
+three still declare `capabilities=['events']` and their stated sizes,
+so the document describes the real, current deployed behavior rather
+than a stale memory of what was built earlier in the session.
