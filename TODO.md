@@ -2733,11 +2733,22 @@ da4f9c0. Give every "viewer" widget that shows the contents of a file
    should be one shared service both call into, not two separate
    copies of the same fallback logic -- the "viewer" widgets listed
    above are all `kind: "python"`, so reaching this shared service is
-   most likely a `current_context` hook (matching how other
-   Python-widget-to-`DeskWindow` calls already work, e.g.
-   `get_discuss_starter`), not literally the HTTP Bridge API (which is
-   `kind: "html"`-only) -- confirm which at planning time rather than
-   assuming the literal "Bridge API" name applies here. Depends on
-   TODO `efdad99`'s fallback logic (and TODO `b5d52c0`'s file type
-   registry, which `efdad99` itself depends on) existing first, so
-   there's an actual shared service to call into.
+   a `current_context` hook (matching how other Python-widget-to-
+   `DeskWindow` calls already work, e.g. `get_discuss_starter`), not
+   the HTTP Bridge API (which is `kind: "html"`-only -- see TODO
+   `2da314f` for exposing this same service there too, for `html`-kind
+   widgets). Depends on TODO `efdad99`'s fallback logic (and TODO
+   `b5d52c0`'s file type registry, which `efdad99` itself depends on)
+   existing first, so there's an actual shared service to call into.
+2da314f. Expose the open-editor-or-fall-back-to-a-scrap service (TODO
+   `da4f9c0`, itself a `current_context` hook reused from "Project
+   Files"'/TODO `efdad99`'s own double-click handling) over the HTTP
+   Bridge API too, so a `kind: "html"` widget's own JS can call it just
+   like a `kind: "python"` widget does via the `current_context` hook
+   -- a new Bridge API route/capability that, given a file path, either
+   opens an appropriate editor for it or falls back to a Scratch tempui
+   note, centered in the current view, the same as the
+   `current_context`-hook version. Depends on TODO `da4f9c0` (and
+   transitively `efdad99`/`b5d52c0`) existing first, since this is
+   exposing that same service through a second binding mechanism, not
+   building new fallback logic of its own.
