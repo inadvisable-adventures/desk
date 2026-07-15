@@ -2224,7 +2224,55 @@ e35bcf0. COMPLETED: pop-ups from inside the browser widget show up in a
    propagation, clean timeout; real `console.log`/`warn`/`error`
    capture and the 200-entry bound).
    [planned: introspect-bridge-capability.md]
-33d3e8d. do an audit of all of the UI and confirm that they don't fail to scale properly when zooming; fix anything that violates that. when the titlebar is too small to hold the buttons without growing the widget width, just show the title; if it is still too small, then for so long as that is true, "greek" the widget (show just a rectangle with the frame color; if the user clicks on a "greeked" widget, zoom/pan the desk so that widget is showing, with 20% margins on all sides. Add a button to widget title bars (labelled with an eye emoji) to do the same thing (zoom/pan to show the widget)
+33d3e8d. COMPLETED: do an audit of all of the UI and confirm that they don't fail to scale properly when zooming; fix anything that violates that. when the titlebar is too small to hold the buttons without growing the widget width, just show the title; if it is still too small, then for so long as that is true, "greek" the widget (show just a rectangle with the frame color; if the user clicks on a "greeked" widget, zoom/pan the desk so that widget is showing, with 20% margins on all sides. Add a button to widget title bars (labelled with an eye emoji) to do the same thing (zoom/pan to show the widget)
+
+   Part 1 (audit): re-verified headlessly that titlebar/resize-handle/
+   border counter-scaling and the three HUD overlays (`ZoomControl`,
+   `DeskPicker`, `TempUiNotificationStack`) genuinely stay constant
+   on-screen across zoom/pan/resize -- everything already held, no
+   fixes needed there.
+
+   Part 2 (degrade + greek): `WidgetFrame` gained a
+   `chrome_state ∈ {"full","title_only","greeked"}`, recomputed on
+   both `set_view_scale` and the frame's own `resizeEvent` (so a
+   resize-handle drag degrades chrome too, not just zooming) from
+   thresholds computed off the same fixed on-screen constants the
+   counter-scaling itself targets. A `QStackedWidget` swaps to a plain
+   `BORDER_COLOR`-filled page while greeked (no titlebar/handles
+   reachable); a new `_EyeButton` joins the titlebar's usual button
+   row; `WorkspaceView._hit_test_chrome` short-circuits on
+   `frame.is_greeked` so a click anywhere on a greeked widget's bounds
+   -- and the eye button, from any chrome state -- both dispatch to a
+   new `zoom_to_widget(frame, margin_fraction=0.2)`, sharing its core
+   fit/clamp logic with the existing `zoom_to_fit` via a new private
+   `_fit_rect` helper.
+
+   Found and fixed one real, pre-existing bug along the way (not
+   introduced by this change, and independently blocking reliable
+   greeking): `WidgetFrame`, once embedded via `QGraphicsProxyWidget`,
+   silently grew itself back up to fit its layout's inflated minimum
+   size (counter-scaled chrome's *local* sizes balloon at low
+   `view_scale`) on a deferred, later-processed event -- not
+   synchronously, so a check performed immediately after a zoom change
+   could pass by accident while the same check failed once the event
+   loop actually ran. `QLayout.SetNoConstraint` alone only partially
+   fixed it; the full fix mirrors the existing Desk picker/zoom control
+   HUD-drift fix (TODO `82d66c0`/`4adfcad`/`1f9bd34`): snapshot the
+   known-good size before scaling, reassert it via
+   `QTimer.singleShot(0, ...)` after. See the new `LEARNINGS.md` entry.
+
+   Verified entirely headlessly (real `WorkspaceView`/`WidgetFrame`s,
+   synthetic `QMouseEvent`s routed through the real mouse-event
+   handlers): the audit re-checks; full → title_only → greeked
+   transitions via both wheel-zoom and a manual resize-handle drag;
+   title_only/greeked visual states; click-anywhere-on-greeked and the
+   eye button both correctly zoom/pan with a real ~20% margin; the eye
+   button correctly shrinks the full-chrome width budget (and is
+   excluded, like the other action buttons, while locked); `zoom_to_fit`
+   regression-checked against the `_fit_rect` refactor; a 10-cycle
+   repeated-zoom stress test confirming the size-reassertion fix holds
+   stably; and a full regression of every pre-existing titlebar button
+   plus titlebar/resize-handle drag.
    [planned: audit-and-greek-widgets.md]
 dc557b2. create a general event poster widget
 7505703. add a widget to view all of the widgets registered for the event message channel and add a per-registered-widget button to zoom/pan to it (use the same button as the zoom/pan titlebar button)

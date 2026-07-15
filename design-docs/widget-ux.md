@@ -35,6 +35,12 @@ content is built/rendered.
 - A **close button** ("✕") in the titlebar's upper-right corner: click to
   remove that widget instance from the canvas and the current Desk, after a
   confirmation prompt (see [Close Button](#close-button)).
+- When a widget is zoomed out far enough that its counter-scaled chrome no
+  longer fits its own on-screen width/height, it **degrades** (full →
+  title-only → "greeked") rather than overflowing or overlapping other
+  widgets, and a greeked widget (or a click of its always-present "eye"
+  button) can be zoomed back into view (see [Titlebar Degrade + Greeking]
+  (#titlebar-degrade--greeking)).
 
 ## Non-Goals (for now)
 
@@ -373,6 +379,80 @@ view's `transformationAnchor` to `AnchorViewCenter` around the underlying
 itself when these are triggered, and anchoring zoom under it (as
 `AnchorUnderMouse`, used for wheel/pinch, would) would be a confusing place
 to zoom toward.
+
+### Titlebar Degrade + Greeking
+
+TODO `33d3e8d`. Counter-scaling (see [Chrome Stays a Constant Screen Size]
+(#chrome-stays-a-constant-screen-size)) keeps chrome a constant *on-screen*
+size, but that only works while the widget's own on-screen footprint
+(`WidgetFrame.width()/height() * view_scale`) is still large enough to hold
+it. Zoomed out (or resized-down) far enough, a full titlebar's worth of
+buttons — or eventually the titlebar itself — no longer fits. Rather than
+letting chrome overflow or overlap, `WidgetFrame` tracks a
+`chrome_state ∈ {"full", "title_only", "greeked"}`, recomputed by
+`_update_chrome_state()` on every `set_view_scale` call (already fires on
+every zoom change) **and** on the frame's own `resizeEvent` (a manual
+resize-handle drag changes on-screen size too, without any `set_view_scale`
+call):
+
+- **full** — every currently-relevant button (whichever of
+  tempui-promote/lock-or-unlock/bring-to-front/send-to-back/close/eye would
+  actually show, given the widget's current locked/tempui-promotable state)
+  fits at its fixed on-screen size, alongside a minimum readable title
+  width (`_TitleBar.min_full_width_px()`).
+- **title_only** — doesn't fit full chrome, but the on-screen width is
+  still enough for a readable title and the on-screen height is still at
+  least one titlebar's worth (`_TitleBar.min_title_only_width_px()`,
+  `TITLEBAR_HEIGHT`). Every action button hides
+  (`_TitleBar.set_buttons_hidden(True)` — a hidden `QHBoxLayout` child
+  takes zero space, so the row genuinely collapses, same mechanism as the
+  existing locked-state collapse); the title label alone remains.
+- **greeked** — neither of the above holds: the title itself wouldn't fit,
+  or the widget's on-screen height is shorter than one titlebar. The frame
+  swaps its visible content entirely, via a `QStackedWidget` (the same
+  page-swap shape the Browser widget's own pop-up containment, TODO
+  `e35bcf0`, already established), to a single plain page filled with the
+  frame's own border color (`BORDER_COLOR`) — no titlebar, no content,
+  nothing else rendered. Resize handles are unreachable while greeked
+  (they're stacked away with the rest of the normal page) — the only way
+  out is zooming/panning it back into view.
+
+Both thresholds are computed from the same fixed on-screen constants the
+counter-scaling itself targets (`CLOSE_BUTTON_SIZE`, `TITLEBAR_FONT_PT`,
+...) — e.g. `_TempuiPromoteButton`'s target width is measured via
+`QFontMetrics` at `TITLEBAR_FONT_PT`, since that's genuinely what it
+renders as on screen regardless of current zoom. `MIN_TITLE_WIDTH` and
+`TITLEBAR_BUTTON_SPACING` are new constants covering the previously
+-implicit "how much room does a readable title/inter-button gap need" and
+"what layout spacing does the fit math assume" questions — the latter is
+now set explicitly on `_TitleBar`'s layout (rather than left to the
+platform style's default) so the fit calculation is deterministic.
+
+**Click-to-zoom on a greeked widget**: `WorkspaceView._hit_test_chrome`
+checks `frame.is_greeked` first, before any of its existing child-widget
+walking (a greeked frame's titlebar/handles are stacked away, so there's
+nothing meaningful to walk into) — a press landing anywhere on a greeked
+frame's bounds hit-tests as `(frame, "greeked")`, handled via the same
+press-then-release-on-the-same-target click machinery as the close/lock/
+tempui-promote buttons (`_BUTTON_KINDS`), dispatching to
+`WorkspaceView.zoom_to_widget(frame)`.
+
+**The eye button**: a new `_EyeButton` ("👁"), added to `_TitleBar` among
+the usual button row (same counter-scaling, same `_hit_test_chrome`/
+`_BUTTON_KINDS` click-dispatch pattern as every other titlebar button),
+also calling `zoom_to_widget(frame)`. It's included in the same "does full
+chrome fit" width budget as every other button, so it degrades away in
+`title_only`/`greeked` along with the rest — a greeked widget instead
+relies on the click-anywhere-on-the-frame path above.
+
+**`zoom_to_widget`**: `WorkspaceView.zoom_to_fit()` (whole-scene, 0.1%
+margin) and `zoom_to_widget(frame, margin_fraction=0.2)` (one frame's
+`QGraphicsProxyWidget.sceneBoundingRect()`, 20% margin —
+`WIDGET_ZOOM_MARGIN_FRACTION`) share their core "fit this rect with this
+margin, clamp scale to `[MIN_SCALE, MAX_SCALE]`, refresh chrome/HUD for the
+new scale" logic via a private `_fit_rect(rect, margin_fraction)` helper,
+avoiding duplicated `fitInView`/anchor-juggling/clamping between the two
+call sites.
 
 ### Desk Picker
 

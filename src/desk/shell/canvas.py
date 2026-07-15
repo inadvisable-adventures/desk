@@ -20,6 +20,7 @@ from desk.shell.widget_frame import (
     WidgetFrame,
     _BringToFrontButton,
     _CloseButton,
+    _EyeButton,
     _LockButton,
     _ResizeHandle,
     _SendToBackButton,
@@ -36,6 +37,7 @@ MAX_SCALE = 4.0
 DEFAULT_WIDGET_SIZE = (680, 520)
 WHEEL_ZOOM_SENSITIVITY = 0.0025
 FIT_MARGIN_FRACTION = 0.001  # 0.1%, per design-docs/widget-ux.md
+WIDGET_ZOOM_MARGIN_FRACTION = 0.2  # 20%, per TODO 33d3e8d -- see zoom_to_widget
 ZOOM_CONTROL_MARGIN = 12
 DESK_PICKER_MARGIN = 12
 TEMP_UI_NOTIFICATIONS_MARGIN = 12
@@ -44,7 +46,19 @@ SCALE_EPSILON = 1e-6
 # Chrome buttons handled as an ordinary click (press-then-release-on
 # -the-same-button), not a drag -- see _hit_test_chrome/mousePressEvent/
 # mouseReleaseEvent (TODO cdf45cb generalized this from just "close").
-_BUTTON_KINDS = {"close", "bring_to_front", "send_to_back", "lock", "unlock", "tempui_promote"}
+# "greeked" (TODO 33d3e8d) is a click-anywhere-on-the-frame variant of the
+# same shape, not tied to one specific chrome sub-widget -- see
+# _hit_test_chrome's greeked short-circuit.
+_BUTTON_KINDS = {
+    "close",
+    "bring_to_front",
+    "send_to_back",
+    "lock",
+    "unlock",
+    "tempui_promote",
+    "eye",
+    "greeked",
+}
 
 # Max total mouse displacement (view-space px) between a titlebar press
 # and its release still counted as a click (TODO a1c701d), not a drag.
@@ -387,6 +401,8 @@ class WorkspaceView(QGraphicsView):
                     frame.set_locked(False)
                 elif kind == "tempui_promote":
                     self.tempui_promote_requested.emit(frame)
+                elif kind in ("eye", "greeked"):
+                    self.zoom_to_widget(frame)
             event.accept()
             return
         if self._drag_frame is not None:
@@ -448,6 +464,14 @@ class WorkspaceView(QGraphicsView):
         if not isinstance(frame, WidgetFrame):
             return None
 
+        if frame.is_greeked:
+            # TODO 33d3e8d: a greeked frame's titlebar/handles are
+            # stacked away (see WidgetFrame's QStackedWidget) -- there's
+            # nothing meaningful to walk into below, and any press
+            # anywhere within the frame's bounds should be treated as a
+            # click on the greeked placeholder itself.
+            return frame, "greeked"
+
         scene_pos = self.mapToScene(view_pos.toPoint())
         local_point = (scene_pos - item.pos()).toPoint()
         child = frame.childAt(local_point)
@@ -460,6 +484,7 @@ class WorkspaceView(QGraphicsView):
                 _LockButton,
                 _UnlockButton,
                 _TempuiPromoteButton,
+                _EyeButton,
                 _TitleBar,
                 _ResizeHandle,
             ),
@@ -478,6 +503,8 @@ class WorkspaceView(QGraphicsView):
             return frame, "unlock"
         if isinstance(child, _TempuiPromoteButton):
             return frame, "tempui_promote"
+        if isinstance(child, _EyeButton):
+            return frame, "eye"
         if isinstance(child, _TitleBar):
             return frame, None
         if isinstance(child, _ResizeHandle):
@@ -642,11 +669,27 @@ class WorkspaceView(QGraphicsView):
         return super().event(event)
 
     def zoom_to_fit(self) -> None:
-        rect = self.scene().itemsBoundingRect()
+        self._fit_rect(self.scene().itemsBoundingRect(), FIT_MARGIN_FRACTION)
+
+    def zoom_to_widget(self, frame: WidgetFrame, margin_fraction: float = WIDGET_ZOOM_MARGIN_FRACTION) -> None:
+        """TODO 33d3e8d: zoom/pan so this frame fills the viewport, with a
+        margin_fraction margin on all sides -- triggered by either a
+        click anywhere on a "greeked" frame or its titlebar's eye button
+        (see _hit_test_chrome/mouseReleaseEvent)."""
+        proxy = frame.graphicsProxyWidget()
+        if proxy is None:
+            return
+        self._fit_rect(proxy.sceneBoundingRect(), margin_fraction)
+
+    def _fit_rect(self, rect, margin_fraction: float) -> None:
+        """Shared core of zoom_to_fit/zoom_to_widget: fits `rect` in the
+        viewport with a margin of margin_fraction of its own width/height
+        on each side, clamps the resulting scale to [MIN_SCALE, MAX_SCALE],
+        and updates chrome/HUD for the new scale."""
         if rect.isEmpty():
             return
-        margin_x = rect.width() * FIT_MARGIN_FRACTION
-        margin_y = rect.height() * FIT_MARGIN_FRACTION
+        margin_x = rect.width() * margin_fraction
+        margin_y = rect.height() * margin_fraction
         rect = rect.adjusted(-margin_x, -margin_y, margin_x, margin_y)
 
         previous_anchor = self.transformationAnchor()

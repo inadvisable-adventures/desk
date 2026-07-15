@@ -809,3 +809,50 @@ a child cleanup running, a parent's child list shrinking — needs this
 explicit drain in the test harness itself, not just `processEvents()`,
 or it will report a false negative that looks exactly like a real bug
 in the code under test.
+
+## A `QGraphicsProxyWidget`-embedded widget can silently grow itself back to fit its layout's minimum size, on a *later* event-loop turn — `QLayout::SetNoConstraint` alone doesn't stop it
+
+TODO `33d3e8d`: `WidgetFrame`'s chrome is counter-scaled (see
+`design-docs/widget-ux.md`'s Chrome Stays a Constant Screen Size) —
+`apply_scale(view_scale)` sets chrome children's *local* fixed sizes to
+`CONST / view_scale`, which grow large once `view_scale` gets small
+(deeply zoomed out). At a small enough on-screen size (a widget
+resized down near `MIN_WIDTH`/`MIN_HEIGHT` while also zoomed far out),
+those exploded local chrome minimums can exceed the frame's own actual
+local size — and something in `WidgetFrame`'s `QGraphicsProxyWidget`
+embedding (`scene().addWidget(frame)`) reacts by silently resizing the
+frame itself back up to fit that larger minimum, confirmed directly by
+observing `frame.width()`/`frame.height()` grow well past the size it
+was explicitly `resize()`d to, with no explicit resize call anywhere
+in between.
+
+The natural-looking fix — `layout.setSizeConstraint
+(QLayout.SizeConstraint.SetNoConstraint)` on the frame's own top-level
+layout, which does stop that *layout's own* `activate()` from
+resizing its widget — measurably shrank the effect but did not
+eliminate it: a smaller, title-text-length-dependent regrowth still
+occurred, and critically, on a **separate, later** processed event,
+not synchronously within the call that triggered it (confirmed
+directly: reading the frame's size immediately after the triggering
+call, with no intervening `processEvents()`, shows the correct size;
+a `processEvents()` call afterward is what reveals the regrowth). A
+test/check performed synchronously right after zooming can miss this
+entirely and pass by accident; the same check will fail once the
+event loop actually gets to run (i.e., in the real app, or in a
+headless test that pumps events).
+
+Confirmed the actual mechanism is independent of the frame's own
+`QLayout::SizeConstraint` setting — it's `QGraphicsProxyWidget`'s own
+embedding sync (reacting to the widget's `LayoutRequest` and
+resizing the proxy — and therefore the widget — to match its now
+-larger effective size hint) on a queued/deferred basis, not something
+`SetNoConstraint` has any control over.
+
+Fixed with the same shape already used for the Desk picker/zoom
+control HUD drift bug (TODO `82d66c0`/`4adfcad`/`1f9bd34`): snapshot
+the known-good size *before* the operation that might trigger this,
+then reassert it via `QTimer.singleShot(0, ...)` afterward — deferred
+reassertion reliably wins because it runs *after* whatever queued
+correction Qt itself performs, the same reasoning that made a
+synchronous reassertion insufficient for the HUD-drift bug too. See
+`WidgetFrame.set_view_scale`/`_reassert_size`.

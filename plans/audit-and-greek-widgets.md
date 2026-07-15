@@ -1,4 +1,4 @@
-# UI zoom-scaling audit + "greek" undersized widgets
+# UI zoom-scaling audit + "greek" undersized widgets (COMPLETED)
 
 TODO `33d3e8d`.
 
@@ -158,4 +158,65 @@ Status.
 
 ## Status
 
-Not yet implemented — plan written first per `development-process.md`.
+Implemented as planned, plus one unplanned but necessary fix.
+
+**Part 1 (audit)**: re-verified headlessly (titlebar height/font,
+resize-handle thickness, frame border thickness constant across
+0.15x/0.5x/1.0x/2.5x zoom; `ZoomControl`/`DeskPicker`
+/`TempUiNotificationStack` stay pinned through pan/zoom_to_fit
+/reset_zoom/resize) — everything already held, no fixes needed.
+
+**Part 2 (degrade + greek)**: implemented as planned --
+`WidgetFrame.chrome_state ∈ {"full","title_only","greeked"}` recomputed
+via `_update_chrome_state()` on both `set_view_scale` and the frame's
+own `resizeEvent`; thresholds (`_TitleBar.min_full_width_px()`
+/`min_title_only_width_px()`) computed from the same fixed on-screen
+constants the counter-scaling itself targets; a `QStackedWidget` swaps
+to a plain `BORDER_COLOR`-filled page while greeked; `_EyeButton` added
+to the titlebar; `WorkspaceView._hit_test_chrome`'s `is_greeked`
+short-circuit plus `_BUTTON_KINDS`/`zoom_to_widget` wire up both the
+eye button and click-anywhere-on-a-greeked-widget to the same shared
+`_fit_rect` helper `zoom_to_fit` was refactored onto.
+
+**Unplanned fix found during verification**: a real, pre-existing bug
+(not introduced by this change — reproduced with only the
+already-shipped counter-scaling code, no chrome-state/greek code
+involved) where `WidgetFrame`, once embedded via
+`QGraphicsProxyWidget`, silently grows itself back up to fit its
+layout's inflated minimum size (counter-scaled chrome's *local* sizes
+balloon at low `view_scale`) on a deferred, later-processed event —
+not synchronously, so a check performed immediately after a zoom
+change can pass by accident while the same check fails once the event
+loop actually runs. This directly blocked reliable greeking (a
+widget's on-screen size would silently balloon back up right as it was
+supposed to shrink below the greek threshold). `QLayout
+.SetNoConstraint` on `WidgetFrame`'s own top-level layout only
+partially fixed it; the full fix mirrors the existing Desk picker/zoom
+control HUD-drift fix (TODO `82d66c0`/`4adfcad`/`1f9bd34`): snapshot
+the known-good size before scaling, reassert it via
+`QTimer.singleShot(0, ...)` after. See `WidgetFrame.set_view_scale`
+/`_reassert_size` and the new `LEARNINGS.md` entry.
+
+Verified entirely headlessly (`QT_QPA_PLATFORM=offscreen`, real
+`WorkspaceView`/`WidgetFrame`s, synthetic `QMouseEvent`s routed through
+the real `mousePressEvent`/`mouseReleaseEvent` handlers, not calling
+handlers directly): the audit re-checks above; chrome state transitions
+full → title_only → greeked and back via both wheel-zoom
+(`set_view_scale`) and a manual resize-handle drag (`resizeEvent`
+alone, no `set_view_scale` call); title_only hides every action button
+while keeping the title label; greeked shows only the plain colored
+page with the titlebar unreachable; clicking anywhere on a greeked
+frame and clicking the eye button both trigger `zoom_to_widget` and
+land the widget's full bounds inside the viewport with a real ~20%
+margin; the eye button is included in (and shrinks) the full-chrome
+width budget (confirmed a locked widget's threshold is smaller, since
+it excludes bring-to-front/send-to-back/close/eye); `zoom_to_fit` is
+unaffected by the `_fit_rect` refactor; a repeated zoom-cycle stress
+test (10 changes across 0.1x-4.0x) confirmed the size-reassertion fix
+holds stably, not just once; and a full regression of every
+pre-existing titlebar button (close, lock/unlock, bring-to-front, send
+-to-back, tempui-promote) plus titlebar drag and resize-handle drag,
+exercised through the real view-level mouse-event path, confirmed
+nothing broke from the `_TitleBar` visibility refactor or the
+`WidgetFrame`/`QStackedWidget` restructuring. No step required real
+-window/visual inspection.
