@@ -2752,3 +2752,20 @@ da4f9c0. Give every "viewer" widget that shows the contents of a file
    transitively `efdad99`/`b5d52c0`) existing first, since this is
    exposing that same service through a second binding mechanism, not
    building new fallback logic of its own.
+996a5eb. The "focus view" 👁 eye button (`_EyeButton`, TODO `33d3e8d`)
+   should persist alongside the title in the `title_only` chrome
+   -degrade state, not disappear along with every other titlebar
+   button. Right now `_TitleBar.set_buttons_hidden`/
+   `_refresh_button_visibility` hides the eye button too once
+   `title_only` kicks in (gated by the same `show = not
+   self._buttons_hidden` as every other button) -- contradicting
+   `_EyeButton`'s own docstring, which already claims it's "always
+   present on every titlebar regardless of current chrome/zoom state."
+   Fix the visibility gating so the eye button survives `title_only`
+   (still hidden while locked, same as today). Then, since
+   `min_title_only_width_px`/`min_full_width_px`
+   (`src/desk/shell/widget_frame.py`) currently size the `title_only`
+   /greeked boundary on the title label alone, update that threshold
+   to require room for *both* the title and the eye button -- i.e.
+   greeking should trigger whenever either one no longer fits, not
+   only when the title itself no longer fits.
