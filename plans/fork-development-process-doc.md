@@ -1,4 +1,4 @@
-# Plan: TODO 1a96c9f — fork development-process.md into a shared/not-shared hierarchy
+# Plan: TODO 1a96c9f (COMPLETED) — fork development-process.md into a shared/not-shared hierarchy
 
 ## Summary
 

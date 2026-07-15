@@ -2948,7 +2948,7 @@ b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
    the expected stale doc-version assertion in TODO `59c5a70`'s own
    earlier script (now four such stale checks accumulated from this
    batch's TEMPUI_DOC_VERSION bumps), 0 other new failures.
-1a96c9f. Fork `development-process.md` into a shared/not-shared doc
+1a96c9f. COMPLETED: Fork `development-process.md` into a shared/not-shared doc
    hierarchy, with a Desk-specific section and breaking-changes
    -tracking instructions (prioritized, immediately after TODO
    `7462cdb`, per user request). Specifically:
@@ -2980,6 +2980,31 @@ b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
      of those two docs becomes a standing part of the Desk-development
      workflow itself, not a one-off backfill.
    [planned: fork-development-process-doc.md]
+
+   Forked the full prior content of `development-process.md` verbatim
+   into new `shared_development_process.md`. Rewrote
+   `development-process.md` to a "When working on Desk itself" section
+   (hierarchy explanation, ask-the-user-if-ambiguous instruction, and
+   the tempui-changelog-docs-tracking instruction) plus a "Shared
+   development process" section linking to the fork. Added an empty
+   `specifically-not-working-on-desk-itself-development-process.md`
+   peer. Extended `DeskWindow._seed_development_process` (new
+   `SHARED_DEVELOPMENT_PROCESS_FILENAME`/
+   `NOT_DESK_DEVELOPMENT_PROCESS_FILENAME` constants) to seed all three
+   files together, independently never-overwriting each -- otherwise a
+   newly-created project would get only the rewritten top-level file,
+   with dead relative links and none of the actual process content it
+   used to carry directly.
+
+   Verified: all three files' content directly (hierarchy explanation,
+   both instructions, both relative links present; the fork carries
+   every section the original had; the peer file is empty); seeding
+   copies all three into a fresh project directory, independently
+   respects an existing destination file without overwriting it, and
+   is a no-op when the source Desk has none of them. Full regression
+   suite: the same 9 pre-existing failures plus four already-known
+   -stale doc-version assertions accumulated from this batch's earlier
+   TEMPUI_DOC_VERSION bumps, 0 other new failures.
 8385dcc. Rename the "File Explorer" widget (`widgets/file_explorer/`)
    to "Project Files" -- the directory name, its `widget.json`'s
    `name`, any user-facing string in its own code, and every

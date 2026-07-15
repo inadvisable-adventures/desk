@@ -109,6 +109,15 @@ WIDGET_SPACING = 700
 # codebase's own development-process.md itself names -- a plain
 # literal, not a piece of shared behavior worth its own module.
 DEVELOPMENT_PROCESS_FILENAME = "development-process.md"
+# TODO 1a96c9f: development-process.md's own "When working on Desk
+# itself" section points to these two -- seeded alongside it (see
+# _seed_development_process) since a new project needs all three
+# together: the top-level file's relative links to them would
+# otherwise be dead, and shared_development_process.md carries the
+# actual generic process content development-process.md itself no
+# longer does.
+SHARED_DEVELOPMENT_PROCESS_FILENAME = "shared_development_process.md"
+NOT_DESK_DEVELOPMENT_PROCESS_FILENAME = "specifically-not-working-on-desk-itself-development-process.md"
 # TODO cb2790d: a new Desk's default-widgets seeding looks for this exact
 # filename, same convention as the other well-known-filename constants
 # above.
@@ -1558,18 +1567,26 @@ class DeskWindow(QMainWindow):
         )
 
     def _seed_development_process(self, directory: Path) -> None:
-        """Copies the current Desk's development-process.md into
-        `directory` (TODO fbd0554) -- a no-op if the current Desk has
-        none to source from, or if `directory` already has its own
-        (never silently overwritten). The existence check already runs
-        immediately before the write with nothing in between (TODO
-        4716585's re-check-immediately-before-create requirement) --
-        confirmed correct as-is, no change needed here."""
-        source = self.current_desk.directory / DEVELOPMENT_PROCESS_FILENAME
-        destination = directory / DEVELOPMENT_PROCESS_FILENAME
-        if not source.is_file() or destination.exists():
-            return
-        destination.write_text(source.read_text())
+        """Copies the current Desk's development-process.md, and (TODO
+        1a96c9f) its shared_development_process.md/specifically-not
+        -working-on-desk-itself-development-process.md peers, into
+        `directory` (TODO fbd0554) -- each independently a no-op if the
+        current Desk has none to source from, or if `directory` already
+        has its own (never silently overwritten). The existence check
+        already runs immediately before the write with nothing in
+        between (TODO 4716585's re-check-immediately-before-create
+        requirement) -- confirmed correct as-is, no change needed
+        here."""
+        for filename in (
+            DEVELOPMENT_PROCESS_FILENAME,
+            SHARED_DEVELOPMENT_PROCESS_FILENAME,
+            NOT_DESK_DEVELOPMENT_PROCESS_FILENAME,
+        ):
+            source = self.current_desk.directory / filename
+            destination = directory / filename
+            if not source.is_file() or destination.exists():
+                continue
+            destination.write_text(source.read_text())
 
     def _seed_todo_item_ids_script(self, directory: Path) -> None:
         """Copies the current Desk's scripts/todo_item_ids.py into
