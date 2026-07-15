@@ -2592,7 +2592,7 @@ b324217. COMPLETED: Author `DefineWidget` custom widgets from a real per-widget
    regression suite back to the same 9 pre-existing failures plus one
    already-known-stale doc-version assertion in my own earlier
    b324217 script, 0 other new failures.
-c892403. Resolve relative `desk.fs.readFile`/`writeFile` paths against
+c892403. COMPLETED: Resolve relative `desk.fs.readFile`/`writeFile` paths against
    the current Desk's own directory instead of the server process's
    ambient working directory (or reject relative paths with a clear
    error), expose that directory via `desk.self.getManifest()`, and
@@ -2601,4 +2601,30 @@ c892403. Resolve relative `desk.fs.readFile`/`writeFile` paths against
    signaling, ahead of `fs`/`workspace`/`widgets` in the list. See
    design-docs/custom-widget-authoring.md section 4.
    [planned: fs-path-resolution-and-events-framing.md]
+
+   Added a `_resolve_fs_path` helper in server/app.py (absolute paths
+   pass through unchanged; relative ones resolve against
+   `gui_bridge.window.current_desk.directory` via the existing
+   `run_on_gui` GUI-thread-crossing convention), used by both
+   `fs_read_file`/`fs_write_file`. `self_get_manifest` now also
+   returns a `directory` field. Reordered `_CUSTOM_WIDGETS_DOC`'s
+   Bridge API capability list to put `events` first with an explicit
+   "reach for this first for cross-widget signaling" callout,
+   documented the new `fs` resolution behavior and getManifest's
+   `directory`/`content_hash` fields (the latter was a real
+   documentation gap left over from TODO 5995ffd, fixed here while
+   touching this same bullet). TEMPUI_DOC_VERSION 12 -> 13.
+
+   Verified end-to-end over real HTTP (a running server + a real
+   GuiBridge attached to a fake window double, background-thread
+   requests against a pumped Qt event loop, same pattern as the
+   existing local-storage bridge test): a relative fs.writeFile/
+   readFile round-trips under the fake Desk's own directory, an
+   absolute path is used as-is, and getManifest returns both the new
+   `directory` and the existing `content_hash`. Doc content and
+   version bump also checked directly. Full regression suite: the
+   same 9 pre-existing failures plus two now-stale doc-version
+   assertions in my own earlier b324217/5ff02d2 scripts (hardcoded to
+   prior version numbers, not real regressions), 0 other new
+   failures.
    [planned: widget-content-zoom-safe-style.md]

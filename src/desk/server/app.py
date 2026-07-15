@@ -200,9 +200,32 @@ def create_app(
             raise HTTPException(503, "Event mediator not available")
         return event_mediator
 
+    async def _current_desk_directory() -> Path:
+        return await run_on_gui(lambda: gui_bridge.window.current_desk.directory)
+
+    async def _resolve_fs_path(raw_path: str) -> Path:
+        """TODO c892403: a relative desk.fs.* path used to resolve
+        against the server process's own ambient working directory,
+        which has no reliable relationship to whichever project is
+        actually open -- silently reading/writing somewhere the user
+        never sees, with no error at all. Resolves against the current
+        Desk's own directory instead; an already-absolute path is used
+        as-is (no GUI-thread round-trip needed for that case)."""
+        path = Path(raw_path)
+        if path.is_absolute():
+            return path
+        directory = await _current_desk_directory()
+        return directory / path
+
     @app.get("/api/bridge/self/getManifest")
     async def self_get_manifest(widget: WidgetInfo = Depends(require_caller(None))):
-        return _widget_info_dict(widget)
+        manifest = _widget_info_dict(widget)
+        # TODO c892403: lets a widget that genuinely needs to construct
+        # its own project-relative path do so correctly and portably,
+        # without needing the "fs" capability just to find out where it
+        # is.
+        manifest["directory"] = str(await _current_desk_directory())
+        return manifest
 
     @app.get("/api/bridge/self/getLocalStorage")
     async def self_get_local_storage(instance_id: str = Depends(require_instance_id)):
@@ -222,8 +245,9 @@ def create_app(
 
     @app.get("/api/bridge/fs/readFile")
     async def fs_read_file(path: str, widget: WidgetInfo = Depends(require_caller("fs"))):
+        resolved = await _resolve_fs_path(path)
         try:
-            return {"contents": Path(path).read_text()}
+            return {"contents": resolved.read_text()}
         except OSError as e:
             raise HTTPException(400, str(e)) from e
 
@@ -231,8 +255,9 @@ def create_app(
     async def fs_write_file(
         body: WriteFileRequest, widget: WidgetInfo = Depends(require_caller("fs"))
     ):
+        resolved = await _resolve_fs_path(body.path)
         try:
-            Path(body.path).write_text(body.contents)
+            resolved.write_text(body.contents)
         except OSError as e:
             raise HTTPException(400, str(e)) from e
         return {"ok": True}

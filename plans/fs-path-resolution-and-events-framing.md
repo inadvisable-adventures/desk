@@ -1,4 +1,4 @@
-# Plan: TODO c892403 — desk.fs.* path resolution + events framing
+# Plan: TODO c892403 (COMPLETED) — desk.fs.* path resolution + events framing
 
 See design-docs/custom-widget-authoring.md section 4 for the full
 rationale.

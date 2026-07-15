@@ -59,7 +59,12 @@ GITIGNORE_COMMENT = "# Desk-specific"
 # TODO 5ff02d2: bumped 11 -> 12 for a callout in _CUSTOM_WIDGETS_DOC
 # that DefineWidget only registers a kind, and doesn't place an
 # instance except the auto-placed first one.
-TEMPUI_DOC_VERSION = 12
+#
+# TODO c892403: bumped 12 -> 13 for _CUSTOM_WIDGETS_DOC's Bridge API
+# section: getManifest's new content-hash/directory fields, events
+# given top billing in the capability list, and fs's new relative-path
+# resolution behavior.
+TEMPUI_DOC_VERSION = 13
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -511,7 +516,11 @@ All calls are `async` (they return a `Promise`):
   (not immediately on every call) — call it eagerly and often, don't
   wait for some separate "save" signal that doesn't exist.
 - `desk.self.getManifest()` → your own widget's manifest (id, name,
-  capabilities, default size).
+  capabilities, default size, content hash, and the current Desk's own
+  `directory` — the last two exist specifically so you can tell which
+  version of your widget's code is currently registered, and construct
+  a correct project-relative path yourself if you ever need to, without
+  declaring the `fs` capability just to find out where you are).
 
 If you're porting an existing web app/component into a `DefineWidget`
 widget, it likely already has its own persistence mechanism (custom
@@ -524,18 +533,26 @@ old approach just keeps working because the rest of the port succeeded.
 
 A few more calls exist for widgets that need them (all require
 declaring the matching capability in your own manifest, unlike the
-`self.*` calls above, which need none):
+`self.*` calls above, which need none). **If what you actually want is
+"tell other widgets something happened," reach for `desk.events.*`
+first** — every other call in this list is scoped to your own widget or
+to one other widget you already know the id of, but `events` is the one
+built for genuine cross-widget signaling:
 
-- `desk.workspace.getState()` (capability `workspace`) — the current
-  Desk's live widget layout.
-- `desk.fs.readFile(path)` / `desk.fs.writeFile(path, contents)`
-  (capability `fs`) — read/write an arbitrary file on disk.
-- `desk.widgets.list()` / `.open(widgetId, opts)` / `.close(instanceId)`
-  (capability `widgets`) — inspect/manage placed widget instances.
 - `desk.events.subscribe(names)` / `.unsubscribe(names)` /
   `.publish(name, payload)` / `.onMessage(callback)` (capability
   `events`) — send and receive named messages to/from other widgets.
   See "Sending and receiving named messages" below.
+- `desk.workspace.getState()` (capability `workspace`) — the current
+  Desk's live widget layout.
+- `desk.fs.readFile(path)` / `desk.fs.writeFile(path, contents)`
+  (capability `fs`) — read/write an arbitrary file on disk. A relative
+  `path` resolves against the current Desk's own directory (not any
+  particular process's working directory); an absolute path is used as
+  -is. This is same-directory file I/O, not a way to signal another
+  widget — see the `events` callout above if that's what you're after.
+- `desk.widgets.list()` / `.open(widgetId, opts)` / `.close(instanceId)`
+  (capability `widgets`) — inspect/manage placed widget instances.
 - `desk.introspect.snapshot(targetInstanceId)` (capability
   `introspect`) — get a DOM tree snapshot and console log of *another*
   widget instance. See "Inspecting another widget" below.
