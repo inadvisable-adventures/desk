@@ -2275,5 +2275,6 @@ e35bcf0. COMPLETED: pop-ups from inside the browser widget show up in a
    plus titlebar/resize-handle drag.
    [planned: audit-and-greek-widgets.md]
 dc557b2. create a general event poster widget
+   [planned: event-poster-widget.md]
 7505703. add a widget to view all of the widgets registered for the event message channel and add a per-registered-widget button to zoom/pan to it (use the same button as the zoom/pan titlebar button)
 6e731c1. drag-and-drop of an image into the Desk should result in the image being saved in the .desk_temp directory and then displayed with tempui.
