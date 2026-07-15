@@ -2149,7 +2149,36 @@ f693275. COMPLETED: Bug: reported live -- after restarting Desk, the tempui-DSL
    `.desk_temp/`, not source control -- there is no checked-in copy of
    the exact HTML).
    [planned: starter-alice-bob-experiment-doc.md]
-e35bcf0. pop-ups from inside the browser widget show up in a separate macos window. is there any way to avoid that? could they be fully contained within the widget frame, instead?
+e35bcf0. COMPLETED: pop-ups from inside the browser widget show up in a
+   separate macos window. is there any way to avoid that? could they be
+   fully contained within the widget frame, instead?
+
+   Root cause: `BrowserWidget` never connected to `QWebEnginePage
+   .newWindowRequested`, so Qt WebEngine's own default handling created
+   a genuinely separate, unmanaged top-level native window for any
+   `window.open()`/`target="_blank"` request -- yes, avoidable, and
+   fully containable. Fixed: `BrowserWidget` now has a second, embedded
+   pop-up `QWebEngineView` shown via a `QStackedWidget` in place of the
+   main page (URL label + close button), and connects
+   `newWindowRequested` to redirect every request into it via
+   `request.openIn(...)` -- the same pattern Qt's own `simplebrowser`
+   example uses. A *fresh* view/page is created per pop-up open (not
+   reused across opens): verification found that reusing one could hit
+   a real, reproducible internal Chromium consistency assertion on a
+   second rapid redirect, fixed by always tearing down and recreating
+   instead. Verified headlessly against a real local HTTP page's own
+   `window.open()` button (real JS click, not a Python stand-in),
+   confirming `QApplication.topLevelWidgets()`'s count never increases,
+   the pop-up panel shows the right content, both `window.close()` and
+   the widget's own close button return to the main page, and repeated
+   open/close/reopen no longer crashes on exit (reproduced the crash
+   consistently pre-fix, confirmed gone across multiple stress runs
+   post-fix). A separate, pre-existing bug found (not caused) during
+   this verification -- the Back/Forward buttons' own enabled/disabled
+   state can go stale after a real navigation, confirmed present
+   identically on the untouched original file -- was parked in
+   `PARKINGLOT.md` rather than fixed here, being unrelated to what this
+   item asked for.
    [planned: browser-widget-contained-popups.md]
 9767c1a. add a Bridge API service by which a widget (with permission from the Desk user) can get a tree-view snapshot of the dom and console log of an html-based widget.
 33d3e8d. do an audit of all of the UI and confirm that they don't fail to scale properly when zooming; fix anything that violates that. when the titlebar is too small to hold the buttons without growing the widget width, just show the title; if it is still too small, then for so long as that is true, "greek" the widget (show just a rectangle with the frame color; if the user clicks on a "greeked" widget, zoom/pan the desk so that widget is showing, with 20% margins on all sides. Add a button to widget title bars (labelled with an eye emoji) to do the same thing (zoom/pan to show the widget)

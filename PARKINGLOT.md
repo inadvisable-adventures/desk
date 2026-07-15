@@ -4,6 +4,27 @@ This file captures thoughts and TODO items that arise during work on other thing
 
 ## Items
 
+- **Browser widget's back/forward buttons can get stuck stale
+  (enabled/disabled state, not the underlying navigation itself)**
+
+  Surfaced while verifying TODO `e35bcf0` (contained pop-ups) —
+  confirmed present identically on the pristine, pre-`e35bcf0` widget
+  too, so it's unrelated to that fix, not a regression from it.
+  `BrowserWidget._on_url_changed` (`widgets/browser/widget.py`) calls
+  `_update_nav_buttons()`, which reads `self._view.history()
+  .canGoBack()/.canGoForward()` synchronously at that moment. Confirmed
+  directly: right after two real navigations, `history().canGoBack()`
+  already correctly returns `True`, but `_back_button.isEnabled()` is
+  stuck `False` — nothing re-syncs it later, since `_update_nav_buttons`
+  is only ever called from inside `_on_url_changed`. Clicking Back
+  itself still works fine (the underlying `QWebEngineHistory` state is
+  correct) — only the *button's own enabled/disabled UI state* can lag
+  or get stuck wrong, presumably because `urlChanged` can fire before
+  `QWebEngineHistory` has fully settled for that navigation. Likely
+  fix: also refresh nav-button state from `loadFinished` (or another
+  signal that reliably fires after history has settled), not just
+  `urlChanged` alone -- not designed/verified yet.
+
 - **Packaging & distribution**
 
   App bundling (e.g. PyInstaller) and installation/run instructions, so

@@ -1,4 +1,4 @@
-# Fix: Browser widget pop-ups escape into a separate macOS window
+# COMPLETED: Fix: Browser widget pop-ups escape into a separate macOS window
 
 TODO `e35bcf0`.
 
@@ -94,4 +94,64 @@ behavior that can't be verified by reading the code alone):
 
 ## Status
 
-Not yet implemented — plan written first per `development-process.md`.
+Implemented as designed, with one change discovered during
+verification: the pop-up panel does **not** reuse a single
+`QWebEngineView`/page across repeated pop-up opens as originally
+planned. Confirmed directly: redirecting a second, rapid
+`newWindowRequested` into a page that was already the target of an
+earlier `openIn()` call can hit an internal Chromium consistency
+assertion (`NOTREACHED hit... CreateNewWindow`) during that page's
+later teardown — a real, reproducible crash in this environment (GPU
+context loss immediately preceding it in the log, so likely a
+teardown-ordering race, not a logic bug in Chromium's redirect handling
+itself), not just a theoretical concern. Fixed by creating a genuinely
+fresh `QWebEngineView`/page for *every* pop-up open (`_replace_popup_view`,
+tearing down and `deleteLater()`-ing the previous one first) rather
+than reusing one — confirmed this removes the crash entirely across
+repeated stress runs, with no other behavior change.
+
+Verified headlessly (`QT_QPA_PLATFORM=offscreen`, a real `QApplication`
+constructed with a non-empty argv — QtWebEngine's Chromium layer
+requires this even for `QApplication([])` in other, non-WebEngine
+verification elsewhere in this codebase — and a real local
+`http.server` origin, since `window.open()` from a `data:`/`about:`
+page is unreliable in QtWebEngine's own popup handling for non-http
+origins):
+
+- A real test page's own `window.open()` button (triggered via a real
+  page-JS click, not a Python API call standing in for one), loaded
+  into a real `BrowserWidget`: the widget's own pop-up panel becomes
+  visible, the pop-up view actually navigates to the requested URL, and
+  — the actual point of this fix — `QApplication.topLevelWidgets()`'s
+  count does not increase at any point (no separate top-level window
+  ever created, confirmed both immediately after the pop-up opens and
+  at the end of a full open/close/reopen/close sequence).
+- The pop-up's own `window.close()` (via real JS, not simulated)
+  switches back to the main page; the widget's own Close pop-up button
+  does the same.
+- Re-opening a second time (a fresh view/page each time) works
+  correctly and, critically, no longer crashes on exit — reproduced the
+  crash consistently on the *previous* (page-reuse) implementation
+  across three separate runs, then confirmed clean exits across five
+  further runs (three full-sequence, two rapid open/close/reopen/close
+  -focused) once fixed.
+- Regression: the main view's own navigation still works after the
+  layout restructuring (wrapping toolbar+view in a `main_page`,
+  switched via a new `QStackedWidget`) — address-bar navigation to two
+  real distinct URLs, and clicking Back/Forward, both genuinely
+  navigate to the right URL each time.
+
+**A separate, pre-existing bug found (not caused) during this
+verification, parked rather than fixed here:** the Back/Forward
+buttons' own *enabled/disabled visual state* can go stale after a real
+navigation (`history().canGoBack()` correctly returns `True`, but
+`_back_button.isEnabled()` can stay `False`) — confirmed present
+identically on the pristine, pre-this-fix `widget.py` too, so it's
+unrelated to pop-up containment. The underlying navigation itself
+(clicking Back/Forward) still works correctly regardless; only the
+button's own UI state can lag. Recorded in `PARKINGLOT.md` rather than
+fixed here, since it's an unrelated, separate bug from what TODO
+`e35bcf0` asked for — see that entry for the likely root cause
+(`_update_nav_buttons` only ever runs from `_on_url_changed`, which can
+fire before `QWebEngineHistory` has fully settled for a given
+navigation).
