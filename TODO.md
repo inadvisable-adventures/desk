@@ -2704,3 +2704,17 @@ b5d52c0. Build a registry of file types (keyed by both file extension
    -- never re-fetching from scratch on every event, and never reading
    the `.desk` file directly itself either. See TODO efdad99, which
    depends on this registry existing.
+8385dcc. Rename the "File Explorer" widget (`widgets/file_explorer/`)
+   to "Project Files" -- the directory name, its `widget.json`'s
+   `name`, any user-facing string in its own code, and every
+   reference to it elsewhere: `src/desk/`'s own source (e.g.
+   `EXTERNAL_DROP_WIDGET_BY_SUFFIX`'s fallback comment, any widget id
+   /import references), `design-docs/` (architecture.md,
+   custom-widget-authoring.md's TODO efdad99/b5d52c0 cross-references
+   if still current when this is worked), `TODO.md` itself (every
+   completed or open item that says "File Explorer", including TODO
+   efdad99/b5d52c0 above), every `plans/*.md` file that mentions it,
+   and `PARKINGLOT.md`. Keep the underlying widget id/directory-name
+   convention consistent with how other widgets are named (lowercase,
+   underscore-separated -- e.g. `project_files`) rather than
+   introducing a differently-cased id than the rest of `widgets/`.
