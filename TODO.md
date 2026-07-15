@@ -2683,6 +2683,7 @@ c892403. COMPLETED: Resolve relative `desk.fs.readFile`/`writeFile` paths agains
    `tempui-custom-widgets.md`'s authoring-pattern docs so the build
    process works correctly for a source directory in either of these
    two locations.
+   [planned: relocate-custom-widget-authoring-source.md]
 3e2c4f2. Change the `[STALE]` titlebar marker (TODO 5995ffd) from a
    passive label into something clickable: clicking it pops up a
    dialog showing both content hashes (the one this instance was
