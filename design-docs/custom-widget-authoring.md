@@ -22,11 +22,23 @@ markup assembled via `innerHTML` satisfies neither of CLAUDE.md's browser
 -code constraints. Instead, a widget should be authored as a small source
 directory and mechanically packaged.
 
+**Current state (as of TODO 59c5a70/029047b): this section originally
+recommended a project-root `custom_widget_src/<name>/` directory and a
+`scripts/build_widget.py` seeded once per project. Both have since
+moved — see below for their current locations. The four-file layout
+and build steps themselves are unchanged.**
+
 ### Per-widget source layout
 
-A widget lives at `widgets/<name>/` (the *source* directory — distinct from
-the runtime `.desk_temp/custom_widgets/<keyword>/` materialized cache) with
-four files:
+A widget's *source* lives at `.desk_temp/widgets/<name>/` before
+promotion, and `desk_widgets/<name>/` at the project root after (TODO
+59c5a70) — distinct either way from the runtime
+`.desk_temp/custom_widgets/<keyword>/` materialized cache, and
+deliberately **not** under the project's own top-level `widgets/`,
+since that directory is scanned by Desk's own widget discovery, which
+expects every `widget.json` there to have a `kind` of `"python"` or
+`"html"` — this directory's `widget.json` has a different shape and
+would break that scan if placed there instead. Four files:
 
 - **`<name>.ts`** — the widget's logic as a custom element (`class Foo
   extends HTMLElement`), written in normal strict TypeScript. No knowledge
@@ -54,9 +66,9 @@ four files:
 
 ### The build script
 
-One generic, project-level script, `scripts/build_widget.py` (stdlib-only —
-no new dependency, matching CLAUDE.md's "avoid adding dependencies"),
-takes a widget source directory and:
+One generic script, `.desk_temp/build_widget.py` (stdlib-only — no new
+dependency, matching CLAUDE.md's "avoid adding dependencies"), takes a
+widget source directory and:
 
 1. Runs `tsc -p <widget-dir>`.
 2. Concatenates the compiled `.js` output.
@@ -68,18 +80,24 @@ takes a widget source directory and:
    UUID under `.desk_temp/`.
 
 Authoring happens once in TS + template HTML; `python3
-scripts/build_widget.py widgets/<name>` repackages it any time it changes,
+.desk_temp/build_widget.py .desk_temp/widgets/<name>` (or
+`desk_widgets/<name>` once promoted) repackages it any time it changes,
 and the packaging step is entirely mechanical and never hand-edited.
 
-### Seeding into new projects
+### Where the build script itself lives (TODO 029047b)
 
-`scripts/todo_item_ids.py` is already copied into a newly-created Desk
-project (`DeskWindow._seed_todo_item_ids_script`), because
-`development-process.md`'s own "Item IDs" section tells you to run it.
-`scripts/build_widget.py` should be seeded the same way, for the same
-reason: `tempui-custom-widgets.md` will document this authoring pattern as
-the recommended way to build a `DefineWidget` widget from real source, and
-that instruction is broken in a new project without the script to run.
+It isn't a file seeded once into a new project (as it originally was,
+TODO b324217, the same way `scripts/todo_item_ids.py` still is) — its
+own content changes exactly as often as the rest of the tempui doc set
+does, and a one-time seed would leave an older project's copy stale
+forever, the same staleness problem the doc-split versioning (TODO
+e57ce5f) already solved. It's generated into `.desk_temp/build_widget
+.py` instead, refreshed automatically by the same mechanism
+(`desk.temp_ui.write_tempui_docs`/`ensure_docs_current`) that keeps
+`desk-temporary-ui.md`/`tempui-custom-widgets.md`/etc. current — see
+`desk.temp_ui.SPLIT_DOC_CONTENT`'s `BUILD_WIDGET_SCRIPT_FILENAME`
+entry, which isn't itself a Markdown doc but is treated identically by
+that write/refresh path.
 
 ## 2. Gap: `DefineWidget` registers a kind, it doesn't place an instance
 

@@ -1192,7 +1192,6 @@ class DeskWindow(QMainWindow):
             # self.current_desk.
             self._seed_development_process(directory)
             self._seed_todo_item_ids_script(directory)
-            self._seed_build_widget_script(directory)
         self.switch_desk(
             path,
             confirm=lambda: True,
@@ -1645,21 +1644,6 @@ class DeskWindow(QMainWindow):
         shouldn't leak into the destination."""
         source = self.current_desk.directory / "scripts" / "todo_item_ids.py"
         destination = directory / "scripts" / "todo_item_ids.py"
-        if not source.is_file() or destination.exists():
-            return
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(source.read_text())
-        destination.chmod(0o755)
-
-    def _seed_build_widget_script(self, directory: Path) -> None:
-        """Copies the current Desk's scripts/build_widget.py into
-        `directory` (TODO b324217) -- same no-op-if-nothing-to-source
-        -from/never-overwrite/executable-bit posture as
-        _seed_todo_item_ids_script above, since tempui-custom-widgets
-        .md's "Authoring from real source" section tells you to run
-        this exact script."""
-        source = self.current_desk.directory / "scripts" / "build_widget.py"
-        destination = directory / "scripts" / "build_widget.py"
         if not source.is_file() or destination.exists():
             return
         destination.parent.mkdir(parents=True, exist_ok=True)

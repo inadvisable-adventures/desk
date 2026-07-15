@@ -1,4 +1,4 @@
-# Plan: TODO 029047b — move build_widget.py into the ensured `.desk_temp` set
+# Plan: TODO 029047b (COMPLETED) — move build_widget.py into the ensured `.desk_temp` set
 
 ## Summary
 

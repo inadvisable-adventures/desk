@@ -97,7 +97,14 @@ PROMOTED_WIDGET_SRC_DIRNAME = "desk_widgets"
 # documented here -- and this version bumped -- back when it was
 # introduced, but wasn't; backfilled now rather than left undocumented
 # indefinitely).
-TEMPUI_DOC_VERSION = 16
+#
+# TODO 029047b: bumped 16 -> 17 -- the "Authoring from real source"
+# build script moved from a one-time-seeded scripts/build_widget.py to
+# .desk_temp/build_widget.py, refreshed automatically alongside the
+# rest of this doc set instead of going stale forever after a single
+# copy. Breaking for any project with an existing seeded copy at the
+# old location.
+TEMPUI_DOC_VERSION = 17
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -138,15 +145,17 @@ built-in file types, distinguished by their first line's keyword:
 
 Every file named above lives in this same directory.
 
-Two more files live here too, but aren't DSL file types (nothing writes
-one directly): [tempui-breaking-changes.md](./tempui-breaking-changes.md)
+A few more files live here too, but aren't DSL file types (nothing
+writes one directly): [tempui-breaking-changes.md](./tempui-breaking-changes.md)
 and [tempui-new-features.md](./tempui-new-features.md) — reverse
 -chronological changelogs of this doc set itself, each entry tagged
 with the `TEMPUI_DOC_VERSION` it was introduced in. If you're picking
 up a project that was built against an older Desk, check these first:
 read from the top down until you reach a version you already know,
 and you'll have an exact, actionable punch list instead of needing to
-re-read this whole doc set and diff it against memory.
+re-read this whole doc set and diff it against memory. There's also
+`build_widget.py` — not a doc at all, but a ready-to-run script; see
+"Authoring from real source" in `tempui-custom-widgets.md`.
 
 ## Questions for the user: use QUESTIONS.md, not this DSL
 
@@ -467,9 +476,9 @@ whose own conventions ask for more (e.g. strict-mode TypeScript,
 `<template>`/`<slot>` instead of string-built HTML — see this project's
 own `CLAUDE.md` if it has such rules). Author once from real source, then
 mechanically repackage it into the format above with
-`scripts/build_widget.py` (seeded into new projects the same way
-`scripts/todo_item_ids.py` is) any time it changes — never hand-edit the
-generated `DefineWidget` file itself.
+`.desk_temp/build_widget.py` (generated here the same way this doc set
+itself is, kept fresh automatically rather than seeded once) any time
+it changes — never hand-edit the generated `DefineWidget` file itself.
 
 Per widget, a source directory at `.desk_temp/widgets/<name>/` —
 deliberately **not** under the project's own top-level `widgets/`, since
@@ -497,17 +506,17 @@ not-yet-promoted widget's source too. Four files:
 - `widget.json` — `{"keyword", "label", "width", "height"}`, exactly the
   fields a `DefineWidget`/`Size` line above needs.
 
-Then `python3 scripts/build_widget.py .desk_temp/widgets/<name>` compiles
-it (`tsc -p <dir>`), concatenates the compiled JS, substitutes it into
-`widget.html`'s marker, base64-encodes the result, and writes a fresh
-`DefineWidget` tempui file under `.desk_temp/` — printing the path it
-wrote.
+Then `python3 .desk_temp/build_widget.py .desk_temp/widgets/<name>`
+compiles it (`tsc -p <dir>`), concatenates the compiled JS, substitutes
+it into `widget.html`'s marker, base64-encodes the result, and writes a
+fresh `DefineWidget` tempui file under `.desk_temp/` — printing the
+path it wrote.
 
 Once promoted (see "Promoting a defined widget to the Desk" below), the
 source directory moves to `desk_widgets/<name>/` at the project root —
 a permanent, non-gitignored location, matching the promoted
 definition's own move into the `.desk` file. Nothing else about the
-build process changes: re-run `python3 scripts/build_widget.py
+build process changes: re-run `python3 .desk_temp/build_widget.py
 desk_widgets/<name>` from there for any further edits, exactly as
 before.
 
@@ -779,6 +788,15 @@ version your own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
 
+## Version 17
+- The "Authoring from real source" build script moved from a one-time
+  -seeded `scripts/build_widget.py` to `.desk_temp/build_widget.py`,
+  refreshed automatically alongside this doc set from now on instead
+  of going stale forever after a single copy. If your project has an
+  existing `scripts/build_widget.py`, switch to invoking
+  `.desk_temp/build_widget.py` instead (it always has the current
+  content; `scripts/build_widget.py` will not be updated further).
+
 ## Version 14
 - `DefineWidget` widget authoring source moved from a project-root
   `custom_widget_src/<name>/` to `.desk_temp/widgets/<name>/` (see
@@ -867,6 +885,178 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   messages" in `tempui-custom-widgets.md`.
 """
 
+# TODO 029047b: the "Authoring from real source" build script (TODO
+# b324217), moved here from a one-time-seeded scripts/build_widget.py
+# into the same generated/refreshed .desk_temp set the docs themselves
+# use -- its own content changes exactly as often as the rest of the
+# tempui doc set does, so a one-time seed meant an older project's
+# copy would silently go stale forever, the same problem the doc-split
+# staleness check (TODO e57ce5f) already solved for the .md files.
+# Wrapped in triple *single* quotes deliberately: the script's own
+# docstring uses triple double quotes internally.
+_BUILD_WIDGET_SCRIPT = '''#!/usr/bin/env python3
+"""Packages a DefineWidget source directory (TypeScript custom element +
+template HTML + tsconfig + manifest) into a `DefineWidget` tempui file
+under `.desk_temp/` -- see "Authoring from real source" in
+`tempui-custom-widgets.md` (this same directory) for the full
+authoring pattern this implements.
+
+This file itself lives at `.desk_temp/build_widget.py`, generated and
+kept fresh there the same way the rest of the tempui doc set is (TODO
+029047b) -- refreshed automatically whenever the doc set's shared
+version changes, rather than seeded once into a project and left to go
+stale. It's deliberately self-contained: no import of this app's own
+`desk` package, which the project it's generated into won't have
+installed. Takes any directory as its argument -- it doesn't care
+whether that's a not-yet-promoted widget's source (recommended at
+`.desk_temp/widgets/<name>/`) or a promoted one's (moved to
+`desk_widgets/<name>/` at the project root on promotion, TODO 59c5a70);
+the build process is identical either way.
+
+Usage:
+    python3 .desk_temp/build_widget.py .desk_temp/widgets/<name>
+    python3 .desk_temp/build_widget.py desk_widgets/<name>  # after promotion
+
+Expects, in that directory:
+    <name>.ts       -- the widget's logic (name must match the directory).
+    widget.html     -- self-contained document, with a `<script>` whose
+                        entire content is the one-line marker comment
+                        `/* BUILD:COMPILED_JS */`.
+    tsconfig.json   -- must set compilerOptions.outDir.
+    widget.json     -- {"keyword": str, "label": str, "width": int,
+                        "height": int}.
+
+Writes a fresh `.desk_temp/<uuid>` tempui file and prints its path.
+"""
+import base64
+import json
+import shutil
+import subprocess
+import sys
+import uuid
+from pathlib import Path
+
+BUILD_MARKER = "/* BUILD:COMPILED_JS */"
+REQUIRED_MANIFEST_KEYS = ("keyword", "label", "width", "height")
+HTML_CHUNK_SIZE = 2000
+TEMP_UI_DIRNAME = ".desk_temp"
+
+
+class BuildError(Exception):
+    """Any problem that should abort the build with a clear message --
+    caught once in main(), never elsewhere, so every failure path prints
+    one clean line instead of a traceback."""
+
+
+def _read_manifest(widget_dir: Path) -> dict:
+    manifest_path = widget_dir / "widget.json"
+    if not manifest_path.is_file():
+        raise BuildError(f"{manifest_path} not found")
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except json.JSONDecodeError as e:
+        raise BuildError(f"{manifest_path} is not valid JSON: {e}") from e
+    missing = [key for key in REQUIRED_MANIFEST_KEYS if key not in manifest]
+    if missing:
+        raise BuildError(f"{manifest_path} is missing required key(s): {', '.join(missing)}")
+    return manifest
+
+
+def _read_out_dir(widget_dir: Path) -> Path:
+    tsconfig_path = widget_dir / "tsconfig.json"
+    if not tsconfig_path.is_file():
+        raise BuildError(f"{tsconfig_path} not found")
+    try:
+        tsconfig = json.loads(tsconfig_path.read_text())
+    except json.JSONDecodeError as e:
+        raise BuildError(f"{tsconfig_path} is not valid JSON: {e}") from e
+    out_dir = tsconfig.get("compilerOptions", {}).get("outDir")
+    if not out_dir:
+        raise BuildError(f"{tsconfig_path} must set compilerOptions.outDir")
+    return widget_dir / out_dir
+
+
+def _compile_typescript(widget_dir: Path) -> None:
+    ts_source = widget_dir / f"{widget_dir.name}.ts"
+    if not ts_source.is_file():
+        raise BuildError(f"{ts_source} not found -- expected a file matching the directory's own name")
+    # Deliberately never falls back to `npx tsc`: without TypeScript
+    # actually installed, `npx tsc` silently resolves to an unrelated,
+    # abandoned npm package also called `tsc` -- a confusing failure mode
+    # worth avoiding entirely by only ever invoking a real `tsc` on PATH.
+    if shutil.which("tsc") is None:
+        raise BuildError("`tsc` not found on PATH -- install TypeScript to build this widget")
+    result = subprocess.run(["tsc", "-p", str(widget_dir)], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise BuildError(f"tsc failed:\\n{result.stdout}{result.stderr}")
+
+
+def _concatenate_compiled_js(out_dir: Path) -> str:
+    if not out_dir.is_dir():
+        raise BuildError(f"tsc reported success but {out_dir} doesn't exist")
+    js_files = sorted(out_dir.rglob("*.js"))
+    if not js_files:
+        raise BuildError(f"no .js files found under {out_dir} after compiling")
+    return "".join(path.read_text() for path in js_files)
+
+
+def _substitute_marker(widget_dir: Path, compiled_js: str) -> str:
+    html_path = widget_dir / "widget.html"
+    if not html_path.is_file():
+        raise BuildError(f"{html_path} not found")
+    html = html_path.read_text()
+    if html.count(BUILD_MARKER) != 1:
+        raise BuildError(f"{html_path} must contain exactly one {BUILD_MARKER!r} marker line")
+    return html.replace(BUILD_MARKER, compiled_js)
+
+
+def _chunk(text: str, size: int) -> list[str]:
+    return [text[i : i + size] for i in range(0, len(text), size)] or [""]
+
+
+def build_widget(widget_dir: Path) -> str:
+    manifest = _read_manifest(widget_dir)
+    out_dir = _read_out_dir(widget_dir)
+    _compile_typescript(widget_dir)
+    compiled_js = _concatenate_compiled_js(out_dir)
+    html = _substitute_marker(widget_dir, compiled_js)
+    html_b64 = base64.b64encode(html.encode("utf-8")).decode("ascii")
+
+    lines = [
+        f"DefineWidget\\t{manifest['keyword']}\\t{manifest['label']}",
+        f"Size\\t{manifest['width']}\\t{manifest['height']}",
+    ]
+    lines.extend(f"Html\\t{chunk}" for chunk in _chunk(html_b64, HTML_CHUNK_SIZE))
+    return "\\n".join(lines) + "\\n"
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 1:
+        print(__doc__)
+        return 1
+    widget_dir = Path(argv[0])
+    if not widget_dir.is_dir():
+        print(f"{widget_dir} is not a directory", file=sys.stderr)
+        return 1
+
+    try:
+        tempui_text = build_widget(widget_dir)
+    except BuildError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+
+    temp_ui_dir = Path(TEMP_UI_DIRNAME)
+    temp_ui_dir.mkdir(exist_ok=True)
+    out_path = temp_ui_dir / str(uuid.uuid4())
+    out_path.write_text(tempui_text)
+    print(out_path)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
+'''
+
 LIGHTNING_ROUND_DOC_FILENAME = "tempui-lightning-round.md"
 MARKDOWN_DOC_FILENAME = "tempui-markdown.md"
 IMAGE_DOC_FILENAME = "tempui-image.md"
@@ -875,11 +1065,15 @@ CUSTOM_WIDGETS_DOC_FILENAME = "tempui-custom-widgets.md"
 DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME = "tempui-discuss-parking-lot-item.md"
 BREAKING_CHANGES_DOC_FILENAME = "tempui-breaking-changes.md"
 NEW_FEATURES_DOC_FILENAME = "tempui-new-features.md"
+BUILD_WIDGET_SCRIPT_FILENAME = "build_widget.py"
 
 # filename -> its static content, for every split-out doc (TODO
 # e57ce5f) -- iterated by write_tempui_docs/ensure_docs_current so
 # adding a future split file is a one-line addition here, not a new
-# call site to remember elsewhere.
+# call site to remember elsewhere. Not every entry is a `.md` doc --
+# BUILD_WIDGET_SCRIPT_FILENAME (TODO 029047b) is a `.py` script, but
+# write_tempui_docs/ensure_docs_current treat every entry identically
+# (`.write_text(content)`), so it needs no special-casing here.
 SPLIT_DOC_CONTENT: dict[str, str] = {
     LIGHTNING_ROUND_DOC_FILENAME: _LIGHTNING_ROUND_DOC,
     MARKDOWN_DOC_FILENAME: _MARKDOWN_DOC,
@@ -889,6 +1083,7 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME: _DISCUSS_PARKING_LOT_ITEM_DOC,
     BREAKING_CHANGES_DOC_FILENAME: _BREAKING_CHANGES_DOC,
     NEW_FEATURES_DOC_FILENAME: _NEW_FEATURES_DOC,
+    BUILD_WIDGET_SCRIPT_FILENAME: _BUILD_WIDGET_SCRIPT,
 }
 
 

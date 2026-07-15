@@ -3204,7 +3204,7 @@ da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    suite: the same 9 pre-existing failures plus six already-known
    -stale assertions from earlier TODOs in this batch, 0 other new
    failures.
-029047b. Move `scripts/build_widget.py` (TODO `b324217`) out of
+029047b. COMPLETED: Move `scripts/build_widget.py` (TODO `b324217`) out of
    `scripts/` and into the *ensured* `.desk_temp` file set instead of a
    one-time seed. Right now it's copied once into a new project
    (`DeskWindow._seed_build_widget_script`, never-overwrite) the same
@@ -3227,3 +3227,50 @@ da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    script is meant to be invoked by an agent to build its own tempui
    widgets from source, the same as today.
    [planned: ensure-build-widget-script.md]
+
+   Moved the script's content from `scripts/build_widget.py` into
+   `src/desk/temp_ui.py` as `_BUILD_WIDGET_SCRIPT`
+   (`BUILD_WIDGET_SCRIPT_FILENAME = "build_widget.py"`), registered in
+   `SPLIT_DOC_CONTENT` so `write_tempui_docs`/`ensure_docs_current`
+   (TODO e57ce5f) write and refresh it exactly like every `.md` doc,
+   with no special-casing needed. Deleted `scripts/build_widget.py`
+   and removed `DeskWindow._seed_build_widget_script`/its call site
+   entirely -- superseded by the ensure mechanism, which already runs
+   on every Desk open/switch. Updated `_CUSTOM_WIDGETS_DOC`'s
+   invocation examples to `.desk_temp/build_widget.py`, added a main
+   -doc mention (found via a pre-existing test's own
+   every-split-file-must-be-linked invariant, which I hadn't
+   satisfied on the first pass), bumped `TEMPUI_DOC_VERSION` 16 -> 17
+   with a breaking-changes entry. Rewrote `design-docs/custom-widget
+   -authoring.md` section 1 end-to-end, which had gone stale twice
+   over (still describing both the pre-59c5a70 `custom_widget_src/`
+   convention and the pre-029047b scripts/-seeding approach).
+
+   Found and fixed a real, genuinely pre-existing bug while verifying:
+   a pre-existing regression test (`verify_tempui_doc_versioning.py`)
+   already asserts no tempui doc mentions Desk-repo-specific material
+   (since the whole set gets generated into *other* projects'
+   `.desk_temp/`, where such a reference would be dangling) -- the
+   script's own docstring, carried over verbatim from TODO `b324217`,
+   referenced `design-docs/custom-widget-authoring.md`, a path that
+   only exists in Desk's own repo. This test never caught it before
+   now because the script was never part of `SPLIT_DOC_CONTENT` (and
+   therefore never scanned by this check) until this TODO added it.
+   Fixed by pointing at `tempui-custom-widgets.md` (in the same
+   generated directory) instead.
+
+   Verified: `SPLIT_DOC_CONTENT` includes the script;
+   `write_tempui_docs` writes it into a fresh `.desk_temp`;
+   `ensure_docs_current` restores a missing or stale copy; the
+   generated script actually runs end-to-end against a real fixture
+   with a real `tsc` invocation, producing a correct `DefineWidget`
+   tempui file; `scripts/build_widget.py` and
+   `_seed_build_widget_script` no longer exist; doc content (version
+   bump, breaking-changes entry, updated invocation examples, main
+   -doc link). Full regression suite: the same 9 pre-existing failures
+   plus my own earlier b324217/2da314f scripts now expectedly stale
+   (one references the now-relocated file directly, one has a stale
+   version-number assertion) and the previously-accumulated stale
+   -doc-version checks from this batch, 0 other new failures --
+   notably, the pre-existing `verify_tempui_doc_versioning.py` now
+   passes cleanly for the first time after the design-docs fix above.
