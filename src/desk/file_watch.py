@@ -77,6 +77,21 @@ class SingleFileWatcher(QObject):
                 fresh = path.read_text()
             except OSError:
                 fresh = None
+            except UnicodeDecodeError:
+                # TODO 6e731c1: every earlier SingleFileWatcher consumer
+                # only ever watched text files (Markdown, SVG, TODO.md,
+                # ...) -- a binary-backed one (e.g. the Image Viewer
+                # widget) hits this on every real external change,
+                # since read_text() can't decode arbitrary bytes as
+                # UTF-8. Confirmed directly: uncaught, this propagated
+                # out of watchdog's own dispatch thread and silently
+                # killed the changed notification entirely (never even
+                # reached the debounce timer below) -- self-write
+                # suppression (record_own_write) simply doesn't apply to
+                # binary content, so there's nothing to compare against;
+                # treat it the same as an unreadable file (always
+                # notify, never suppress).
+                fresh = None
             if fresh is not None and self._writes.is_own_write(target, fresh):
                 return
             with self._timer_lock:

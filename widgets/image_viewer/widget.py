@@ -1,9 +1,8 @@
 import logging
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QSizeF, pyqtSignal
-from PyQt6.QtGui import QPainter
-from PyQt6.QtSvg import QSvgRenderer
+from PyQt6.QtCore import Qt, QRectF, QSizeF, pyqtSignal
+from PyQt6.QtGui import QPainter, QPixmap
 from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -19,50 +18,48 @@ from desk.shell import current_context
 
 logger = logging.getLogger(__name__)
 
-SVG_FILTER = "SVG (*.svg *.svgz);;All files (*)"
+IMAGE_FILTER = "Images (*.png *.jpg *.jpeg *.gif *.bmp *.webp *.tif *.tiff *.ico);;All files (*)"
 
 
-class _AspectSvgView(QWidget):
-    """Renders the loaded SVG via a bare `QSvgRenderer` into a
-    letterboxed, aspect-preserving target rect (see `desk.geometry.fit_rect`)
-    instead of `QSvgWidget`'s own non-uniform stretch-to-fill."""
+class _AspectImageView(QWidget):
+    """Renders the loaded image into a letterboxed, aspect-preserving
+    target rect (see `desk.geometry.fit_rect`) instead of
+    `QLabel.setScaledContents(True)`'s own non-uniform stretch-to-fill
+    -- same shape as `widgets/svg_viewer/widget.py`'s `_AspectSvgView`,
+    a `QPixmap` in place of a `QSvgRenderer`."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self._renderer = QSvgRenderer()
+        self._pixmap = QPixmap()
 
     def load(self, data: bytes) -> bool:
-        ok = self._renderer.load(data)
+        pixmap = QPixmap()
+        ok = pixmap.loadFromData(data)
+        self._pixmap = pixmap if ok else QPixmap()
         self.update()
         return ok
 
     def is_valid(self) -> bool:
-        return self._renderer.isValid()
+        return not self._pixmap.isNull()
 
     def clear(self) -> None:
-        self._renderer.load(bytes())
+        self._pixmap = QPixmap()
         self.update()
 
-    def _content_size(self) -> QSizeF:
-        default_size = self._renderer.defaultSize()
-        if not default_size.isEmpty():
-            return QSizeF(default_size)
-        return QSizeF(self._renderer.viewBoxF().size())
-
     def paintEvent(self, event) -> None:
-        if not self._renderer.isValid():
+        if self._pixmap.isNull():
             return
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        target = fit_rect(self._content_size(), QSizeF(self.size()))
-        self._renderer.render(painter, target)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        target = fit_rect(QSizeF(self._pixmap.size()), QSizeF(self.size()))
+        painter.drawPixmap(target, self._pixmap, QRectF(self._pixmap.rect()))
 
 
-class SvgViewerWidget(QWidget):
-    """Opens and displays a single SVG file, scaled to fit the widget
+class ImageViewerWidget(QWidget):
+    """Opens and displays a single image file, scaled to fit the widget
     while preserving aspect ratio, auto-reloading on changes -- the
-    same shape as the plain Markdown widget. See
-    plans/svg-viewer-widget.md."""
+    same shape as `widgets/svg_viewer/widget.py`. See
+    plans/image-drop-tempui.md (TODO 6e731c1)."""
 
     external_path_changed = pyqtSignal(bool)
 
@@ -71,7 +68,7 @@ class SvgViewerWidget(QWidget):
         self._current_path: Path | None = None
         self._last_dir = current_context.get_current_desk_directory() or Path.home()
 
-        self._view = _AspectSvgView()
+        self._view = _AspectImageView()
 
         self._label = QLabel()
         self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
@@ -93,19 +90,19 @@ class SvgViewerWidget(QWidget):
         self._watcher.changed.connect(self._reload)
         # Capture the watcher (not self) so the teardown closure never
         # touches this widget's Qt state during destruction -- mirrors
-        # the Markdown/Markdown (Extended) widgets' own teardown pattern.
+        # the Markdown/SVG viewer widgets' own teardown pattern.
         watcher = self._watcher
         self.destroyed.connect(lambda: watcher.stop())
 
         self._show_placeholder()
 
     def _show_placeholder(self) -> None:
-        self._label.setText("(no file — click Open to choose an SVG file)")
+        self._label.setText("(no file — click Open to choose an image file)")
         self._view.clear()
 
     def _open_file(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(
-            self, "Open SVG File", str(self._last_dir), SVG_FILTER
+            self, "Open Image File", str(self._last_dir), IMAGE_FILTER
         )
         if filename:
             self.set_file(Path(filename))
@@ -113,7 +110,8 @@ class SvgViewerWidget(QWidget):
     def set_file(self, path: Path) -> None:
         """Point the widget at `path`: render it and watch it for
         changes. Public so other widgets can open a file here
-        programmatically, matching the plain Markdown widget."""
+        programmatically, matching the plain Markdown/SVG viewer
+        widgets."""
         self._current_path = path
         self._last_dir = path.parent
         self._watcher.watch(path)
@@ -158,8 +156,8 @@ class SvgViewerWidget(QWidget):
         if self._view.load(data):
             self._label.setText(path.name)
         else:
-            self._label.setText(f"`{path.name}` is not a valid SVG file.")
+            self._label.setText(f"`{path.name}` is not a valid image file.")
 
 
 def build() -> QWidget:
-    return SvgViewerWidget()
+    return ImageViewerWidget()

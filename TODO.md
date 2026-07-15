@@ -2346,5 +2346,69 @@ dc557b2. COMPLETED: create a general event poster widget
    Event Subscribers instance shows a real subscribed instance and
    its eye button genuinely zooms the real `WorkspaceView` to it.
    [planned: event-subscribers-widget.md]
-6e731c1. drag-and-drop of an image into the Desk should result in the image being saved in the .desk_temp directory and then displayed with tempui.
+6e731c1. COMPLETED: drag-and-drop of an image into the Desk should result in the image being saved in the .desk_temp directory and then displayed with tempui.
+
+   Shipped as a new `OpenImage <path>` DSL keyword (identical shape to
+   `OpenMarkdown`, its own new `tempui-image.md` split doc,
+   `TEMPUI_DOC_VERSION` bumped 9 -> 10) plus a new `widgets/image_viewer/`
+   widget (`kind: "python"`, a near-twin of `widgets/svg_viewer/`:
+   `QPixmap`-based instead of `QSvgRenderer`-based, same Open/`set_file`
+   /`SingleFileWatcher`/`[EXTERNAL]`-marker shape). A new
+   `desk.geometry.fit_rect` was extracted from the SVG viewer's own
+   private `_fit_rect` so both widgets share the identical
+   aspect-preserving letterboxed-scaling math instead of duplicating
+   it. `DeskWindow._on_files_dropped` now special-cases raster image
+   suffixes (`IMAGE_DROP_SUFFIXES` -- deliberately excludes `.svg`,
+   which already has correct by-reference handling): a new
+   `_drop_image_as_temp_ui` copies the dropped file's bytes into
+   `.desk_temp` (short random prefix + original filename), writes a
+   new UUID-named `OpenImage .desk_temp/<name>` tempui file
+   (self-write-suppressed via `record_own_write`, matching
+   `_paste_text_as_temp_ui`), and immediately places+binds an Image
+   Viewer instance at the drop position -- matching how every other
+   dropped file type already places immediately, no notification
+   -then-click detour. Every other dropped extension is completely
+   unaffected. The rest of the tempui plumbing
+   (`IMAGE_VIEWER_WIDGET_ID`/`TEMP_UI_WIDGET_IDS`/
+   `_temp_ui_widget_id_for`/`_bind_temp_ui_content`
+   /`_resolve_open_image_target`/`_notify_temp_ui`) mirrors
+   `OpenMarkdown`'s existing entries exactly, so `OpenImage` is a
+   general DSL capability any tempui author can use, not only
+   reachable via drag-and-drop.
+
+   Found and fixed one real, pre-existing bug along the way (not
+   introduced by this change): `desk.file_watch.SingleFileWatcher`
+   -- previously only ever used to watch text files (Markdown, SVG,
+   TODO.md, ...) -- called `path.read_text()` unconditionally on every
+   change and only caught `OSError`, not `UnicodeDecodeError`; watching
+   a binary file (the new Image Viewer's live-reload) silently killed
+   the `changed` notification entirely on every real external change.
+   Fixed by also catching `UnicodeDecodeError` (self-write suppression
+   doesn't meaningfully apply to binary content anyway, so this is
+   treated the same as an unreadable file -- always notify, never
+   suppress) -- confirmed the existing text-file behavior (both the
+   self-write-suppression path and the real-external-change path)
+   is completely unaffected.
+
+   Verified entirely headlessly: `fit_rect`'s letterboxing math;
+   `OpenImage` parsing/detection/reservation; `ensure_docs_current`
+   refreshing a stale version-9 doc directory to 10 with
+   `tempui-image.md` present and linked; the Image Viewer widget's
+   placeholder/load/live-reload (a real `SingleFileWatcher` picking up
+   a genuine on-disk binary change, the exact bug above)/missing-file
+   /invalid-image/`[EXTERNAL]`/Open-button behaviors; `discover_widgets`
+   picking up the manifest; and a full real `DeskWindow` regression
+   (an isolated, pre-provisioned temp project directory, since this
+   test performs real file writes/saves -- avoids both the
+   `_provision_temp_ui` confirmation-dialog hang a fresh, unprovisioned
+   directory would cause in a headless run, and any risk to the real
+   repo) confirming a real drop: exactly one new copied image
+   (byte-for-byte identical to the source) plus one new `OpenImage`
+   tempui file appear in `.desk_temp`, no spurious notification fires
+   for the self-authored write, an Image Viewer instance is placed
+   immediately at the drop position showing the real image, a
+   non-image (`.md`) drop is completely unaffected, and a simulated
+   app restart (a fresh `DeskWindow` over the same saved Desk)
+   reconnects to the same file via the standard
+   instance_id-equals-uuid mechanism.
    [planned: image-drop-tempui.md]

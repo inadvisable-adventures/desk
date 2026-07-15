@@ -1,4 +1,4 @@
-# Drag-and-drop image → saved into `.desk_temp`, displayed via tempui
+# Drag-and-drop image → saved into `.desk_temp`, displayed via tempui (COMPLETED)
 
 TODO `6e731c1`.
 
@@ -162,4 +162,30 @@ Headless (`QT_QPA_PLATFORM=offscreen`):
 
 ## Status
 
-Not yet implemented — plan written first per `development-process.md`.
+Implemented as planned, plus one unplanned but necessary fix: the
+`OpenImage` pointer path is written relative to the *Desk* directory
+(`.desk_temp/<name>`), not just the bare saved filename -- matching
+`OpenMarkdown`'s own documented convention, which
+`_resolve_open_image_target` resolves against (an early version wrote
+the bare filename, which resolved against the wrong base directory and
+was caught by the DeskWindow regression check below).
+
+Also found and fixed a real, pre-existing bug in
+`desk.file_watch.SingleFileWatcher` (not introduced by this change,
+but directly blocking this item's own live-reload requirement):
+watching a binary file crashed its internal `read_text()` call with an
+uncaught `UnicodeDecodeError`, silently killing the `changed`
+notification. Fixed by also catching that alongside the existing
+`OSError` handling. See the new `LEARNINGS.md`-style note in the
+fix's own comment and TODO `6e731c1`'s `TODO.md` entry for the full
+summary.
+
+The DeskWindow-level regression test used an isolated,
+pre-provisioned temp project directory rather than this project's own
+directory (unlike TODO `dc557b2`/TODO `7505703`'s plans) -- this test
+performs real file writes and a real `save_current_desk()`, so
+touching the real repo wasn't an acceptable risk; pre-creating
+`.desk_temp` and calling `write_tempui_docs` directly avoids both the
+`_provision_temp_ui` confirmation-dialog hang and any risk to real
+files (a plain tempdir is also never inside a git repo, so the
+`.gitignore` prompt is skipped too).

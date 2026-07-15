@@ -27,6 +27,7 @@ from desk.temp_ui import (
     CustomWidgetDefinition,
     DOC_FILENAME,
     MARKDOWN_KEYWORD,
+    OPEN_IMAGE_KEYWORD,
     RESERVED_TEMPUI_KEYWORDS,
     SCRATCH_KEYWORD,
     TEMP_UI_DIRNAME,
@@ -36,6 +37,7 @@ from desk.temp_ui import (
     parse_discuss_parking_lot_item,
     parse_lightning_round,
     parse_markdown_tempui,
+    parse_open_image,
     parse_open_markdown,
     parse_scratch,
     parse_temp_ui,
@@ -56,6 +58,7 @@ SCRATCH_WIDGET_ID = "scratch"
 CLAUDE_WIDGET_ID = "claude"
 QUESTIONS_WIDGET_ID = "questions"
 SVG_VIEWER_WIDGET_ID = "svg_viewer"
+IMAGE_VIEWER_WIDGET_ID = "image_viewer"
 EDITOR_WIDGET_ID = "editor"
 CRASH_LOG_WIDGET_ID = "crash_log"
 # TODO 7f51230: crash logs now live in .desk_temp/DESK-CRASH-*.log --
@@ -65,24 +68,35 @@ CRASH_LOG_GLOB = "DESK-CRASH-*.log"
 # Which widget kind opens a dropped file (TODO 5915ac2), by extension --
 # only these three widget kinds currently expose set_file. Everything not
 # listed here falls back to the Editor, same as File Explorer's own
-# always-Editor "open" action.
+# always-Editor "open" action. Raster image suffixes are deliberately
+# NOT listed here (see IMAGE_DROP_SUFFIXES/_on_files_dropped below) --
+# those get copy-into-.desk_temp-plus-tempui handling instead of this
+# by-reference one (TODO 6e731c1).
 EXTERNAL_DROP_WIDGET_BY_SUFFIX = {
     ".md": MARKDOWN_WIDGET_ID,
     ".svg": SVG_VIEWER_WIDGET_ID,
 }
+# A dropped file with one of these suffixes (TODO 6e731c1) is copied
+# into .desk_temp and displayed through a new OpenImage tempui file
+# instead of EXTERNAL_DROP_WIDGET_BY_SUFFIX's by-reference handling --
+# see _on_files_dropped/_drop_image_as_temp_ui. .svg is deliberately
+# excluded: it already has correct, existing by-reference handling
+# above, and isn't raster data needing a copy.
+IMAGE_DROP_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tif", ".tiff", ".ico"}
 # Every widget kind that renders a TempUI file (TODO a02b001/TODO
-# 11aeb43/TODO 42dd260/TODO f8d9cec) and needs the same instance_id
-# -equals-source-file-uuid reconnection handling -- see
+# 11aeb43/TODO 42dd260/TODO f8d9cec/TODO 6e731c1) and needs the same
+# instance_id-equals-source-file-uuid reconnection handling -- see
 # _load_desk_widgets/_bind_temp_ui_widget. A manually-placed
-# markdown/scratch instance's restore is a safe no-op under this (see
-# _bind_temp_ui_content): its instance_id won't match any real
-# .desk_temp/ filename, so it just falls through unchanged, same as
-# its existing no-persistence-across-reload behavior.
+# markdown/scratch/image-viewer instance's restore is a safe no-op
+# under this (see _bind_temp_ui_content): its instance_id won't match
+# any real .desk_temp/ filename, so it just falls through unchanged,
+# same as its existing no-persistence-across-reload behavior.
 TEMP_UI_WIDGET_IDS = {
     QUESTION_WIDGET_ID,
     LIGHTNING_ROUND_WIDGET_ID,
     MARKDOWN_WIDGET_ID,
     SCRATCH_WIDGET_ID,
+    IMAGE_VIEWER_WIDGET_ID,
 }
 
 WIDGET_SPACING = 700
@@ -772,15 +786,17 @@ class DeskWindow(QMainWindow):
         render the tempui file itself (set_source_file); OpenMarkdown
         instead parses out its *target* Markdown path and opens that
         (set_file), since it's a pure fire-and-forget viewer action
-        with no answer to render back into the tempui file. Scratch
-        (TODO f8d9cec) is the same fire-and-forget shape as OpenMarkdown,
-        just seeding a label + initial body text instead of a path.
-        Markdown (TODO 9743419) is the same shape again, but renders
-        its own content directly (set_tempui_content) rather than
-        pointing at a separate file the way OpenMarkdown does. Shared
-        by both the notification-click path (_activate_temp_ui) and the
-        Desk-reload restore path (_bind_temp_ui_widget) so there's one
-        place deciding which method gets which path."""
+        with no answer to render back into the tempui file. OpenImage
+        (TODO 6e731c1) is the identical shape, pointing at an image
+        instead of a Markdown file. Scratch (TODO f8d9cec) is the same
+        fire-and-forget shape as OpenMarkdown, just seeding a label +
+        initial body text instead of a path. Markdown (TODO 9743419) is
+        the same shape again, but renders its own content directly
+        (set_tempui_content) rather than pointing at a separate file the
+        way OpenMarkdown does. Shared by both the notification-click
+        path (_activate_temp_ui) and the Desk-reload restore path
+        (_bind_temp_ui_widget) so there's one place deciding which
+        method gets which path."""
         try:
             kind = detect_temp_ui_kind(tempui_path.read_text())
         except OSError:
@@ -789,6 +805,12 @@ class DeskWindow(QMainWindow):
             if not hasattr(content, "set_file"):
                 return
             target = self._resolve_open_markdown_target(tempui_path, directory)
+            if target is not None:
+                content.set_file(target)
+        elif kind == "open_image":
+            if not hasattr(content, "set_file"):
+                return
+            target = self._resolve_open_image_target(tempui_path, directory)
             if target is not None:
                 content.set_file(target)
         elif kind == "scratch":
@@ -819,6 +841,17 @@ class DeskWindow(QMainWindow):
     def _resolve_open_markdown_target(tempui_path: Path, directory: Path) -> Path | None:
         try:
             raw = parse_open_markdown(tempui_path.read_text())
+        except OSError:
+            return None
+        if not raw:
+            return None
+        target = Path(raw)
+        return target if target.is_absolute() else (directory / target).resolve()
+
+    @staticmethod
+    def _resolve_open_image_target(tempui_path: Path, directory: Path) -> Path | None:
+        try:
+            raw = parse_open_image(tempui_path.read_text())
         except OSError:
             return None
         if not raw:
@@ -1225,6 +1258,10 @@ class DeskWindow(QMainWindow):
                 target = parse_open_markdown(content_text)
                 if target:
                     text = f"Open {target}"
+            elif kind == "open_image":
+                target = parse_open_image(content_text)
+                if target:
+                    text = f"Open {target}"
             elif kind == "scratch":
                 parsed = parse_scratch(content_text)
                 if parsed and parsed[0]:
@@ -1264,6 +1301,8 @@ class DeskWindow(QMainWindow):
             return LIGHTNING_ROUND_WIDGET_ID
         if kind in ("open_markdown", "markdown_content"):
             return MARKDOWN_WIDGET_ID
+        if kind == "open_image":
+            return IMAGE_VIEWER_WIDGET_ID
         if kind == "scratch":
             return SCRATCH_WIDGET_ID
         if kind == "discuss_parking_lot_item":
@@ -1673,16 +1712,76 @@ class DeskWindow(QMainWindow):
         set_file resolves it -- no separate step needed for that.
         Multiple files fan out with the same WIDGET_SPACING offset
         _load_desk_widgets' own no-saved-state fallback uses, starting
-        from the drop's own scene position."""
+        from the drop's own scene position.
+
+        A raster image (IMAGE_DROP_SUFFIXES, TODO 6e731c1) is handled
+        entirely differently -- copied into .desk_temp and displayed
+        through a new OpenImage tempui file (_drop_image_as_temp_ui)
+        rather than opened by reference -- since falling back to the
+        Editor for binary image bytes would just render garbage."""
         for index, path in enumerate(paths):
+            pos = (scene_pos.x() + index * WIDGET_SPACING, scene_pos.y())
+            if path.suffix.lower() in IMAGE_DROP_SUFFIXES:
+                self._drop_image_as_temp_ui(path, pos)
+                continue
             widget_id = EXTERNAL_DROP_WIDGET_BY_SUFFIX.get(path.suffix.lower(), EDITOR_WIDGET_ID)
             widget = self._widgets.get(widget_id)
             if widget is None:
                 continue
-            pos = (scene_pos.x() + index * WIDGET_SPACING, scene_pos.y())
             content = self.open_widget_content(widget_id, pos=pos, size=widget.default_size)
             if content is not None and hasattr(content, "set_file"):
                 content.set_file(path)
+
+    def _drop_image_as_temp_ui(self, path: Path, pos: tuple[float, float]) -> None:
+        """TODO 6e731c1: copies a dropped image's bytes into .desk_temp
+        (a short random prefix avoids collisions across repeated drops
+        of same-named files, while keeping the original name readable
+        -- original bytes/format preserved as-is, unlike the existing
+        clipboard-image paste path, _paste_image_as_project_file, which
+        re-encodes to PNG since a QImage from the clipboard has no
+        "original file bytes" to preserve), writes a new UUID-named
+        OpenImage tempui file pointing at the copy (suppressed via
+        record_own_write, same mechanism _paste_text_as_temp_ui already
+        uses, so the directory watcher doesn't also fire a redundant
+        notification for a file about to be opened immediately anyway),
+        then immediately places and binds an Image Viewer instance at
+        the drop position -- matches how every other dropped file type
+        already places immediately, no notification-then-click detour."""
+        directory = self.current_desk.directory
+        temp_dir = directory / TEMP_UI_DIRNAME
+        if not temp_dir.is_dir():
+            return
+        try:
+            data = path.read_bytes()
+        except OSError:
+            return
+        saved_name = f"{uuid.uuid4().hex[:8]}-{path.name}"
+        saved_path = temp_dir / saved_name
+        try:
+            saved_path.write_bytes(data)
+        except OSError:
+            return
+
+        # Written relative to the *Desk* directory (matching
+        # OpenMarkdown's own documented "absolute or relative to the
+        # current Desk's directory" convention, which
+        # _resolve_open_image_target/_resolve_open_markdown_target both
+        # resolve against) -- not just the bare filename, since the
+        # saved copy actually lives one level down, in .desk_temp/.
+        content_text = f"{OPEN_IMAGE_KEYWORD} {TEMP_UI_DIRNAME}/{saved_name}"
+        tempui_path = temp_dir / str(uuid.uuid4())
+        tempui_path.write_text(content_text)
+        self._temp_ui_manager.record_own_write(tempui_path, content_text)
+
+        widget_id = self._temp_ui_widget_id_for(tempui_path)
+        widget = self._widgets.get(widget_id)
+        if widget is None:
+            return
+        content = self.open_widget_content(
+            widget_id, pos=pos, size=widget.default_size, instance_id=tempui_path.name
+        )
+        if content is not None:
+            self._bind_temp_ui_content(content, tempui_path, directory)
 
     def _on_paste_requested(self, scene_pos: QPointF) -> None:
         """Handles the widget menu's "Paste" entry (TODO f74945e).

@@ -45,7 +45,13 @@ GITIGNORE_COMMENT = "# Desk-specific"
 #
 # TODO 9767c1a: bumped 8 -> 9 for a new "Inspecting another widget"
 # section in _CUSTOM_WIDGETS_DOC (the introspect capability).
-TEMPUI_DOC_VERSION = 9
+#
+# TODO 6e731c1: bumped 9 -> 10 for a new `OpenImage` keyword (its own
+# new tempui-image.md split doc, linked from the main file's intro
+# list) -- a dropped image is now saved into .desk_temp and displayed
+# through it, but it's a general DSL capability like every other
+# keyword, not only reachable via drag-and-drop.
+TEMPUI_DOC_VERSION = 10
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -61,7 +67,7 @@ Each file is named with a bare UUID (e.g.
 `550e8400-e29b-41d4-a716-446655440000`, no extension). Desk watches
 this directory: a newly-created file shows up as a clickable
 notification in the app's upper-right corner; clicking it places a new
-widget on the canvas, centered in the current view. There are seven
+widget on the canvas, centered in the current view. There are eight
 built-in file types, distinguished by their first line's keyword:
 
 - `Question` (below) — a quick multiple-choice question, answered by
@@ -72,6 +78,8 @@ built-in file types, distinguished by their first line's keyword:
 - `OpenMarkdown` / `Markdown` — open an existing Markdown file, or
   render Markdown content given directly in the tempui file itself.
   See [tempui-markdown.md](./tempui-markdown.md).
+- `OpenImage` — open an existing image file in the Image Viewer
+  widget. See [tempui-image.md](./tempui-image.md).
 - `Scratch` — arbitrary free-form notes shown in a Scratch widget. See
   [tempui-scratch.md](./tempui-scratch.md).
 - `DefineWidget` — introduce a brand-new, entirely in-browser widget
@@ -267,6 +275,40 @@ filename derived from the *rendered content's own first line*
 `investigation-summary.md`) — not from `<label>` above. Saving opens
 the new file in a separate, ordinary Markdown widget instance; this
 tempui-bound instance stays open, unaffected.
+"""
+
+_IMAGE_DOC = """# TempUI DSL: OpenImage
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its shared version number -- this file
+just covers the `OpenImage` keyword.
+
+For telling Desk to open an image file in the Image Viewer widget — a
+fire-and-forget instruction, not a question: there is no `Answer`
+line, and Desk never writes back to this file. This is a *pointer* to
+an existing file elsewhere on disk, the same shape as `OpenMarkdown`
+(see [tempui-markdown.md](./tempui-markdown.md)) — there is no
+inline-content sibling keyword for images.
+
+- `OpenImage <path>` — the first (and normally only) line. `path` is
+  the file to open, absolute or relative to the current Desk's
+  directory. Like `Question <text>`, everything after the first space
+  is one opaque value, so a path containing spaces needs no escaping.
+
+Example:
+
+```
+OpenImage ./screenshot.png
+```
+
+Clicking the notification opens `path` in a new Image Viewer widget
+instance, centered in the current view.
+
+Dropping an image file directly onto the Workspace Canvas uses this
+same mechanism automatically: the dropped image is copied into this
+directory first, then an `OpenImage` file pointing at the copy is
+created and opened immediately (no notification needed for your own
+just-performed drop).
 """
 
 _SCRATCH_DOC = """# TempUI DSL: Scratch
@@ -564,6 +606,7 @@ this file.
 
 LIGHTNING_ROUND_DOC_FILENAME = "tempui-lightning-round.md"
 MARKDOWN_DOC_FILENAME = "tempui-markdown.md"
+IMAGE_DOC_FILENAME = "tempui-image.md"
 SCRATCH_DOC_FILENAME = "tempui-scratch.md"
 CUSTOM_WIDGETS_DOC_FILENAME = "tempui-custom-widgets.md"
 DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME = "tempui-discuss-parking-lot-item.md"
@@ -575,6 +618,7 @@ DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME = "tempui-discuss-parking-lot-item.md"
 SPLIT_DOC_CONTENT: dict[str, str] = {
     LIGHTNING_ROUND_DOC_FILENAME: _LIGHTNING_ROUND_DOC,
     MARKDOWN_DOC_FILENAME: _MARKDOWN_DOC,
+    IMAGE_DOC_FILENAME: _IMAGE_DOC,
     SCRATCH_DOC_FILENAME: _SCRATCH_DOC,
     CUSTOM_WIDGETS_DOC_FILENAME: _CUSTOM_WIDGETS_DOC,
     DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME: _DISCUSS_PARKING_LOT_ITEM_DOC,
@@ -662,6 +706,7 @@ class TempUiDocument:
 
 LIGHTNING_ROUND_KEYWORD = "LightningRound"
 OPEN_MARKDOWN_KEYWORD = "OpenMarkdown"
+OPEN_IMAGE_KEYWORD = "OpenImage"
 SCRATCH_KEYWORD = "Scratch"
 MARKDOWN_KEYWORD = "Markdown"
 DEFINE_WIDGET_KEYWORD = "DefineWidget"
@@ -680,6 +725,7 @@ RESERVED_TEMPUI_KEYWORDS = frozenset(
         LIGHTNING_ROUND_KEYWORD,
         "LRItem",
         OPEN_MARKDOWN_KEYWORD,
+        OPEN_IMAGE_KEYWORD,
         SCRATCH_KEYWORD,
         MARKDOWN_KEYWORD,
         DEFINE_WIDGET_KEYWORD,
@@ -778,10 +824,11 @@ def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
 
 def detect_temp_ui_kind(text: str, custom_keywords: Collection[str] = ()) -> str:
     """"question" (the original, default type), "lightning_round",
-    "open_markdown", "scratch", "markdown_content", "define_widget",
-    "discuss_parking_lot_item", or (if the file's own keyword is a
-    currently-known custom widget -- TODO 91b3f42) "custom:<keyword>"
-    -- read from the first non-blank line's keyword. Lets a caller
+    "open_markdown", "open_image", "scratch", "markdown_content",
+    "define_widget", "discuss_parking_lot_item", or (if the file's own
+    keyword is a currently-known custom widget -- TODO 91b3f42)
+    "custom:<keyword>" -- read from the first non-blank line's
+    keyword. Lets a caller
     that's seeing a temp-ui file for the first time (a notification, a
     saved Desk's widget state) know which widget kind to place without
     assuming "question". Named "markdown_content" (not "markdown") to
@@ -799,6 +846,8 @@ def detect_temp_ui_kind(text: str, custom_keywords: Collection[str] = ()) -> str
                 return "lightning_round"
             if keyword == OPEN_MARKDOWN_KEYWORD:
                 return "open_markdown"
+            if keyword == OPEN_IMAGE_KEYWORD:
+                return "open_image"
             if keyword == SCRATCH_KEYWORD:
                 return "scratch"
             if keyword == MARKDOWN_KEYWORD:
@@ -824,6 +873,21 @@ def parse_open_markdown(text: str) -> str | None:
             continue
         parts = line.split(None, 1)
         if parts[0] == OPEN_MARKDOWN_KEYWORD and len(parts) > 1:
+            return parts[1].strip()
+        return None
+    return None
+
+
+def parse_open_image(text: str) -> str | None:
+    """Extracts the target image path from an OpenImage temp-UI file's
+    first line (`OpenImage <path>`) -- identical shape to
+    parse_open_markdown. Returns None if the file doesn't actually
+    start with the OpenImage keyword."""
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split(None, 1)
+        if parts[0] == OPEN_IMAGE_KEYWORD and len(parts) > 1:
             return parts[1].strip()
         return None
     return None
