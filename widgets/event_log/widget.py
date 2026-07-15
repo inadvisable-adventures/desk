@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from desk.event_mediator import LOG_FILENAME, LOG_HEADER, MediatedEvent, parse_log
 from desk.file_watch import SingleFileWatcher
 from desk.shell import current_context
+from desk.temp_ui import TEMP_UI_DIRNAME
 
 COLUMN_HEADERS = ("Timestamp", "Event", "Sender", "Payload")
 # Stashes the row's full MediatedEvent (TODO 0d2ebc1) on the Timestamp
@@ -101,7 +102,7 @@ class EventLogWidget(QWidget):
             self._log_path = None
             self._status_label.setText("No Desk directory available yet.")
             return
-        self._log_path = directory / LOG_FILENAME
+        self._log_path = directory / TEMP_UI_DIRNAME / LOG_FILENAME
         self._status_label.setText(str(self._log_path))
         self._watcher.watch(self._log_path)
         self._reload()

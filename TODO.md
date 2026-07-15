@@ -3274,7 +3274,7 @@ da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    -doc-version checks from this batch, 0 other new failures --
    notably, the pre-existing `verify_tempui_doc_versioning.py` now
    passes cleanly for the first time after the design-docs fix above.
-585d235. Move `MEDIATED-EVENT-LOG.tsv` (`desk.event_mediator`, TODO
+585d235. COMPLETED: Move `MEDIATED-EVENT-LOG.tsv` (`desk.event_mediator`, TODO
    `6f9c51b`) into `.desk_temp/` instead of the current Desk's project
    directory — it's an ambient, Desk-generated log for the whole event
    bus, the same category of thing `.desk_temp` already holds (crash
@@ -3293,6 +3293,28 @@ da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    practice (`.desk_temp` is already ensured by the time a Desk is open
    in the normal flow), but call it out explicitly in the plan rather
    than letting it be a silent side effect.
+   [planned: relocate-mediated-event-log.md]
+
+   `_refresh_picker`'s `set_log_directory` call now passes
+   `self.current_desk.directory / TEMP_UI_DIRNAME`; `widgets/event_log/
+   widget.py` computes `directory / TEMP_UI_DIRNAME / LOG_FILENAME` the
+   same way, importing `TEMP_UI_DIRNAME` from `desk.temp_ui` (precedent
+   already established by several other widgets importing from that
+   module).
+
+   Verified directly: a real `EventMediator.set_log_directory(dir /
+   TEMP_UI_DIRNAME)` resolves `log_path` under `.desk_temp`, and a real
+   `publish()` writes the row there (confirming the noted `.desk_temp`
+   -creation side effect happens, and that no stray log file is left in
+   the project directory itself); a real `EventLogWidget` built with
+   `current_context.set_current_desk_directory` pointed at a fresh temp
+   directory watches and displays the relocated path. Full regression
+   suite (`git stash` before/after): the exact same 17 pre-existing/
+   known-stale failures both before and after this change, save for one
+   of my own earlier scratchpad scripts (`verify_event_viewer_widget.py`)
+   which hardcoded the pre-relocation path directly — fixed to write its
+   fixture log under `.desk_temp/` instead, confirmed not a real
+   regression.
 4d21e7c. Integrate SVG viewing into the Image Viewer widget (raster +
    vector) and retire the standalone SVG Viewer widget. See
    `design-docs/svg-viewing-and-editing.md`'s "Image Viewer: raster +

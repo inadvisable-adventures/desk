@@ -1541,7 +1541,10 @@ class DeskWindow(QMainWindow):
         current_context.set_current_desk_directory(self.current_desk.directory)
         # Same choke point, for the same reason (TODO 6f9c51b): keeps
         # MEDIATED-EVENT-LOG.tsv's location in sync with the current Desk.
-        self._event_mediator.set_log_directory(self.current_desk.directory)
+        # Lives under .desk_temp (TODO 585d235), not the project directory
+        # directly -- it's Desk-generated bookkeeping, the same category of
+        # thing as crash logs/tempui docs/custom-widget source.
+        self._event_mediator.set_log_directory(self.current_desk.directory / TEMP_UI_DIRNAME)
         # Same choke point, for the same reason (TODO b5d52c0): a python
         # widget placed after a Desk switch reads the *new* Desk's own
         # file type registry, not a stale one left over from before.
