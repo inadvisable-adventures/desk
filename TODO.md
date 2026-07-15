@@ -2503,6 +2503,7 @@ b324217. Author `DefineWidget` custom widgets from a real per-widget
    `scripts/todo_item_ids.py` already is. Document the pattern in
    `tempui-custom-widgets.md`. See
    design-docs/custom-widget-authoring.md section 1.
+   [planned: build-widget-authoring-pattern.md]
 5ff02d2. Fix `DefineWidget`'s silent no-instance-placed gap: add a loud
    one-line callout at the top of `DefineWidget`'s section in
    `tempui-custom-widgets.md`, and auto-place one instance the first
