@@ -3132,6 +3132,7 @@ da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    transitively `efdad99`/`b5d52c0`) existing first, since this is
    exposing that same service through a second binding mechanism, not
    building new fallback logic of its own.
+   [planned: bridge-api-editor-or-scrap.md]
 996a5eb. The "focus view" 👁 eye button (`_EyeButton`, TODO `33d3e8d`)
    should persist alongside the title in the `title_only` chrome
    -degrade state, not disappear along with every other titlebar
