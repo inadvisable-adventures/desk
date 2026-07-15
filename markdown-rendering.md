@@ -66,7 +66,7 @@ has no native vector renderer, so it loads an SVG through Qt's image
 -format-plugin machinery, which **rasterizes it once at the size it's
 displayed**, not vector-scaled — it can look blocky if the surrounding
 layout later scales it up. For a crisp, properly-scaled single SVG, use
-the dedicated **SVG Viewer** widget instead (`widgets/svg_viewer/`,
+the **Image Viewer** widget instead (`widgets/image_viewer/`,
 `QSvgRenderer`-based, true vector scaling). See
 `qtextbrowser-images-svg-controls.md` for the full investigation.
 

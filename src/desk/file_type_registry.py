@@ -65,7 +65,8 @@ def entry_from_dict(data: dict) -> FileTypeRegistryEntry:
 # just because a fresh Desk's dynamic registry starts out empty.
 BUILTIN_VIEW_WIDGET_BY_SUFFIX = {
     ".md": "markdown",
-    ".svg": "svg_viewer",
+    ".svg": "image_viewer",
+    ".svgz": "image_viewer",
     ".png": "image_viewer",
     ".jpg": "image_viewer",
     ".jpeg": "image_viewer",

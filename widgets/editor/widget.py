@@ -160,7 +160,7 @@ class EditorWidget(QWidget):
         self._watcher.changed.connect(self._on_external_change)
         # Captured (not self._watcher) so this destroyed-triggered
         # closure never touches self -- same pattern as the Markdown/
-        # Markdown (Extended)/SVG Viewer/TODO widgets' own teardown.
+        # Markdown (Extended)/Image Viewer/TODO widgets' own teardown.
         watcher = self._watcher
         self.destroyed.connect(lambda: watcher.stop())
 

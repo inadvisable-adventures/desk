@@ -68,7 +68,6 @@ MARKDOWN_WIDGET_ID = "markdown"
 SCRATCH_WIDGET_ID = "scratch"
 CLAUDE_WIDGET_ID = "claude"
 QUESTIONS_WIDGET_ID = "questions"
-SVG_VIEWER_WIDGET_ID = "svg_viewer"
 IMAGE_VIEWER_WIDGET_ID = "image_viewer"
 EDITOR_WIDGET_ID = "editor"
 CRASH_LOG_WIDGET_ID = "crash_log"
@@ -77,17 +76,18 @@ CRASH_LOG_WIDGET_ID = "crash_log"
 CRASH_LOG_GLOB = "DESK-CRASH-*.log"
 
 # Which widget kind opens a dropped file (TODO 5915ac2), by extension --
-# only these three widget kinds currently expose set_file. Everything not
+# only these widget kinds currently expose set_file. Everything not
 # listed here falls back to the Editor -- Project Files' own
 # double-click handling now goes through a richer viewer/editor/scrap
 # fallback chain instead (TODO efdad99), but drag-and-drop here is
 # still this simpler by-extension map. Raster image suffixes are deliberately
 # NOT listed here (see IMAGE_DROP_SUFFIXES/_on_files_dropped below) --
 # those get copy-into-.desk_temp-plus-tempui handling instead of this
-# by-reference one (TODO 6e731c1).
+# by-reference one (TODO 6e731c1). .svg maps to Image Viewer (TODO
+# 4d21e7c folded the formerly-standalone SVG Viewer widget into it).
 EXTERNAL_DROP_WIDGET_BY_SUFFIX = {
     ".md": MARKDOWN_WIDGET_ID,
-    ".svg": SVG_VIEWER_WIDGET_ID,
+    ".svg": IMAGE_VIEWER_WIDGET_ID,
 }
 # A dropped file with one of these suffixes (TODO 6e731c1) is copied
 # into .desk_temp and displayed through a new OpenImage tempui file
@@ -657,9 +657,9 @@ class DeskWindow(QMainWindow):
         explanatory Scratch note" service (TODO da4f9c0) -- extracted
         from what TODO efdad99 originally built inline in
         ProjectFilesWidget._open_file's own edit-or-scrap step, so
-        every viewer widget's Edit button (svg_viewer/image_viewer/
-        markdown) reuses this exact logic instead of each carrying its
-        own copy. Bound to current_context.set_editor_or_scrap_opener."""
+        every viewer widget's Edit button (image_viewer/markdown)
+        reuses this exact logic instead of each carrying its own copy.
+        Bound to current_context.set_editor_or_scrap_opener."""
         registry = [entry_from_dict(d) for d in self.get_file_type_registry_dicts()]
         widget_id = find_edit_handler(registry, path)
         if widget_id is None and looks_like_text_file(path):

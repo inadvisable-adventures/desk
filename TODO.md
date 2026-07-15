@@ -3315,7 +3315,7 @@ da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    which hardcoded the pre-relocation path directly — fixed to write its
    fixture log under `.desk_temp/` instead, confirmed not a real
    regression.
-4d21e7c. Integrate SVG viewing into the Image Viewer widget (raster +
+4d21e7c. COMPLETED: Integrate SVG viewing into the Image Viewer widget (raster +
    vector) and retire the standalone SVG Viewer widget. See
    `design-docs/svg-viewing-and-editing.md`'s "Image Viewer: raster +
    vector" section for the full design: Image Viewer keeps both
@@ -3334,6 +3334,46 @@ da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    list at minimum; check for others at implementation time) — not
    historical `plans/`/`TODO.md`/`LEARNINGS.md` mentions, which stay as
    history.
+   [planned: image-viewer-svg-integration.md]
+
+   `ImageViewerWidget` now holds both `_AspectImageView` (raster,
+   unchanged) and `_AspectSvgView` (vector, moved here verbatim from
+   the retired widget), swapped via a `QStackedLayout` on `set_file`
+   based on extension (`VECTOR_SUFFIXES = {".svg", ".svgz"}`).
+   `IMAGE_FILTER` updated; `BUILTIN_VIEW_WIDGET_BY_SUFFIX` now maps
+   both `.svg` and `.svgz` to `"image_viewer"`. `widgets/svg_viewer/`
+   deleted (`git rm`). Updated every other forward-looking reference
+   found via a full-repo grep: `design-docs/architecture.md` (its
+   OS-drop paragraph and the widget's own numbered entry, repurposed
+   in place rather than leaving a dangling "18. SVG Viewer Widget"
+   entry with no replacement), `diagrams.md` and `markdown-rendering.md`
+   (both live, forward-looking reference docs, not historical
+   narrative), `src/desk/shell/window.py` (removed the now-dead
+   `SVG_VIEWER_WIDGET_ID` constant, repointed
+   `EXTERNAL_DROP_WIDGET_BY_SUFFIX[".svg"]` at
+   `IMAGE_VIEWER_WIDGET_ID`), `src/desk/geometry.py`'s
+   `fit_rect` docstring, and a few code comments in
+   `current_context.py`/`todo/widget.py`/`editor/widget.py` that named
+   the old widget as precedent for a shared pattern. Left historical
+   `plans/`/`TODO.md`/`LEARNINGS.md`/`PARKINGLOT.md` mentions alone.
+
+   Verified directly: a real `ImageViewerWidget` loads a real PNG
+   fixture onto the raster page and a real SVG fixture (both a
+   hand-written one and one of the repo's own `diagram-assets/*.svg`
+   files) onto the vector page, switches back and forth correctly, and
+   shows an error label (not a crash) for invalid content of either
+   kind; `find_view_handler` resolves a bare `.svg` to `"image_viewer"`
+   with an empty registry; `widgets/svg_viewer/` no longer exists; no
+   remaining `svg_viewer`/`SvgViewerWidget` reference anywhere in
+   `src/`/`widgets/`. Full regression suite (`git stash` before/after):
+   back to the same 17 pre-existing/known-stale failures, after fixing
+   three of my own earlier scripts that hardcoded the old widget id/
+   path directly (`verify_drag_drop.py`'s `SVG_VIEWER_WIDGET_ID` import
+   and dispatch assertion, `verify_file_explorer_fallback_chain.py`'s
+   builtin-fallback assertion, `verify_viewer_widgets_edit_button.py`'s
+   direct `widgets/svg_viewer/widget.py` load) — all confirmed as
+   expected staleness, not real regressions, the same pattern already
+   seen for the Project Files rename and the `build_widget.py` move.
 7076af5. New SVG Editor widget (`widgets/svg_editor/`) with a basic
    visual-object toolbox and point/shape editing tools. See
    `design-docs/svg-viewing-and-editing.md`'s "Supported element types"

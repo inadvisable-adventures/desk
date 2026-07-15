@@ -152,11 +152,11 @@ Desk Bridge API.
    (TODO 5915ac2): dropping a file from outside Desk (Finder, another
    app) opens it by reference to wherever it already lives on disk —
    never copied into the project — in whichever widget kind its
-   extension maps to (Markdown for `.md`, SVG Viewer for `.svg`, Editor
-   otherwise), which automatically picks up the "[EXTERNAL]" titlebar
-   indicator the moment it's opened, since a dropped file is
-   essentially always outside the current Desk directory. See
-   `plans/drag-drop-open-external.md`.
+   extension maps to (Markdown for `.md`, Image Viewer for `.svg`/raster
+   images, Editor otherwise), which automatically picks up the
+   "[EXTERNAL]" titlebar indicator the moment it's opened, since a
+   dropped file is essentially always outside the current Desk
+   directory. See `plans/drag-drop-open-external.md`.
 4. **Python Widget Host** — the default, preferred building block: given a
    widget directory with a `widget.py` exposing `build() -> QWidget`,
    imports that module and calls `build()` directly (no subprocess, no
@@ -365,18 +365,24 @@ Desk Bridge API.
     visually desync from its own (otherwise-correct) click hit-region
     once embedded in the Workspace Canvas's `QGraphicsProxyWidget` at
     non-1.0 zoom; see `LEARNINGS.md`. See `plans/file-explorer-widget.md`.
-18. **SVG Viewer Widget** — a built-in `kind: "python"` widget
-    (`widgets/svg_viewer/`), same shape as the plain Markdown widget
+18. **Image Viewer Widget** — a built-in `kind: "python"` widget
+    (`widgets/image_viewer/`), same shape as the plain Markdown widget
     (Open button seeded from the current Desk directory, `SingleFileWatcher`
     -driven live reload, a `set_file(path)` for programmatic opening):
-    displays a single SVG file scaled to fit the widget with aspect
-    ratio preserved. Uses `QtSvg`'s bare `QSvgRenderer` rendered into a
-    manually letterboxed target rect (`_fit_rect`), **not** the stock
-    `QSvgWidget` — confirmed directly that `QSvgWidget` stretches
-    non-uniformly to fill its whole rect regardless of the SVG's own
-    aspect ratio (a circle came out as a wide ellipse). An invalid/
-    unparseable SVG shows a message instead of crashing or leaving a
-    blank canvas. See `plans/svg-viewer-widget.md`.
+    displays a single image file scaled to fit the widget with aspect
+    ratio preserved, for both raster formats (`QPixmap`) and vector
+    (`.svg`/`.svgz`, `QtSvg`'s bare `QSvgRenderer`), dispatched by
+    extension and swapped via an internal `QStackedLayout`. Neither
+    backend uses a stock `QLabel.setScaledContents`/`QSvgWidget` — both
+    stretch non-uniformly to fill their whole rect regardless of the
+    image's own aspect ratio (confirmed directly for `QSvgWidget`: a
+    circle came out as a wide ellipse); both render into a manually
+    letterboxed target rect (`fit_rect`) instead. An invalid/unparseable
+    file shows a message instead of crashing or leaving a blank canvas.
+    Originally raster-only (TODO `6e731c1`, `plans/image-drop-tempui.md`);
+    the vector-rendering path was folded in from a previously-standalone
+    SVG Viewer widget by TODO `4d21e7c` — see
+    `design-docs/svg-viewing-and-editing.md`.
 19. **File Watcher Service** (`desk_services.file_watcher`) — a single,
     process-wide `watchdog.observers.Observer`, lazily constructed via
     module-level `get_service()`. Every file/directory watcher in the

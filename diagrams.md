@@ -1,11 +1,12 @@
 # Diagram feature examples
 
 Example cases exercising the Mermaid rendering (`desk/mermaid.py`) and
-SVG rendering (`widgets/svg_viewer/`) built for TODO `a76e723` and
+SVG rendering (`widgets/image_viewer/`) built for TODO `a76e723` and
 `c7d6e4d`. Open this file in the **Markdown** widget (formerly "Markdown
 (Extended)", renamed TODO 858752b) to see everything render; the
-embedded SVGs can also be opened individually in the **SVG Viewer**
-widget.
+embedded SVGs can also be opened individually in the **Image Viewer**
+widget (TODO `4d21e7c` folded the formerly-standalone SVG Viewer
+widget's rendering into it).
 
 Mermaid support here is intentionally partial — flowchart (basic
 shapes only) and flat state diagrams — not a full Mermaid
@@ -138,11 +139,12 @@ A tall SVG:
 
 ![A teal circle in a tall viewBox](diagram-assets/circle-tall.svg)
 
-## SVG — the SVG Viewer widget (aspect-ratio preservation)
+## SVG — the Image Viewer widget (aspect-ratio preservation)
 
-Open any of the three files in `diagram-assets/` directly in the **SVG
-Viewer** widget (not embedded in a Markdown file) to see the feature
-that widget was built to fix: each file draws the *same* circle
+Open any of the three files in `diagram-assets/` directly in the
+**Image Viewer** widget (not embedded in a Markdown file) to see the
+feature this rendering path was built to fix: each file draws the
+*same* circle
 (sized to fill most of its own square/wide/tall viewBox), and the
 widget always renders it as a true circle, letterboxed to fit the
 widget's own window shape — not stretched into an ellipse the way the

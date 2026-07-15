@@ -136,8 +136,8 @@ def set_editor_or_scrap_opener(opener: Callable[[Path], None]) -> None:
     explanatory Scratch note" service (TODO da4f9c0) -- originally
     built inline in Project Files' own double-click fallback chain
     (TODO efdad99), extracted here so every viewer widget's Edit
-    button (svg_viewer/image_viewer/markdown) reuses the exact same
-    logic instead of each carrying its own copy. See
+    button (image_viewer/markdown) reuses the exact same logic instead
+    of each carrying its own copy. See
     DeskWindow.open_editor_or_scrap. `kind: "html"` widgets reach the
     same service over the real Bridge API instead (TODO 2da314f) --
     this hook is for `kind: "python"` widgets only."""

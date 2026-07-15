@@ -417,7 +417,7 @@ class TodoWidget(QWidget):
         state = self._state
         # Captured (not self._watcher) so this destroyed-triggered
         # closure never touches self -- same pattern as the Markdown/
-        # Markdown (Extended)/SVG Viewer widgets' own teardown.
+        # Markdown (Extended)/Image Viewer widgets' own teardown.
         watcher = self._watcher
 
         def _flush_on_teardown() -> None:
