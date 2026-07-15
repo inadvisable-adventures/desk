@@ -2600,4 +2600,5 @@ c892403. Resolve relative `desk.fs.readFile`/`writeFile` paths against
    Bridge API section as the preferred mechanism for cross-widget
    signaling, ahead of `fs`/`workspace`/`widgets` in the list. See
    design-docs/custom-widget-authoring.md section 4.
+   [planned: fs-path-resolution-and-events-framing.md]
    [planned: widget-content-zoom-safe-style.md]
