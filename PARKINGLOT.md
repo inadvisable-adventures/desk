@@ -625,6 +625,81 @@ This file captures thoughts and TODO items that arise during work on other thing
   glossary" idea above -- this is exactly the kind of term such a
   glossary would want to capture.
 
+- **Widget toolbar buttons still desync from zoom in the real app,
+  despite three attempts (TODO `465c404`, `593a464`, `8afef71`)**
+
+  The underlying bug: native-platform-style-painted Qt controls
+  (`QPushButton`, `QLineEdit`, `QToolButton`, etc.) visually desync
+  their background/border chrome from their text/position once
+  embedded via `QGraphicsProxyWidget` and viewed at a non-1.0
+  `QGraphicsView` zoom scale, because native theme painting
+  (`QMacStyle` on macOS) doesn't respect the enclosing view's zoom
+  transform. See `LEARNINGS.md`'s "A native-style-drawn control ...
+  can visually desync from its own click hit-region once embedded in
+  a zoomed `QGraphicsProxyWidget`" entry.
+
+  Attempts so far, in order:
+  - **TODO `465c404`** (File Explorer toolbar) and **TODO `593a464`**
+    (Event Log toolbar) each force-set `QStyleFactory.create("Fusion")`
+    directly onto the specific affected buttons via `widget.setStyle(...)`.
+  - **TODO `8afef71`** (generic fix): a follow-up audit found the same
+    bug in 17 of 19 widgets, so rather than repeat the per-widget
+    `setStyle()` patch everywhere, the fix moved to the single choke
+    point every widget passes through (`WidgetFrame.__init__`,
+    `src/desk/shell/widget_frame.py`). While implementing it, direct
+    testing found the original `setStyle()`-based approach doesn't
+    actually work once a widget is wrapped in a real `WidgetFrame`:
+    `WidgetFrame` already calls `setStyleSheet()` on itself (for its
+    own border), and **any ancestor's `setStyleSheet()` silently
+    overrides a descendant's explicit `setStyle()` call, regardless of
+    call order** -- meaning TODO `465c404`/`593a464`'s original fixes
+    were likely never actually effective in the real app either, since
+    neither fix's own verification wrapped the widget in a real
+    `WidgetFrame`. Also found that `style().objectName()` -- the exact
+    signal both prior fixes' verification relied on -- can't detect
+    this in this offscreen test environment: the untouched default
+    style and an explicitly-created Fusion style report as
+    indistinguishable objects there. Both gotchas are written up in
+    `LEARNINGS.md`. Switched instead to setting a stylesheet
+    (`CONTENT_ZOOM_SAFE_STYLESHEET`) directly on each widget's content
+    root, giving `QPushButton`/`QToolButton`/`QLineEdit` explicit
+    `background`/`border`/`padding` rules so Qt's CSS engine paints
+    them instead of deferring to native theme calls -- the same
+    mechanism that already made the Todo/Questions widgets'
+    `FILTER_BUTTON_STYLE`-styled buttons immune to this bug. Verified
+    extensively headlessly by pixel-sampling actual rendered output
+    (`widget.grab().toImage().pixelColor(...)`, since
+    `style().objectName()` proved unreliable) across static controls,
+    dynamically-added controls, a pre-built subtree, pseudo-states, and
+    several real widgets (`svg_viewer`, `lightning_round`,
+    `file_explorer`, `event_log`) -- all passed.
+
+  **2026-07-15: confirmed still broken in the real running app.**
+  After TODO `8afef71` landed, the Event Log widget's toolbar buttons
+  still do not scale with zoom -- the same symptom as the original
+  screenshot report, despite every headless verification check above
+  passing. Root cause of the discrepancy not yet found. The leading
+  suspect, not yet confirmed: this project's headless verification
+  (`QT_QPA_PLATFORM=offscreen`) doesn't reproduce real `QMacStyle`
+  native chrome painting, and something about how the CSS engine
+  interacts with real native theme painting -- as opposed to the
+  offscreen platform's painting -- may make the stylesheet cascade
+  behave differently than it did in every headless test. This is
+  speculative; it hasn't actually been tested directly.
+
+  Not fixed -- parking here (per explicit request) so it doesn't block
+  other work, rather than continuing to iterate on a third design
+  blind. When picked back up: test directly in the real running macOS
+  app rather than relying on headless verification alone (a gap
+  flagged, but not actually caused a wrong conclusion, in the first
+  two attempts -- this time it did); a real screenshot of the
+  before/after state would help confirm whether the stylesheet is
+  being applied/painted at all versus painted-but-still-desynced from
+  the zoom transform for some other reason. See
+  `plans/widget-content-zoom-safe-style.md` (TODO `8afef71`) for the
+  full design and verification detail, and `LEARNINGS.md` for the two
+  Qt gotchas found along the way.
+
 - **Viewer / (editor?) for code stored base64-encoded in `.desk_temp` and `.desk` files**
 
   `DefineWidget` tempui files and promoted custom widgets (TODO

@@ -186,3 +186,12 @@ real-widget cases. As with the two prior fixes, real visual
 confirmation in the actual running app (zoomed into a representative
 sample of widgets) is still needed and flagged as not possible in this
 offscreen environment.
+
+**Update 2026-07-15: tested in the real running app, and the bug is
+still present.** The Event Log toolbar buttons still do not scale
+with zoom, despite every headless check above passing. The root cause
+of this discrepancy -- why a stylesheet-driven fix that reliably
+changes pixel output in the offscreen Qt platform doesn't resolve the
+bug under real `QMacStyle`/native rendering -- has not been found yet.
+Parked rather than continuing to iterate immediately; see
+`PARKINGLOT.md` for the full attempt history and next steps.

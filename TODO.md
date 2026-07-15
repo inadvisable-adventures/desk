@@ -2441,7 +2441,8 @@ dc557b2. COMPLETED: create a general event poster widget
    running app.
    [planned: event-log-toolbar-zoom-scaling.md]
 
-8afef71. COMPLETED: Generic fix, superseding the narrow per-widget approach of TODO
+8afef71. COMPLETED (but NOT ACTUALLY FIXED -- see PARKINGLOT.md): Generic fix,
+   superseding the narrow per-widget approach of TODO
    465c404 and TODO 593a464: an audit of every other widget found the
    same native-style-chrome-desyncs-under-zoom bug in 17 of 19 widgets
    (both statically-created controls and ones rebuilt dynamically on
@@ -2488,4 +2489,11 @@ dc557b2. COMPLETED: create a general event poster widget
    the two prior fixes, this offscreen environment can't reproduce the
    real native-macOS-style rendering directly -- needs visual
    confirmation in the real running app.
+
+   Update 2026-07-15: tested in the real running app, and the bug is
+   still present -- the Event Log toolbar buttons still do not scale
+   with zoom, despite this fix passing every headless check above.
+   Root cause of the discrepancy not yet found. Parked (not blocking
+   other work) rather than continuing to iterate immediately -- see
+   PARKINGLOT.md for the full attempt history and what to try next.
    [planned: widget-content-zoom-safe-style.md]
