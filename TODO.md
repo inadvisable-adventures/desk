@@ -2727,6 +2727,7 @@ c892403. COMPLETED: Resolve relative `desk.fs.readFile`/`writeFile` paths agains
    now, or keep running the old content for now (i.e. dismiss and
    leave the instance as-is, still marked `[STALE]`, until they decide
    later).
+   [planned: clickable-stale-marker-dialog.md]
 efdad99. Change the File Explorer widget's (`widgets/file_explorer/`)
    double-click handling (currently `_open_index`, which always opens
    the Editor widget unconditionally) to a fallback chain: (1) if a
