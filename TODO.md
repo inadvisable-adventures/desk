@@ -2347,3 +2347,4 @@ dc557b2. COMPLETED: create a general event poster widget
    its eye button genuinely zooms the real `WorkspaceView` to it.
    [planned: event-subscribers-widget.md]
 6e731c1. drag-and-drop of an image into the Desk should result in the image being saved in the .desk_temp directory and then displayed with tempui.
+   [planned: image-drop-tempui.md]
