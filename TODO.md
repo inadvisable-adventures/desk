@@ -3518,3 +3518,4 @@ d28885f. New side-by-side widget container: two widget-instance slots in
      is a natural fit for the two slots — gives a draggable divider for
      free, and swapping sides is just re-inserting the same two child
      widgets in the other order, no rebuild needed.
+   [planned: side-by-side-widget-container.md]
