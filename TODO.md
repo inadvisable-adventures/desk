@@ -2532,6 +2532,7 @@ b324217. COMPLETED: Author `DefineWidget` custom widgets from a real per-widget
    time a brand-new keyword is registered from a live-added (not
    edited, not startup/Desk-switch-rescanned) tempui `DefineWidget`
    file. See design-docs/custom-widget-authoring.md section 2.
+   [planned: define-widget-auto-place.md]
 5995ffd. Give a placed `DefineWidget` custom widget instance a way to
    report which version of its code it's actually running: compute a
    content hash when a definition is registered, expose the current
