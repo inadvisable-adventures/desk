@@ -3064,7 +3064,7 @@ da4f9c0. Give every "viewer" widget that shows the contents of a file
    on disk (e.g. `widgets/svg_viewer/`, `widgets/image_viewer/`,
    `widgets/markdown/`) an "Edit" button in its titlebar. Clicking it
    should reuse the exact same open-an-editor-or-fall-back-to-a-scrap
-   logic the "Project Files" widget (formerly "Project Files" -- TODO
+   logic the "Project Files" widget (formerly "File Explorer" -- TODO
    `8385dcc`) uses for its own double-click handling (TODO `efdad99`):
    open an appropriate editor for the file if one is available (only
    ever a genuinely text file into the text Editor widget), otherwise
