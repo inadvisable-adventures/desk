@@ -2920,6 +2920,7 @@ b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
    capability, add a corresponding entry to whichever of these two docs
    applies, at the same time (see TODO `1a96c9f`, which formalizes this
    as a documented instruction for agents working on Desk itself).
+   [planned: tempui-changelog-docs.md]
 1a96c9f. Fork `development-process.md` into a shared/not-shared doc
    hierarchy, with a Desk-specific section and breaking-changes
    -tracking instructions (prioritized, immediately after TODO
