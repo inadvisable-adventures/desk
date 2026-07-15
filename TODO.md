@@ -2496,4 +2496,32 @@ dc557b2. COMPLETED: create a general event poster widget
    Root cause of the discrepancy not yet found. Parked (not blocking
    other work) rather than continuing to iterate immediately -- see
    PARKINGLOT.md for the full attempt history and what to try next.
+b324217. Author `DefineWidget` custom widgets from a real per-widget
+   source directory (TS custom element + template HTML + tsconfig +
+   manifest), packaged by one generic `scripts/build_widget.py`
+   (stdlib-only), and seed that script into new projects the same way
+   `scripts/todo_item_ids.py` already is. Document the pattern in
+   `tempui-custom-widgets.md`. See
+   design-docs/custom-widget-authoring.md section 1.
+5ff02d2. Fix `DefineWidget`'s silent no-instance-placed gap: add a loud
+   one-line callout at the top of `DefineWidget`'s section in
+   `tempui-custom-widgets.md`, and auto-place one instance the first
+   time a brand-new keyword is registered from a live-added (not
+   edited, not startup/Desk-switch-rescanned) tempui `DefineWidget`
+   file. See design-docs/custom-widget-authoring.md section 2.
+5995ffd. Give a placed `DefineWidget` custom widget instance a way to
+   report which version of its code it's actually running: compute a
+   content hash when a definition is registered, expose the current
+   hash via `desk.self.getManifest()`, and track the hash a placed
+   instance was placed with so Desk's own UI can show when an
+   instance predates the currently-registered definition. See
+   design-docs/custom-widget-authoring.md section 3.
+c892403. Resolve relative `desk.fs.readFile`/`writeFile` paths against
+   the current Desk's own directory instead of the server process's
+   ambient working directory (or reject relative paths with a clear
+   error), expose that directory via `desk.self.getManifest()`, and
+   give `desk.events.*` top billing in `tempui-custom-widgets.md`'s
+   Bridge API section as the preferred mechanism for cross-widget
+   signaling, ahead of `fs`/`workspace`/`widgets` in the list. See
+   design-docs/custom-widget-authoring.md section 4.
    [planned: widget-content-zoom-safe-style.md]
