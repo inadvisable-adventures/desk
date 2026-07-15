@@ -2496,6 +2496,7 @@ dc557b2. COMPLETED: create a general event poster widget
    Root cause of the discrepancy not yet found. Parked (not blocking
    other work) rather than continuing to iterate immediately -- see
    PARKINGLOT.md for the full attempt history and what to try next.
+   [planned: widget-content-zoom-safe-style.md]
 b324217. COMPLETED: Author `DefineWidget` custom widgets from a real per-widget
    source directory (TS custom element + template HTML + tsconfig +
    manifest), packaged by one generic `scripts/build_widget.py`
@@ -2627,4 +2628,34 @@ c892403. COMPLETED: Resolve relative `desk.fs.readFile`/`writeFile` paths agains
    assertions in my own earlier b324217/5ff02d2 scripts (hardcoded to
    prior version numbers, not real regressions), 0 other new
    failures.
-   [planned: widget-content-zoom-safe-style.md]
+0d2ebc1. Add an Event Viewer widget: opened by double-clicking a row in
+   the Event Log widget (`widgets/event_log/`), showing that one
+   event's full detail (timestamp, name, sender instance id, and its
+   payload pretty-printed in full, not the truncated single-line
+   summary the Event Log's own table row shows).
+59c5a70. Change where a `DefineWidget` widget's authoring source lives
+   (TODO b324217's `custom_widget_src/<name>/` convention): for a Desk
+   working on a project other than Desk's own repo, recommend
+   `.desk_temp/widgets/<name>/` instead of a project-root
+   `custom_widget_src/<name>/` directory, since `.desk_temp` is already
+   the established Desk-specific/gitignored support directory rather
+   than adding a second convention at the project root. Separately,
+   update the widget frame's `[TEMPUI]` promote button (see TODO
+   91b3f42) so that promoting a widget also moves its authoring source
+   directory out of `.desk_temp/widgets/<name>/` into a permanent,
+   non-gitignored project subdirectory, `desk_widgets/<name>/` --
+   promotion already means "this is now a permanent part of my
+   project," so its source should stop living in the disposable
+   `.desk_temp` tree too, not just its definition in the `.desk` file.
+   Update `scripts/build_widget.py` (TODO b324217) and
+   `tempui-custom-widgets.md`'s authoring-pattern docs so the build
+   process works correctly for a source directory in either of these
+   two locations.
+3e2c4f2. Change the `[STALE]` titlebar marker (TODO 5995ffd) from a
+   passive label into something clickable: clicking it pops up a
+   dialog showing both content hashes (the one this instance was
+   placed with, and the one currently registered for its keyword) and
+   gives the user the choice to reload the widget with the new content
+   now, or keep running the old content for now (i.e. dismiss and
+   leave the instance as-is, still marked `[STALE]`, until they decide
+   later).
