@@ -82,7 +82,15 @@ PROMOTED_WIDGET_SRC_DIRNAME = "desk_widgets"
 # .desk_temp/widgets/<name>/, plus a new note (in both that section and
 # "Promoting a defined widget to the Desk") that promotion moves the
 # source directory to desk_widgets/<name>/.
-TEMPUI_DOC_VERSION = 14
+#
+# TODO 7462cdb: bumped 14 -> 15 for two new files,
+# tempui-breaking-changes.md/tempui-new-features.md, plus a new
+# DOC_TEMPLATE paragraph pointing to them. See the going-forward
+# convention noted alongside _BREAKING_CHANGES_DOC/_NEW_FEATURES_DOC
+# below: any future bump that's breaking or adds a capability should
+# add a matching entry to one of those two docs, in the same commit as
+# the bump.
+TEMPUI_DOC_VERSION = 15
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -122,6 +130,16 @@ built-in file types, distinguished by their first line's keyword:
   [tempui-discuss-parking-lot-item.md](./tempui-discuss-parking-lot-item.md).
 
 Every file named above lives in this same directory.
+
+Two more files live here too, but aren't DSL file types (nothing writes
+one directly): [tempui-breaking-changes.md](./tempui-breaking-changes.md)
+and [tempui-new-features.md](./tempui-new-features.md) — reverse
+-chronological changelogs of this doc set itself, each entry tagged
+with the `TEMPUI_DOC_VERSION` it was introduced in. If you're picking
+up a project that was built against an older Desk, check these first:
+read from the top down until you reach a version you already know,
+and you'll have an exact, actionable punch list instead of needing to
+re-read this whole doc set and diff it against memory.
 
 ## Questions for the user: use QUESTIONS.md, not this DSL
 
@@ -712,12 +730,118 @@ and once the new session starts there's nothing more Desk does with
 this file.
 """
 
+# TODO 7462cdb: reverse-chronological changelogs for the whole tempui
+# doc set, tagged by the TEMPUI_DOC_VERSION each entry was introduced
+# in -- not DSL-keyword-triggered file types themselves (nothing writes
+# one of these directly), just reference docs generated/refreshed the
+# same way every other SPLIT_DOC_CONTENT entry is. Lets an agent
+# relaunched under a newer Desk see exactly what changed since the
+# version its own project was built against, instead of re-reading the
+# whole doc set and manually diffing it against memory. Backfilled from
+# this file's own TEMPUI_DOC_VERSION bump-log comments above -- only
+# versions 7 onward have one; earlier bumps predate that practice.
+#
+# Going forward: any bump that reflects a breaking change or a new
+# capability should add a matching entry to whichever of these two docs
+# applies, in the same commit as the bump -- see also
+# development-process.md's "When working on Desk itself" section (TODO
+# 1a96c9f), which makes this an explicit instruction for anyone working
+# on Desk, not just a habit to remember from this comment alone.
+_BREAKING_CHANGES_DOC = """# TempUI: Breaking Changes
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its shared version number. Entries here
+are listed newest-first, each tagged with the `TEMPUI_DOC_VERSION` that
+introduced the change -- read from the top down until you reach a
+version your own project was already built against, and stop.
+
+Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 14
+- `DefineWidget` widget authoring source moved from a project-root
+  `custom_widget_src/<name>/` to `.desk_temp/widgets/<name>/` (see
+  "Authoring from real source" in `tempui-custom-widgets.md`). Move any
+  existing `custom_widget_src/<name>/` directory to
+  `.desk_temp/widgets/<name>/` accordingly -- `scripts/build_widget.py`
+  itself needs no change, it already takes an arbitrary directory
+  argument. Promoting a widget (the `[TEMPUI]` titlebar button) now also
+  moves its source directory again, to `desk_widgets/<name>/` at the
+  project root.
+"""
+
+_NEW_FEATURES_DOC = """# TempUI: New Features
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its shared version number. Entries here
+are listed newest-first, each tagged with the `TEMPUI_DOC_VERSION` that
+introduced it -- read from the top down until you reach a version your
+own project was already built against, and stop.
+
+Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 14
+- See `tempui-breaking-changes.md`'s own Version 14 entry -- the
+  authoring-source relocation is breaking, not additive.
+
+## Version 13
+- `desk.self.getManifest()` now also returns `content_hash` (the
+  currently-registered definition's content hash, for a `DefineWidget`
+  widget) and `directory` (the current Desk's own directory).
+- `desk.fs.readFile`/`writeFile`'s relative-path handling was fixed:
+  a relative path now resolves against the current Desk's own
+  directory rather than the server process's ambient working
+  directory (an absolute path was, and still is, used as-is --
+  nothing changes for existing correct callers).
+- `desk.events.*` given top billing in `tempui-custom-widgets.md`'s
+  Bridge API capability list, as the preferred mechanism for
+  cross-widget signaling (a documentation reordering, not a behavior
+  change).
+
+## Version 12
+- `DefineWidget` now auto-places one instance the first time a
+  genuinely new keyword is registered from a live-added tempui file
+  (re-registering an already-known keyword, or a bulk rescan at
+  startup/Desk-switch, still doesn't place anything -- use the
+  separate keyword-only invocation file for an additional instance).
+
+## Version 11
+- A repeatable way to author a `DefineWidget` widget from real
+  TypeScript source (a small per-widget source directory + the seeded
+  `scripts/build_widget.py`) instead of hand-writing inline JS --
+  see "Authoring from real source" in `tempui-custom-widgets.md`.
+
+## Version 10
+- New `OpenImage` keyword: open an existing image file in the Image
+  Viewer widget. See `tempui-image.md`.
+
+## Version 9
+- New "Inspecting another widget" capability
+  (`desk.introspect.snapshot(targetInstanceId)`, capability
+  `introspect`): a DOM tree snapshot and console log of another placed
+  widget instance, gated by a one-time user confirmation dialog.
+
+## Version 8
+- A `DefineWidget` file can now declare `Capability<TAB>name` lines,
+  granting its widget kind Bridge API capabilities (`workspace`, `fs`,
+  `widgets`, `events`, ...) the same way a real `widgets/<id>/
+  widget.json` manifest's own `capabilities` list does.
+
+## Version 7
+- `desk.events.*` (capability `events`): Desk's own event message
+  channel -- `subscribe`/`unsubscribe`/`publish`/`onMessage`, for
+  telling another widget instance "something happened" without either
+  needing to know the other exists. See "Sending and receiving named
+  messages" in `tempui-custom-widgets.md`.
+"""
+
 LIGHTNING_ROUND_DOC_FILENAME = "tempui-lightning-round.md"
 MARKDOWN_DOC_FILENAME = "tempui-markdown.md"
 IMAGE_DOC_FILENAME = "tempui-image.md"
 SCRATCH_DOC_FILENAME = "tempui-scratch.md"
 CUSTOM_WIDGETS_DOC_FILENAME = "tempui-custom-widgets.md"
 DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME = "tempui-discuss-parking-lot-item.md"
+BREAKING_CHANGES_DOC_FILENAME = "tempui-breaking-changes.md"
+NEW_FEATURES_DOC_FILENAME = "tempui-new-features.md"
 
 # filename -> its static content, for every split-out doc (TODO
 # e57ce5f) -- iterated by write_tempui_docs/ensure_docs_current so
@@ -730,6 +854,8 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     SCRATCH_DOC_FILENAME: _SCRATCH_DOC,
     CUSTOM_WIDGETS_DOC_FILENAME: _CUSTOM_WIDGETS_DOC,
     DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME: _DISCUSS_PARKING_LOT_ITEM_DOC,
+    BREAKING_CHANGES_DOC_FILENAME: _BREAKING_CHANGES_DOC,
+    NEW_FEATURES_DOC_FILENAME: _NEW_FEATURES_DOC,
 }
 
 

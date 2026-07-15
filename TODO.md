@@ -2887,7 +2887,7 @@ b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
    Full regression suite back to the same 9 pre-existing failures plus
    three already-known-stale doc-version assertions from earlier TODOs
    in this batch, 0 other new failures.
-7462cdb. Add `tempui-breaking-changes.md`/`tempui-new-features.md` to
+7462cdb. COMPLETED: Add `tempui-breaking-changes.md`/`tempui-new-features.md` to
    the generated `.desk_temp` tempui doc set (prioritized, per user
    request). From `../../FEEDBACK/FEEDBACK-DESK-tempui-doc-changelog
    -2026-07-15-1315.md` (a peer project's feedback, extracted from
@@ -2921,6 +2921,33 @@ b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
    applies, at the same time (see TODO `1a96c9f`, which formalizes this
    as a documented instruction for agents working on Desk itself).
    [planned: tempui-changelog-docs.md]
+
+   Added `BREAKING_CHANGES_DOC_FILENAME`/`NEW_FEATURES_DOC_FILENAME`
+   and `_BREAKING_CHANGES_DOC`/`_NEW_FEATURES_DOC` to
+   `src/desk/temp_ui.py`'s `SPLIT_DOC_CONTENT` (no separate version of
+   their own, per TODO `e57ce5f`). Backfilled real entries for
+   versions 7-14 from this file's own `TEMPUI_DOC_VERSION` bump-log
+   comments (versions 1-6 predate the practice, noted as such in both
+   docs) -- only version 14 (the `custom_widget_src/` ->
+   `.desk_temp/widgets/` authoring-source move, TODO `59c5a70`) was a
+   real breaking change; the rest are additive. Added a short
+   "check these first" paragraph to `DOC_TEMPLATE` after the built-in
+   -file-types list (these two files aren't DSL-keyword-triggered
+   types themselves). `TEMPUI_DOC_VERSION` 14 -> 15, with a
+   going-forward instruction alongside the doc constants: any future
+   breaking/new-capability bump should add a matching entry in the
+   same commit.
+
+   Verified: both files registered in `SPLIT_DOC_CONTENT` and written
+   by `write_tempui_docs`; version numbers in both docs strictly
+   descending; content covers exactly versions 7-14 (14 in breaking,
+   7-14 in new-features) with the right classification; both note
+   that versions 1-6 predate the changelog; `DOC_TEMPLATE` links both
+   files after (not inside) the built-in-file-types list; the version
+   bump. Full regression suite: the same 9 pre-existing failures plus
+   the expected stale doc-version assertion in TODO `59c5a70`'s own
+   earlier script (now four such stale checks accumulated from this
+   batch's TEMPUI_DOC_VERSION bumps), 0 other new failures.
 1a96c9f. Fork `development-process.md` into a shared/not-shared doc
    hierarchy, with a Desk-specific section and breaking-changes
    -tracking instructions (prioritized, immediately after TODO

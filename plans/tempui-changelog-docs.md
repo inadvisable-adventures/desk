@@ -1,4 +1,4 @@
-# Plan: TODO 7462cdb — tempui-breaking-changes.md / tempui-new-features.md
+# Plan: TODO 7462cdb (COMPLETED) — tempui-breaking-changes.md / tempui-new-features.md
 
 See `../../FEEDBACK/FEEDBACK-DESK-tempui-doc-changelog-2026-07-15-1315.md`
 for the full source feedback and rationale.
