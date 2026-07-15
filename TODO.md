@@ -2412,3 +2412,11 @@ dc557b2. COMPLETED: create a general event poster widget
    reconnects to the same file via the standard
    instance_id-equals-uuid mechanism.
    [planned: image-drop-tempui.md]
+
+593a464. Bug: in the Event Log widget, the "Live Tail" and "Clear Log" buttons'
+   chrome (background/border) doesn't scale with zoom -- same category
+   of bug as TODO 465c404's File Explorer toolbar fix. Screenshot:
+   both buttons' text renders oversized, overflowing well outside
+   their own grey rounded-pill backgrounds, which stayed a visibly
+   smaller size than the (correctly) zoomed text.
+   [planned: event-log-toolbar-zoom-scaling.md]
