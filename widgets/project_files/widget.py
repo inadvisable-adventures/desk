@@ -14,18 +14,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from desk.file_type_registry import (
-    FILE_TYPE_REGISTRY_UPDATED_EVENT,
-    entry_from_dict,
-    find_edit_handler,
-    find_view_handler,
-    looks_like_text_file,
-)
+from desk.file_type_registry import FILE_TYPE_REGISTRY_UPDATED_EVENT, entry_from_dict, find_view_handler
 from desk.shell import current_context
 from desk.shell.event_broker import EventSubscription
-
-EDITOR_WIDGET_ID = "editor"
-SCRATCH_WIDGET_ID = "scratch"
 
 logger = logging.getLogger(__name__)
 
@@ -255,23 +246,27 @@ class ProjectFilesWidget(QWidget):
     def _open_file(self, path: Path) -> None:
         """TODO efdad99: a viewer/editor/scrap fallback chain, using
         TODO b5d52c0's file type registry -- (1) a registered viewer,
-        (2) a registered editor or (for a file the registry has no
-        entry for at all) the built-in Editor widget, but only if the
-        file is genuinely text, (3) a Scratch note explaining that
-        nothing can open it. Whichever widget actually gets used is
-        placed centered in the current view (get_centered_widget_opener,
-        not get_widget_opener's own `(0, 0)` default)."""
+        opened here directly; (2)/(3) a registered editor, or (for a
+        file the registry has no entry for at all) the built-in Editor
+        widget if the file is genuinely text, or else a Scratch note
+        explaining nothing can open it -- delegated to the shared
+        current_context.get_editor_or_scrap_opener() service (TODO
+        da4f9c0), extracted here so every viewer widget's own Edit
+        button reuses this exact logic instead of a second copy of it.
+        Whichever widget actually gets used is placed centered in the
+        current view (get_centered_widget_opener, not
+        get_widget_opener's own `(0, 0)` default)."""
         opener = current_context.get_centered_widget_opener()
         if opener is None:
             return
         registry = [entry_from_dict(d) for d in self._file_type_registry]
-        widget_id = find_view_handler(registry, path) or find_edit_handler(registry, path)
-        if widget_id is None and looks_like_text_file(path):
-            widget_id = EDITOR_WIDGET_ID
+        widget_id = find_view_handler(registry, path)
         if widget_id is not None:
             self._open_in_widget(opener, widget_id, path)
             return
-        self._open_as_unopenable_scrap(opener, path)
+        editor_or_scrap = current_context.get_editor_or_scrap_opener()
+        if editor_or_scrap is not None:
+            editor_or_scrap(path)
 
     def _open_in_widget(self, opener, widget_id: str, path: Path) -> None:
         widget = opener(widget_id)
@@ -286,16 +281,6 @@ class ProjectFilesWidget(QWidget):
                 widget.set_file(path)
             except Exception:
                 logger.error("Failed to open %s in the %r widget", path, widget_id, exc_info=True)
-
-    def _open_as_unopenable_scrap(self, opener, path: Path) -> None:
-        widget = opener(SCRATCH_WIDGET_ID)
-        if widget is None or not hasattr(widget, "set_label") or not hasattr(widget, "body"):
-            return
-        widget.set_label(f"Can't open {path.name}")
-        widget.body.setPlainText(
-            f"No viewer or editor is registered for this file type "
-            f"({path.suffix or 'no extension'}), and it doesn't look like plain text."
-        )
 
     def bind_event_mediator(self, instance_id, mediator) -> None:
         """TODO b5d52c0: opts into `DeskWindow._bind_event_mediator`'s

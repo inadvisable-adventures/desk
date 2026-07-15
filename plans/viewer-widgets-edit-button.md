@@ -1,4 +1,4 @@
-# Plan: TODO da4f9c0 — Edit titlebar button on viewer widgets
+# Plan: TODO da4f9c0 (COMPLETED) — Edit titlebar button on viewer widgets
 
 ## Summary
 

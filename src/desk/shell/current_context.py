@@ -70,6 +70,7 @@ from desk.event_mediator import EventMediator
 _current_directory: Path | None = None
 _widget_opener: Callable[[str], QWidget | None] | None = None
 _centered_widget_opener: Callable[[str], QWidget | None] | None = None
+_editor_or_scrap_opener: Callable[[Path], None] | None = None
 _temp_ui_write_recorder: Callable[[Path, str], None] | None = None
 _main_window: QWidget | None = None
 _widget_path_resolver: Callable[[QPoint], str | None] | None = None
@@ -128,6 +129,24 @@ def set_centered_widget_opener(opener: Callable[[str], QWidget | None]) -> None:
 
 def get_centered_widget_opener() -> Callable[[str], QWidget | None] | None:
     return _centered_widget_opener
+
+
+def set_editor_or_scrap_opener(opener: Callable[[Path], None]) -> None:
+    """The shared "open an editor for this file, or fall back to an
+    explanatory Scratch note" service (TODO da4f9c0) -- originally
+    built inline in Project Files' own double-click fallback chain
+    (TODO efdad99), extracted here so every viewer widget's Edit
+    button (svg_viewer/image_viewer/markdown) reuses the exact same
+    logic instead of each carrying its own copy. See
+    DeskWindow.open_editor_or_scrap. `kind: "html"` widgets reach the
+    same service over the real Bridge API instead (TODO 2da314f) --
+    this hook is for `kind: "python"` widgets only."""
+    global _editor_or_scrap_opener
+    _editor_or_scrap_opener = opener
+
+
+def get_editor_or_scrap_opener() -> Callable[[Path], None] | None:
+    return _editor_or_scrap_opener
 
 
 def set_temp_ui_write_recorder(recorder: Callable[[Path, str], None]) -> None:

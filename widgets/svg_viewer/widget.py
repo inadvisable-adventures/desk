@@ -79,8 +79,15 @@ class SvgViewerWidget(QWidget):
         open_button = QPushButton("Open")
         open_button.clicked.connect(self._open_file)
 
+        # TODO da4f9c0: disabled until a file is actually loaded --
+        # there's nothing to edit yet.
+        self._edit_button = QPushButton("Edit")
+        self._edit_button.setEnabled(False)
+        self._edit_button.clicked.connect(self._edit_current_file)
+
         toolbar = QHBoxLayout()
         toolbar.addWidget(open_button)
+        toolbar.addWidget(self._edit_button)
         toolbar.addStretch()
         toolbar.addWidget(self._label)
 
@@ -118,7 +125,18 @@ class SvgViewerWidget(QWidget):
         self._last_dir = path.parent
         self._watcher.watch(path)
         self._reload()
+        self._edit_button.setEnabled(True)
         self.refresh_external_path_status()
+
+    def _edit_current_file(self) -> None:
+        """TODO da4f9c0: reuses the same shared editor-or-scrap service
+        Project Files' own double-click fallback chain (TODO efdad99)
+        uses, rather than a second copy of that logic."""
+        if self._current_path is None:
+            return
+        opener = current_context.get_editor_or_scrap_opener()
+        if opener is not None:
+            opener(self._current_path)
 
     def refresh_external_path_status(self) -> None:
         """Re-emits `external_path_changed` for the currently loaded file

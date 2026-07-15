@@ -3060,7 +3060,7 @@ b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
    code. Back to the same 9 pre-existing failures plus four already
    -known-stale doc-version assertions from this batch's earlier
    TEMPUI_DOC_VERSION bumps, 0 other new failures.
-da4f9c0. Give every "viewer" widget that shows the contents of a file
+da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    on disk (e.g. `widgets/svg_viewer/`, `widgets/image_viewer/`,
    `widgets/markdown/`) an "Edit" button in its titlebar. Clicking it
    should reuse the exact same open-an-editor-or-fall-back-to-a-scrap
@@ -3083,6 +3083,43 @@ da4f9c0. Give every "viewer" widget that shows the contents of a file
    `b5d52c0`'s file type registry, which `efdad99` itself depends on)
    existing first, so there's an actual shared service to call into.
    [planned: viewer-widgets-edit-button.md]
+
+   Extracted Project Files' own inline edit-handler-lookup/text-sniff/
+   scratch-fallback logic (TODO efdad99) into a new shared
+   `DeskWindow.open_editor_or_scrap`, reached via a new
+   `current_context.get/set_editor_or_scrap_opener` hook.
+   `ProjectFilesWidget._open_file` now delegates its own "no view
+   handler" case to this same hook instead of carrying a second copy.
+   Added an "Edit" `QPushButton` to each of `svg_viewer`/
+   `image_viewer`/`markdown`'s existing toolbar row (all three already
+   had an identical `Open` button + stretch + label shape), disabled
+   until `self._current_path` is set (and disabled again for
+   `markdown`'s tempui-bound mode, which has no backing file);
+   clicking it calls the shared hook with the currently-loaded path.
+
+   Verified: `open_editor_or_scrap` uses a registered edit handler,
+   falls back to the built-in Editor for a real text file with no
+   registry match, and falls back to a Scratch note for a binary file
+   with no match -- on a real `WorkspaceView` double, mirroring TODO
+   efdad99's own verification shape. `ProjectFilesWidget._open_file`
+   still finds a view handler directly and now delegates the edit-or
+   -scrap case to the shared hook (confirmed via a fake opener
+   recording the call). Each of the three viewer widgets: Edit
+   disabled with no file loaded, enabled after `set_file`, and
+   clicking it calls the shared opener with the current path;
+   markdown's Edit also re-disables once tempui-bound. Updated TODO
+   efdad99's own earlier verification script's three tests that
+   directly exercised the now-relocated fallback logic to instead
+   confirm delegation to the shared hook (the fallback logic itself
+   is now covered by this TODO's own new script) -- not a regression,
+   an expected consequence of extracting shared logic into one place.
+   Full regression suite: the same 9 pre-existing failures plus four
+   already-known-stale doc-version assertions and one now-legitimately
+   -stale "zero File Explorer occurrences" check from TODO 8385dcc's
+   own earlier script (this item's own completion note above
+   legitimately mentions the old name for historical clarity, which
+   that blanket check can no longer distinguish from a real leftover
+   -- not a real regression), 0 other new failures.
 2da314f. Expose the open-editor-or-fall-back-to-a-scrap service (TODO
    `da4f9c0`, itself a `current_context` hook reused from "Project
    Files"'/TODO `efdad99`'s own double-click handling) over the HTTP

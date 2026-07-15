@@ -257,8 +257,15 @@ class MarkdownWidget(QWidget):
         self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         self._open_button = QPushButton("Open")
         self._open_button.clicked.connect(self._on_open_button_clicked)
+        # TODO da4f9c0: disabled until a real file is loaded -- there's
+        # nothing to edit yet with no file, or while tempui-bound (no
+        # backing file at all, see set_tempui_content).
+        self._edit_button = QPushButton("Edit")
+        self._edit_button.setEnabled(False)
+        self._edit_button.clicked.connect(self._edit_current_file)
         toolbar = QHBoxLayout()
         toolbar.addWidget(self._open_button)
+        toolbar.addWidget(self._edit_button)
         toolbar.addStretch()
         toolbar.addWidget(self._label)
 
@@ -341,7 +348,18 @@ class MarkdownWidget(QWidget):
         self._last_dir = path.parent
         self._watcher.watch(path)
         self._reload()
+        self._edit_button.setEnabled(True)
         self.refresh_external_path_status()
+
+    def _edit_current_file(self) -> None:
+        """TODO da4f9c0: reuses the same shared editor-or-scrap service
+        Project Files' own double-click fallback chain (TODO efdad99)
+        uses, rather than a second copy of that logic."""
+        if self._current_path is None:
+            return
+        opener = current_context.get_editor_or_scrap_opener()
+        if opener is not None:
+            opener(self._current_path)
 
     def set_tempui_content(self, label: str, content: str) -> None:
         """Renders `content` directly (TODO 9743419) -- a tempui
@@ -355,6 +373,7 @@ class MarkdownWidget(QWidget):
         self._tempui_bound = True
         self._tempui_content = content
         self._open_button.setText("Save As")
+        self._edit_button.setEnabled(False)
         self._label.setText(label or "(tempui)")
         base_dir = current_context.get_current_desk_directory() or Path.home()
         self._render(content, base_dir)

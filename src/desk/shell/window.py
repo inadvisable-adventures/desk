@@ -12,7 +12,13 @@ from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow
 
 from desk.custom_widgets import materialize
 from desk.desks import DESK_SUFFIX, Desk, WidgetState, desk_state_dict, load_desk, save_desk
-from desk.file_type_registry import FILE_TYPE_REGISTRY_UPDATED_EVENT, entry_from_dict, entry_to_dict
+from desk.file_type_registry import (
+    FILE_TYPE_REGISTRY_UPDATED_EVENT,
+    entry_from_dict,
+    entry_to_dict,
+    find_edit_handler,
+    looks_like_text_file,
+)
 from desk.file_watch import SingleFileWatcher
 from desk.hotreload import HotReloadBroker
 from desk.questions_file import find_nearest_questions_file, parse_questions_file
@@ -268,6 +274,7 @@ class DeskWindow(QMainWindow):
         )
         current_context.set_widget_opener(self.open_widget_content)
         current_context.set_centered_widget_opener(self.open_widget_content_centered)
+        current_context.set_editor_or_scrap_opener(self.open_editor_or_scrap)
         current_context.set_temp_ui_write_recorder(self._temp_ui_manager.record_own_write)
         current_context.set_main_window(self)
         current_context.set_widget_path_resolver(self.view.describe_widget_at_global_pos)
@@ -643,6 +650,40 @@ class DeskWindow(QMainWindow):
         center = self.view.mapToScene(self.view.viewport().rect().center())
         return self.open_widget_content(
             widget_id, pos=(center.x(), center.y()), size=size or widget.default_size, instance_id=instance_id
+        )
+
+    def open_editor_or_scrap(self, path: Path) -> None:
+        """The shared "open an editor for `path`, or fall back to an
+        explanatory Scratch note" service (TODO da4f9c0) -- extracted
+        from what TODO efdad99 originally built inline in
+        ProjectFilesWidget._open_file's own edit-or-scrap step, so
+        every viewer widget's Edit button (svg_viewer/image_viewer/
+        markdown) reuses this exact logic instead of each carrying its
+        own copy. Bound to current_context.set_editor_or_scrap_opener."""
+        registry = [entry_from_dict(d) for d in self.get_file_type_registry_dicts()]
+        widget_id = find_edit_handler(registry, path)
+        if widget_id is None and looks_like_text_file(path):
+            widget_id = EDITOR_WIDGET_ID
+        if widget_id is not None:
+            widget = self.open_widget_content_centered(widget_id)
+            if widget is not None and hasattr(widget, "set_file"):
+                # A broken set_file() must never propagate out of here
+                # (TODO 810a5d6) -- this may run inside a Qt slot (a
+                # viewer widget's Edit button click), and an uncaught
+                # exception there is fatal to the whole process in
+                # this PyQt6 setup.
+                try:
+                    widget.set_file(path)
+                except Exception:
+                    logger.error("Failed to open %s in the %r widget", path, widget_id, exc_info=True)
+            return
+        scratch = self.open_widget_content_centered(SCRATCH_WIDGET_ID)
+        if scratch is None or not hasattr(scratch, "set_label") or not hasattr(scratch, "body"):
+            return
+        scratch.set_label(f"Can't open {path.name}")
+        scratch.body.setPlainText(
+            f"No editor is registered for this file type "
+            f"({path.suffix or 'no extension'}), and it doesn't look like plain text."
         )
 
     def _bind_temp_ui_widget(self, frame: WidgetFrame, directory: Path, uuid_str: str) -> None:
