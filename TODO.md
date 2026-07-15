@@ -2181,6 +2181,7 @@ e35bcf0. COMPLETED: pop-ups from inside the browser widget show up in a
    item asked for.
    [planned: browser-widget-contained-popups.md]
 9767c1a. add a Bridge API service by which a widget (with permission from the Desk user) can get a tree-view snapshot of the dom and console log of an html-based widget.
+   [planned: introspect-bridge-capability.md]
 33d3e8d. do an audit of all of the UI and confirm that they don't fail to scale properly when zooming; fix anything that violates that. when the titlebar is too small to hold the buttons without growing the widget width, just show the title; if it is still too small, then for so long as that is true, "greek" the widget (show just a rectangle with the frame color; if the user clicks on a "greeked" widget, zoom/pan the desk so that widget is showing, with 20% margins on all sides. Add a button to widget title bars (labelled with an eye emoji) to do the same thing (zoom/pan to show the widget)
 6e731c1. drag-and-drop of an image into the Desk should result in the image being saved in the .desk_temp directory and then displayed with tempui.
 dc557b2. create a general event poster widget
