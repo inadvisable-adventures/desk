@@ -2801,6 +2801,22 @@ b5d52c0. Build a registry of file types (keyed by both file extension
    -- never re-fetching from scratch on every event, and never reading
    the `.desk` file directly itself either. See TODO efdad99, which
    depends on this registry existing.
+   [planned: file-type-registry.md]
+
+   Clarified via user question before planning: File Explorer is
+   `kind: "python"`, and every existing python widget reaches Desk
+   services in-process via a `current_context` hook (e.g.
+   `get_event_mediator()`), never via a real HTTP call to the Bridge
+   API (that's the `kind: "html"`-only mechanism) -- so File Explorer's
+   own consumption goes through a new `current_context` hook (initial
+   read) plus the existing generic `bind_event_mediator` mechanism
+   (live updates), not literal Bridge API calls. `filetype-registry
+   -editor` genuinely uses the real Bridge API, as a new `kind: "html"`
+   widget -- the first hand-authored one in this project (every other
+   `kind: "html"` widget is a runtime-materialized `DefineWidget` one).
+   Also translated the TODO's own hyphenated widget name
+   "filetype-registry-editor" to this project's actual snake_case
+   widget-id/directory convention: `filetype_registry_editor`.
 8385dcc. Rename the "File Explorer" widget (`widgets/file_explorer/`)
    to "Project Files" -- the directory name, its `widget.json`'s
    `name`, any user-facing string in its own code, and every
