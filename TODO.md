@@ -2274,7 +2274,39 @@ e35bcf0. COMPLETED: pop-ups from inside the browser widget show up in a
    stably; and a full regression of every pre-existing titlebar button
    plus titlebar/resize-handle drag.
    [planned: audit-and-greek-widgets.md]
-dc557b2. create a general event poster widget
+dc557b2. COMPLETED: create a general event poster widget
+
+   Shipped as `widgets/event_poster/`: a name field, a multi-line
+   payload box, a Publish button, and a status line. Binds to the
+   event mediator (TODO `6f9c51b`) via the same duck-typed
+   `bind_event_mediator(instance_id, mediator)` hook every
+   mediator-aware `python` widget implements, using
+   `desk.shell.event_broker.EventSubscription` purely to get a
+   correctly-identified `.publish(name, payload)` call (needs the real
+   sender instance id, which `current_context.get_event_mediator()`
+   alone can't provide) -- no new Bridge API surface needed. The
+   payload box accepts either real JSON or plain text: valid JSON
+   parses to its real value, empty means `null`, anything else is sent
+   as-is as a string payload, with the status line reporting which
+   happened. Publish is disabled (with an explanatory status) until
+   the mediator binding arrives and while the name field is empty.
+   Neither field clears after a successful publish -- a repeated
+   -testing tool, not a one-shot form. Ctrl+Return in the payload box
+   and Enter in the name field both publish too (same convention as
+   the TODO widget's item editor, TODO `8db7891`).
+
+   Verified entirely headlessly: `_parse_payload`'s JSON/text/empty
+   branches; disabled-before-binding behavior; a real `EventMediator`
+   receiving correctly-shaped events (name, payload, sender instance
+   id) for JSON, empty, and plain-text payloads; empty-name rejection
+   client-side; the Enter/Ctrl+Return shortcuts exercised through real
+   Qt events/signals; `discover_widgets` picking up the new manifest;
+   and a full real `DeskWindow` regression (pointed at this project's
+   own already-provisioned directory, to avoid `_provision_temp_ui`'s
+   confirmation dialogs blocking a headless run) confirming
+   `_bind_event_mediator`'s generic path wires up a real placed
+   instance end to end, including genuine cross-instance delivery
+   through the real shared mediator.
    [planned: event-poster-widget.md]
 7505703. add a widget to view all of the widgets registered for the event message channel and add a per-registered-widget button to zoom/pan to it (use the same button as the zoom/pan titlebar button)
 6e731c1. drag-and-drop of an image into the Desk should result in the image being saved in the .desk_temp directory and then displayed with tempui.

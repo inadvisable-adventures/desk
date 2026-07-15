@@ -1,4 +1,4 @@
-# Event Poster widget
+# Event Poster widget (COMPLETED)
 
 TODO `dc557b2`.
 
@@ -121,4 +121,14 @@ Headless (`QT_QPA_PLATFORM=offscreen`):
 
 ## Status
 
-Not yet implemented — plan written first per `development-process.md`.
+Implemented as planned. One deviation worth noting: the DeskWindow
+-level regression check needed to point at this project's own,
+already-provisioned directory (not a fresh temp directory) — a fresh
+directory makes `DeskWindow.__init__`'s `_provision_temp_ui` show real
+confirmation dialogs (create `.desk_temp`? add to `.gitignore?`),
+which block forever in a headless run with no real user to click
+them. Verified headlessly throughout, including a full `DeskWindow`
+regression confirming `_bind_event_mediator`'s generic path wires up a
+real placed instance and a genuine cross-instance publish/receive
+round trip through the real shared mediator. See TODO `dc557b2`'s own
+entry in `TODO.md` for the full summary.
