@@ -2560,6 +2560,7 @@ b324217. COMPLETED: Author `DefineWidget` custom widgets from a real per-widget
    instance was placed with so Desk's own UI can show when an
    instance predates the currently-registered definition. See
    design-docs/custom-widget-authoring.md section 3.
+   [planned: custom-widget-content-hash.md]
 c892403. Resolve relative `desk.fs.readFile`/`writeFile` paths against
    the current Desk's own directory instead of the server process's
    ambient working directory (or reject relative paths with a clear
