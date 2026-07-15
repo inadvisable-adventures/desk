@@ -2979,6 +2979,7 @@ b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
      running *inside* Desk in some other project -- so that population
      of those two docs becomes a standing part of the Desk-development
      workflow itself, not a one-off backfill.
+   [planned: fork-development-process-doc.md]
 8385dcc. Rename the "File Explorer" widget (`widgets/file_explorer/`)
    to "Project Files" -- the directory name, its `widget.json`'s
    `name`, any user-facing string in its own code, and every
