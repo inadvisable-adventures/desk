@@ -1,4 +1,4 @@
-# Plan: TODO 996a5eb — eye button persists through `title_only`
+# Plan: TODO 996a5eb (COMPLETED) — eye button persists through `title_only`
 
 ## Summary
 

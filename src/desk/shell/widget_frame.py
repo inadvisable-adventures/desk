@@ -355,7 +355,13 @@ class _TitleBar(QWidget):
         self.bring_to_front_button.setVisible(show and not self._locked)
         self.send_to_back_button.setVisible(show and not self._locked)
         self.close_button.setVisible(show and not self._locked)
-        self.eye_button.setVisible(show and not self._locked)
+        # TODO 996a5eb: unlike every other button, the eye button
+        # persists through the title_only chrome-degrade state (not
+        # gated by `show`) -- matching its own docstring's "always
+        # present on every titlebar regardless of current chrome/zoom
+        # state" claim, which this contradicted before. Still hidden
+        # while locked, same as today.
+        self.eye_button.setVisible(not self._locked)
         self.unlock_button.setVisible(show and self._locked)
 
     def _visible_button_widgets_for_full_state(self) -> list[QWidget]:
@@ -388,17 +394,28 @@ class _TitleBar(QWidget):
         return buttons
 
     def min_title_only_width_px(self) -> int:
-        """On-screen px: the minimum width at which the title label
-        alone (no buttons) is still readable -- below this, there's
+        """On-screen px: the minimum width at which the title_only
+        state's own content -- the title label, plus the eye button
+        (TODO 996a5eb: the one button that persists in this state,
+        unless locked) -- is still readable. Below this, there's
         nothing left to show and the widget greeks (TODO 33d3e8d)."""
-        return TITLEBAR_CONTENT_MARGIN * 2 + MIN_TITLE_WIDTH
+        width = TITLEBAR_CONTENT_MARGIN * 2 + MIN_TITLE_WIDTH
+        if not self._locked:
+            width += TITLEBAR_BUTTON_SPACING + _button_target_width(self.eye_button)
+        return width
 
     def min_full_width_px(self) -> int:
         """On-screen px: the minimum width needed to show every
         currently-relevant button at its fixed on-screen size, plus a
         minimum readable title (TODO 33d3e8d). Below this (but at or
-        above min_title_only_width_px), chrome degrades to title_only."""
-        buttons = self._visible_button_widgets_for_full_state()
+        above min_title_only_width_px), chrome degrades to title_only.
+
+        Excludes the eye button from this method's own button-width sum
+        (TODO 996a5eb): its width is already folded into
+        min_title_only_width_px's own baseline (the eye button persists
+        in *both* states), so adding it again here would double-count
+        it."""
+        buttons = [b for b in self._visible_button_widgets_for_full_state() if b is not self.eye_button]
         button_width = sum(_button_target_width(b) for b in buttons)
         gaps = len(buttons) * TITLEBAR_BUTTON_SPACING
         return self.min_title_only_width_px() + gaps + button_width

@@ -3164,7 +3164,7 @@ da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    batch (five doc-version/content checks now one bump further stale,
    plus the one legitimately-stale "zero File Explorer occurrences"
    check), 0 other new failures.
-996a5eb. The "focus view" 👁 eye button (`_EyeButton`, TODO `33d3e8d`)
+996a5eb. COMPLETED: The "focus view" 👁 eye button (`_EyeButton`, TODO `33d3e8d`)
    should persist alongside the title in the `title_only` chrome
    -degrade state, not disappear along with every other titlebar
    button. Right now `_TitleBar.set_buttons_hidden`/
@@ -3182,6 +3182,28 @@ da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    greeking should trigger whenever either one no longer fits, not
    only when the title itself no longer fits.
    [planned: eye-button-persists-title-only.md]
+
+   `_refresh_button_visibility`: `eye_button.setVisible(not
+   self._locked)`, no longer multiplied by the `show` flag every other
+   button is gated by. `min_title_only_width_px` now adds the eye
+   button's own width (+ one gap) when not locked; `min_full_width_px`
+   excludes the eye button from its own button-width sum, since that
+   width is now already folded into `min_title_only_width_px`'s
+   baseline -- without the exclusion it would double-count.
+
+   Verified directly on `_TitleBar`: the eye button persists through
+   `title_only` unlocked, and stays hidden while locked in both
+   states; the two width thresholds account for the eye button
+   correctly (present/absent, no double-count) -- confirmed by
+   checking `min_full_width_px() - min_title_only_width_px()` equals
+   exactly the sum of every *other* currently-relevant button, not
+   that plus the eye button again. End-to-end on a real
+   `WidgetFrame`/`WorkspaceView`: resizing to a width between the two
+   thresholds shows the title and eye button only; resizing below the
+   new, wider `min_title_only_width_px` greeks it. Full regression
+   suite: the same 9 pre-existing failures plus six already-known
+   -stale assertions from earlier TODOs in this batch, 0 other new
+   failures.
 029047b. Move `scripts/build_widget.py` (TODO `b324217`) out of
    `scripts/` and into the *ensured* `.desk_temp` file set instead of a
    one-time seed. Right now it's copied once into a new project
