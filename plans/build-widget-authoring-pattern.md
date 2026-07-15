@@ -1,4 +1,4 @@
-# Plan: TODO b324217 — `scripts/build_widget.py` + DefineWidget authoring pattern
+# Plan: TODO b324217 (COMPLETED) — `scripts/build_widget.py` + DefineWidget authoring pattern
 
 See design-docs/custom-widget-authoring.md section 1 for the full
 rationale. This plan covers turning that into working code + docs.

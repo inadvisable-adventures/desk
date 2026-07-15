@@ -51,7 +51,11 @@ GITIGNORE_COMMENT = "# Desk-specific"
 # list) -- a dropped image is now saved into .desk_temp and displayed
 # through it, but it's a general DSL capability like every other
 # keyword, not only reachable via drag-and-drop.
-TEMPUI_DOC_VERSION = 10
+#
+# TODO b324217: bumped 10 -> 11 for a new "Authoring from real source"
+# section in _CUSTOM_WIDGETS_DOC (the custom_widget_src/<name>/ +
+# scripts/build_widget.py pattern).
+TEMPUI_DOC_VERSION = 11
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -394,6 +398,47 @@ Html	PGh0bWw+PGJvZHk+PGgxPkthbmJhbjwvaDE+PC9ib2R5PjwvaHRtbD4=
 A `keyword` that collides with one of this DSL's own built-in keywords
 (`Question`, `LightningRound`, `DefineWidget`, ...) or an existing
 widget id is refused (logged, not an error) — pick something else.
+
+## Authoring from real source (TypeScript + a build script)
+
+Hand-writing a `DefineWidget` file's inline `<script>` as plain JS with
+markup assembled via `innerHTML` works, but it's a poor fit for a project
+whose own conventions ask for more (e.g. strict-mode TypeScript,
+`<template>`/`<slot>` instead of string-built HTML — see this project's
+own `CLAUDE.md` if it has such rules). Author once from real source, then
+mechanically repackage it into the format above with
+`scripts/build_widget.py` (seeded into new projects the same way
+`scripts/todo_item_ids.py` is) any time it changes — never hand-edit the
+generated `DefineWidget` file itself.
+
+Per widget, a source directory at `custom_widget_src/<name>/` —
+deliberately **not** under `widgets/`, since that directory is scanned by
+Desk's own widget discovery, which expects every `widget.json` there to
+have a `kind` of `"python"` or `"html"`; this directory's `widget.json`
+has a different shape and would break that scan if placed there instead.
+Four files:
+
+- `<name>.ts` — the widget's logic as a custom element (`class Foo
+  extends HTMLElement`), in normal strict TypeScript. No knowledge of
+  base64/tempui/Desk belongs in this file at all — it just clones a
+  `<template>`'s `.content` into a shadow root; the only Desk-specific
+  surface it touches is the Bridge API below, guarded by `if
+  (window.desk)` so the file still works opened as a plain page.
+- `widget.html` — the eventual self-contained document, with a
+  `<template id="<name>-template">` holding the real markup and a scoped
+  `<style>`, a `<script>` whose entire content is the one-line marker
+  comment `/* BUILD:COMPILED_JS */`, and the `<name-tag></name-tag>`
+  element instantiation.
+- `tsconfig.json` — whatever strictness the project wants; must set
+  `compilerOptions.outDir`.
+- `widget.json` — `{"keyword", "label", "width", "height"}`, exactly the
+  fields a `DefineWidget`/`Size` line above needs.
+
+Then `python3 scripts/build_widget.py custom_widget_src/<name>` compiles
+it (`tsc -p <dir>`), concatenates the compiled JS, substitutes it into
+`widget.html`'s marker, base64-encodes the result, and writes a fresh
+`DefineWidget` tempui file under `.desk_temp/` — printing the path it
+wrote.
 
 ## Invoking a defined widget
 

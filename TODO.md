@@ -2496,7 +2496,7 @@ dc557b2. COMPLETED: create a general event poster widget
    Root cause of the discrepancy not yet found. Parked (not blocking
    other work) rather than continuing to iterate immediately -- see
    PARKINGLOT.md for the full attempt history and what to try next.
-b324217. Author `DefineWidget` custom widgets from a real per-widget
+b324217. COMPLETED: Author `DefineWidget` custom widgets from a real per-widget
    source directory (TS custom element + template HTML + tsconfig +
    manifest), packaged by one generic `scripts/build_widget.py`
    (stdlib-only), and seed that script into new projects the same way
@@ -2504,6 +2504,28 @@ b324217. Author `DefineWidget` custom widgets from a real per-widget
    `tempui-custom-widgets.md`. See
    design-docs/custom-widget-authoring.md section 1.
    [planned: build-widget-authoring-pattern.md]
+
+   Added scripts/build_widget.py (stdlib-only, compiles a
+   custom_widget_src/<name>/ TS+template source directory into a
+   DefineWidget tempui file), seeded it into new projects alongside
+   scripts/todo_item_ids.py, bumped TEMPUI_DOC_VERSION 10 -> 11, and
+   added an "Authoring from real source" section to
+   _CUSTOM_WIDGETS_DOC. Deliberately put the source convention at
+   custom_widget_src/ rather than widgets/ (the feedback's own
+   example project put it under widgets/lifeforce-heart/) since
+   discover_widgets scans every widgets/<id>/widget.json expecting a
+   "python"/"html" kind and would raise on this authoring manifest's
+   different shape.
+
+   Verified end-to-end with a real tsc invocation (tsc 3.8.3 was on
+   PATH in this environment) round-tripping through
+   desk.temp_ui.parse_define_widget, plus each error path (missing
+   manifest keys, missing <name>.ts, missing BUILD marker, tsc absent
+   from PATH -- never falls back to npx), the doc version bump/
+   content, and the seed script's copy-if-missing/never-overwrite/
+   executable-bit behavior. Ran the full scratchpad regression suite:
+   9 pre-existing failures (confirmed via git stash to fail
+   identically before this change), 0 new failures.
 5ff02d2. Fix `DefineWidget`'s silent no-instance-placed gap: add a loud
    one-line callout at the top of `DefineWidget`'s section in
    `tempui-custom-widgets.md`, and auto-place one instance the first
