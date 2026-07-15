@@ -2718,3 +2718,26 @@ b5d52c0. Build a registry of file types (keyed by both file extension
    convention consistent with how other widgets are named (lowercase,
    underscore-separated -- e.g. `project_files`) rather than
    introducing a differently-cased id than the rest of `widgets/`.
+da4f9c0. Give every "viewer" widget that shows the contents of a file
+   on disk (e.g. `widgets/svg_viewer/`, `widgets/image_viewer/`,
+   `widgets/markdown/`) an "Edit" button in its titlebar. Clicking it
+   should reuse the exact same open-an-editor-or-fall-back-to-a-scrap
+   logic the "Project Files" widget (formerly "File Explorer" -- TODO
+   `8385dcc`) uses for its own double-click handling (TODO `efdad99`):
+   open an appropriate editor for the file if one is available (only
+   ever a genuinely text file into the text Editor widget), otherwise
+   fall back to a Scratch tempui note saying no editor is available --
+   and, either way, the newly-opened widget is centered in the current
+   view, the same placement convention `efdad99`/every other
+   programmatic placement in this codebase already follows. This
+   should be one shared service both call into, not two separate
+   copies of the same fallback logic -- the "viewer" widgets listed
+   above are all `kind: "python"`, so reaching this shared service is
+   most likely a `current_context` hook (matching how other
+   Python-widget-to-`DeskWindow` calls already work, e.g.
+   `get_discuss_starter`), not literally the HTTP Bridge API (which is
+   `kind: "html"`-only) -- confirm which at planning time rather than
+   assuming the literal "Bridge API" name applies here. Depends on
+   TODO `efdad99`'s fallback logic (and TODO `b5d52c0`'s file type
+   registry, which `efdad99` itself depends on) existing first, so
+   there's an actual shared service to call into.
