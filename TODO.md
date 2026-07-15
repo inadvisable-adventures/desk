@@ -2526,13 +2526,33 @@ b324217. COMPLETED: Author `DefineWidget` custom widgets from a real per-widget
    executable-bit behavior. Ran the full scratchpad regression suite:
    9 pre-existing failures (confirmed via git stash to fail
    identically before this change), 0 new failures.
-5ff02d2. Fix `DefineWidget`'s silent no-instance-placed gap: add a loud
+5ff02d2. COMPLETED: Fix `DefineWidget`'s silent no-instance-placed gap: add a loud
    one-line callout at the top of `DefineWidget`'s section in
    `tempui-custom-widgets.md`, and auto-place one instance the first
    time a brand-new keyword is registered from a live-added (not
    edited, not startup/Desk-switch-rescanned) tempui `DefineWidget`
    file. See design-docs/custom-widget-authoring.md section 2.
    [planned: define-widget-auto-place.md]
+
+   Added a loud callout to _CUSTOM_WIDGETS_DOC (TEMPUI_DOC_VERSION 11
+   -> 12), and gave _handle_define_widget_file an `is_new` param
+   (passed True only from _on_temp_ui_file_added) so a genuinely new
+   keyword -- checked before _register_custom_widget mutates state --
+   auto-places one centered instance via a new
+   _auto_place_new_custom_widget. Re-saving an already-known keyword,
+   and _register_custom_widgets_from_desk_temp's own bulk startup/
+   Desk-switch rescan, place nothing, so neither duplicates instances.
+
+   Verified on a real WorkspaceView (unbound-method-on-a-fake-double
+   pattern): a live-added brand-new keyword places exactly one
+   instance; editing that same keyword afterward places no additional
+   instance; the bulk rescan registers without placing anything; a
+   refused registration (reserved keyword) places nothing. Full
+   scratchpad regression suite: 9 pre-existing failures plus one
+   expected new failure in my own earlier b324217 verification script
+   (a hardcoded doc-version-11 assertion, now stale since this bumped
+   it to 12 -- not a real regression, that scratchpad script isn't
+   part of the shipped code), 0 other new failures.
 5995ffd. Give a placed `DefineWidget` custom widget instance a way to
    report which version of its code it's actually running: compute a
    content hash when a definition is registered, expose the current

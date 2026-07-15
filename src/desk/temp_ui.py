@@ -55,7 +55,11 @@ GITIGNORE_COMMENT = "# Desk-specific"
 # TODO b324217: bumped 10 -> 11 for a new "Authoring from real source"
 # section in _CUSTOM_WIDGETS_DOC (the custom_widget_src/<name>/ +
 # scripts/build_widget.py pattern).
-TEMPUI_DOC_VERSION = 11
+#
+# TODO 5ff02d2: bumped 11 -> 12 for a callout in _CUSTOM_WIDGETS_DOC
+# that DefineWidget only registers a kind, and doesn't place an
+# instance except the auto-placed first one.
+TEMPUI_DOC_VERSION = 12
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -359,6 +363,14 @@ view), **never Python** — without touching the project's own
 tempui DSL keyword that a *separate*, later tempui file can use to
 place an instance of it (see "Invoking a defined widget" below) — this
 is how the tempui DSL itself gets extended at runtime.
+
+**A `DefineWidget` file only registers the new widget *kind* — it does
+not, by itself, place an instance of it on the canvas.** Desk auto
+-places one instance the first time a brand-new keyword is registered
+this way (see "Invoking a defined widget" below for placing additional
+instances later), but a `DefineWidget` file that only *redefines* an
+already-registered keyword places nothing — if you edit and re-save one
+to fix a mistake, use the separate keyword-only file to see the result.
 
 Lines are **tab**-separated (like `LightningRound`), since a label may
 contain spaces:

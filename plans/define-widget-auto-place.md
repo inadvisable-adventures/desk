@@ -1,4 +1,4 @@
-# Plan: TODO 5ff02d2 — fix DefineWidget's silent no-instance-placed gap
+# Plan: TODO 5ff02d2 (COMPLETED) — fix DefineWidget's silent no-instance-placed gap
 
 See design-docs/custom-widget-authoring.md section 2 for the full
 rationale.
