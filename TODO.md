@@ -3019,6 +3019,7 @@ b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
    convention consistent with how other widgets are named (lowercase,
    underscore-separated -- e.g. `project_files`) rather than
    introducing a differently-cased id than the rest of `widgets/`.
+   [planned: rename-file-explorer-to-project-files.md]
 da4f9c0. Give every "viewer" widget that shows the contents of a file
    on disk (e.g. `widgets/svg_viewer/`, `widgets/image_viewer/`,
    `widgets/markdown/`) an "Edit" button in its titlebar. Clicking it
