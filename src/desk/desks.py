@@ -3,6 +3,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from desk.file_type_registry import FileTypeRegistryEntry, entry_from_dict, entry_to_dict
 from desk.temp_ui import CustomWidgetDefinition
 
 DESK_SUFFIX = ".desk"
@@ -58,6 +59,12 @@ class Desk:
     # .desk_temp definition file removed) so it survives independently
     # of whatever tempui file originally defined it.
     custom_widgets: list[CustomWidgetDefinition] = field(default_factory=list)
+    # The file type registry (TODO b5d52c0) -- which widget(s) can
+    # view/edit/consume/produce which file type (by extension and/or
+    # MIME type). Read/edited entirely through the Bridge API/a
+    # current_context hook, never by touching this list directly from
+    # outside desk.shell.window.DeskWindow.
+    file_type_registry: list[FileTypeRegistryEntry] = field(default_factory=list)
 
     @property
     def name(self) -> str:
@@ -98,6 +105,7 @@ def load_desk(path: Path) -> Desk:
     data = json.loads(path.read_text())
     widgets = [WidgetState(**w) for w in data.get("widgets", [])]
     custom_widgets = [_load_custom_widget(cw) for cw in data.get("custom_widgets", [])]
+    file_type_registry = [entry_from_dict(e) for e in data.get("file_type_registry", [])]
     return Desk(
         path=path,
         widgets=widgets,
@@ -105,6 +113,7 @@ def load_desk(path: Path) -> Desk:
         pan_y=data.get("pan_y", 0.0),
         scale=data.get("scale", 1.0),
         custom_widgets=custom_widgets,
+        file_type_registry=file_type_registry,
     )
 
 
@@ -144,6 +153,7 @@ def desk_state_dict(desk: Desk) -> dict:
         "pan_y": desk.pan_y,
         "scale": desk.scale,
         "custom_widgets": [_custom_widget_dict(cw) for cw in desk.custom_widgets],
+        "file_type_registry": [entry_to_dict(e) for e in desk.file_type_registry],
     }
 
 

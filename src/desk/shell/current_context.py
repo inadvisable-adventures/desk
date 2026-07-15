@@ -76,6 +76,7 @@ _discuss_starter: Callable[[str, str, int | None], None] | None = None
 _event_mediator: EventMediator | None = None
 _widget_zoomer: Callable[[str], bool] | None = None
 _widget_display_name_resolver: Callable[[str], str] | None = None
+_file_type_registry_provider: Callable[[], list[dict]] | None = None
 
 
 def set_current_desk_directory(directory: Path) -> None:
@@ -172,3 +173,21 @@ def set_widget_display_name_resolver(resolver: Callable[[str], str]) -> None:
 
 def get_widget_display_name_resolver() -> Callable[[str], str] | None:
     return _widget_display_name_resolver
+
+
+def set_file_type_registry_provider(provider: Callable[[], list[dict]]) -> None:
+    """TODO b5d52c0: lets a `kind: "python"` widget read the current
+    file type registry once (e.g. on its own `__init__`) without
+    reaching into `DeskWindow` directly -- the same in-process,
+    current_context-hook shape every other Desk service reaches a
+    python widget through, rather than a real HTTP Bridge API call
+    (that mechanism is `kind: "html"`-only). Live updates after the
+    initial read arrive separately, via the existing generic
+    `bind_event_mediator` mechanism (TODO 6f9c51b) -- see
+    `desk.file_type_registry.FILE_TYPE_REGISTRY_UPDATED_EVENT`."""
+    global _file_type_registry_provider
+    _file_type_registry_provider = provider
+
+
+def get_file_type_registry_provider() -> Callable[[], list[dict]] | None:
+    return _file_type_registry_provider

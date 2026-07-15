@@ -95,6 +95,10 @@ BRIDGE_CLIENT_TEMPLATE = """
       snapshot: (targetInstanceId) =>
         call("POST", "/api/bridge/introspect/snapshot", { target_instance_id: targetInstanceId }),
     },
+    filetypes: {
+      get: () => call("GET", "/api/bridge/filetypes/get"),
+      set: (entries) => call("POST", "/api/bridge/filetypes/set", { entries }),
+    },
     self: {
       getManifest: () => call("GET", "/api/bridge/self/getManifest"),
       getLocalStorage: () => call("GET", "/api/bridge/self/getLocalStorage"),

@@ -1,0 +1,7 @@
+{
+  "name": "File Type Registry Editor",
+  "kind": "html",
+  "entry": "index.html",
+  "capabilities": ["filetypes"],
+  "default_size": { "width": 560, "height": 480 }
+}

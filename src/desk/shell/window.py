@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow
 
 from desk.custom_widgets import materialize
 from desk.desks import DESK_SUFFIX, Desk, WidgetState, desk_state_dict, load_desk, save_desk
+from desk.file_type_registry import FILE_TYPE_REGISTRY_UPDATED_EVENT, entry_from_dict, entry_to_dict
 from desk.file_watch import SingleFileWatcher
 from desk.hotreload import HotReloadBroker
 from desk.questions_file import find_nearest_questions_file, parse_questions_file
@@ -960,6 +961,10 @@ class DeskWindow(QMainWindow):
             # instances themselves, so there's nothing in view._frames
             # to capture them from.
             custom_widgets=self.current_desk.custom_widgets,
+            # Same reasoning (TODO b5d52c0): the file type registry
+            # isn't derived from placed widgets either -- carry it over
+            # unchanged, or every save would silently wipe it back to [].
+            file_type_registry=self.current_desk.file_type_registry,
         )
 
     def get_state_dict(self) -> dict:
@@ -973,6 +978,28 @@ class DeskWindow(QMainWindow):
         self.current_desk = desk
         add_to_mru(desk.path)
         self._refresh_picker()
+
+    def get_file_type_registry_dicts(self) -> list[dict]:
+        """TODO b5d52c0: the current Desk's file type registry, as
+        JSON-serializable dicts -- shared by the Bridge API's
+        filetypes.get (see desk.server.app) and a kind:"python"
+        widget's own current_context.get_file_type_registry_provider()
+        initial read, so the two never drift apart (same reasoning as
+        get_state_dict)."""
+        return [entry_to_dict(entry) for entry in self.current_desk.file_type_registry]
+
+    def set_file_type_registry(self, entries: list[dict], sender_instance_id: str) -> None:
+        """TODO b5d52c0: replaces the current Desk's file type registry
+        and persists it, then publishes FILE_TYPE_REGISTRY_UPDATED_EVENT
+        (payload: the new entries) to every *other* subscribed instance
+        -- see desk.event_mediator.EventMediator.publish's own
+        never-echoes-to-the-sender behavior. The event payload carries
+        the new registry directly, so a subscriber (e.g. File Explorer's
+        bind_event_mediator) never needs a separate re-fetch call to
+        learn what changed."""
+        self.current_desk.file_type_registry = [entry_from_dict(e) for e in entries]
+        self.save_current_desk()
+        self._event_mediator.publish(FILE_TYPE_REGISTRY_UPDATED_EVENT, {"entries": entries}, sender_instance_id)
 
     def switch_desk(
         self,
@@ -1444,6 +1471,10 @@ class DeskWindow(QMainWindow):
         # Same choke point, for the same reason (TODO 6f9c51b): keeps
         # MEDIATED-EVENT-LOG.tsv's location in sync with the current Desk.
         self._event_mediator.set_log_directory(self.current_desk.directory)
+        # Same choke point, for the same reason (TODO b5d52c0): a python
+        # widget placed after a Desk switch reads the *new* Desk's own
+        # file type registry, not a stale one left over from before.
+        current_context.set_file_type_registry_provider(self.get_file_type_registry_dicts)
 
     def _on_desk_chosen(self, path: Path) -> None:
         """Guards against an MRU entry whose file vanished between the

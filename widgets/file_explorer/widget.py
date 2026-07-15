@@ -14,7 +14,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from desk.file_type_registry import FILE_TYPE_REGISTRY_UPDATED_EVENT
 from desk.shell import current_context
+from desk.shell.event_broker import EventSubscription
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +131,11 @@ class FileExplorerWidget(QWidget):
         self._root = current_context.get_current_desk_directory() or Path.home()
         self._current_path: Path | None = None
         self._searching = False
+        # TODO b5d52c0: an initial one-time read, kept fresh afterward by
+        # bind_event_mediator's live subscription below -- never
+        # re-fetched via the provider again after this.
+        provider = current_context.get_file_type_registry_provider()
+        self._file_type_registry: list[dict] = provider() if provider is not None else []
 
         self._fs_model = QFileSystemModel()
         # Show normally-hidden entries (dotfiles/dotdirs, e.g. .git) --
@@ -248,6 +255,22 @@ class FileExplorerWidget(QWidget):
                 widget.set_file(path)
             except Exception:
                 logger.error("Failed to open %s in the Editor widget", path, exc_info=True)
+
+    def bind_event_mediator(self, instance_id, mediator) -> None:
+        """TODO b5d52c0: opts into `DeskWindow._bind_event_mediator`'s
+        generic per-placed-python-widget hook (TODO 6f9c51b) to keep
+        `self._file_type_registry` current after its own one-time
+        initial read (see __init__) -- the published event's own
+        payload carries the new registry directly, so this never needs
+        to make a separate call to re-fetch it."""
+        self._file_type_registry_subscription = EventSubscription(
+            mediator, instance_id, names=[FILE_TYPE_REGISTRY_UPDATED_EVENT], parent=self
+        )
+        self._file_type_registry_subscription.message_received.connect(self._on_mediated_event)
+
+    def _on_mediated_event(self, name: str, payload: object, _sender_instance_id: str) -> None:
+        if name == FILE_TYPE_REGISTRY_UPDATED_EVENT and isinstance(payload, dict):
+            self._file_type_registry = payload.get("entries", [])
 
     def _choose_root(self) -> None:
         directory = QFileDialog.getExistingDirectory(self, "Open Folder", str(self._root))

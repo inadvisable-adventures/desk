@@ -1,0 +1,86 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body {
+    margin: 0;
+    padding: 8px;
+    font-family: -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    box-sizing: border-box;
+  }
+  #status {
+    min-height: 1.2em;
+    font-size: 0.9em;
+    color: #666;
+  }
+  #entries {
+    flex: 1;
+    font-family: ui-monospace, monospace;
+    font-size: 0.9em;
+    resize: none;
+  }
+  #buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 6px;
+  }
+</style>
+</head>
+<body>
+<div id="status">Loading...</div>
+<textarea id="entries" spellcheck="false"></textarea>
+<div id="buttons">
+  <button id="reload">Reload</button>
+  <button id="save">Save</button>
+</div>
+<script>
+/* File Type Registry Editor (TODO b5d52c0): a deliberately minimal
+   editor -- the point of this widget is the read/edit/event plumbing,
+   not a polished per-entry UI. Shows the registry as pretty-printed
+   JSON; Save parses and posts it back whole. */
+const statusEl = document.getElementById("status");
+const entriesEl = document.getElementById("entries");
+
+function setStatus(text) {
+  statusEl.textContent = text;
+}
+
+async function load() {
+  setStatus("Loading...");
+  try {
+    const { entries } = await window.desk.filetypes.get();
+    entriesEl.value = JSON.stringify(entries, null, 2);
+    setStatus("Loaded.");
+  } catch (e) {
+    setStatus(`Failed to load: ${e.message}`);
+  }
+}
+
+async function save() {
+  let entries;
+  try {
+    entries = JSON.parse(entriesEl.value);
+  } catch (e) {
+    setStatus(`Not valid JSON: ${e.message}`);
+    return;
+  }
+  setStatus("Saving...");
+  try {
+    await window.desk.filetypes.set(entries);
+    setStatus("Saved.");
+  } catch (e) {
+    setStatus(`Failed to save: ${e.message}`);
+  }
+}
+
+document.getElementById("reload").addEventListener("click", load);
+document.getElementById("save").addEventListener("click", save);
+
+load();
+</script>
+</body>
+</html>

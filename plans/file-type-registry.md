@@ -1,4 +1,4 @@
-# Plan: TODO b5d52c0 — file type registry service
+# Plan: TODO b5d52c0 (COMPLETED) — file type registry service
 
 ## Summary
 

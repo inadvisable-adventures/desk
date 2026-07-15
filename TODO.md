@@ -2773,7 +2773,7 @@ efdad99. Change the File Explorer widget's (`widgets/file_explorer/`)
    "which widget(s) handle which file type" to check against, which is
    TODO b5d52c0's file type registry -- plan that one first, or at
    least decide its shape, before planning this one.
-b5d52c0. Build a registry of file types (keyed by both file extension
+b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
    and MIME type, where available) to the widget(s) that can view,
    edit, consume, or produce that type -- generalizing the small
    hardcoded `EXTERNAL_DROP_WIDGET_BY_SUFFIX` map in
@@ -2817,6 +2817,47 @@ b5d52c0. Build a registry of file types (keyed by both file extension
    Also translated the TODO's own hyphenated widget name
    "filetype-registry-editor" to this project's actual snake_case
    widget-id/directory convention: `filetype_registry_editor`.
+
+   Implemented: new `src/desk/file_type_registry.py`
+   (FileTypeHandler/FileTypeRegistryEntry + to/from-dict helpers,
+   FILE_TYPE_REGISTRY_UPDATED_EVENT); `Desk.file_type_registry`
+   persisted in desk_state_dict/load_desk/save_desk (and carried over
+   unchanged in `_capture_desk_state`, same as `custom_widgets` --
+   otherwise every save would silently wipe it). New Bridge API
+   `filetypes` capability/routes (get subscribes + reads in one call,
+   set persists + publishes with the editing widget's instance id as
+   sender) and a matching `window.desk.filetypes.*` bridge_client.py
+   namespace. New `current_context.get/set_file_type_registry_provider`
+   hook (refreshed in `_refresh_picker`, same choke point as the
+   directory/event-mediator hooks) for File Explorer's one-time initial
+   read; File Explorer also implements `bind_event_mediator` (the
+   existing generic TODO 6f9c51b hook) to keep its local copy current
+   via the event's own payload, no re-fetch. New
+   `widgets/filetype_registry_editor/` (kind:"html", the first
+   hand-authored one in this project): a minimal JSON-textarea editor
+   calling `window.desk.filetypes.get/set` directly.
+
+   Verified: FileTypeRegistryEntry/Handler to/from-dict and
+   Desk/desk_state_dict/load_desk round-trips (and an old .desk file
+   with no key defaults to `[]`); the new widget is discovered with
+   `kind: "html"` and the `filetypes` capability; the current_context
+   provider hook; File Explorer's initial read plus a real
+   EventMediator-published update changing its local copy; the Bridge
+   API end-to-end over real HTTP (a running server + a real GuiBridge
+   attached to a fake window, matching the established pumped-event
+   -loop pattern) -- get returns entries and subscribes the caller,
+   set persists to the fake window and publishes the update event
+   (with the new entries as payload and the editing instance as
+   sender) to another subscriber; the bridge_client.py namespace.
+   Found and fixed one genuine regression: `_capture_desk_state` now
+   reads `self.current_desk.file_type_registry` unconditionally, which
+   broke an older scratchpad test's minimal fake `current_desk` double
+   (missing the new attribute) -- confirmed via git stash that this
+   was a real regression (passed before, failed after) unlike the
+   other pre-existing failures; fixed by adding the attribute there.
+   Full regression suite back to the same 9 pre-existing failures plus
+   three already-known-stale doc-version assertions from earlier TODOs
+   in this batch, 0 other new failures.
 8385dcc. Rename the "File Explorer" widget (`widgets/file_explorer/`)
    to "Project Files" -- the directory name, its `widget.json`'s
    `name`, any user-facing string in its own code, and every

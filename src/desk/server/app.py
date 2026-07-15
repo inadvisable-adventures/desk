@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from desk.event_mediator import EventMediator
+from desk.file_type_registry import FILE_TYPE_REGISTRY_UPDATED_EVENT
 from desk.shell.bridge import GuiBridge
 from desk.widgets import WidgetInfo, discover_widgets
 
@@ -101,6 +102,10 @@ class EventPublishRequest(BaseModel):
 
 class IntrospectSnapshotRequest(BaseModel):
     target_instance_id: str
+
+
+class SetFileTypeRegistryRequest(BaseModel):
+    entries: list[dict]
 
 
 def _event_dict(event) -> dict:
@@ -333,6 +338,31 @@ def create_app(
         loop = asyncio.get_event_loop()
         event = await loop.run_in_executor(None, mediator.poll, instance_id, timeout)
         return {"event": _event_dict(event) if event is not None else None}
+
+    # --- filetypes (TODO b5d52c0) -- the file type registry service.
+    # get both reads the registry and subscribes the caller to future
+    # edits (via the mediator directly, same "cheap enough to call
+    # inline" reasoning as events/subscribe above) in one call, so a
+    # widget never needs a separate subscribe call just to stay current.
+
+    @app.get("/api/bridge/filetypes/get")
+    async def filetypes_get(
+        widget: WidgetInfo = Depends(require_caller("filetypes")),
+        instance_id: str = Depends(require_instance_id),
+    ):
+        mediator = require_mediator()
+        mediator.subscribe(instance_id, FILE_TYPE_REGISTRY_UPDATED_EVENT)
+        entries = await run_on_gui(lambda: gui_bridge.window.get_file_type_registry_dicts())
+        return {"entries": entries}
+
+    @app.post("/api/bridge/filetypes/set")
+    async def filetypes_set(
+        body: SetFileTypeRegistryRequest,
+        widget: WidgetInfo = Depends(require_caller("filetypes")),
+        instance_id: str = Depends(require_instance_id),
+    ):
+        await run_on_gui(lambda: gui_bridge.window.set_file_type_registry(body.entries, instance_id))
+        return {"ok": True}
 
     # --- introspect (TODO 9767c1a) -- unlike every other capability
     # above, a declared capability alone isn't enough: the Desk user
