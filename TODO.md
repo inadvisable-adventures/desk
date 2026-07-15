@@ -2633,6 +2633,7 @@ c892403. COMPLETED: Resolve relative `desk.fs.readFile`/`writeFile` paths agains
    event's full detail (timestamp, name, sender instance id, and its
    payload pretty-printed in full, not the truncated single-line
    summary the Event Log's own table row shows).
+   [planned: event-viewer-widget.md]
 59c5a70. Change where a `DefineWidget` widget's authoring source lives
    (TODO b324217's `custom_widget_src/<name>/` convention): for a Desk
    working on a project other than Desk's own repo, recommend
