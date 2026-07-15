@@ -34,7 +34,7 @@ the moment it's opened via `set_file`.
   (Markdown, SVG Viewer, Editor) -- `.md` -> Markdown, `.svg` -> SVG
   Viewer, everything else -> Editor (Editor already handles arbitrary
   text by extension-based lexer choice, and is the sensible default
-  for "some file, unknown type," matching File Explorer's own existing
+  for "some file, unknown type," matching Project Files' own existing
   always-Editor behavior for its own "open" action). Kept as a plain
   dict in `window.py` next to the other widget-id constants -- pulling
   this out into `desk.file_kinds` or similar isn't justified for three

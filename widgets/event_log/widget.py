@@ -137,7 +137,7 @@ class EventLogWidget(QWidget):
     def _open_event_viewer(self, item: QTableWidgetItem) -> None:
         """Opens the Event Viewer widget (TODO 0d2ebc1) on the
         double-clicked row's full MediatedEvent -- reads it back off
-        the Timestamp column's own item, same as file_explorer/widget
+        the Timestamp column's own item, same as project_files/widget
         .py's _open_index reaches the Editor widget."""
         event = self._table.item(item.row(), 0).data(EVENT_ROLE)
         if event is None:
@@ -148,7 +148,7 @@ class EventLogWidget(QWidget):
         widget = opener("event_viewer")
         if widget is not None and hasattr(widget, "set_event"):
             # A broken set_event() must never propagate out of here
-            # (matching TODO 810a5d6's reasoning in file_explorer/
+            # (matching TODO 810a5d6's reasoning in project_files/
             # widget.py) -- this runs inside a Qt slot
             # (itemDoubleClicked), and an uncaught exception there is
             # fatal to the whole process in this PyQt6 setup.

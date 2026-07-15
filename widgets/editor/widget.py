@@ -212,7 +212,7 @@ class EditorWidget(QWidget):
 
         Wrapped defensively (TODO 810a5d6): this is a purely cosmetic
         titlebar feature reached from a Qt-signal-invoked slot chain
-        (File Explorer's doubleClicked -> _open_index -> set_file ->
+        (Project Files' doubleClicked -> _open_index -> set_file ->
         here) where an uncaught exception is fatal to the whole process
         in this PyQt6 setup, not just to this feature -- see
         plans/isolate-hot-reload-crash.md and LEARNINGS.md."""
@@ -240,7 +240,7 @@ class EditorWidget(QWidget):
         self._update_label()
 
     def set_file(self, path: Path) -> None:
-        """Public so other widgets (e.g. the File Explorer, TODO
+        """Public so other widgets (e.g. Project Files, TODO
         b927389) can open a file here programmatically -- matching
         MarkdownWidget/MarkdownExWidget's own set_file. Unlike the
         Open-button flow this doesn't confirm unsaved changes first:

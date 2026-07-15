@@ -129,8 +129,9 @@ class _FileTreeView(QTreeView):
         painter.restore()
 
 
-class FileExplorerWidget(QWidget):
-    """A tree-view project directory/file explorer: `QFileSystemModel`
+class ProjectFilesWidget(QWidget):
+    """A tree-view project directory/file browser (formerly "File
+    Explorer", renamed to "Project Files" -- TODO 8385dcc): `QFileSystemModel`
     for normal lazy browsing, swapped for a bespoke eager search
     -results model (see `_build_search_model`) while the filter box is
     non-empty. See plans/file-explorer-widget.md."""
@@ -337,4 +338,4 @@ class FileExplorerWidget(QWidget):
 
 
 def build() -> QWidget:
-    return FileExplorerWidget()
+    return ProjectFilesWidget()

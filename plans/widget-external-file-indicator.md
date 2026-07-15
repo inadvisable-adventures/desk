@@ -15,7 +15,7 @@ TODO -- gains a small `external_path_changed(bool)` signal, computed against
 associated directory" -- the same concept these widgets' own "Open"
 dialogs already seed from). `DeskWindow` wires that signal, for every
 placed widget, to a new `WidgetFrame.set_external(bool)` that appends
-`" [EXTERNAL]"` to the widget's titlebar label when true. File Explorer is
+`" [EXTERNAL]"` to the widget's titlebar label when true. Project Files is
 out of scope -- it browses a directory (always the thing being compared
 against, not a file being loaded into itself); double-clicking a file
 opens it in a *separate* widget instance, which gets its own indicator
@@ -77,7 +77,7 @@ normally.
   (fresh, restored, programmatic via `open_widget`, the add-widget menu)
   already funnels through `_place_widget`, one call site covers all of
   them.
-- **File Explorer excluded.** It's a directory browser, not a
+- **Project Files excluded.** It's a directory browser, not a
   single-file-loading widget in the sense this feature means -- its own
   "root" directory *is* (or, via its Open Folder button, becomes) the
   comparison baseline, not something to compare against it. Opening a

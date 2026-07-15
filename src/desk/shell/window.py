@@ -72,8 +72,10 @@ CRASH_LOG_GLOB = "DESK-CRASH-*.log"
 
 # Which widget kind opens a dropped file (TODO 5915ac2), by extension --
 # only these three widget kinds currently expose set_file. Everything not
-# listed here falls back to the Editor, same as File Explorer's own
-# always-Editor "open" action. Raster image suffixes are deliberately
+# listed here falls back to the Editor -- Project Files' own
+# double-click handling now goes through a richer viewer/editor/scrap
+# fallback chain instead (TODO efdad99), but drag-and-drop here is
+# still this simpler by-extension map. Raster image suffixes are deliberately
 # NOT listed here (see IMAGE_DROP_SUFFIXES/_on_files_dropped below) --
 # those get copy-into-.desk_temp-plus-tempui handling instead of this
 # by-reference one (TODO 6e731c1).
@@ -1023,7 +1025,7 @@ class DeskWindow(QMainWindow):
         (payload: the new entries) to every *other* subscribed instance
         -- see desk.event_mediator.EventMediator.publish's own
         never-echoes-to-the-sender behavior. The event payload carries
-        the new registry directly, so a subscriber (e.g. File Explorer's
+        the new registry directly, so a subscriber (e.g. Project Files'
         bind_event_mediator) never needs a separate re-fetch call to
         learn what changed."""
         self.current_desk.file_type_registry = [entry_from_dict(e) for e in entries]

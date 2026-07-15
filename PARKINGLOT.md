@@ -350,8 +350,8 @@ This file captures thoughts and TODO items that arise during work on other thing
     diagram, independent zoom/pan within the widget (distinct from the
     Workspace Canvas's own zoom of the whole widget frame) would help;
     out of scope for that item, worth its own TODO if it comes up.
-  - **Wire `.svg` results in the File Explorer / Markdown widgets to
-    open in it.** Right now the File Explorer (TODO b927389) always
+  - **Wire `.svg` results in the Project Files / Markdown widgets to
+    open in it.** Project Files (TODO b927389) used to always
     opens a selected file in a new Editor widget instance regardless
     of extension, and the Markdown widget (TODO a76e723, renamed from
     "Markdown (Extended)" / `markdown_ex`, TODO 858752b) renders
@@ -639,7 +639,7 @@ This file captures thoughts and TODO items that arise during work on other thing
   a zoomed `QGraphicsProxyWidget`" entry.
 
   Attempts so far, in order:
-  - **TODO `465c404`** (File Explorer toolbar) and **TODO `593a464`**
+  - **TODO `465c404`** (Project Files toolbar) and **TODO `593a464`**
     (Event Log toolbar) each force-set `QStyleFactory.create("Fusion")`
     directly onto the specific affected buttons via `widget.setStyle(...)`.
   - **TODO `8afef71`** (generic fix): a follow-up audit found the same
@@ -672,7 +672,7 @@ This file captures thoughts and TODO items that arise during work on other thing
     `style().objectName()` proved unreliable) across static controls,
     dynamically-added controls, a pre-built subtree, pseudo-states, and
     several real widgets (`svg_viewer`, `lightning_round`,
-    `file_explorer`, `event_log`) -- all passed.
+    `project_files`, `event_log`) -- all passed.
 
   **2026-07-15: confirmed still broken in the real running app.**
   After TODO `8afef71` landed, the Event Log widget's toolbar buttons

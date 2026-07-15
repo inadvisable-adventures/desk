@@ -338,8 +338,8 @@ Desk Bridge API.
     target path — the widget itself needed no changes, since
     `set_file` already existed for programmatic opening. See
     `plans/tempui-open-markdown.md`.
-17. **File Explorer Widget** — a built-in `kind: "python"` widget
-    (`widgets/file_explorer/`): a `_FileTreeView` (`QTreeView`
+17. **Project Files Widget** — a built-in `kind: "python"` widget
+    (`widgets/project_files/`): a `_FileTreeView` (`QTreeView`
     subclass; see below) browsing the current Desk directory via a
     `QFileSystemModel` (lazy per-directory loading, Name column only,
     filtered to include hidden dotfiles/dotdirs — `QFileSystemModel`'s

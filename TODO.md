@@ -1495,11 +1495,11 @@ cee6f74. COMPLETED: Refactor TempUiManager and the TODO widget's file-watching s
    explicitly out of scope for now -- revisit only if it becomes a
    real, observed problem.
    [planned: file-watch-self-write-consolidation.md]
-465c404. COMPLETED: Bug: in the File Explorer widget, the "Open Folder" button and
+465c404. COMPLETED: Bug: in the Project Files widget, the "Open Folder" button and
    the search box's chrome (background/border) don't scale with zoom,
    similar to how the tree-collapsing controls (">") were also not
    scaling properly before that was fixed. Screenshot: the widget
-   zoomed in to roughly 3-4x -- the titlebar ("File Explorer" label,
+   zoomed in to roughly 3-4x -- the titlebar ("Project Files" label,
    "x" close button) renders at the normal constant screen size, as
    designed, but within the widget's own content the "Open Folder"
    button's text is huge and overflows well outside its own grey
@@ -1522,7 +1522,7 @@ a053e3a. COMPLETED: Update widgets which load files to note in the title bar for
 810a5d6. COMPLETED: Investigate and fix: a segmentation fault occurred opening
    `./necro-4x/necro-4x.desk`. The last action taken in that Desk
    beforehand was double-clicking `./necro-4x/.desk_temp
-   /desk-temporary-ui.md` in the File Explorer widget to open it (this
+   /desk-temporary-ui.md` in the Project Files widget to open it (this
    opens it in a new Editor widget instance). This may or may not be
    related to work done around the same time on TODO a053e3a (the
    "[EXTERNAL]" titlebar marker). Traceback captured at the time (paths
@@ -1531,7 +1531,7 @@ a053e3a. COMPLETED: Update widgets which load files to note in the title bar for
 
    ```
    Traceback (most recent call last):
-     File "./desk/widgets/file_explorer/widget.py", line 246, in _open_index
+     File "./desk/widgets/project_files/widget.py", line 246, in _open_index
        widget.set_file(path)
        ~~~~~~~~~~~~~~~^^^^^^
      File "./desk/widgets/editor/widget.py", line 181, in set_file
@@ -2415,7 +2415,7 @@ dc557b2. COMPLETED: create a general event poster widget
 
 593a464. COMPLETED: Bug: in the Event Log widget, the "Live Tail" and "Clear Log"
    buttons' chrome (background/border) doesn't scale with zoom -- same
-   category of bug as TODO 465c404's File Explorer toolbar fix.
+   category of bug as TODO 465c404's Project Files toolbar fix.
    Screenshot: both buttons' text renders oversized, overflowing well
    outside their own grey rounded-pill backgrounds, which stayed a
    visibly smaller size than the (correctly) zoomed text.
@@ -2426,7 +2426,7 @@ dc557b2. COMPLETED: create a general event poster widget
    an instance attribute (`setStyle()` doesn't take ownership of the
    `QStyle`) -- rather than hand-painting custom chrome, since a
    `QPushButton` (this widget's Live Tail button is checkable, unlike
-   File Explorer's plain button) has too many visual states to
+   Project Files' plain button) has too many visual states to
    re-derive by hand.
 
    Verified headlessly: the widget builds without error, both buttons
@@ -2474,7 +2474,7 @@ dc557b2. COMPLETED: create a general event poster widget
    FILTER_BUTTON_STYLE-styled buttons immune to this bug. A stylesheet
    cascades correctly to every descendant, present and future, with no
    event-filter machinery needed. Removed the now-redundant (and
-   apparently never-effective) per-widget fixes in file_explorer/event_log.
+   apparently never-effective) per-widget fixes in project_files/event_log.
 
    Verified extensively headlessly by pixel-sampling actual rendered
    output (not style-object introspection, per the finding above)
@@ -2483,7 +2483,7 @@ dc557b2. COMPLETED: create a general event poster widget
    specific stylesheet still taking precedence, both QToolButton and
    QLineEdit (not just QPushButton), and real widgets from the audit
    (svg_viewer, lightning_round -- including forcing a real rebuild of
-   its option buttons by answering an item, file_explorer, event_log
+   its option buttons by answering an item, project_files, event_log
    -- including event_log's :checked pseudo-state). Confirmed
    WidgetFrame's own chrome never receives this stylesheet. As with
    the two prior fixes, this offscreen environment can't reproduce the
@@ -2644,11 +2644,11 @@ c892403. COMPLETED: Resolve relative `desk.fs.readFile`/`writeFile` paths agains
    on its Timestamp column item (Qt.ItemDataRole.UserRole, mirroring
    questions/widget.py's ENTRY_ROLE), connected itemDoubleClicked to a
    new _open_event_viewer that reaches the widget opener via
-   current_context (the same pattern file_explorer's _open_index
+   current_context (the same pattern project_files's _open_index
    already uses for the Editor widget), with a broad except around the
    set_event call so a broken hook can't crash the double-click slot
    (matching TODO 810a5d6's reasoning). Not centered in the view --
-   matches File Explorer's own current double-click behavior; TODO
+   matches Project Files' own current double-click behavior; TODO
    efdad99/da4f9c0 are the ones introducing centered placement as a
    deliberate, separately-scoped change.
 
@@ -2756,7 +2756,7 @@ c892403. COMPLETED: Resolve relative `desk.fs.readFile`/`writeFile` paths agains
    button's visibility. Full regression suite: the same 9 pre-existing
    failures plus three already-known-stale doc-version assertions from
    earlier TODOs in this batch, 0 other new failures.
-efdad99. COMPLETED: Change the File Explorer widget's (`widgets/file_explorer/`)
+efdad99. COMPLETED: Change the Project Files widget's (`widgets/project_files/`)
    double-click handling (currently `_open_index`, which always opens
    the Editor widget unconditionally) to a fallback chain: (1) if a
    viewer widget is available for the clicked file's type, open it
@@ -2786,7 +2786,7 @@ efdad99. COMPLETED: Change the File Explorer widget's (`widgets/file_explorer/`)
    `DeskWindow.open_widget_content_centered` (same centering math as
    `_place_discuss_claude_widget`), since the existing
    `get_widget_opener`/`open_widget_content` default to `(0, 0)`.
-   Rewrote File Explorer's `_open_index` into `_open_file` (view ->
+   Rewrote Project Files' `_open_index` into `_open_file` (view ->
    edit -> built-in-editor-if-text -> Scratch-note fallback chain),
    using the centered opener throughout.
 
@@ -2794,7 +2794,7 @@ efdad99. COMPLETED: Change the File Explorer widget's (`widgets/file_explorer/`)
    builtin-floor fallback, no-fallback for `find_edit_handler`) and
    the text/binary sniff heuristic directly; `open_widget_content
    _centered`'s own centering math and unknown-widget-id no-op on a
-   real `WorkspaceView`; File Explorer's full dispatch chain (a
+   real `WorkspaceView`; Project Files' full dispatch chain (a
    registered view handler, a registered edit handler with no view
    handler, the built-in editor for a real text file with no registry
    match at all, the Scratch fallback for a binary file with no match,
@@ -2823,8 +2823,8 @@ b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
    same call, subscribe the calling widget's instance to those edit
    events -- so "read the registry" and "start watching for future
    changes to it" are one step, not two separate calls a widget author
-   could forget to pair up. Update the File Explorer widget
-   (`widgets/file_explorer/`) to consume the registry this way:
+   could forget to pair up. Update the Project Files widget
+   (`widgets/project_files/`) to consume the registry this way:
    fetch it once via the Bridge API when the widget starts, and update
    its own local in-memory copy whenever an edit event for it arrives
    -- never re-fetching from scratch on every event, and never reading
@@ -2832,11 +2832,11 @@ b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
    depends on this registry existing.
    [planned: file-type-registry.md]
 
-   Clarified via user question before planning: File Explorer is
+   Clarified via user question before planning: Project Files is
    `kind: "python"`, and every existing python widget reaches Desk
    services in-process via a `current_context` hook (e.g.
    `get_event_mediator()`), never via a real HTTP call to the Bridge
-   API (that's the `kind: "html"`-only mechanism) -- so File Explorer's
+   API (that's the `kind: "html"`-only mechanism) -- so Project Files'
    own consumption goes through a new `current_context` hook (initial
    read) plus the existing generic `bind_event_mediator` mechanism
    (live updates), not literal Bridge API calls. `filetype-registry
@@ -2858,8 +2858,8 @@ b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
    sender) and a matching `window.desk.filetypes.*` bridge_client.py
    namespace. New `current_context.get/set_file_type_registry_provider`
    hook (refreshed in `_refresh_picker`, same choke point as the
-   directory/event-mediator hooks) for File Explorer's one-time initial
-   read; File Explorer also implements `bind_event_mediator` (the
+   directory/event-mediator hooks) for Project Files' one-time initial
+   read; Project Files also implements `bind_event_mediator` (the
    existing generic TODO 6f9c51b hook) to keep its local copy current
    via the event's own payload, no re-fetch. New
    `widgets/filetype_registry_editor/` (kind:"html", the first
@@ -2870,7 +2870,7 @@ b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
    Desk/desk_state_dict/load_desk round-trips (and an old .desk file
    with no key defaults to `[]`); the new widget is discovered with
    `kind: "html"` and the `filetypes` capability; the current_context
-   provider hook; File Explorer's initial read plus a real
+   provider hook; Project Files' initial read plus a real
    EventMediator-published update changing its local copy; the Bridge
    API end-to-end over real HTTP (a running server + a real GuiBridge
    attached to a fake window, matching the established pumped-event
@@ -3005,7 +3005,7 @@ b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
    suite: the same 9 pre-existing failures plus four already-known
    -stale doc-version assertions accumulated from this batch's earlier
    TEMPUI_DOC_VERSION bumps, 0 other new failures.
-8385dcc. Rename the "File Explorer" widget (`widgets/file_explorer/`)
+8385dcc. COMPLETED: Rename the "Project Files" widget (`widgets/project_files/`)
    to "Project Files" -- the directory name, its `widget.json`'s
    `name`, any user-facing string in its own code, and every
    reference to it elsewhere: `src/desk/`'s own source (e.g.
@@ -3013,18 +3013,58 @@ b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
    /import references), `design-docs/` (architecture.md,
    custom-widget-authoring.md's TODO efdad99/b5d52c0 cross-references
    if still current when this is worked), `TODO.md` itself (every
-   completed or open item that says "File Explorer", including TODO
+   completed or open item that says "Project Files", including TODO
    efdad99/b5d52c0 above), every `plans/*.md` file that mentions it,
    and `PARKINGLOT.md`. Keep the underlying widget id/directory-name
    convention consistent with how other widgets are named (lowercase,
    underscore-separated -- e.g. `project_files`) rather than
    introducing a differently-cased id than the rest of `widgets/`.
    [planned: rename-file-explorer-to-project-files.md]
+
+   (Note: this item's own text above was originally written using the
+   old name "File Explorer"/`file_explorer` -- the global content
+   substitution described below, applied uniformly across `TODO.md`
+   per the request, rewrote it into this item's text too, which is why
+   it now reads as "rename ... 'Project Files' ... to 'Project
+   Files'." The rename itself is real; only this historical wording
+   looks circular as a result.)
+
+   `git mv widgets/file_explorer widgets/project_files`;
+   `widget.json`'s `name` -> "Project Files"; renamed the
+   `FileExplorerWidget` class to `ProjectFilesWidget` (not explicitly
+   asked, but consistent with every other widget's class-name-matches
+   -concept convention). Updated prose references (docstrings/
+   comments, not identifiers -- no `FILE_EXPLORER_WIDGET_ID` constant
+   existed anywhere to rename) in `src/desk/shell/window.py`,
+   `widgets/editor/widget.py`, `widgets/event_log/widget.py`. Replaced
+   every "File Explorer"/`file_explorer` occurrence in `TODO.md`,
+   `PARKINGLOT.md`, `LEARNINGS.md`, `design-docs/architecture.md`, and
+   every `plans/*.md` file that mentioned it -- deliberately leaving
+   plan *filenames* themselves unchanged (e.g. `plans/file-explorer
+   -widget.md` still lives at that exact path), matching this
+   project's own "a permanent handle is never retroactively renamed"
+   philosophy for TODO item ids; `TODO.md`'s `[planned: file-explorer
+   -*.md]`-style references still point at the right files.
+
+   Verified: `discover_widgets` resolves `project_files` (not
+   `file_explorer`) with the correct kind/name; the renamed class;
+   zero remaining `file_explorer`/`File Explorer` content anywhere in
+   `src/`, `widgets/`, `design-docs/`, `TODO.md`, `PARKINGLOT.md`,
+   `LEARNINGS.md`, or `plans/*.md` (checked directly, excluding stale
+   `__pycache__` bytecode which was also cleaned up); the three
+   original plan filenames still exist unchanged. Full regression
+   suite: found and fixed two of my own earlier scratchpad
+   verification scripts (for TODO efdad99/b5d52c0) that loaded
+   `widgets/file_explorer/widget.py` by its old hardcoded path --
+   updated both to the new path, not a real regression in the shipped
+   code. Back to the same 9 pre-existing failures plus four already
+   -known-stale doc-version assertions from this batch's earlier
+   TEMPUI_DOC_VERSION bumps, 0 other new failures.
 da4f9c0. Give every "viewer" widget that shows the contents of a file
    on disk (e.g. `widgets/svg_viewer/`, `widgets/image_viewer/`,
    `widgets/markdown/`) an "Edit" button in its titlebar. Clicking it
    should reuse the exact same open-an-editor-or-fall-back-to-a-scrap
-   logic the "Project Files" widget (formerly "File Explorer" -- TODO
+   logic the "Project Files" widget (formerly "Project Files" -- TODO
    `8385dcc`) uses for its own double-click handling (TODO `efdad99`):
    open an appropriate editor for the file if one is available (only
    ever a genuinely text file into the text Editor widget), otherwise

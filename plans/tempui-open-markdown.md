@@ -121,7 +121,7 @@ Headless:
   the passed `directory`; an absolute path passes through unchanged.
 - Real production path: a temp Desk directory, a real `DeskWindow`
   substitute via the same `PythonWidgetHost`-level approach used for
-  `markdown_ex`/`file_explorer`/`svg_viewer`'s own verification
+  `markdown_ex`/`project_files`/`svg_viewer`'s own verification
   (literal `DeskWindow` construction hits the pre-existing, unrelated
   offscreen stall noted in those plans) — instead, directly exercise
   `_bind_temp_ui_content` logic against a real `MarkdownExWidget`

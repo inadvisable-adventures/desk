@@ -1,5 +1,5 @@
 {
-  "name": "File Explorer",
+  "name": "Project Files",
   "kind": "python",
   "entry": "widget.py",
   "capabilities": [],

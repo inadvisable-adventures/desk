@@ -1,4 +1,4 @@
-# Plan: TODO efdad99 (COMPLETED) — File Explorer viewer/editor/scrap fallback chain
+# Plan: TODO efdad99 (COMPLETED) — Project Files viewer/editor/scrap fallback chain
 
 ## Summary
 
@@ -66,7 +66,7 @@ always places at `(0, 0)`)
 - `DeskWindow.__init__`: `current_context.set_centered_widget_opener
   (self.open_widget_content_centered)`.
 
-## File Explorer (`widgets/file_explorer/widget.py`)
+## Project Files (`widgets/project_files/widget.py`)
 
 `_open_index` becomes a thin wrapper calling a new `_open_file(path)`:
 
@@ -116,7 +116,7 @@ guard, resolves `path`, and calls `_open_file(path)`.
   has nothing, and `None` when nothing matches at all.
 - `looks_like_text_file`: a real plain-text file -> `True`; a file
   containing a null byte / invalid UTF-8 -> `False`.
-- File Explorer, on a real `QApplication`/fake centered-opener double:
+- Project Files, on a real `QApplication`/fake centered-opener double:
   a registry `view` match opens that widget; no `view` but an `edit`
   match opens that; no registry match but a real text file opens
   `"editor"`; no registry match and a binary file places a `"scratch"`

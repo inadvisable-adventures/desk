@@ -4,7 +4,7 @@ TODO `8afef71`.
 
 ## Summary
 
-TODO `465c404` (File Explorer toolbar) and TODO `593a464` (Event Log
+TODO `465c404` (Project Files toolbar) and TODO `593a464` (Event Log
 toolbar) each independently fixed one widget's specific buttons by
 forcing Qt's Fusion style onto them, because native-platform-style
 chrome (`QPushButton`, `QLineEdit`, `QComboBox`, scrollbars, header
@@ -119,7 +119,7 @@ untouched by this change.
 
 ### Cleanup: remove now-redundant per-widget fixes
 
-`widgets/file_explorer/widget.py` and `widgets/event_log/widget.py`'s
+`widgets/project_files/widget.py` and `widgets/event_log/widget.py`'s
 own manual `QStyleFactory.create("Fusion")` + `.setStyle(...)` calls
 (from TODO `465c404`/`593a464`) are removed -- confirmed (see
 Investigation above) they weren't actually taking effect once wrapped
@@ -131,7 +131,7 @@ widgets regardless.
 - `src/desk/shell/widget_frame.py` -- new `CONTENT_ZOOM_SAFE_STYLESHEET`
   constant; `WidgetFrame.__init__` applies it to `content` via
   `content.setStyleSheet(...)`.
-- `widgets/file_explorer/widget.py` -- remove the now-redundant/
+- `widgets/project_files/widget.py` -- remove the now-redundant/
   ineffective `self._toolbar_style`/`.setStyle(...)` calls (TODO
   `465c404`).
 - `widgets/event_log/widget.py` -- remove the now-redundant/ineffective
@@ -158,7 +158,7 @@ rendered output through a real `QGraphicsView`/`QGraphicsProxyWidget`
   `lightning_round` (loading a real LightningRound tempui document,
   answering an item to force `_option_buttons` to actually tear down
   and rebuild, confirming the *rebuilt* buttons -- genuinely new
-  objects, not the same ones -- are covered), `file_explorer` and
+  objects, not the same ones -- are covered), `project_files` and
   `event_log` (both confirmed still covered after their own now-
   redundant per-widget code was removed; `event_log`'s Live Tail button
   additionally confirmed its `:checked` pseudo-state rule paints
@@ -178,7 +178,7 @@ Implemented as described above (a materially different design from the
 plan's original `_ContentStyleGuard`/`setStyle()` approach -- see
 Investigation). `CONTENT_ZOOM_SAFE_STYLESHEET` applied to every
 widget's `content` in `WidgetFrame.__init__`; the now-redundant
-per-widget fixes in `file_explorer`/`event_log` removed.
+per-widget fixes in `project_files`/`event_log` removed.
 
 Verified extensively headlessly via pixel-sampling (see Verification
 above) across static, dynamic, pre-built-subtree, pseudo-state, and

@@ -1,4 +1,4 @@
-# File Explorer widget (COMPLETED)
+# Project Files widget (COMPLETED)
 
 TODO `b927389`.
 
@@ -10,7 +10,7 @@ tree-paths to the results and the results themselves... clearing the
 search should restore the view but the current file should remain
 selected. if a user double-clicks on a filename or hits enter while a
 filename is selected, open the file in a new instance of the Editor
-widget." A new `kind: "python"` widget (`widgets/file_explorer/`).
+widget." A new `kind: "python"` widget (`widgets/project_files/`).
 
 ## Key decisions
 
@@ -113,10 +113,10 @@ widget." A new `kind: "python"` widget (`widgets/file_explorer/`).
 
 ## New/affected files
 
-- `widgets/file_explorer/widget.json` (new) — `{name: "File Explorer",
+- `widgets/project_files/widget.json` (new) — `{name: "Project Files",
   kind: "python", entry: "widget.py", capabilities: [], default_size:
   360x640}`.
-- `widgets/file_explorer/widget.py` (new) — `FileExplorerWidget(QWidget)`:
+- `widgets/project_files/widget.py` (new) — `FileExplorerWidget(QWidget)`:
   - Toolbar: "Open Folder" button + a `QLineEdit` search box.
   - `QTreeView` showing a plain `QFileSystemModel` rooted at the
     current directory (Name column only, header hidden) when the
@@ -133,7 +133,7 @@ widget." A new `kind: "python"` widget (`widgets/file_explorer/`).
     then `current_context.get_widget_opener()("editor").set_file(path)`.
 - `widgets/editor/widget.py` — add public `set_file(path: Path) ->
   None` (thin wrapper around the existing `_load_file`).
-- `design-docs/architecture.md` — new File Explorer Widget component
+- `design-docs/architecture.md` — new Project Files Widget component
   entry.
 
 ## Verification
@@ -203,7 +203,7 @@ Headless, against a real temp directory tree (mirroring the TODO's own
   `plans/markdown-ex-widget.md` (an unrelated, pre-existing offscreen
   `QtWebEngine`-adjacent stall in this environment, orthogonal to
   `kind: "python"` widgets).
-- `design-docs/architecture.md` gained a File Explorer Widget entry;
+- `design-docs/architecture.md` gained a Project Files Widget entry;
   `LEARNINGS.md` gained an entry on
   `QSortFilterProxyModel.setRecursiveFilteringEnabled` not working
   correctly on top of `QFileSystemModel`'s lazy loading (plus the

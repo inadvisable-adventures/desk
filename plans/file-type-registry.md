@@ -9,7 +9,7 @@ into something dynamic and editable. Persisted on the `Desk`
 dataclass/`.desk` file. A new Bridge API service (`kind: "html"`
 widgets) backs a new `filetype_registry_editor` widget; a
 `current_context` hook + the existing generic event-mediator binding
-back a `kind: "python"` File Explorer's own consumption -- see the
+back a `kind: "python"` Project Files' own consumption -- see the
 clarifying question resolved this session: python widgets reach Desk
 services in-process, matching every other python widget, not via real
 HTTP Bridge API calls (that mechanism is `kind: "html"`-only).
@@ -89,7 +89,7 @@ New get/set pair, `_file_type_registry_provider: Callable[[], list[dict]]
 | None`, mirroring every other hook here (`set_widget_opener`-style),
 for a `kind: "python"` widget's one-time initial read.
 
-## File Explorer (`widgets/file_explorer/widget.py`)
+## Project Files (`widgets/project_files/widget.py`)
 
 - `__init__`: `provider = current_context.get_file_type_registry_provider();
   self._file_type_registry = provider() if provider else []`.
@@ -110,7 +110,7 @@ for a `kind: "python"` widget's one-time initial read.
 (TODO's own text used the hyphenated name "filetype-registry-editor";
 translated to this project's actual directory/id convention --
 lowercase, underscore-separated, matching every other widget id, e.g.
-`file_explorer`/`event_log` -- rather than introducing the first
+`project_files`/`event_log` -- rather than introducing the first
 hyphenated widget id in the catalog.)
 
 - The first genuinely hand-authored `kind: "html"` widget under
@@ -145,7 +145,7 @@ hyphenated widget id in the catalog.)
   's own documented behavior) with the new entries as payload; a caller
   lacking the `filetypes` capability gets a 403.
 - `current_context.get_file_type_registry_provider()`'s initial read;
-  `File Explorer`'s `bind_event_mediator` updates its local
+  `Project Files`'s `bind_event_mediator` updates its local
   `_file_type_registry` when a real published event arrives, without
   making any further calls.
 - Full scratchpad regression suite (`git stash` before/after).

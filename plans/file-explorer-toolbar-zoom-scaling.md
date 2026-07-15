@@ -1,11 +1,11 @@
-# File Explorer toolbar controls don't scale their chrome with zoom (COMPLETED)
+# Project Files toolbar controls don't scale their chrome with zoom (COMPLETED)
 
 TODO `465c404`.
 
 ## Summary
 
-Reported with a screenshot of the File Explorer widget zoomed in (roughly
-3-4x). The widget's own chrome (the "File Explorer" titlebar label and the
+Reported with a screenshot of the Project Files widget zoomed in (roughly
+3-4x). The widget's own chrome (the "Project Files" titlebar label and the
 "x" close button) renders at the normal, constant screen size, exactly as
 designed (`design-docs/widget-ux.md`'s "Chrome Stays a Constant Screen
 Size" — that's the `WidgetFrame` proxy counter-scaling, working
@@ -88,7 +88,7 @@ through native macOS theme APIs.
 
 ## Affected files
 
-- `widgets/file_explorer/widget.py` -- `open_folder_button` and
+- `widgets/project_files/widget.py` -- `open_folder_button` and
   `self._search_box` both get `.setStyle(self._toolbar_style)`, where
   `self._toolbar_style = QStyleFactory.create("Fusion")` is created once
   in `__init__` and kept alive as an instance attribute.
@@ -106,7 +106,7 @@ through native macOS theme APIs.
   spirit as this codebase's existing "note it in the plan if a browser
   -requiring verification step was skipped"): confirming the *actual*
   reported symptom is fixed requires the real running app under macOS's
-  native style, zoomed in on the File Explorer widget, which this
+  native style, zoomed in on the Project Files widget, which this
   headless/offscreen environment cannot reproduce either the broken or
   the fixed rendering for (offscreen already defaults to Fusion). Needs
   a visual check by the user in the real app; if Fusion's own look

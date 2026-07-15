@@ -48,14 +48,14 @@ widget (`widgets/event_log/`).
 - Connect `self._table.itemDoubleClicked` (or `cellDoubleClicked`) to a
   new `_open_event_viewer(item)` handler: reads the event back off the
   role, calls `current_context.get_widget_opener()` (the exact same
-  pattern `widgets/file_explorer/widget.py`'s `_open_index` already
+  pattern `widgets/project_files/widget.py`'s `_open_index` already
   uses for the Editor widget), and if the opener returns a widget
   exposing `set_event`, calls it — guarded by a broad `except Exception`
-  around the `set_event` call, matching `file_explorer`'s own
+  around the `set_event` call, matching `project_files`'s own
   "a broken hook must never propagate out of a Qt slot" reasoning
   (TODO 810a5d6), since this also runs inside a double-click slot.
 - Not centering the opened widget in the view — `open_widget_content`'s
-  own default (`pos or (0, 0)`) matches the File Explorer's own current,
+  own default (`pos or (0, 0)`) matches the Project Files' own current,
   pre-existing double-click behavior; TODO efdad99/da4f9c0 are the ones
   that introduce centered placement as a deliberate, scoped change for
   their own fallback chain, not something to fold in here unasked.

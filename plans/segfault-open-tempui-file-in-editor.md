@@ -1,4 +1,4 @@
-# Segfault opening a tempui file from File Explorer into the Editor widget (COMPLETED)
+# Segfault opening a tempui file from Project Files into the Editor widget (COMPLETED)
 
 TODO `810a5d6`.
 
@@ -6,7 +6,7 @@ TODO `810a5d6`.
 
 Reported: opening `./necro-4x/necro-4x.desk` segfaulted. The last action
 taken in that Desk beforehand was double-clicking `./necro-4x/.desk_temp
-/desk-temporary-ui.md` in the File Explorer widget -- which opens it in a
+/desk-temporary-ui.md` in the Project Files widget -- which opens it in a
 **new Editor widget instance** (`FileExplorerWidget._open_index`
 hardcodes `opener("editor")` regardless of file extension/kind -- it
 never routes to Markdown/MarkdownEx even for a `.md` file). A traceback
@@ -15,7 +15,7 @@ message:
 
 ```
 Traceback (most recent call last):
-  File "./desk/widgets/file_explorer/widget.py", line 246, in _open_index
+  File "./desk/widgets/project_files/widget.py", line 246, in _open_index
     widget.set_file(path)
     ~~~~~~~~~~~~~~~^^^^^^
   File "./desk/widgets/editor/widget.py", line 181, in set_file
@@ -123,7 +123,7 @@ though the exact exception is unknown.
   `widgets/svg_viewer/widget.py`, `widgets/todo/widget.py` --
   `refresh_external_path_status`/`reload`'s status call hardened; new
   module-level logger in each.
-- `widgets/file_explorer/widget.py` -- `_open_index`'s `set_file` call
+- `widgets/project_files/widget.py` -- `_open_index`'s `set_file` call
   wrapped; new module-level logger.
 - `LEARNINGS.md` -- an entry recording this as a second, distinct
   instance of the "uncaught exception escaping a Qt slot is fatal"
@@ -142,7 +142,7 @@ Headless (`QT_QPA_PLATFORM=offscreen`, real `QApplication`, no mocks):
   normally on the next real load).
 - `FileExplorerWidget._open_index`, with the opened widget's `set_file`
   monkeypatched to raise: confirm no exception escapes `_open_index`
-  and the File Explorer widget itself stays fully usable afterward
+  and the Project Files widget itself stays fully usable afterward
   (can still browse/search/open a different, working file).
 - `EditorWidget._load_file` against a real unreadable/missing path:
   confirms a friendly message is shown instead of raising, matching the

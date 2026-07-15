@@ -245,7 +245,7 @@ callback vs. a direct `.child()`/`.item()` walk, for instance).
 
 ## `QSortFilterProxyModel.setRecursiveFilteringEnabled` silently misses matches in unexpanded `QFileSystemModel` branches
 
-Building the File Explorer widget's search box (TODO `b927389`), the
+Building the Project Files widget's search box (TODO `b927389`), the
 obvious approach was `QFileSystemModel` + `QSortFilterProxyModel` with
 `setRecursiveFilteringEnabled(True)` (the documented, built-in Qt
 mechanism for "keep a row visible if any descendant matches the
@@ -272,7 +272,7 @@ filtering work at all: a bespoke, synchronous `Path.iterdir()` walk
 (building a small `QStandardItemModel` containing only matches and
 their ancestor chain) swapped onto the tree view in place of
 `QFileSystemModel` while a search is active. See
-`plans/file-explorer-widget.md` and `widgets/file_explorer/widget.py`'s
+`plans/file-explorer-widget.md` and `widgets/project_files/widget.py`'s
 `_build_search_model`. General lesson: `QFileSystemModel`'s laziness
 (by design, for scalability) is fundamentally in tension with any
 filtering mechanism that needs to know about the *whole* tree to decide
@@ -306,7 +306,7 @@ check what it actually paints into (its full rect vs. something aspect
 
 ## A native-style-drawn control (e.g. `QTreeView`'s branch/disclosure arrow) can visually desync from its own click hit-region once embedded in a zoomed `QGraphicsProxyWidget`
 
-Reported against the File Explorer widget (TODO `b927389`): the
+Reported against the Project Files widget (TODO `b927389`): the
 expand/collapse arrows appeared to scale independently from the rest of
 the tree, and clicking them didn't always work. Couldn't reproduce the
 visual symptom directly in this headless environment —
@@ -332,7 +332,7 @@ exact same indentation rect Qt's own hit-testing already uses. This
 can't drift from the hit region because it's now derived from the same
 geometry, and plain `QPainter` drawing (unlike native style painting)
 reliably respects whatever transform the enclosing view applies. See
-`widgets/file_explorer/widget.py`'s `_FileTreeView`. General lesson:
+`widgets/project_files/widget.py`'s `_FileTreeView`. General lesson:
 if a *native-platform-style-painted* element (checkboxes, disclosure
 triangles, radio buttons — anything a style plugin draws rather than
 plain `QPainter` primitives) behaves oddly only when embedded in a

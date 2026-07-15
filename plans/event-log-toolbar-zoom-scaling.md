@@ -11,7 +11,7 @@ rounded-pill backgrounds, which stayed a visibly smaller size than the
 (correctly, by design) zoomed text.
 
 This is the exact same bug already fixed once in this codebase for the
-File Explorer widget's toolbar (TODO `465c404`,
+Project Files widget's toolbar (TODO `465c404`,
 `plans/file-explorer-toolbar-zoom-scaling.md`) and, before that, its
 tree expand/collapse arrows (`plans/file-explorer-widget.md`): a
 native-platform-style-painted control visually desyncing from the rest

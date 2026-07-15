@@ -37,7 +37,7 @@ on changes — the same shape as the plain Markdown widget (TODO
   `current_context.get_current_desk_directory()` (falling back to
   home) — identical shape to the Markdown widget (this widget shows
   one file, like Markdown/Editor/Sheet, not a primary-directory role
-  like the TODO/Git Status/File Explorer widgets).
+  like the TODO/Git Status/Project Files widgets).
 - **Invalid/unparseable SVG degrades to a message, not a crash or
   blank widget** — `QSvgRenderer.isValid()` checked after every
   load/reload; `paintEvent` no-ops (nothing to draw) and a label above
@@ -48,7 +48,7 @@ on changes — the same shape as the plain Markdown widget (TODO
   Canvas's existing zoom already covers "make it bigger" for the whole
   widget frame). Worth a `PARKINGLOT.md` note as a future enhancement,
   not implemented here.
-- **No integration with other widgets** (e.g. having the File Explorer
+- **No integration with other widgets** (e.g. having the Project Files
   or Markdown (Extended) widget's `.svg` results open here instead of
   the Editor/QTextBrowser) — the TODO text is just "Implement an
   SVG-rendering widget," and neither of those widgets' own completed
@@ -75,7 +75,7 @@ on changes — the same shape as the plain Markdown widget (TODO
 - `design-docs/architecture.md` — new SVG Viewer Widget component
   entry.
 - `PARKINGLOT.md` — two small notes: in-widget zoom/pan for the SVG
-  Viewer, and wiring `.svg` results in the File Explorer/Markdown
+  Viewer, and wiring `.svg` results in the Project Files/Markdown
   (Extended) widgets to open here.
 
 ## Verification
