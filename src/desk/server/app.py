@@ -108,6 +108,10 @@ class SetFileTypeRegistryRequest(BaseModel):
     entries: list[dict]
 
 
+class OpenEditorOrScrapRequest(BaseModel):
+    path: str
+
+
 def _event_dict(event) -> dict:
     return {
         "timestamp": event.timestamp,
@@ -362,6 +366,19 @@ def create_app(
         instance_id: str = Depends(require_instance_id),
     ):
         await run_on_gui(lambda: gui_bridge.window.set_file_type_registry(body.entries, instance_id))
+        return {"ok": True}
+
+    # --- editor (TODO 2da314f) -- exposes DeskWindow
+    # .open_editor_or_scrap (TODO da4f9c0) to kind:"html" widgets, the
+    # same service a kind:"python" widget already reaches via
+    # current_context.get_editor_or_scrap_opener().
+
+    @app.post("/api/bridge/editor/openOrScrap")
+    async def editor_open_or_scrap(
+        body: OpenEditorOrScrapRequest, widget: WidgetInfo = Depends(require_caller("editor"))
+    ):
+        resolved = await _resolve_fs_path(body.path)
+        await run_on_gui(lambda: gui_bridge.window.open_editor_or_scrap(resolved))
         return {"ok": True}
 
     # --- introspect (TODO 9767c1a) -- unlike every other capability

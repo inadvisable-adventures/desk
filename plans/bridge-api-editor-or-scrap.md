@@ -1,4 +1,4 @@
-# Plan: TODO 2da314f — expose open-editor-or-scrap over the Bridge API
+# Plan: TODO 2da314f (COMPLETED) — expose open-editor-or-scrap over the Bridge API
 
 ## Summary
 

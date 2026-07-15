@@ -90,7 +90,14 @@ PROMOTED_WIDGET_SRC_DIRNAME = "desk_widgets"
 # below: any future bump that's breaking or adds a capability should
 # add a matching entry to one of those two docs, in the same commit as
 # the bump.
-TEMPUI_DOC_VERSION = 15
+#
+# TODO 2da314f: bumped 15 -> 16 for two new Bridge API capabilities in
+# _CUSTOM_WIDGETS_DOC's capability list: `editor` (new this TODO) and
+# `filetypes` (TODO b5d52c0's own capability, which should have been
+# documented here -- and this version bumped -- back when it was
+# introduced, but wasn't; backfilled now rather than left undocumented
+# indefinitely).
+TEMPUI_DOC_VERSION = 16
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -608,6 +615,21 @@ built for genuine cross-widget signaling:
 - `desk.introspect.snapshot(targetInstanceId)` (capability
   `introspect`) — get a DOM tree snapshot and console log of *another*
   widget instance. See "Inspecting another widget" below.
+- `desk.filetypes.get()` / `.set(entries)` (capability `filetypes`) —
+  read/edit the file type registry (which widget(s) can view, edit,
+  consume, or produce which file type, by extension and/or MIME type).
+  `get()` also subscribes you to future edits, delivered as a
+  `"desk.file_type_registry.updated"` message via `desk.events
+  .onMessage` (declare the `events` capability too if you want to
+  receive it) — one call does both "read" and "start watching," not
+  two separate ones.
+- `desk.editor.openOrScrap(path)` (capability `editor`) — open an
+  appropriate editor for `path` (falling back to the built-in text
+  Editor for a genuinely text file with no registered editor), or
+  place an explanatory Scratch note if nothing can open it — the same
+  service a `kind: "python"` widget reaches via `current_context
+  .get_editor_or_scrap_opener()`. A relative `path` resolves against
+  the current Desk's own directory, same as `desk.fs.*`.
 
 The calls above are almost always all a `DefineWidget` widget actually
 needs.
@@ -778,6 +800,17 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 16
+- `desk.editor.openOrScrap(path)` (capability `editor`): open an
+  appropriate editor for `path`, or place an explanatory Scratch note
+  if nothing can open it -- the same fallback service a `kind:
+  "python"` widget reaches via `current_context
+  .get_editor_or_scrap_opener()`.
+- `desk.filetypes.get()`/`.set(entries)` (capability `filetypes`,
+  introduced back while `TEMPUI_DOC_VERSION` was still 14 but not
+  documented here or version-bumped until now): read/edit the file
+  type registry; `get()` also subscribes you to future edits.
 
 ## Version 14
 - See `tempui-breaking-changes.md`'s own Version 14 entry -- the

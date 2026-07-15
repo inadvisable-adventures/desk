@@ -99,6 +99,9 @@ BRIDGE_CLIENT_TEMPLATE = """
       get: () => call("GET", "/api/bridge/filetypes/get"),
       set: (entries) => call("POST", "/api/bridge/filetypes/set", { entries }),
     },
+    editor: {
+      openOrScrap: (path) => call("POST", "/api/bridge/editor/openOrScrap", { path }),
+    },
     self: {
       getManifest: () => call("GET", "/api/bridge/self/getManifest"),
       getLocalStorage: () => call("GET", "/api/bridge/self/getLocalStorage"),

@@ -3120,7 +3120,7 @@ da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    legitimately mentions the old name for historical clarity, which
    that blanket check can no longer distinguish from a real leftover
    -- not a real regression), 0 other new failures.
-2da314f. Expose the open-editor-or-fall-back-to-a-scrap service (TODO
+2da314f. COMPLETED: Expose the open-editor-or-fall-back-to-a-scrap service (TODO
    `da4f9c0`, itself a `current_context` hook reused from "Project
    Files"'/TODO `efdad99`'s own double-click handling) over the HTTP
    Bridge API too, so a `kind: "html"` widget's own JS can call it just
@@ -3133,6 +3133,37 @@ da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    exposing that same service through a second binding mechanism, not
    building new fallback logic of its own.
    [planned: bridge-api-editor-or-scrap.md]
+
+   Added a new `editor` Bridge API capability + `POST /api/bridge/
+   editor/openOrScrap` route (server/app.py), resolving a relative
+   `path` against the current Desk's own directory via the same
+   `_resolve_fs_path` helper `desk.fs.*` already uses (TODO c892403),
+   then calling `DeskWindow.open_editor_or_scrap` (TODO da4f9c0).
+   Added `window.desk.editor.openOrScrap` to `bridge_client.py`.
+
+   While updating docs, found and fixed a real gap: TODO b5d52c0's own
+   `filetypes` Bridge API capability was never documented in
+   `_CUSTOM_WIDGETS_DOC`'s capability list or given a `TEMPUI_DOC_VERSION`
+   bump when it was introduced. Backfilled it alongside the new
+   `editor` capability in this same bump (14 -> ... -> 16, since
+   7462cdb had already bumped to 15 for the changelog docs themselves)
+   and added a `tempui-new-features.md` Version 16 entry covering
+   both, noting `filetypes`'s retroactive documentation explicitly --
+   the first real exercise of TODO 1a96c9f's new "keep the changelog
+   docs current" instruction.
+
+   Verified over real HTTP (a running server + a real `GuiBridge`
+   attached to a fake window double, the established pumped-event
+   -loop pattern): a relative path resolves against the fake Desk's
+   directory and calls `open_editor_or_scrap` with the resolved path;
+   an absolute path is used as-is; a caller lacking the `editor`
+   capability gets a 403. `bridge_client.py`'s new namespace, the
+   version bump, and both new capability-list bullets checked
+   directly. Full regression suite: the same 9 pre-existing failures
+   plus six already-known-stale assertions from earlier TODOs in this
+   batch (five doc-version/content checks now one bump further stale,
+   plus the one legitimately-stale "zero File Explorer occurrences"
+   check), 0 other new failures.
 996a5eb. The "focus view" 👁 eye button (`_EyeButton`, TODO `33d3e8d`)
    should persist alongside the title in the `title_only` chrome
    -degrade state, not disappear along with every other titlebar
