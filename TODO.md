@@ -2659,3 +2659,48 @@ c892403. COMPLETED: Resolve relative `desk.fs.readFile`/`writeFile` paths agains
    now, or keep running the old content for now (i.e. dismiss and
    leave the instance as-is, still marked `[STALE]`, until they decide
    later).
+efdad99. Change the File Explorer widget's (`widgets/file_explorer/`)
+   double-click handling (currently `_open_index`, which always opens
+   the Editor widget unconditionally) to a fallback chain: (1) if a
+   viewer widget is available for the clicked file's type, open it
+   there; (2) otherwise, if an editor is available, open it there --
+   only ever route a genuinely text file into the text Editor widget,
+   never a binary/unknown type; (3) otherwise, fall back to placing a
+   Scratch tempui note (see `desk.temp_ui`'s `Scratch` keyword) whose
+   text says what file type this is and that no viewer/editor is
+   available for it. Whichever of the three actually gets launched
+   should be placed centered in the current view, the same convention
+   every other tempui/programmatic widget placement in this codebase
+   already follows (see e.g. `DeskWindow._place_discuss_claude_widget`,
+   `_auto_place_new_custom_widget`). Depends on having some notion of
+   "which widget(s) handle which file type" to check against, which is
+   TODO b5d52c0's file type registry -- plan that one first, or at
+   least decide its shape, before planning this one.
+b5d52c0. Build a registry of file types (keyed by both file extension
+   and MIME type, where available) to the widget(s) that can view,
+   edit, consume, or produce that type -- generalizing the small
+   hardcoded `EXTERNAL_DROP_WIDGET_BY_SUFFIX` map in
+   `desk/shell/window.py` into something dynamic and user/agent
+   -editable, rather than a fixed table only a code change can update.
+   Store the registry as JSON on the `Desk` dataclass itself
+   (`desk/desks.py`), persisted in the `.desk` file the same way
+   `custom_widgets` already is. Add a new widget,
+   `filetype-registry-editor`, that reads and edits the registry
+   entirely through a new Desk service exposed over the Bridge API
+   (a new capability, alongside `workspace`/`fs`/`widgets`/`events`/
+   `introspect`) -- never by reading/writing the `.desk` file directly.
+   Editing the registry through this Bridge API call must publish a
+   Desk event (via the existing `EventMediator`/`desk.events.*`
+   machinery, TODO 6f9c51b) with the editing widget's own instance id
+   as the sender, so every other interested widget can react live.
+   Reading the registry through the Bridge API must, as part of that
+   same call, subscribe the calling widget's instance to those edit
+   events -- so "read the registry" and "start watching for future
+   changes to it" are one step, not two separate calls a widget author
+   could forget to pair up. Update the File Explorer widget
+   (`widgets/file_explorer/`) to consume the registry this way:
+   fetch it once via the Bridge API when the widget starts, and update
+   its own local in-memory copy whenever an edit event for it arrives
+   -- never re-fetching from scratch on every event, and never reading
+   the `.desk` file directly itself either. See TODO efdad99, which
+   depends on this registry existing.
