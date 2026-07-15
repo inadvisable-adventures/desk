@@ -3181,6 +3181,7 @@ da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    to require room for *both* the title and the eye button -- i.e.
    greeking should trigger whenever either one no longer fits, not
    only when the title itself no longer fits.
+   [planned: eye-button-persists-title-only.md]
 029047b. Move `scripts/build_widget.py` (TODO `b324217`) out of
    `scripts/` and into the *ensured* `.desk_temp` file set instead of a
    one-time seed. Right now it's copied once into a new project
