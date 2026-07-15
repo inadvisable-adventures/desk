@@ -3374,7 +3374,7 @@ da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    direct `widgets/svg_viewer/widget.py` load) — all confirmed as
    expected staleness, not real regressions, the same pattern already
    seen for the Project Files rename and the `build_widget.py` move.
-7076af5. New SVG Editor widget (`widgets/svg_editor/`) with a basic
+7076af5. COMPLETED: New SVG Editor widget (`widgets/svg_editor/`) with a basic
    visual-object toolbox and point/shape editing tools. See
    `design-docs/svg-viewing-and-editing.md`'s "Supported element types"
    and "SVG Editor widget" sections: a closed set of editable object
@@ -3396,6 +3396,79 @@ da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    default even after this widget exists. Depends on TODO `4d21e7c`
    (so Image Viewer is the thing whose Edit button actually exercises
    this) but not blocked by it — can be implemented in either order.
+   [planned: svg-editor-widget.md]
+
+   `widgets/svg_editor/widget.py`: `xml.etree.ElementTree` is the
+   single source of truth (`SvgObject` subclasses -- `RectObject`/
+   `CircleObject`/`EllipseObject`/`LineObject`/`PolylineObject`/
+   `PolygonObject`/`PathObject`/`TextObject` -- pair a `QGraphicsItem`
+   with the live `ET.Element` it was parsed from; anything
+   unrecognized, including a `<path>` whose `d` isn't the supported
+   straight-line-only M/L/Z grammar, is simply never touched, giving
+   verbatim round-tripping for free). Toolbox: one create-tool button
+   per type (click-to-place with a fixed default size for the
+   single-click types; click-to-add-vertices, Enter/double-click to
+   finish, for polyline/polygon/path), plus Points and Shapes tools.
+   Both editing tools' drag-handles are hit-tested and tracked at the
+   `_EditorView` level (mirrors `WorkspaceView`'s own resize-handle
+   pattern, `design-docs/widget-ux.md`'s "Zoom-Correct Dragging") rather
+   than making the handles themselves draggable Qt items. Shapes tool
+   also drives a small fill/stroke/stroke-width property panel. Added
+   `file_type_registry.BUILTIN_EDIT_WIDGET_BY_SUFFIX = {".svg":
+   "svg_editor"}`, `find_edit_handler` now falls back to it the same
+   way `find_view_handler` already falls back to
+   `BUILTIN_VIEW_WIDGET_BY_SUFFIX` — Image Viewer's Edit button needed
+   no changes at all to pick this up, since it already goes through
+   `current_context.get_editor_or_scrap_opener()` →
+   `DeskWindow.open_editor_or_scrap` → `find_edit_handler`. Added a new
+   numbered widget-list entry (23) to `design-docs/architecture.md`.
+
+   A real, non-obvious correctness point handled directly while
+   writing this (not found via a later bug, but worth recording): every
+   wrapper's geometry read/write goes through `item.mapToScene`/
+   `mapFromScene`, not raw `item.pos()`/local-coordinate arithmetic --
+   a native Qt drag (Shapes tool's own whole-object move) changes an
+   item's `pos()` without touching its local geometry, so anything
+   that read local coordinates directly (e.g. a naive `line().p1()`
+   for `LineObject`, or a polyline's stored point list) would silently
+   ignore any prior native drag when serializing or placing a Points
+   -tool handle. `mapToScene`/`mapFromScene` are unaffected by that
+   distinction since they always resolve true scene position
+   regardless of how much of the offset lives in `pos()` vs. local
+   coordinates.
+
+   Verified directly: a real `SvgEditorWidget` (headless `QApplication`)
+   creates one of each of the 8 supported types via its toolbox
+   click-to-place/click-to-add-vertices flow with the right resulting
+   `ET.Element` tag/attributes; save-then-load-in-a-fresh-widget round
+   -trips both a resized rect (via a simulated Shapes-tool corner drag)
+   and a natively-drag-moved circle correctly; a loaded document mixing
+   a recognized `<rect>`, an unrelated `<defs>` block, and an
+   unsupported curved `<path>` keeps only the `<rect>` as an editable
+   object and round-trips the other two completely untouched after a
+   no-edits save; the Points tool moves exactly one polygon vertex
+   without disturbing the others; the Shapes tool's corner-drag resizes
+   a rect and keeps a circle's `rx`/`ry` equal under resize; the
+   property panel's fill/stroke/stroke-width setters apply to the
+   selected item and sync correctly to its element; unsupported `<path>`
+   grammar (curves, lowercase/relative commands) is correctly rejected;
+   `find_edit_handler` resolves a bare `.svg` to `"svg_editor"` with an
+   empty registry; `discover_widgets` picks up the new manifest
+   correctly. Full regression suite (`git stash` before/after): the
+   same 17 pre-existing/known-stale failures, 0 new failures.
+
+   Found and fixed one real, reproducible crash during verification:
+   `QGraphicsScene.selectionChanged`'s connected slot
+   (`_on_selection_changed`) could fire against an already-destroyed
+   `QGraphicsScene` C++ object during widget teardown
+   (`RuntimeError: wrapped C/C++ object ... has been deleted`), the
+   same class of Qt-signal-invoked-slot-outliving-its-object issue this
+   codebase already guards elsewhere (LEARNINGS.md, TODO `810a5d6`).
+   Fixed two ways: gave the scene an explicit Qt parent
+   (`QGraphicsScene(self)`, tying its lifetime to the widget's own
+   ownership tree) and wrapped the slot's scene access in the same
+   established defensive `try`/`except RuntimeError` pattern used for
+   every other Qt-signal-invoked slot chain here.
 d28885f. New side-by-side widget container: two widget-instance slots in
    one `WidgetFrame`, a button to swap which slot is on which side, and
    a horizontal/vertical orientation toggle — the parking-lot design

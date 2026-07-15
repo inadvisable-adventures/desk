@@ -484,6 +484,23 @@ Desk Bridge API.
     Feedback itself if none were taken), reused consistently for the
     `.md` and every `-screenshot-N.png` rather than a placeholder
     rewritten later. See `plans/feedback-widget.md`.
+23. **SVG Editor Widget** — a built-in `kind: "python"` widget
+    (`widgets/svg_editor/`, TODO `7076af5`) for actually editing (not
+    just viewing — see the Image Viewer entry above) an SVG's basic
+    shape primitives: `<rect>`/`<circle>`/`<ellipse>`/`<line>`/
+    `<polyline>`/`<polygon>`/`<path>` (straight segments only — see
+    `design-docs/svg-viewing-and-editing.md`'s "Supported element
+    types")/`<text>`. `xml.etree.ElementTree` is the single source of
+    truth (a wrapper object per recognized element pairs a
+    `QGraphicsItem` with the live `ET.Element` it was parsed from;
+    anything unrecognized round-trips untouched); a toolbox has one
+    create-tool per type, plus two mutually-exclusive editing tools —
+    Points (drag a path/polyline/polygon's individual vertices) and
+    Shapes (move/resize a whole object, plus a fill/stroke/stroke-width
+    property panel). Registered as the built-in `.svg` **edit** handler
+    (`file_type_registry.BUILTIN_EDIT_WIDGET_BY_SUFFIX`), so Image
+    Viewer's Edit button reaches it automatically. See
+    `plans/svg-editor-widget.md`.
 
 ### Widget Model
 

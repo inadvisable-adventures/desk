@@ -79,6 +79,17 @@ BUILTIN_VIEW_WIDGET_BY_SUFFIX = {
 }
 
 
+# TODO 7076af5: a built-in *edit* fallback, mirroring
+# BUILTIN_VIEW_WIDGET_BY_SUFFIX above -- without this, clicking Edit on
+# a .svg would keep opening it in the plain text Editor by default
+# (looks_like_text_file says yes -- SVG is valid UTF-8 XML) even after a
+# dedicated SVG Editor widget exists, the same regression-in-usefulness
+# find_view_handler's own builtin fallback was added to avoid.
+BUILTIN_EDIT_WIDGET_BY_SUFFIX = {
+    ".svg": "svg_editor",
+}
+
+
 def _find_handler(registry: list[FileTypeRegistryEntry], path: Path, role: str) -> str | None:
     """Extension match first (case-insensitive), then MIME type
     (mimetypes.guess_type) -- "keyed by both," per the original ask."""
@@ -101,12 +112,13 @@ def find_view_handler(registry: list[FileTypeRegistryEntry], path: Path) -> str 
 
 
 def find_edit_handler(registry: list[FileTypeRegistryEntry], path: Path) -> str | None:
-    """A registered `"edit"` handler for `path`'s type -- no built-in
-    fallback here (unlike find_view_handler): the caller (TODO efdad99)
-    decides what happens for a genuinely text file with no registered
-    editor (the built-in text Editor widget), which isn't this
-    function's concern."""
-    return _find_handler(registry, path, "edit")
+    """A registered `"edit"` handler for `path`'s type, falling back to
+    `BUILTIN_EDIT_WIDGET_BY_SUFFIX` (TODO 7076af5) if the dynamic
+    registry has nothing. Still no fallback beyond that: the caller
+    (TODO efdad99) decides what happens for a genuinely text file with
+    no edit handler at all (the built-in text Editor widget), which
+    isn't this function's concern."""
+    return _find_handler(registry, path, "edit") or BUILTIN_EDIT_WIDGET_BY_SUFFIX.get(path.suffix.lower())
 
 
 def looks_like_text_file(path: Path, sniff_bytes: int = 8192) -> bool:
