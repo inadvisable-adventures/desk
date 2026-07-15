@@ -2413,10 +2413,30 @@ dc557b2. COMPLETED: create a general event poster widget
    instance_id-equals-uuid mechanism.
    [planned: image-drop-tempui.md]
 
-593a464. Bug: in the Event Log widget, the "Live Tail" and "Clear Log" buttons'
-   chrome (background/border) doesn't scale with zoom -- same category
-   of bug as TODO 465c404's File Explorer toolbar fix. Screenshot:
-   both buttons' text renders oversized, overflowing well outside
-   their own grey rounded-pill backgrounds, which stayed a visibly
-   smaller size than the (correctly) zoomed text.
+593a464. COMPLETED: Bug: in the Event Log widget, the "Live Tail" and "Clear Log"
+   buttons' chrome (background/border) doesn't scale with zoom -- same
+   category of bug as TODO 465c404's File Explorer toolbar fix.
+   Screenshot: both buttons' text renders oversized, overflowing well
+   outside their own grey rounded-pill backgrounds, which stayed a
+   visibly smaller size than the (correctly) zoomed text.
+
+   Same fix as TODO 465c404: force Qt's built-in "Fusion" style on the
+   two buttons (`self._live_tail_button`, `self._clear_button`) via
+   `QStyleFactory.create("Fusion")` + `.setStyle(...)`, kept alive as
+   an instance attribute (`setStyle()` doesn't take ownership of the
+   `QStyle`) -- rather than hand-painting custom chrome, since a
+   `QPushButton` (this widget's Live Tail button is checkable, unlike
+   File Explorer's plain button) has too many visual states to
+   re-derive by hand.
+
+   Verified headlessly: the widget builds without error, both buttons
+   report `style().objectName() == "fusion"`, Live Tail's checkable
+   toggle still works, Clear Log's `clicked` still reaches
+   `_clear_log`, and the real widget renders cleanly through a
+   3x-zoomed `QGraphicsView`/`QGraphicsProxyWidget` with unaffected
+   button geometry. As with TODO 465c404, this environment's offscreen
+   Qt platform defaults to Fusion regardless of the fix, so it can't
+   reproduce the *broken* native-macOS-style rendering the bug
+   report's screenshot showed -- needs visual confirmation in the real
+   running app.
    [planned: event-log-toolbar-zoom-scaling.md]

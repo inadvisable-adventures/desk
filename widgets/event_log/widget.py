@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QStyleFactory,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -56,12 +57,23 @@ class EventLogWidget(QWidget):
         self._live_tail_button.setCheckable(True)
         self._live_tail_button.setChecked(True)
 
-        clear_button = QPushButton("Clear Log")
-        clear_button.clicked.connect(self._clear_log)
+        self._clear_button = QPushButton("Clear Log")
+        self._clear_button.clicked.connect(self._clear_log)
+
+        # Native-style-painted button chrome (background, border) visually
+        # desyncs from its own text once zoomed -- same bug/fix as
+        # widgets/file_explorer/widget.py's toolbar (TODO 465c404): Fusion
+        # paints its own chrome as ordinary transform-respecting vector
+        # operations instead of native macOS theme calls. setStyle() does
+        # not take ownership of the QStyle, so it's kept alive as an
+        # instance attribute. See TODO 593a464.
+        self._toolbar_style = QStyleFactory.create("Fusion")
+        self._live_tail_button.setStyle(self._toolbar_style)
+        self._clear_button.setStyle(self._toolbar_style)
 
         toolbar = QHBoxLayout()
         toolbar.addWidget(self._live_tail_button)
-        toolbar.addWidget(clear_button)
+        toolbar.addWidget(self._clear_button)
         toolbar.addStretch()
 
         layout = QVBoxLayout(self)

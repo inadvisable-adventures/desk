@@ -1,4 +1,4 @@
-# Event Log widget's Live Tail/Clear Log buttons don't scale their chrome with zoom
+# Event Log widget's Live Tail/Clear Log buttons don't scale their chrome with zoom (COMPLETED)
 
 TODO `593a464`.
 
@@ -70,3 +70,27 @@ take ownership of the `QStyle` -- kept alive as an instance attribute
   zoomed into the Event Log widget's toolbar. If Fusion's look reads as
   jarring, or the bug somehow persists, the fallback is hand-painted
   custom chrome for these two controls.
+
+## Status
+
+Implemented. `self._live_tail_button` and `self._clear_button` (the
+latter promoted from a local `clear_button`) both get
+`.setStyle(self._toolbar_style)`, `self._toolbar_style =
+QStyleFactory.create("Fusion")` kept alive as an instance attribute.
+
+Verified what's actually checkable in this environment: the widget
+builds without error, both controls report `style().objectName() ==
+"fusion"`, Live Tail's checkable toggle state still works, Clear Log's
+`clicked` still reaches `_clear_log` (confirmed via the existing
+`_confirm_clear` monkeypatch seam) -- all unchanged from before,
+confirming `setStyle()` only affected painting. Also rendered the real
+widget through a 3x-zoomed `QGraphicsView`/`QGraphicsProxyWidget`,
+mirroring TODO `465c404`'s own verification setup: renders cleanly,
+button geometry unaffected by the style swap.
+
+As flagged in the plan: this environment's offscreen Qt platform
+defaults to Fusion regardless, so it cannot reproduce the *broken*
+native-macOS-style rendering the bug report's screenshot showed, and
+therefore can't be used to prove this fix resolves that exact symptom
+by direct before/after comparison. Please confirm by zooming into the
+Event Log widget's toolbar in the real running app.
