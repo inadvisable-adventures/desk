@@ -14,6 +14,7 @@ from desk.file_watch import SingleFileWatcher
 from desk.hotreload import HotReloadBroker
 from desk.questions_file import find_nearest_questions_file, parse_questions_file
 from desk.recent_desks import add_to_mru, prune_missing_mru_entries
+from desk.server.bridge_client import DOM_SNAPSHOT_JS
 from desk.server.runner import ServerHandle
 from desk.shell import current_context
 from desk.shell.canvas import WorkspaceView
@@ -170,6 +171,14 @@ class DeskWindow(QMainWindow):
         # and a subscribe from a kind:"python" widget go through the exact
         # same mediator. See _bind_event_mediator/_refresh_picker below.
         self._event_mediator = handle.event_mediator
+
+        # (caller_instance_id, target_instance_id) pairs the Desk user has
+        # already approved for the introspect Bridge capability (TODO
+        # 9767c1a) -- in-memory, per-session only, never persisted to
+        # .desk/disk (a security-relevant grant; "ask again next time" is
+        # the safe default absent a real, designed persistence mechanism).
+        # See request_introspect_permission/switch_desk.
+        self._introspect_grants: set[tuple[str, str]] = set()
 
         self._temp_ui_manager = TempUiManager()
         self._temp_ui_manager.file_added.connect(self._on_temp_ui_file_added)
@@ -676,6 +685,77 @@ class DeskWindow(QMainWindow):
         see PARKINGLOT.md's former entry on this, now resolved here."""
         return self._widgets.get(widget_id)
 
+    def _display_name_for_instance(self, instance_id: str) -> str:
+        """A human-readable label for a placed widget instance (its
+        kind's display name plus a short instance-id fragment) -- used
+        by the introspect permission dialog (TODO 9767c1a) so the Desk
+        user sees "Browser (a1b2c3d4)", not a bare instance id. Falls
+        back to the raw instance id if the frame can't be found (should
+        not normally happen for a caller that just made a live Bridge
+        request, but this is a display label, not a security check --
+        never worth raising over)."""
+        frame = self.find_frame_by_instance_id(instance_id)
+        if frame is None:
+            return instance_id
+        widget_info = self._widgets.get(frame.content.widget_id)
+        kind_name = widget_info.name if widget_info is not None else frame.content.widget_id
+        return f"{kind_name} ({instance_id[:8]})"
+
+    def request_introspect_permission(self, caller_instance_id: str, target_instance_id: str) -> bool:
+        """The introspect Bridge capability's permission gate (TODO
+        9767c1a), called via `GuiBridge` from the (background-thread)
+        Local Web Server: unlike every other Bridge capability (a
+        static declaration in the caller's own manifest/`DefineWidget`),
+        this also requires the Desk *user*'s in-the-moment confirmation
+        -- inspecting another widget's rendered DOM and console output
+        is materially more sensitive than anything else the Bridge API
+        currently grants. Shows a blocking confirmation dialog (the same
+        `_confirm_fn`/`QMessageBox.question` shape every other
+        consequential action already uses) the first time this (caller,
+        target) pair asks in this session; a later call for the same
+        pair reuses the recorded grant without re-prompting (a widget
+        that legitimately polls another's DOM/console repeatedly -- e.g.
+        a live viewer -- shouldn't be re-prompted every call). Grants
+        are in-memory only, cleared on `switch_desk`, never persisted to
+        `.desk`/disk."""
+        grant_key = (caller_instance_id, target_instance_id)
+        if grant_key in self._introspect_grants:
+            return True
+        caller_name = self._display_name_for_instance(caller_instance_id)
+        target_name = self._display_name_for_instance(target_instance_id)
+        approved = self._confirm_fn(
+            "Allow DOM/Console Inspection?",
+            f"“{caller_name}” wants to inspect “{target_name}”’s DOM and console log. Allow?",
+        )()
+        if approved:
+            self._introspect_grants.add(grant_key)
+        return approved
+
+    def start_dom_snapshot(self, target_instance_id: str, resolve: Callable[[object], None]) -> None:
+        """The introspect Bridge capability's `GuiBridge.call_async`
+        starter (TODO 9767c1a) -- must run on the GUI thread and must
+        never block it (see `GuiBridge.call_async`'s own docstring for
+        why): kicks off the target's own `QWebEnginePage.runJavaScript`
+        (genuinely async -- its own callback fires later, still on the
+        GUI thread) and calls `resolve` once that callback delivers the
+        DOM tree, bundled with the target's already-available
+        (synchronous) console log. Resolves with `{"error": ...}`
+        (never raises) if the target instance isn't found or isn't a
+        `kind: "html"` widget -- there's nothing to snapshot either
+        way, and this runs from an async callback context where a raised
+        exception wouldn't reach the original caller anyway."""
+        frame = self.find_frame_by_instance_id(target_instance_id)
+        if frame is None or not isinstance(frame.content, ChromiumWidget):
+            resolve({"error": f"Unknown or non-html target widget: {target_instance_id!r}"})
+            return
+        console_log = [
+            {"level": entry.level, "message": entry.message, "line": entry.line, "source": entry.source}
+            for entry in frame.content.get_console_log()
+        ]
+        frame.content.page().runJavaScript(
+            DOM_SNAPSHOT_JS, lambda dom: resolve({"dom": dom, "console": console_log})
+        )
+
     def set_html_widget_local_storage(self, instance_id: str, data: dict) -> None:
         """The Bridge API's `self.setLocalStorage` (TODO 5734529) --
         just updates the in-memory store; like the `python`-kind
@@ -852,6 +932,9 @@ class DeskWindow(QMainWindow):
         # Same reasoning, same spot (TODO 6f9c51b): every subscription
         # belonged to a frame view.clear_widgets() just destroyed.
         self._event_mediator.clear_all()
+        # Same reasoning again (TODO 9767c1a): every introspect grant
+        # named instance ids that belonged to frames just destroyed too.
+        self._introspect_grants.clear()
         new_desk = load_desk(path) if path.is_file() else Desk(path=path)
         self.current_desk = new_desk
         # Set before _provision_temp_ui/_load_desk_widgets below, both

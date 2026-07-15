@@ -91,6 +91,10 @@ BRIDGE_CLIENT_TEMPLATE = """
         pollEvents();
       },
     },
+    introspect: {
+      snapshot: (targetInstanceId) =>
+        call("POST", "/api/bridge/introspect/snapshot", { target_instance_id: targetInstanceId }),
+    },
     self: {
       getManifest: () => call("GET", "/api/bridge/self/getManifest"),
       getLocalStorage: () => call("GET", "/api/bridge/self/getLocalStorage"),
@@ -103,3 +107,54 @@ BRIDGE_CLIENT_TEMPLATE = """
 
 def render_bridge_client(widget_id: str, instance_id: str, token: str) -> str:
     return BRIDGE_CLIENT_TEMPLATE % {"widget_id": widget_id, "instance_id": instance_id, "token": token}
+
+
+# Executed via QWebEnginePage.runJavaScript directly against a *target*
+# widget's own page (desk.shell.window.DeskWindow.start_dom_snapshot,
+# TODO 9767c1a's introspect capability) -- never injected as part of
+# BRIDGE_CLIENT_TEMPLATE above, so it needs no %-escaping despite that
+# template's own %-style formatting. Bounded (depth/child-count/text
+# -length caps) so a pathological page can't produce an unbounded
+# payload: max depth 12, max 50 children per node, attribute/text values
+# truncated to 200 characters.
+DOM_SNAPSHOT_JS = """
+(function () {
+  const MAX_DEPTH = 12;
+  const MAX_CHILDREN = 50;
+  const MAX_TEXT_LENGTH = 200;
+
+  function truncate(text) {
+    return text.length > MAX_TEXT_LENGTH ? text.slice(0, MAX_TEXT_LENGTH) + "\\u2026" : text;
+  }
+
+  function snapshot(node, depth) {
+    if (depth > MAX_DEPTH) {
+      return { truncated: true };
+    }
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent.trim();
+      return text ? { text: truncate(text) } : null;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return null;
+    }
+    const attrs = {};
+    for (const attr of node.attributes) {
+      attrs[attr.name] = truncate(attr.value);
+    }
+    const children = [];
+    for (const child of node.childNodes) {
+      if (children.length >= MAX_CHILDREN) {
+        break;
+      }
+      const childSnapshot = snapshot(child, depth + 1);
+      if (childSnapshot) {
+        children.push(childSnapshot);
+      }
+    }
+    return { tag: node.tagName.toLowerCase(), attrs: attrs, children: children };
+  }
+
+  return snapshot(document.documentElement, 0);
+})();
+"""

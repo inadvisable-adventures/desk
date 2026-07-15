@@ -94,6 +94,10 @@ class EventPublishRequest(BaseModel):
     payload: object = None
 
 
+class IntrospectSnapshotRequest(BaseModel):
+    target_instance_id: str
+
+
 def _event_dict(event) -> dict:
     return {
         "timestamp": event.timestamp,
@@ -299,6 +303,45 @@ def create_app(
         loop = asyncio.get_event_loop()
         event = await loop.run_in_executor(None, mediator.poll, instance_id, timeout)
         return {"event": _event_dict(event) if event is not None else None}
+
+    # --- introspect (TODO 9767c1a) -- unlike every other capability
+    # above, a declared capability alone isn't enough: the Desk user
+    # must also approve this specific (caller, target) pair, via a
+    # blocking confirmation dialog (DeskWindow.request_introspect_
+    # permission, run synchronously through the existing GuiBridge.call
+    # -- showing a modal is itself already a normal blocking GUI
+    # operation). The DOM snapshot itself then runs through the new
+    # GuiBridge.call_async, since QWebEnginePage.runJavaScript's own
+    # result only arrives via a later callback.
+
+    async def run_on_gui_async(starter):
+        if gui_bridge is None:
+            raise HTTPException(503, "GUI bridge not available")
+        loop = asyncio.get_event_loop()
+        try:
+            return await loop.run_in_executor(None, gui_bridge.call_async, starter)
+        except RuntimeError as e:
+            raise HTTPException(503, str(e)) from e
+        except TimeoutError as e:
+            raise HTTPException(504, str(e)) from e
+
+    @app.post("/api/bridge/introspect/snapshot")
+    async def introspect_snapshot(
+        body: IntrospectSnapshotRequest,
+        widget: WidgetInfo = Depends(require_caller("introspect")),
+        instance_id: str = Depends(require_instance_id),
+    ):
+        approved = await run_on_gui(
+            lambda: gui_bridge.window.request_introspect_permission(instance_id, body.target_instance_id)
+        )
+        if not approved:
+            raise HTTPException(403, "The Desk user declined this inspection request")
+        result = await run_on_gui_async(
+            lambda resolve: gui_bridge.window.start_dom_snapshot(body.target_instance_id, resolve)
+        )
+        if "error" in result:
+            raise HTTPException(400, result["error"])
+        return result
 
     for widget_id, widget in html_widgets.items():
         app.mount(

@@ -42,7 +42,10 @@ GITIGNORE_COMMENT = "# Desk-specific"
 # TODO f693275: bumped 7 -> 8 for a new `Capability` DefineWidget DSL
 # line in _CUSTOM_WIDGETS_DOC (a DefineWidget widget can now declare
 # Bridge API capabilities, e.g. to use events.*).
-TEMPUI_DOC_VERSION = 8
+#
+# TODO 9767c1a: bumped 8 -> 9 for a new "Inspecting another widget"
+# section in _CUSTOM_WIDGETS_DOC (the introspect capability).
+TEMPUI_DOC_VERSION = 9
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -434,6 +437,9 @@ declaring the matching capability in your own manifest, unlike the
   `.publish(name, payload)` / `.onMessage(callback)` (capability
   `events`) — send and receive named messages to/from other widgets.
   See "Sending and receiving named messages" below.
+- `desk.introspect.snapshot(targetInstanceId)` (capability
+  `introspect`) — get a DOM tree snapshot and console log of *another*
+  widget instance. See "Inspecting another widget" below.
 
 The calls above are almost always all a `DefineWidget` widget actually
 needs.
@@ -482,6 +488,34 @@ through this JS API — they get it via a direct Python import instead
 (`desk.shell.event_broker.EventSubscription`), the same "REST for html
 widgets, direct Python for python widgets" split every other Bridge API
 capability already follows.
+
+## Inspecting another widget
+
+`desk.introspect.snapshot(targetInstanceId)` → `{ dom, console }` gets
+a snapshot of *another* `kind: "html"` widget instance's own rendered
+page: `dom` is a tree (`{ tag, attrs, children }` for an element,
+`{ text }` for text content — bounded: max depth 12, max 50 children
+per node, attribute/text values truncated to 200 characters) rooted at
+that page's `<html>` element; `console` is its recent
+`console.log`/`warn`/`error` output (level, message, line, source —
+capped at the most recent 200 entries).
+
+**This is the one Bridge API capability that isn't just a manifest
+declaration** — the first time your widget asks to inspect a
+particular target, the Desk *user* sees a confirmation dialog naming
+both widgets and must approve it before you get anything back
+(declining gives you a failed call, not empty/fake data). Once
+approved, that specific (your widget, that target) pairing won't be
+re-prompted again for the rest of the session — asking to inspect a
+*different* target still prompts fresh. This is because inspecting
+another widget's rendered content and console output is materially
+more sensitive than anything else in the Bridge API; declaring the
+`introspect` capability in your manifest is necessary but not
+sufficient on its own.
+
+`targetInstanceId` is that widget's own instance id (e.g. from
+`desk.workspace.getState()`, capability `workspace`, or
+`desk.widgets.list()`, capability `widgets`) — not its `kind`/type.
 """
 
 _DISCUSS_PARKING_LOT_ITEM_DOC = """# TempUI DSL: DiscussParkingLotItem

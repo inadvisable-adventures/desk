@@ -691,6 +691,7 @@ into each Chromium Widget's page via a `QWebEngineScript` at
 | `desk.fs.readFile(path)` / `writeFile(path, contents)` | Filesystem access | `fs` |
 | `desk.widgets.list()` / `open(widgetId, opts)` / `close(instanceId)` | Manage widget instances | `widgets` |
 | `desk.events.subscribe(names)` / `unsubscribe(names)` / `publish(name, payload)` / `onMessage(callback)` | Send/receive named messages via Desk's own mediator (TODO `6f9c51b`) | `events` |
+| `desk.introspect.snapshot(targetInstanceId)` | DOM tree + console log of *another* widget instance (TODO `9767c1a`) — the only capability that also requires a live, per-request Desk-user confirmation, not just a manifest declaration | `introspect` |
 | `desk.self.getManifest()` | A widget introspecting its own manifest | none |
 | `desk.self.getLocalStorage()` / `setLocalStorage(data)` | Persist/restore this *instance's* own state across a Desk reload (TODO `5734529`) | none |
 
@@ -763,6 +764,25 @@ mediator-pattern pub/sub core this sits on top of, shared unchanged by
 (`desk.shell.event_broker.EventSubscription`) rather than this REST
 surface.
 
+**`introspect` (TODO `9767c1a`) is the first Bridge API capability
+gated by a live user confirmation, not just a manifest declaration** —
+see [Security Considerations](#security-considerations). Building it
+needed two new pieces: `ChromiumWidget` now sets an explicit
+`_LoggingWebEnginePage` (overriding the virtual
+`javaScriptConsoleMessage` method — there's no signal for this) so
+every `html` widget has a small, bounded (200-entry) rolling buffer of
+its own console output to query on demand; and `GuiBridge.call_async`
+generalizes `GuiBridge.call` for a GUI-thread operation that's itself
+asynchronous (`QWebEnginePage.runJavaScript`'s result only arrives via
+a later callback) — `call`'s `fn()` is expected to return synchronously,
+and a naive attempt to block *inside* `fn()` waiting for that later
+callback would deadlock the GUI thread against its own event loop (the
+callback that would unblock it can never run while the thread that
+would process it is itself blocked waiting). `call_async`'s `starter`
+must instead return immediately after kicking off the async operation;
+only the original *calling* thread (a background executor thread, same
+as every other Bridge GUI-thread call) ever blocks.
+
 ## Security Considerations
 
 - The Local Web Server (used only for `kind: "html"` widgets) binds to
@@ -784,6 +804,13 @@ surface.
 - The Bridge API is capability-scoped per the widget's manifest; a `html`
   widget that hasn't declared `pty.spawn` cannot spawn shell processes,
   even though the underlying backend can.
+- `introspect` (TODO `9767c1a`) — letting one widget see another's DOM
+  and console output — additionally requires the Desk user's live,
+  in-the-moment approval of that specific (caller, target) pair, via a
+  blocking confirmation dialog; declaring the capability in a manifest
+  is necessary but not sufficient. Grants are in-memory only, per Desk
+  session, never persisted to disk — switching Desks (or restarting)
+  means asking again.
 - The Console widget, if Chromium-hosted, is an intentional, explicit "full
   shell access" escape hatch (that's its purpose — running `claude` and
   other CLIs) and is a built-in widget, not something arbitrary third-party

@@ -2180,7 +2180,49 @@ e35bcf0. COMPLETED: pop-ups from inside the browser widget show up in a
    `PARKINGLOT.md` rather than fixed here, being unrelated to what this
    item asked for.
    [planned: browser-widget-contained-popups.md]
-9767c1a. add a Bridge API service by which a widget (with permission from the Desk user) can get a tree-view snapshot of the dom and console log of an html-based widget.
+9767c1a. COMPLETED: add a Bridge API service by which a widget (with
+   permission from the Desk user) can get a tree-view snapshot of the
+   dom and console log of an html-based widget.
+
+   Shipped as a new `introspect` capability + `desk.introspect
+   .snapshot(targetInstanceId)` -> `{dom, console}`. Two new pieces
+   needed first: `ChromiumWidget` now sets an explicit
+   `_LoggingWebEnginePage` (overriding the virtual
+   `javaScriptConsoleMessage` -- no signal exists for this) giving
+   every `html` widget a bounded 200-entry rolling console-output
+   buffer, queried on demand; and a new `GuiBridge.call_async`,
+   generalizing `GuiBridge.call` for a GUI-thread operation that's
+   itself async (`QWebEnginePage.runJavaScript`'s result only arrives
+   via a later callback) -- blocking naively inside `call`'s own `fn()`
+   waiting for that callback would deadlock the GUI thread against its
+   own event loop, so `call_async`'s `starter` must instead kick off
+   the operation and return immediately, with `resolve(value)` (called
+   later, whenever the real callback fires) actually completing the
+   call. Unlike every other Bridge capability, `introspect` is not
+   satisfied by a manifest declaration alone: the first request for a
+   given (caller, target) pair shows the Desk user a blocking
+   confirmation dialog naming both widgets (`DeskWindow
+   .request_introspect_permission`); declining returns no data at all.
+   Grants are in-memory only (`DeskWindow._introspect_grants`), cleared
+   on `switch_desk`, never persisted to disk. `tempui-custom-widgets.md`
+   documents the new capability and its permission model
+   (`TEMPUI_DOC_VERSION` 8 -> 9); `design-docs/architecture.md`'s
+   capability table and Security Considerations updated to match.
+
+   Verified headlessly end to end via a real `DeskWindow` with three
+   real placed `html` widgets: a capability-less caller `403`s before
+   ever reaching the permission dialog; an approved request returns a
+   correctly-nested real DOM tree (confirmed against the target's
+   actual markup, not a stub) plus its real captured console log
+   (`info`/`error` entries, right levels); a repeat request for the
+   same pair succeeds without re-prompting (confirmed via a
+   confirm-call counter); an unknown target `400`s; a declined request
+   to a different target `403`s with no grant recorded and no data
+   returned; and `switch_desk` clears every grant. `GuiBridge.call_async`
+   and the console-log buffer were also verified in isolation (a
+   genuinely-async resolution path with no deadlock, exception
+   propagation, clean timeout; real `console.log`/`warn`/`error`
+   capture and the 200-entry bound).
    [planned: introspect-bridge-capability.md]
 33d3e8d. do an audit of all of the UI and confirm that they don't fail to scale properly when zooming; fix anything that violates that. when the titlebar is too small to hold the buttons without growing the widget width, just show the title; if it is still too small, then for so long as that is true, "greek" the widget (show just a rectangle with the frame color; if the user clicks on a "greeked" widget, zoom/pan the desk so that widget is showing, with 20% margins on all sides. Add a button to widget title bars (labelled with an eye emoji) to do the same thing (zoom/pan to show the widget)
 6e731c1. drag-and-drop of an image into the Desk should result in the image being saved in the .desk_temp directory and then displayed with tempui.

@@ -1,4 +1,4 @@
-# Bridge API introspection service: DOM snapshot + console log of another html widget
+# COMPLETED: Bridge API introspection service: DOM snapshot + console log of another html widget
 
 TODO `9767c1a`.
 
@@ -165,4 +165,43 @@ the same reason):
 
 ## Status
 
-Not yet implemented — plan written first per `development-process.md`.
+Implemented exactly as designed above, no deviations.
+
+Verified headlessly (`QT_QPA_PLATFORM=offscreen`, real
+`QApplication`/`QWebEngineView`, a real running server + real
+`DeskWindow`, HTTP calls driven from a background thread while the main
+thread pumps `processEvents()` — required for any `GuiBridge`-routed
+call, `call_async` included, for the same reason established verifying
+TODO `f693275`):
+
+- `GuiBridge.call_async`: a genuinely-async `starter` (using
+  `QTimer.singleShot` to resolve later, standing in for
+  `runJavaScript`'s own callback shape) resolves correctly with no
+  deadlock; a synchronous exception inside `starter` propagates to the
+  caller; a `starter` that never calls `resolve` times out cleanly.
+- `_LoggingWebEnginePage`: real `console.log`/`warn`/`error` calls from
+  a loaded page are captured in order with the right level; the buffer
+  is confirmed bounded at exactly `CONSOLE_LOG_MAX_ENTRIES` (200),
+  keeping the most recent entries when a page logs far more than that.
+- Full end-to-end, via a real `DeskWindow` with three real placed `html`
+  widgets (a capability-declared caller, a capability-less caller, and
+  a target with real nested DOM and real `console.log`/`console.error`
+  calls): a caller without the `introspect` capability gets `403`
+  before the permission dialog is ever reached; an approved request
+  returns a `200` with a correctly-nested DOM tree (confirmed the
+  snapshot actually contains the target page's real `#root` div and
+  nested `<p class="greeting">`, not a stubbed/empty result) and the
+  target's real captured console log (both the `info` and `error`
+  entries, with the right levels); the (caller, target) grant is
+  recorded and a second request for the *same* pair succeeds without
+  re-prompting (confirmed via a confirm-call counter, not just "it
+  worked"); a request naming an unknown target instance id `400`s; a
+  *declined* request to a second, different target `403`s, leaves no
+  grant recorded, and returns no DOM/console data at all; and
+  `switch_desk` clears every recorded grant.
+- `ensure_docs_current`: a doc directory stuck at version 8 refreshes
+  to 9, with `tempui-custom-widgets.md` containing
+  `desk.introspect.snapshot` and the new "Inspecting another widget"
+  section.
+- Full import-chain sanity check re-run clean after the documentation
+  edits.
