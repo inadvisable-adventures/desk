@@ -709,3 +709,26 @@ This file captures thoughts and TODO items that arise during work on other thing
   widget for viewing (and maybe editing) that embedded code directly,
   rather than needing an external decode step, would help when
   inspecting or debugging a custom widget's actual implementation.
+
+- **Docs on widget taxonomy and lifecycles**
+
+  A real taxonomy of the different kinds of widget in Desk -- covering
+  everything from tempui-placed ones (`Question`, `Scratch`,
+  `DefineWidget`-defined custom widgets, ...) through the two built-in
+  widget kinds (`python`/`PythonWidgetHost`, `html`/`ChromiumWidget`),
+  and also considering each one's actual implementation
+  language+paradigm (a `widgets/<id>/widget.py` Python `QWidget`
+  subclass vs. a hand-authored `DefineWidget` inline HTML/CSS/JS
+  document vs. a TS-authored `custom_widget_src/<name>/` one, once TODO
+  `b324217`'s build pattern exists -- these aren't the same thing even
+  when they end up looking similar at runtime once placed). Each
+  taxonomy entry should document its own lifecycle (creation/
+  placement, restore-on-reload, hot-reload behavior, promotion where
+  applicable, teardown) with its own Mermaid chart, rather than one
+  giant diagram trying to cover every kind at once. The documentation
+  should be organized so that an agent working specifically on a
+  tempui widget doesn't need to read about, say, a built-in Python
+  widget's own lifecycle to understand tempui's -- split by taxonomy
+  entry (mirroring how the `tempui-*.md` split-doc convention already
+  separates unrelated DSL concerns from each other) rather than one
+  monolithic document covering every kind of widget at once.
