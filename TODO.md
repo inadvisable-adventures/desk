@@ -2887,6 +2887,70 @@ b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
    Full regression suite back to the same 9 pre-existing failures plus
    three already-known-stale doc-version assertions from earlier TODOs
    in this batch, 0 other new failures.
+7462cdb. Add `tempui-breaking-changes.md`/`tempui-new-features.md` to
+   the generated `.desk_temp` tempui doc set (prioritized, per user
+   request). From `../../FEEDBACK/FEEDBACK-DESK-tempui-doc-changelog
+   -2026-07-15-1315.md` (a peer project's feedback, extracted from
+   migrating `necro-4x`'s `widgets/lifeforce-heart/`/
+   `widgets/lifeforce-control/` to a newer Desk's updated `DefineWidget`
+   authoring conventions): `TEMPUI_DOC_VERSION` already tells a reading
+   agent *that* something changed since whatever version its project
+   was built against, but not *what* -- forcing a full re-read plus a
+   manual diff against memory (which a fresh agent picking up the same
+   project cold has no way to do at all) to answer "what do I need to
+   fix." Add two more files to the same generated/versioned set
+   `desk-temporary-ui.md`/`tempui-custom-widgets.md`/etc. already are
+   (TODO `e57ce5f`'s "one shared version number for the whole set"
+   mechanism -- no separate version of their own, refreshed for free by
+   the existing `ensure_docs_current` staleness check): `tempui
+   -breaking-changes.md` and `tempui-new-features.md`, each entry
+   tagged with the `TEMPUI_DOC_VERSION` it was introduced in, listed
+   newest-first, with enough detail to act on without re-reading the
+   rest of the doc set (what changed, and concretely what to do about
+   code/conventions written against the version before it). Backfill
+   real historical entries from this project's own actual
+   `TEMPUI_DOC_VERSION` bump comments in `src/desk/temp_ui.py` (every
+   bump already has a "TODO xxx: bumped N -> N+1 for ..." comment
+   explaining the change -- a ready-made, accurate source to backfill
+   from, more reliable than the feedback doc's own illustrative
+   reconstruction, which was written against this project's version 13
+   and doesn't reflect the version 14/(this batch's later) changes made
+   since). Establish the convention going forward: whenever
+   `TEMPUI_DOC_VERSION` bumps for a breaking change or a new
+   capability, add a corresponding entry to whichever of these two docs
+   applies, at the same time (see TODO `1a96c9f`, which formalizes this
+   as a documented instruction for agents working on Desk itself).
+1a96c9f. Fork `development-process.md` into a shared/not-shared doc
+   hierarchy, with a Desk-specific section and breaking-changes
+   -tracking instructions (prioritized, immediately after TODO
+   `7462cdb`, per user request). Specifically:
+   - Fork the current `development-process.md` content into a new
+     file, `shared_development_process.md`, living in Desk's own
+     source tree alongside it (not just conceptually "the shared
+     part" -- an actual file here, seeded/distributed the same way).
+   - Rewrite the top-level `development-process.md` itself to have a
+     "When working on Desk itself" section (empty for now -- content to
+     be added later) and a separate section that points to
+     `shared_development_process.md` via a relative file reference,
+     instructing agents to treat that file's contents with the exact
+     same authority as if they were written directly in this top-level
+     file.
+   - Introduce a peer file to `shared_development_process.md`, named
+     `specifically-not-working-on-desk-itself-development-process.md`
+     (empty for now).
+   - In `development-process.md`'s "When working on Desk itself"
+     section, explain the resulting hierarchy of development-process
+     docs (top-level, shared, specifically-not-Desk-itself) clearly
+     enough that an agent can tell them apart, and instruct agents to
+     ask the user for clarification whenever it's ambiguous which of
+     them applies to the current task.
+   - Also in that same section, instruct agents working on Desk itself
+     to update `tempui-breaking-changes.md`/`tempui-new-features.md`
+     (TODO `7462cdb`) whenever a change they make to Desk constitutes a
+     breaking change or a new feature from the perspective of an agent
+     running *inside* Desk in some other project -- so that population
+     of those two docs becomes a standing part of the Desk-development
+     workflow itself, not a one-off backfill.
 8385dcc. Rename the "File Explorer" widget (`widgets/file_explorer/`)
    to "Project Files" -- the directory name, its `widget.json`'s
    `name`, any user-facing string in its own code, and every
@@ -2952,3 +3016,25 @@ da4f9c0. Give every "viewer" widget that shows the contents of a file
    to require room for *both* the title and the eye button -- i.e.
    greeking should trigger whenever either one no longer fits, not
    only when the title itself no longer fits.
+029047b. Move `scripts/build_widget.py` (TODO `b324217`) out of
+   `scripts/` and into the *ensured* `.desk_temp` file set instead of a
+   one-time seed. Right now it's copied once into a new project
+   (`DeskWindow._seed_build_widget_script`, never-overwrite) the same
+   way `scripts/todo_item_ids.py` is -- but unlike a hand-written id
+   -generation script that basically never changes, `build_widget.py`'s
+   own content is exactly the kind of thing `TEMPUI_DOC_VERSION`
+   -bumping already tracks changes to (see TODO `7462cdb`'s new
+   breaking-changes/new-features docs) -- a one-time seed means an
+   older project's copy silently goes stale forever, the same
+   staleness problem the tempui doc set already solved. Move its
+   content into the same generated/versioned `.desk_temp` mechanism
+   `desk-temporary-ui.md`/`tempui-custom-widgets.md`/etc. already use
+   (`ensure_docs_current`/`write_tempui_docs`, TODO `e57ce5f`) so it
+   gets refreshed the same way the docs do, rather than living as a
+   static file only ever copied once. Update every doc that currently
+   points an agent at `scripts/build_widget.py` -- especially
+   `tempui-custom-widgets.md`'s "Authoring from real source" section,
+   but also this project's own `design-docs/custom-widget-authoring.md`
+   and any other reference -- to the new location, making clear the
+   script is meant to be invoked by an agent to build its own tempui
+   widgets from source, the same as today.
