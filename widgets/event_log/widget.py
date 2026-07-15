@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
@@ -20,6 +21,15 @@ from desk.file_watch import SingleFileWatcher
 from desk.shell import current_context
 
 COLUMN_HEADERS = ("Timestamp", "Event", "Sender", "Payload")
+# Stashes the row's full MediatedEvent (TODO 0d2ebc1) on the Timestamp
+# column's own QTableWidgetItem, the same Qt.ItemDataRole.UserRole
+# pattern widgets/questions/widget.py's own ENTRY_ROLE already uses --
+# _format_payload's table-row text is a truncated summary, so
+# double-clicking to open the full Event Viewer needs the real event
+# back, not just its displayed string.
+EVENT_ROLE = Qt.ItemDataRole.UserRole
+
+logger = logging.getLogger(__name__)
 
 
 class EventLogWidget(QWidget):
@@ -51,6 +61,7 @@ class EventLogWidget(QWidget):
             len(COLUMN_HEADERS) - 1, QHeaderView.ResizeMode.Stretch
         )
         self._table.verticalHeader().setVisible(False)
+        self._table.itemDoubleClicked.connect(self._open_event_viewer)
 
         self._live_tail_button = QPushButton("Live Tail")
         self._live_tail_button.setCheckable(True)
@@ -115,9 +126,36 @@ class EventLogWidget(QWidget):
             ):
                 item = QTableWidgetItem(text)
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                if column == 0:
+                    item.setData(EVENT_ROLE, event)
                 self._table.setItem(row, column, item)
         if events and self._live_tail_button.isChecked():
             self._table.scrollToBottom()
+
+    # --- event viewer ------------------------------------------------
+
+    def _open_event_viewer(self, item: QTableWidgetItem) -> None:
+        """Opens the Event Viewer widget (TODO 0d2ebc1) on the
+        double-clicked row's full MediatedEvent -- reads it back off
+        the Timestamp column's own item, same as file_explorer/widget
+        .py's _open_index reaches the Editor widget."""
+        event = self._table.item(item.row(), 0).data(EVENT_ROLE)
+        if event is None:
+            return
+        opener = current_context.get_widget_opener()
+        if opener is None:
+            return
+        widget = opener("event_viewer")
+        if widget is not None and hasattr(widget, "set_event"):
+            # A broken set_event() must never propagate out of here
+            # (matching TODO 810a5d6's reasoning in file_explorer/
+            # widget.py) -- this runs inside a Qt slot
+            # (itemDoubleClicked), and an uncaught exception there is
+            # fatal to the whole process in this PyQt6 setup.
+            try:
+                widget.set_event(event)
+            except Exception:
+                logger.error("Failed to open event in the Event Viewer widget", exc_info=True)
 
     # --- clear -----------------------------------------------------
 

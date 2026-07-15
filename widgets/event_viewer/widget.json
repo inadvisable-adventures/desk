@@ -1,0 +1,7 @@
+{
+  "name": "Event Viewer",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": [],
+  "default_size": { "width": 480, "height": 420 }
+}

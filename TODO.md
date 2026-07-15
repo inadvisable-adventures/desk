@@ -2628,12 +2628,43 @@ c892403. COMPLETED: Resolve relative `desk.fs.readFile`/`writeFile` paths agains
    assertions in my own earlier b324217/5ff02d2 scripts (hardcoded to
    prior version numbers, not real regressions), 0 other new
    failures.
-0d2ebc1. Add an Event Viewer widget: opened by double-clicking a row in
+0d2ebc1. COMPLETED: Add an Event Viewer widget: opened by double-clicking a row in
    the Event Log widget (`widgets/event_log/`), showing that one
    event's full detail (timestamp, name, sender instance id, and its
    payload pretty-printed in full, not the truncated single-line
    summary the Event Log's own table row shows).
    [planned: event-viewer-widget.md]
+
+   Added widgets/event_viewer/ (kind:"python"): EventViewerWidget shows
+   timestamp/name/sender in labels plus the payload pretty-printed
+   (json.dumps(..., indent=2)) in a read-only QPlainTextEdit, via a
+   duck-typed set_event(event) (mirroring set_file). Shows a
+   placeholder when placed standalone with no event set yet. Updated
+   widgets/event_log/widget.py to stash each row's real MediatedEvent
+   on its Timestamp column item (Qt.ItemDataRole.UserRole, mirroring
+   questions/widget.py's ENTRY_ROLE), connected itemDoubleClicked to a
+   new _open_event_viewer that reaches the widget opener via
+   current_context (the same pattern file_explorer's _open_index
+   already uses for the Editor widget), with a broad except around the
+   set_event call so a broken hook can't crash the double-click slot
+   (matching TODO 810a5d6's reasoning). Not centered in the view --
+   matches File Explorer's own current double-click behavior; TODO
+   efdad99/da4f9c0 are the ones introducing centered placement as a
+   deliberate, separately-scoped change.
+
+   Verified headlessly with real Qt widgets (QApplication, offscreen):
+   set_event populates all four fields including pretty-printed
+   multi-line JSON and empty-string None-payload handling; the
+   placeholder shows with no event set; a real QTableWidget
+   double-click flow (via _open_event_viewer directly, exercising the
+   same code a real itemDoubleClicked signal would) opens the widget
+   and passes the correct event through; a missing opener, an opener
+   returning something without set_event, and a set_event that itself
+   raises all fail silently rather than propagating out of the Qt
+   slot. Confirmed discover_widgets(widgets_dir) picks up the new
+   widget correctly. Full regression suite: the same 9 pre-existing
+   failures plus the two already-known-stale doc-version assertions
+   from earlier TODOs, 0 new failures.
 59c5a70. Change where a `DefineWidget` widget's authoring source lives
    (TODO b324217's `custom_widget_src/<name>/` convention): for a Desk
    working on a project other than Desk's own repo, recommend

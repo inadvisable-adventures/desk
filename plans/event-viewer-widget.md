@@ -1,4 +1,4 @@
-# Plan: TODO 0d2ebc1 — Event Viewer widget
+# Plan: TODO 0d2ebc1 (COMPLETED) — Event Viewer widget
 
 ## Summary
 
