@@ -2308,6 +2308,42 @@ dc557b2. COMPLETED: create a general event poster widget
    instance end to end, including genuine cross-instance delivery
    through the real shared mediator.
    [planned: event-poster-widget.md]
-7505703. add a widget to view all of the widgets registered for the event message channel and add a per-registered-widget button to zoom/pan to it (use the same button as the zoom/pan titlebar button)
+7505703. COMPLETED: add a widget to view all of the widgets registered for the event message channel and add a per-registered-widget button to zoom/pan to it (use the same button as the zoom/pan titlebar button)
+
+   Shipped as `widgets/event_subscribers/`: a status line plus a list
+   of every widget instance currently subscribed to at least one name
+   on the event mediator (TODO `6f9c51b`), each row showing a human
+   -readable label and its subscribed event names alongside a 👁
+   button. New `EventMediator.list_subscriptions()` gives a lock
+   -protected snapshot; two new `current_context` hooks
+   (`widget_zoomer`, `widget_display_name_resolver`) let the widget
+   reach a new `DeskWindow.zoom_to_widget_by_instance_id` (resolves a
+   placed frame by instance id, then calls the same
+   `WorkspaceView.zoom_to_widget` the titlebar eye button uses, TODO
+   `33d3e8d`) and the already-existing `_display_name_for_instance`
+   (built for the introspect permission dialog) without importing
+   shell internals directly -- the same "one new minimal get/set pair
+   per capability" pattern every other python-widget-facing hook here
+   already follows. Refreshed on a 1s timer (cheap in-memory work, no
+   subprocess/IO), gated on `isVisible()` like `widgets/git_status/
+   widget.py`'s own polling, since the mediator has no signal-based
+   change notification to react to instead. An instance that
+   unsubscribed from every name individually (leaving an empty set,
+   not removed) is correctly excluded from the list.
+
+   Verified entirely headlessly: `list_subscriptions()`'s snapshot
+   correctness/independence and the empty-set-vs-removed distinction;
+   the widget's not-connected/empty/populated states, row content and
+   sort order, and eye-button-click-to-zoomer wiring (both a fake
+   installed zoomer and a real `QPushButton.click()`); `discover_
+   widgets` picking up the manifest; and a full real `DeskWindow`
+   regression (pointed at this project's own already-provisioned
+   directory, same reasoning as TODO `dc557b2`) confirming
+   `zoom_to_widget_by_instance_id` finds a real frame and actually
+   moves/scales the real view to bring it fully into the viewport
+   (and correctly returns `False` for an unknown id), the new hooks
+   resolve to the real bound `DeskWindow` methods, and a real placed
+   Event Subscribers instance shows a real subscribed instance and
+   its eye button genuinely zooms the real `WorkspaceView` to it.
    [planned: event-subscribers-widget.md]
 6e731c1. drag-and-drop of an image into the Desk should result in the image being saved in the .desk_temp directory and then displayed with tempui.

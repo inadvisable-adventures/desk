@@ -50,7 +50,15 @@ rather than calling the mediator's own blocking `poll()` directly from
 the GUI thread. See `desk.shell.window.DeskWindow._bind_event_mediator`
 for how a widget's own instance id reaches it (the same
 "resolved after `build()`, not through it" shape `_bind_claude_widget`
-already established)."""
+already established).
+
+Also holds a "widget zoomer" hook and a "widget display name resolver"
+hook (TODO 7505703), same minimal shape again: let the Event
+Subscribers widget zoom/pan the Workspace Canvas to a specific placed
+widget instance (by instance id) and show a human-readable label for
+one, without needing to import `desk.shell.window`/`desk.shell.canvas`
+directly -- see `desk.shell.window.DeskWindow
+.zoom_to_widget_by_instance_id`/`_display_name_for_instance`."""
 from collections.abc import Callable
 from pathlib import Path
 
@@ -66,6 +74,8 @@ _main_window: QWidget | None = None
 _widget_path_resolver: Callable[[QPoint], str | None] | None = None
 _discuss_starter: Callable[[str, str, int | None], None] | None = None
 _event_mediator: EventMediator | None = None
+_widget_zoomer: Callable[[str], bool] | None = None
+_widget_display_name_resolver: Callable[[str], str] | None = None
 
 
 def set_current_desk_directory(directory: Path) -> None:
@@ -144,3 +154,21 @@ def set_event_mediator(mediator: EventMediator) -> None:
 
 def get_event_mediator() -> EventMediator | None:
     return _event_mediator
+
+
+def set_widget_zoomer(zoomer: Callable[[str], bool]) -> None:
+    global _widget_zoomer
+    _widget_zoomer = zoomer
+
+
+def get_widget_zoomer() -> Callable[[str], bool] | None:
+    return _widget_zoomer
+
+
+def set_widget_display_name_resolver(resolver: Callable[[str], str]) -> None:
+    global _widget_display_name_resolver
+    _widget_display_name_resolver = resolver
+
+
+def get_widget_display_name_resolver() -> Callable[[str], str] | None:
+    return _widget_display_name_resolver

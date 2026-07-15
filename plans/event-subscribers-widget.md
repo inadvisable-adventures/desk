@@ -1,4 +1,4 @@
-# Event Subscribers widget
+# Event Subscribers widget (COMPLETED)
 
 TODO `7505703`.
 
@@ -115,4 +115,11 @@ Headless (`QT_QPA_PLATFORM=offscreen`):
 
 ## Status
 
-Not yet implemented — plan written first per `development-process.md`.
+Implemented as planned. Same DeskWindow-regression deviation as TODO
+`dc557b2`'s plan: pointed at this project's own already-provisioned
+directory rather than a fresh temp directory, to avoid
+`_provision_temp_ui`'s confirmation dialogs blocking a headless run.
+Verified headlessly throughout, including a full `DeskWindow`
+regression confirming a real eye-button click genuinely zooms the
+real `WorkspaceView` to a real placed instance. See TODO `7505703`'s
+own entry in `TODO.md` for the full summary.

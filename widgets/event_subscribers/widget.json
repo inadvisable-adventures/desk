@@ -1,0 +1,7 @@
+{
+  "name": "Event Subscribers",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": [],
+  "default_size": { "width": 460, "height": 340 }
+}

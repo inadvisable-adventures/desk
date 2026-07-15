@@ -89,6 +89,15 @@ class EventMediator:
             if names is not None:
                 names.discard(name)
 
+    def list_subscriptions(self) -> dict[str, set[str]]:
+        """Snapshot of every currently-subscribed instance id and its
+        subscribed event names (TODO 7505703's Event Subscribers
+        widget) -- a lock-protected shallow copy, safe to iterate
+        /mutate freely afterward without racing a concurrent subscribe
+        /unsubscribe."""
+        with self._lock:
+            return {instance_id: set(names) for instance_id, names in self._subscriptions.items()}
+
     def unsubscribe_all(self, instance_id: str) -> None:
         with self._lock:
             self._subscriptions.pop(instance_id, None)

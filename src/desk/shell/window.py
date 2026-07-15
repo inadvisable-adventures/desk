@@ -235,6 +235,8 @@ class DeskWindow(QMainWindow):
         current_context.set_widget_path_resolver(self.view.describe_widget_at_global_pos)
         current_context.set_discuss_starter(self.start_discussion)
         current_context.set_event_mediator(self._event_mediator)
+        current_context.set_widget_zoomer(self.zoom_to_widget_by_instance_id)
+        current_context.set_widget_display_name_resolver(self._display_name_for_instance)
         self._sync_tempui_doc()
         self._open_crash_log_widgets()
 
@@ -845,6 +847,19 @@ class DeskWindow(QMainWindow):
         # no-op if that already ran first.
         self._event_mediator.unsubscribe_all(instance_id)
         self.save_current_desk()
+        return True
+
+    def zoom_to_widget_by_instance_id(self, instance_id: str) -> bool:
+        """TODO 7505703: lets a python widget (the Event Subscribers
+        widget's per-row eye button, reached via
+        current_context.get_widget_zoomer()) zoom/pan the Workspace
+        Canvas to a specific placed widget instance by its instance id
+        -- same "resolve then act, return whether found" shape as
+        close_widget_by_instance_id above."""
+        frame = self.find_frame_by_instance_id(instance_id)
+        if frame is None:
+            return False
+        self.view.zoom_to_widget(frame)
         return True
 
     def _capture_desk_state(self) -> Desk:
