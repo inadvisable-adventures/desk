@@ -2773,6 +2773,7 @@ efdad99. Change the File Explorer widget's (`widgets/file_explorer/`)
    "which widget(s) handle which file type" to check against, which is
    TODO b5d52c0's file type registry -- plan that one first, or at
    least decide its shape, before planning this one.
+   [planned: file-explorer-viewer-editor-scrap-fallback.md]
 b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
    and MIME type, where available) to the widget(s) that can view,
    edit, consume, or produce that type -- generalizing the small
