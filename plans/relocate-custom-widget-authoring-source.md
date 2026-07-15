@@ -1,4 +1,4 @@
-# Plan: TODO 59c5a70 — relocate DefineWidget authoring source
+# Plan: TODO 59c5a70 (COMPLETED) — relocate DefineWidget authoring source
 
 ## Summary
 

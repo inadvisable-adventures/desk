@@ -13,6 +13,17 @@ DOC_FILENAME = "desk-temporary-ui.md"
 GITIGNORE_ENTRIES = (".desk_temp/", "**/__pycache__/")
 GITIGNORE_COMMENT = "# Desk-specific"
 
+# TODO 59c5a70: where a DefineWidget widget's authoring source (see
+# "Authoring from real source" in _CUSTOM_WIDGETS_DOC,
+# scripts/build_widget.py) lives across its lifecycle -- authored under
+# .desk_temp/widgets/<name>/ (gitignored, matching .desk_temp's own
+# disposable-support-territory posture) until promoted, at which point
+# DeskWindow._on_tempui_promote_requested moves it to
+# desk_widgets/<name>/ at the project root (permanent, non-gitignored,
+# matching the promoted definition's own move into the .desk file).
+CUSTOM_WIDGET_SRC_DIRNAME = "widgets"
+PROMOTED_WIDGET_SRC_DIRNAME = "desk_widgets"
+
 # desk-temporary-ui.md's *static* main content (DOC_TEMPLATE below) is
 # only ever written once, the first time a directory's .desk_temp is
 # provisioned -- an older Desk directory otherwise keeps whatever
@@ -64,7 +75,14 @@ GITIGNORE_COMMENT = "# Desk-specific"
 # section: getManifest's new content-hash/directory fields, events
 # given top billing in the capability list, and fs's new relative-path
 # resolution behavior.
-TEMPUI_DOC_VERSION = 13
+#
+# TODO 59c5a70: bumped 13 -> 14 for _CUSTOM_WIDGETS_DOC's "Authoring
+# from real source" section: the recommended pre-promotion source
+# location moved from custom_widget_src/<name>/ to
+# .desk_temp/widgets/<name>/, plus a new note (in both that section and
+# "Promoting a defined widget to the Desk") that promotion moves the
+# source directory to desk_widgets/<name>/.
+TEMPUI_DOC_VERSION = 14
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -428,12 +446,15 @@ mechanically repackage it into the format above with
 `scripts/todo_item_ids.py` is) any time it changes — never hand-edit the
 generated `DefineWidget` file itself.
 
-Per widget, a source directory at `custom_widget_src/<name>/` —
-deliberately **not** under `widgets/`, since that directory is scanned by
-Desk's own widget discovery, which expects every `widget.json` there to
-have a `kind` of `"python"` or `"html"`; this directory's `widget.json`
-has a different shape and would break that scan if placed there instead.
-Four files:
+Per widget, a source directory at `.desk_temp/widgets/<name>/` —
+deliberately **not** under the project's own top-level `widgets/`, since
+*that* directory is scanned by Desk's own widget discovery, which expects
+every `widget.json` there to have a `kind` of `"python"` or `"html"`;
+this directory's `widget.json` has a different shape and would break
+that scan if placed there instead. `.desk_temp` is already
+Desk-specific/gitignored support territory (see `TEMP_UI_DIRNAME`
+elsewhere in this doc), which is exactly the right home for a
+not-yet-promoted widget's source too. Four files:
 
 - `<name>.ts` — the widget's logic as a custom element (`class Foo
   extends HTMLElement`), in normal strict TypeScript. No knowledge of
@@ -451,11 +472,19 @@ Four files:
 - `widget.json` — `{"keyword", "label", "width", "height"}`, exactly the
   fields a `DefineWidget`/`Size` line above needs.
 
-Then `python3 scripts/build_widget.py custom_widget_src/<name>` compiles
+Then `python3 scripts/build_widget.py .desk_temp/widgets/<name>` compiles
 it (`tsc -p <dir>`), concatenates the compiled JS, substitutes it into
 `widget.html`'s marker, base64-encodes the result, and writes a fresh
 `DefineWidget` tempui file under `.desk_temp/` — printing the path it
 wrote.
+
+Once promoted (see "Promoting a defined widget to the Desk" below), the
+source directory moves to `desk_widgets/<name>/` at the project root —
+a permanent, non-gitignored location, matching the promoted
+definition's own move into the `.desk` file. Nothing else about the
+build process changes: re-run `python3 scripts/build_widget.py
+desk_widgets/<name>` from there for any further edits, exactly as
+before.
 
 ## Invoking a defined widget
 
@@ -484,7 +513,12 @@ Every placed instance of a `DefineWidget`-defined widget shows a
 the widget: on confirm, its definition is saved permanently into the
 current `.desk` file (surviving even if this `DefineWidget` file is
 later deleted) and the original `DefineWidget` file here is removed —
-the `.desk` file becomes the sole remaining source of truth.
+the `.desk` file becomes the sole remaining source of truth. If the
+widget was authored from real source (see "Authoring from real source"
+above), its `.desk_temp/widgets/<name>/` source directory moves to
+`desk_widgets/<name>/` at the project root at the same time, for the
+same reason — a promoted widget is now a permanent part of the
+project, so its source shouldn't keep living in `.desk_temp` either.
 Invocation (see above) keeps working exactly the same afterward,
 promoted or not.
 

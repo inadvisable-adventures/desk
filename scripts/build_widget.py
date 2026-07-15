@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
-"""Packages a `custom_widget_src/<name>/` DefineWidget source directory
-(TypeScript custom element + template HTML + tsconfig + manifest) into a
-`DefineWidget` tempui file under `.desk_temp/` -- see "Authoring from real
-source" in `tempui-custom-widgets.md` for the full authoring pattern this
+"""Packages a DefineWidget source directory (TypeScript custom element +
+template HTML + tsconfig + manifest) into a `DefineWidget` tempui file
+under `.desk_temp/` -- see "Authoring from real source" in
+`tempui-custom-widgets.md` for the full authoring pattern this
 implements, and design-docs/custom-widget-authoring.md section 1 for why.
 
 This file is meant to be copied verbatim into other projects (seeded
 alongside development-process.md on "New Desk" creation, the same way
 scripts/todo_item_ids.py already is), so it's deliberately self-contained:
 no import of this app's own `desk` package, which a destination project
-won't have installed.
+won't have installed. Takes any directory as its argument -- it doesn't
+care whether that's a not-yet-promoted widget's source (recommended at
+`.desk_temp/widgets/<name>/`) or a promoted one's (moved to
+`desk_widgets/<name>/` at the project root on promotion, TODO 59c5a70);
+the build process is identical either way.
 
 Usage:
-    python3 scripts/build_widget.py custom_widget_src/<name>
+    python3 scripts/build_widget.py .desk_temp/widgets/<name>
+    python3 scripts/build_widget.py desk_widgets/<name>  # after promotion
 
 Expects, in that directory:
     <name>.ts       -- the widget's logic (name must match the directory).

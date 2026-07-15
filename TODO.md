@@ -2665,7 +2665,7 @@ c892403. COMPLETED: Resolve relative `desk.fs.readFile`/`writeFile` paths agains
    widget correctly. Full regression suite: the same 9 pre-existing
    failures plus the two already-known-stale doc-version assertions
    from earlier TODOs, 0 new failures.
-59c5a70. Change where a `DefineWidget` widget's authoring source lives
+59c5a70. COMPLETED: Change where a `DefineWidget` widget's authoring source lives
    (TODO b324217's `custom_widget_src/<name>/` convention): for a Desk
    working on a project other than Desk's own repo, recommend
    `.desk_temp/widgets/<name>/` instead of a project-root
@@ -2684,6 +2684,41 @@ c892403. COMPLETED: Resolve relative `desk.fs.readFile`/`writeFile` paths agains
    process works correctly for a source directory in either of these
    two locations.
    [planned: relocate-custom-widget-authoring-source.md]
+
+   Added CUSTOM_WIDGET_SRC_DIRNAME ("widgets", under .desk_temp/) and
+   PROMOTED_WIDGET_SRC_DIRNAME ("desk_widgets", project root) to
+   src/desk/temp_ui.py. Updated _CUSTOM_WIDGETS_DOC's "Authoring from
+   real source" section to recommend .desk_temp/widgets/<name>/
+   instead of a project-root custom_widget_src/<name>/, and added a
+   promotion-moves-the-source-too note there and in "Promoting a
+   defined widget to the Desk" (TEMPUI_DOC_VERSION 13 -> 14). Updated
+   scripts/build_widget.py's own docstring/usage example to match --
+   no functional change needed there, since it already takes an
+   arbitrary directory argument rather than hardcoding
+   custom_widget_src. New DeskWindow._relocate_promoted_widget_source,
+   called from _on_tempui_promote_requested: moves
+   .desk_temp/widgets/<keyword>/ to desk_widgets/<keyword>/ if it
+   exists, silent no-op if there's no source directory to move
+   (hand-authored widgets never had one), and leaves the source in
+   place (logged, not raised) if the destination already exists --
+   the .desk file promotion itself has already succeeded by that
+   point and shouldn't be made to look like it failed over this
+   secondary bookkeeping step.
+
+   Verified end-to-end with a real tsc invocation confirming
+   build_widget.py produces identical output run against a fixture at
+   .desk_temp/widgets/<name>/ and again at desk_widgets/<name>/.
+   Verified the promote flow on a real WorkspaceView: a source
+   directory present at promotion time moves correctly (with its
+   original location gone and the .desk-file bookkeeping still
+   intact); promoting a widget with no source directory is an
+   unaffected no-op; promoting into an already-existing destination
+   leaves the source alone without disturbing the rest of the promote
+   flow. Doc content, version bump, and the updated build_widget.py
+   docstring also checked directly. Full regression suite: the same 9
+   pre-existing failures plus three already-known-stale doc-version
+   assertions from earlier TODOs in this same batch, 0 other new
+   failures.
 3e2c4f2. Change the `[STALE]` titlebar marker (TODO 5995ffd) from a
    passive label into something clickable: clicking it pops up a
    dialog showing both content hashes (the one this instance was

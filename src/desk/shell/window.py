@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import shutil
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -25,10 +26,12 @@ from desk.shell.python_widget import PythonWidgetHost
 from desk.shell.temp_ui_manager import TempUiManager
 from desk.shell.widget_frame import WidgetFrame
 from desk.temp_ui import (
+    CUSTOM_WIDGET_SRC_DIRNAME,
     CustomWidgetDefinition,
     DOC_FILENAME,
     MARKDOWN_KEYWORD,
     OPEN_IMAGE_KEYWORD,
+    PROMOTED_WIDGET_SRC_DIRNAME,
     RESERVED_TEMPUI_KEYWORDS,
     SCRATCH_KEYWORD,
     TEMP_UI_DIRNAME,
@@ -1769,6 +1772,7 @@ class DeskWindow(QMainWindow):
         source_path = self._custom_widget_source_paths.pop(keyword, None)
         if source_path is not None and source_path.is_file():
             source_path.unlink()
+        self._relocate_promoted_widget_source(keyword)
         # TODO 6857997/2b2a642: the widget is now a permanent, first
         # -class part of this Desk -- flip the already-registered
         # WidgetInfo in place (no need to re-materialize/re-mount,
@@ -1782,6 +1786,35 @@ class DeskWindow(QMainWindow):
         self.view.set_widget_catalog(self._widgets)
         frame.set_tempui_promotable(False)
         self._sync_tempui_doc()
+
+    def _relocate_promoted_widget_source(self, keyword: str) -> None:
+        """TODO 59c5a70: moves a promoted widget's authoring source
+        directory (see "Authoring from real source" in
+        tempui-custom-widgets.md, TODO b324217) out of
+        .desk_temp/widgets/<keyword>/ -- gitignored, disposable-support
+        territory -- into a permanent, non-gitignored desk_widgets/
+        <keyword>/ project subdirectory, matching the promoted
+        definition's own move into the .desk file. Not every custom
+        widget has a source directory to move (a hand-authored, inline
+        -only one never did) -- a missing source directory is a silent
+        no-op, not an error. A pre-existing destination is left alone
+        (logged, not raised): the .desk file promotion above has
+        already succeeded by this point, and a problem with this
+        secondary bookkeeping step shouldn't make the whole promotion
+        look like it failed."""
+        source_dir = self.current_desk.directory / TEMP_UI_DIRNAME / CUSTOM_WIDGET_SRC_DIRNAME / keyword
+        if not source_dir.is_dir():
+            return
+        destination_dir = self.current_desk.directory / PROMOTED_WIDGET_SRC_DIRNAME / keyword
+        if destination_dir.exists():
+            logger.warning(
+                "Not relocating promoted widget %r's authoring source: %s already exists",
+                keyword,
+                destination_dir,
+            )
+            return
+        destination_dir.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source_dir), str(destination_dir))
 
     def _on_rename_requested(self) -> None:
         name = self._prompt_fn(
