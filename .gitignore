@@ -20,3 +20,8 @@
 **/*.desk
 
 .desk_temp/
+
+# Event mediator log (desk.event_mediator, TODO 6f9c51b) — generated
+# per-directory runtime traffic, not project source, same as the Desk
+# state files above.
+MEDIATED-EVENT-LOG.tsv
