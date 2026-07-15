@@ -12,7 +12,9 @@ desk.server.app's filetypes routes) or a current_context hook (kind:
 .get_file_type_registry_provider) -- never by reading/writing the
 .desk file directly."""
 
+import mimetypes
 from dataclasses import dataclass, field
+from pathlib import Path
 
 FILE_TYPE_REGISTRY_UPDATED_EVENT = "desk.file_type_registry.updated"
 
@@ -54,3 +56,75 @@ def entry_from_dict(data: dict) -> FileTypeRegistryEntry:
         mime_types=list(data.get("mime_types", [])),
         handlers=[handler_from_dict(h) for h in data.get("handlers", [])],
     )
+
+
+# TODO efdad99: generalizes desk.shell.window.EXTERNAL_DROP_WIDGET_BY_SUFFIX
+# (kept as a code-level floor, not replaced by it) plus raster image
+# suffixes (desk.shell.window.IMAGE_DROP_SUFFIXES) -- so existing
+# double-click behavior for these already-known types doesn't regress
+# just because a fresh Desk's dynamic registry starts out empty.
+BUILTIN_VIEW_WIDGET_BY_SUFFIX = {
+    ".md": "markdown",
+    ".svg": "svg_viewer",
+    ".png": "image_viewer",
+    ".jpg": "image_viewer",
+    ".jpeg": "image_viewer",
+    ".gif": "image_viewer",
+    ".bmp": "image_viewer",
+    ".webp": "image_viewer",
+    ".tif": "image_viewer",
+    ".tiff": "image_viewer",
+    ".ico": "image_viewer",
+}
+
+
+def _find_handler(registry: list[FileTypeRegistryEntry], path: Path, role: str) -> str | None:
+    """Extension match first (case-insensitive), then MIME type
+    (mimetypes.guess_type) -- "keyed by both," per the original ask."""
+    suffix = path.suffix.lower()
+    mime_type, _ = mimetypes.guess_type(str(path))
+    for entry in registry:
+        extensions = {ext.lower() for ext in entry.extensions}
+        if suffix in extensions or (mime_type is not None and mime_type in entry.mime_types):
+            for handler in entry.handlers:
+                if handler.role == role:
+                    return handler.widget_id
+    return None
+
+
+def find_view_handler(registry: list[FileTypeRegistryEntry], path: Path) -> str | None:
+    """A registered `"view"` handler for `path`'s type, falling back to
+    `BUILTIN_VIEW_WIDGET_BY_SUFFIX` if the dynamic registry has nothing
+    -- see TODO efdad99."""
+    return _find_handler(registry, path, "view") or BUILTIN_VIEW_WIDGET_BY_SUFFIX.get(path.suffix.lower())
+
+
+def find_edit_handler(registry: list[FileTypeRegistryEntry], path: Path) -> str | None:
+    """A registered `"edit"` handler for `path`'s type -- no built-in
+    fallback here (unlike find_view_handler): the caller (TODO efdad99)
+    decides what happens for a genuinely text file with no registered
+    editor (the built-in text Editor widget), which isn't this
+    function's concern."""
+    return _find_handler(registry, path, "edit")
+
+
+def looks_like_text_file(path: Path, sniff_bytes: int = 8192) -> bool:
+    """A null-byte + UTF-8-decodability sniff on the first
+    `sniff_bytes` -- a self-contained heuristic (no new dependency, per
+    CLAUDE.md) that correctly treats an unknown-extension text file (a
+    Dockerfile, a dotfile) as text and a real binary as not, unlike a
+    fixed extension allowlist. `False` (not text) for anything
+    unreadable, matching this codebase's general "can't tell -> don't
+    guess yes" posture for file-type detection (TODO efdad99)."""
+    try:
+        with path.open("rb") as f:
+            chunk = f.read(sniff_bytes)
+    except OSError:
+        return False
+    if b"\x00" in chunk:
+        return False
+    try:
+        chunk.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return True

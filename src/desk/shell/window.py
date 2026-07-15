@@ -256,6 +256,7 @@ class DeskWindow(QMainWindow):
             self.current_desk.pan_x, self.current_desk.pan_y, self.current_desk.scale
         )
         current_context.set_widget_opener(self.open_widget_content)
+        current_context.set_centered_widget_opener(self.open_widget_content_centered)
         current_context.set_temp_ui_write_recorder(self._temp_ui_manager.record_own_write)
         current_context.set_main_window(self)
         current_context.set_widget_path_resolver(self.view.describe_widget_at_global_pos)
@@ -613,6 +614,25 @@ class DeskWindow(QMainWindow):
         if frame is None or not isinstance(frame.content, PythonWidgetHost):
             return None
         return frame.content.current
+
+    def open_widget_content_centered(
+        self, widget_id: str, size: tuple[int, int] | None = None, instance_id: str | None = None
+    ) -> QWidget | None:
+        """Like open_widget_content, but placed centered in the current
+        view (TODO efdad99) instead of open_widget's own `(0, 0)`
+        default -- the same centering math
+        `_place_discuss_claude_widget`/`_auto_place_new_custom_widget`
+        already use. Bound to `current_context
+        .set_centered_widget_opener` for a `kind: "python"` widget that
+        wants this placement convention without reaching into the
+        view/scene directly."""
+        widget = self._widgets.get(widget_id)
+        if widget is None:
+            return None
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        return self.open_widget_content(
+            widget_id, pos=(center.x(), center.y()), size=size or widget.default_size, instance_id=instance_id
+        )
 
     def _bind_temp_ui_widget(self, frame: WidgetFrame, directory: Path, uuid_str: str) -> None:
         if not isinstance(frame.content, PythonWidgetHost):

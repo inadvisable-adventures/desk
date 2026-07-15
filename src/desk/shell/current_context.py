@@ -69,6 +69,7 @@ from desk.event_mediator import EventMediator
 
 _current_directory: Path | None = None
 _widget_opener: Callable[[str], QWidget | None] | None = None
+_centered_widget_opener: Callable[[str], QWidget | None] | None = None
 _temp_ui_write_recorder: Callable[[Path, str], None] | None = None
 _main_window: QWidget | None = None
 _widget_path_resolver: Callable[[QPoint], str | None] | None = None
@@ -110,6 +111,23 @@ def set_widget_opener(opener: Callable[[str], QWidget | None]) -> None:
 
 def get_widget_opener() -> Callable[[str], QWidget | None] | None:
     return _widget_opener
+
+
+def set_centered_widget_opener(opener: Callable[[str], QWidget | None]) -> None:
+    """Like set_widget_opener, but the opened instance is placed
+    centered in the current view (TODO efdad99) -- get_widget_opener's
+    own DeskWindow.open_widget_content places at (0, 0) by default,
+    which several tempui/programmatic placements elsewhere in this
+    codebase (_place_discuss_claude_widget, _auto_place_new_custom_widget)
+    deliberately avoid; this hook gives a kind:"python" widget the same
+    centered convention without needing to reach into DeskWindow's own
+    view/scene math itself."""
+    global _centered_widget_opener
+    _centered_widget_opener = opener
+
+
+def get_centered_widget_opener() -> Callable[[str], QWidget | None] | None:
+    return _centered_widget_opener
 
 
 def set_temp_ui_write_recorder(recorder: Callable[[Path, str], None]) -> None:

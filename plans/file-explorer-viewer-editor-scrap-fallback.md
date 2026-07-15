@@ -1,4 +1,4 @@
-# Plan: TODO efdad99 — File Explorer viewer/editor/scrap fallback chain
+# Plan: TODO efdad99 (COMPLETED) — File Explorer viewer/editor/scrap fallback chain
 
 ## Summary
 

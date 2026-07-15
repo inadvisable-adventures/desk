@@ -2756,7 +2756,7 @@ c892403. COMPLETED: Resolve relative `desk.fs.readFile`/`writeFile` paths agains
    button's visibility. Full regression suite: the same 9 pre-existing
    failures plus three already-known-stale doc-version assertions from
    earlier TODOs in this batch, 0 other new failures.
-efdad99. Change the File Explorer widget's (`widgets/file_explorer/`)
+efdad99. COMPLETED: Change the File Explorer widget's (`widgets/file_explorer/`)
    double-click handling (currently `_open_index`, which always opens
    the Editor widget unconditionally) to a fallback chain: (1) if a
    viewer widget is available for the clicked file's type, open it
@@ -2774,6 +2774,34 @@ efdad99. Change the File Explorer widget's (`widgets/file_explorer/`)
    TODO b5d52c0's file type registry -- plan that one first, or at
    least decide its shape, before planning this one.
    [planned: file-explorer-viewer-editor-scrap-fallback.md]
+
+   Added `find_view_handler`/`find_edit_handler`/`looks_like_text_file`
+   to `src/desk/file_type_registry.py` (view lookup falls back to a
+   new `BUILTIN_VIEW_WIDGET_BY_SUFFIX` floor -- generalizing
+   `EXTERNAL_DROP_WIDGET_BY_SUFFIX`/`IMAGE_DROP_SUFFIXES` -- so a fresh
+   Desk's empty registry doesn't regress existing svg/markdown/image
+   double-click behavior; the text sniff is a null-byte + UTF-8
+   -decodability check, no new dependency). Added a new
+   `current_context.get/set_centered_widget_opener` hook +
+   `DeskWindow.open_widget_content_centered` (same centering math as
+   `_place_discuss_claude_widget`), since the existing
+   `get_widget_opener`/`open_widget_content` default to `(0, 0)`.
+   Rewrote File Explorer's `_open_index` into `_open_file` (view ->
+   edit -> built-in-editor-if-text -> Scratch-note fallback chain),
+   using the centered opener throughout.
+
+   Verified: the lookup helpers (registry match by extension/MIME,
+   builtin-floor fallback, no-fallback for `find_edit_handler`) and
+   the text/binary sniff heuristic directly; `open_widget_content
+   _centered`'s own centering math and unknown-widget-id no-op on a
+   real `WorkspaceView`; File Explorer's full dispatch chain (a
+   registered view handler, a registered edit handler with no view
+   handler, the built-in editor for a real text file with no registry
+   match at all, the Scratch fallback for a binary file with no match,
+   and a broken `set_file` failing silently rather than crashing the
+   double-click slot). Full regression suite: the same 9 pre-existing
+   failures plus three already-known-stale doc-version assertions from
+   earlier TODOs in this batch, 0 other new failures.
 b5d52c0. COMPLETED: Build a registry of file types (keyed by both file extension
    and MIME type, where available) to the widget(s) that can view,
    edit, consume, or produce that type -- generalizing the small
