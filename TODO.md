@@ -3082,6 +3082,7 @@ da4f9c0. Give every "viewer" widget that shows the contents of a file
    widgets). Depends on TODO `efdad99`'s fallback logic (and TODO
    `b5d52c0`'s file type registry, which `efdad99` itself depends on)
    existing first, so there's an actual shared service to call into.
+   [planned: viewer-widgets-edit-button.md]
 2da314f. Expose the open-editor-or-fall-back-to-a-scrap service (TODO
    `da4f9c0`, itself a `current_context` hook reused from "Project
    Files"'/TODO `efdad99`'s own double-click handling) over the HTTP
