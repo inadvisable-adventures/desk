@@ -3226,3 +3226,4 @@ da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    and any other reference -- to the new location, making clear the
    script is meant to be invoked by an agent to build its own tempui
    widgets from source, the same as today.
+   [planned: ensure-build-widget-script.md]
