@@ -856,3 +856,56 @@ reassertion reliably wins because it runs *after* whatever queued
 correction Qt itself performs, the same reasoning that made a
 synchronous reassertion insufficient for the HUD-drift bug too. See
 `WidgetFrame.set_view_scale`/`_reassert_size`.
+
+## `QWidget.setStyle()` on a descendant is silently overridden by *any* ancestor's `setStyleSheet()`, regardless of call order — and `style().objectName()` can't detect this
+
+TODO `465c404`/`593a464` each fixed a widget's native-style-painted
+button chrome desyncing from its text under the Workspace Canvas's zoom
+(see the entry above on native-style-drawn controls) by calling
+`button.setStyle(QStyleFactory.create("Fusion"))` directly on the
+affected buttons. TODO `8afef71`, generalizing that fix to every widget
+via `WidgetFrame` (which wraps every widget's content before it's
+embedded), found this approach doesn't actually work once the widget is
+wrapped in a real `WidgetFrame` — and quite possibly never did in the
+real running app, since neither original fix's own verification ever
+constructed a real `WidgetFrame` around the widget (both tested via a
+bare `scene.addWidget(widget)`).
+
+The mechanism: `WidgetFrame` itself calls `self.setStyleSheet(...)` on
+itself, for its own border (`_apply_border_scale`). Confirmed directly:
+the moment *any* ancestor in a widget's parent chain has a stylesheet
+set — even one whose CSS selector doesn't target the descendant at all
+(`WidgetFrame`'s own rule is scoped to `WidgetFrame { border: ... }`,
+nothing about buttons) — Qt silently discards whatever `style()` a
+descendant widget had been explicitly given via `setStyle()` and routes
+it through Qt's internal stylesheet-aware proxy style instead. This
+happens **regardless of call order**: setting a descendant's style
+*before* the ancestor gets its stylesheet doesn't survive it, and
+calling `setStyle()` *again* *after* the ancestor's stylesheet is
+already set doesn't stick either — it's overridden immediately, not
+merely at the next repaint.
+
+A second trap compounded this: the verification technique used to
+"confirm" the original fixes worked — checking `widget.style()
+.objectName() == "fusion"` — can't actually detect this. In this
+codebase's offscreen (`QT_QPA_PLATFORM=offscreen`) test environment,
+*both* the untouched platform-default style and a freshly
+`QStyleFactory.create("Fusion")`-created style report as
+indistinguishable `QCommonStyle`-wrapped objects with `objectName() ==
+"fusion"` — so that check passes trivially whether or not a specific
+`setStyle()` call actually took effect, and can't tell a genuinely-fixed
+button apart from one silently reverted by an ancestor's stylesheet.
+
+If a fix depends on a specific widget-level Qt style/stylesheet
+actually being in effect, don't verify it by introspecting
+`style()`/`objectName()`/`type(style())` — pixel-sample the widget's
+actual rendered output instead (`widget.grab().toImage()
+.pixelColor(x, y)`), which directly proves what got painted. And if a
+widget sits inside any container that might set its own stylesheet
+(chrome, a themed panel, ...), prefer setting the fix as a stylesheet
+on the *content root* itself rather than `setStyle()` on individual
+descendants — a stylesheet set directly on a widget (or an ancestor
+closer than the one causing trouble) cascades correctly to every
+descendant, present *and* future, and reliably wins for the specific
+CSS properties it declares. See
+`src/desk/shell/widget_frame.py`'s `CONTENT_ZOOM_SAFE_STYLESHEET`.

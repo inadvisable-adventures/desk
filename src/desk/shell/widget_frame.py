@@ -22,6 +22,67 @@ BORDER_COLOR = "#4a4d51"
 UNFOCUSED_TITLEBAR_COLOR = "#3a3d41"
 FOCUSED_TITLEBAR_COLOR = "#4a4e54"
 
+# TODO 8afef71: forces every canvas-embedded widget's QPushButton/
+# QToolButton/QLineEdit chrome (background, border) to be painted by
+# Qt's own CSS engine instead of the native platform style, which
+# doesn't respect the Workspace Canvas's QGraphicsView zoom transform
+# once composited through a QGraphicsProxyWidget (see LEARNINGS.md's "A
+# native-style-drawn control ... can visually desync ..." entry).
+# Colors match this file's own chrome palette (BORDER_COLOR,
+# *_TITLEBAR_COLOR) for visual consistency with the rest of a widget's
+# frame. Deliberately NOT done via QStyleFactory.create("Fusion") +
+# per-widget setStyle() (TODO 465c404/593a464's original approach) --
+# confirmed directly that setStyle() on a descendant is silently
+# overridden the moment *any* ancestor has its own setStyleSheet()
+# called (which WidgetFrame itself already does, for its border, via
+# _apply_border_scale below), regardless of call order. A stylesheet
+# set directly on `content`, by contrast, cascades correctly to every
+# descendant -- present *and* future (a widget that tears down and
+# rebuilds its own child buttons on every render, e.g.
+# widgets/lightning_round/widget.py, needs no special handling) --
+# confirmed by pixel-sampling rendered buttons, not just introspecting
+# style()/objectName() (which turned out to be an unreliable signal
+# here: PyQt reports both the platform default and an explicitly
+# -created Fusion QStyle as indistinguishable QCommonStyle wrappers
+# under this environment's offscreen platform). Scoped to `content`
+# only, not applied anywhere in WidgetFrame's own chrome -- that chrome
+# is already hand-painted (_TitlebarButton draws its own background/
+# glyph via plain QWidget/QLabel, not QPushButton) and was never
+# subject to this bug. A widget's own more-specific per-control
+# stylesheet (e.g. widgets/todo/widget.py's FILTER_BUTTON_STYLE) still
+# takes precedence over this one, same as normal CSS cascade.
+CONTENT_ZOOM_SAFE_STYLESHEET = f"""
+QPushButton, QToolButton {{
+    background-color: {BORDER_COLOR};
+    border: 1px solid #6a6e73;
+    border-radius: 3px;
+    padding: 4px 10px;
+}}
+QPushButton:hover, QToolButton:hover {{
+    background-color: {FOCUSED_TITLEBAR_COLOR};
+}}
+QPushButton:pressed, QToolButton:pressed {{
+    background-color: {UNFOCUSED_TITLEBAR_COLOR};
+}}
+QPushButton:checked, QToolButton:checked {{
+    background-color: #3daee9;
+    border-color: #2a8cc4;
+}}
+QPushButton:disabled, QToolButton:disabled {{
+    color: #888888;
+    background-color: {UNFOCUSED_TITLEBAR_COLOR};
+}}
+QLineEdit {{
+    background-color: #2b2d30;
+    border: 1px solid #6a6e73;
+    border-radius: 3px;
+    padding: 2px 4px;
+}}
+QLineEdit:focus {{
+    border-color: #3daee9;
+}}
+"""
+
 # TODO 33d3e8d: titlebar degrade sequence (full -> title_only -> greeked) --
 # see design-docs/widget-ux.md's "Titlebar Degrade + Greeking" section.
 TITLEBAR_CONTENT_MARGIN = 8  # matches _TitleBar's own layout.setContentsMargins
@@ -414,6 +475,9 @@ class WidgetFrame(QWidget):
         self._stack.setCurrentIndex(NORMAL_PAGE_INDEX)
 
         self.content = content
+        # See CONTENT_ZOOM_SAFE_STYLESHEET's own comment for why this is
+        # a stylesheet rather than a per-control setStyle() call.
+        content.setStyleSheet(CONTENT_ZOOM_SAFE_STYLESHEET)
         self._last_focused_widget: QWidget | None = None
         self.locked = False
         self._view_scale = 1.0

@@ -2441,13 +2441,51 @@ dc557b2. COMPLETED: create a general event poster widget
    running app.
    [planned: event-log-toolbar-zoom-scaling.md]
 
-8afef71. Generic fix, superseding the narrow per-widget approach of TODO 465c404
-   and TODO 593a464: an audit of every other widget found the same
-   native-style-chrome-desyncs-under-zoom bug in 17 of 19 widgets (both
-   statically-created controls and ones rebuilt dynamically on every
-   render, e.g. lightning_round's option buttons). Rather than patching
-   each widget file individually, fix this once at the single choke
-   point every widget's content passes through (WidgetFrame's embedding
-   into the canvas), automatically covering every widget -- present and
-   future -- without requiring each widget file to opt in.
+8afef71. COMPLETED: Generic fix, superseding the narrow per-widget approach of TODO
+   465c404 and TODO 593a464: an audit of every other widget found the
+   same native-style-chrome-desyncs-under-zoom bug in 17 of 19 widgets
+   (both statically-created controls and ones rebuilt dynamically on
+   every render, e.g. lightning_round's option buttons). Rather than
+   patching each widget file individually, fixed once at the single
+   choke point every widget's content passes through (WidgetFrame's
+   embedding into the canvas), automatically covering every widget --
+   present and future -- without requiring each widget file to opt in.
+
+   The original planned approach (per-widget setStyle(Fusion), applied
+   generically) turned out not to work: WidgetFrame already sets its
+   own stylesheet on itself (for its border), and confirmed directly
+   that any ancestor's setStyleSheet() silently overrides a
+   descendant's setStyle() call regardless of order -- meaning TODO
+   465c404/593a464's original per-widget fixes were likely never
+   actually effective in the real app either, since neither fix's own
+   verification wrapped the widget in a real WidgetFrame. Also found
+   that style().objectName() -- the exact signal both prior fixes'
+   verification relied on -- can't detect this: under this
+   environment's offscreen Qt platform, both the untouched default
+   style and an explicitly-created Fusion style report as
+   indistinguishable objects. Both findings written up in LEARNINGS.md.
+
+   Fixed instead by setting a stylesheet (CONTENT_ZOOM_SAFE_STYLESHEET)
+   directly on each widget's content root in WidgetFrame.__init__,
+   giving QPushButton/QToolButton/QLineEdit explicit background/
+   border/padding rules -- the same mechanism (confirmed via the
+   audit) that already makes the Todo/Questions widgets'
+   FILTER_BUTTON_STYLE-styled buttons immune to this bug. A stylesheet
+   cascades correctly to every descendant, present and future, with no
+   event-filter machinery needed. Removed the now-redundant (and
+   apparently never-effective) per-widget fixes in file_explorer/event_log.
+
+   Verified extensively headlessly by pixel-sampling actual rendered
+   output (not style-object introspection, per the finding above)
+   across static controls, controls added after construction, a
+   pre-built subtree attached in one shot, a widget's own more
+   specific stylesheet still taking precedence, both QToolButton and
+   QLineEdit (not just QPushButton), and real widgets from the audit
+   (svg_viewer, lightning_round -- including forcing a real rebuild of
+   its option buttons by answering an item, file_explorer, event_log
+   -- including event_log's :checked pseudo-state). Confirmed
+   WidgetFrame's own chrome never receives this stylesheet. As with
+   the two prior fixes, this offscreen environment can't reproduce the
+   real native-macOS-style rendering directly -- needs visual
+   confirmation in the real running app.
    [planned: widget-content-zoom-safe-style.md]
