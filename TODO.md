@@ -2440,3 +2440,14 @@ dc557b2. COMPLETED: create a general event poster widget
    report's screenshot showed -- needs visual confirmation in the real
    running app.
    [planned: event-log-toolbar-zoom-scaling.md]
+
+8afef71. Generic fix, superseding the narrow per-widget approach of TODO 465c404
+   and TODO 593a464: an audit of every other widget found the same
+   native-style-chrome-desyncs-under-zoom bug in 17 of 19 widgets (both
+   statically-created controls and ones rebuilt dynamically on every
+   render, e.g. lightning_round's option buttons). Rather than patching
+   each widget file individually, fix this once at the single choke
+   point every widget's content passes through (WidgetFrame's embedding
+   into the canvas), automatically covering every widget -- present and
+   future -- without requiring each widget file to opt in.
+   [planned: widget-content-zoom-safe-style.md]
