@@ -11,6 +11,12 @@ sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
 
 import desk.shell.widget_frame  # noqa: E402  (imported before QApplication -- WebEngine ordering)
 import desk.shell.canvas  # noqa: E402
+# TODO 78bfa41: canvas.py's own QWebEngineView import (previously used
+# by the now-removed _scrollable_at) was the thing actually satisfying
+# the "import WebEngine before QApplication" ordering requirement above
+# -- import it explicitly instead of depending on that as an incidental
+# side effect of an unrelated module.
+from PyQt6.QtWebEngineWidgets import QWebEngineView  # noqa: E402,F401
 
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 

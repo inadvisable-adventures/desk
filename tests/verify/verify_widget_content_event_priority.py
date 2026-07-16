@@ -7,7 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
 
 from PyQt6.QtCore import QEvent, QPoint, QPointF, Qt
-from PyQt6.QtGui import QContextMenuEvent, QMouseEvent
+from PyQt6.QtGui import QContextMenuEvent, QMouseEvent, QWheelEvent
 from PyQt6.QtWidgets import QApplication, QLabel, QTextEdit
 
 import desk.shell.canvas as canvas_mod
@@ -105,6 +105,55 @@ test_drag_inside_widget_content_does_not_pan_canvas()
 test_drag_on_empty_canvas_still_pans()
 
 
+# ---------- TODO 78bfa41: wheel over ANY widget -- not just scrollable ----------
+# content -- never zooms the canvas either.
+
+
+def send_wheel(viewport, pos):
+    ev = QWheelEvent(
+        QPointF(pos),
+        QPointF(viewport.mapToGlobal(pos)),
+        QPoint(0, 0),
+        QPoint(0, 120),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
+    QApplication.sendEvent(viewport, ev)
+
+
+def test_wheel_over_non_scrollable_widget_no_longer_zooms_canvas():
+    view = make_view()
+    label_content = QLabel("plain, not a QAbstractScrollArea")
+    label_content.resize(300, 200)
+    proxy = view.add_widget(label_content, title="L", pos=(0, 0), size=(300, 200))
+    pump(0.3)
+    pos = view.mapFromScene(proxy.sceneBoundingRect().center())
+    before = view.transform().m11()
+    send_wheel(view.viewport(), pos)
+    pump(0.05)
+    after = view.transform().m11()
+    check(
+        "wheel over non-scrollable widget content no longer zooms the canvas (TODO 78bfa41)",
+        before == after,
+    )
+
+
+def test_wheel_over_empty_canvas_still_zooms():
+    view = make_view()
+    pump(0.1)
+    before = view.transform().m11()
+    send_wheel(view.viewport(), QPoint(900, 700))
+    pump(0.05)
+    after = view.transform().m11()
+    check("wheel over truly empty canvas still zooms it", before != after)
+
+
+test_wheel_over_non_scrollable_widget_no_longer_zooms_canvas()
+test_wheel_over_empty_canvas_still_zooms()
+
+
 # ---------- TODO 3846190, part 1: right-click over widget content ----------
 # no longer always shows Desk's own add-widget spawn menu.
 
@@ -191,7 +240,9 @@ def test_pinch_over_scrollable_widget_does_not_zoom_canvas():
     check("pinch over a scrollable widget (QTextEdit) does not zoom the canvas", before == after)
 
 
-def test_pinch_over_non_scrollable_widget_still_zooms_canvas():
+def test_pinch_over_non_scrollable_widget_no_longer_zooms_canvas():
+    # TODO 78bfa41: broadened from _scrollable_at to _frame_at -- any
+    # widget under the cursor wins now, not just a scrollable one.
     view = make_view()
     label_content = QLabel("plain")
     label_content.resize(300, 200)
@@ -202,8 +253,8 @@ def test_pinch_over_non_scrollable_widget_still_zooms_canvas():
     view.event(_FakeNativeGestureEvent(QPointF(pos), 0.2))
     after = view.transform().m11()
     check(
-        "pinch over non-scrollable widget content still zooms the canvas (consistent with wheel's own behavior)",
-        before != after,
+        "pinch over non-scrollable widget content no longer zooms the canvas (TODO 78bfa41)",
+        before == after,
     )
 
 
@@ -217,7 +268,7 @@ def test_pinch_over_empty_canvas_still_zooms():
 
 
 test_pinch_over_scrollable_widget_does_not_zoom_canvas()
-test_pinch_over_non_scrollable_widget_still_zooms_canvas()
+test_pinch_over_non_scrollable_widget_no_longer_zooms_canvas()
 test_pinch_over_empty_canvas_still_zooms()
 
 print(f"\n{passed} passed, {failed} failed")

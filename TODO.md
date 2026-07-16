@@ -4054,7 +4054,7 @@ dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidge
    picks up the new manifest correctly. Full regression suite (`git
    stash` before/after): 0 new failures across all 67 scripts in
    `tests/verify/`.
-78bfa41. Broaden the scroll/zoom event priority policy from TODO
+78bfa41. COMPLETED: Broaden the scroll/zoom event priority policy from TODO
    `3846190`: wheel-scroll and pinch-zoom should go to whichever
    widget's content the cursor is over *no matter what*, not just when
    it's a scrollable widget — explicit user decision, knowingly trading
@@ -4072,3 +4072,41 @@ dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidge
    surface is a plain, non-scroll-area `QWidget`, so it could never see
    a real Wheel event under the old policy no matter what.
    [planned: widget-wheel-pinch-always-wins.md]
+
+   Switched `wheelEvent`/`event()`'s pinch branch to `_frame_at`;
+   deleted `_scrollable_at` entirely (dead code once both call sites
+   moved off it) and its now-unused `QAbstractScrollArea`/
+   `QWebEngineView` imports. Updated `design-docs/widget-ux.md`'s
+   "Trackpad Zoom Input" section for the broader policy, and reworded
+   `PARKINGLOT.md`'s "scrolling while hovering over a widget..." entry
+   — that underlying problem is now fully resolved (not just for scroll
+   areas), leaving only its still-unbuilt minimap idea parked.
+
+   Found and fixed one real, genuine regression during verification:
+   removing `canvas.py`'s `QWebEngineView` import (unused for any
+   `isinstance` check once `_scrollable_at` was deleted) broke 8
+   `tests/verify/` scripts that were silently relying on it — canvas.py
+   was transitively providing the "import `QtWebEngineWidgets` before
+   constructing `QApplication`" ordering PyQt6/Qt requires, via a
+   pre-existing `import desk.shell.canvas` line each script already had
+   specifically for this purpose (confirmed via `git stash`: all 8
+   passed before this TODO's own change, failed identically after, with
+   the exact `ImportError: QtWebEngineWidgets must be imported...`
+   Qt/PyQt6 error). Fixed properly rather than papering over it by
+   re-adding an unused import back to `canvas.py`: each of the 8
+   scripts now imports `QWebEngineView` directly and explicitly for
+   this ordering requirement, no longer depending on it as an
+   incidental side effect of an unrelated module's own contents.
+
+   Verified directly: updated
+   `tests/verify/verify_widget_content_event_priority.py`'s pinch test
+   to assert the new (opposite) behavior over non-scrollable content,
+   plus added the equivalent new wheel-specific tests (previously
+   untested by that script at all) — non-scrollable-widget and
+   empty-canvas cases for both gestures; confirmed via `git stash`
+   that exactly the two intended behaviors flip (both now correctly
+   *not* zooming/scrolling the canvas over non-scrollable content)
+   while everything else (click-drag, right-click, empty-canvas
+   wheel/pinch) stays unchanged. Full regression suite: 0 new failures
+   across all 67 scripts in `tests/verify/` (after fixing the 8 found
+   above).

@@ -352,23 +352,21 @@ This file captures thoughts and TODO items that arise during work on other thing
   second or third widget that would clearly benefit, to avoid guessing
   at the right generalization from just one example.
 
-- **Scrolling while hovering over a widget scrolls the Desk instead of
-  the widget**
+- **Add a minimap for navigating the Desk canvas**
 
-  Right now a mouse-wheel scroll over a widget frame appears to scroll/
-  pan the Workspace Canvas underneath it rather than scrolling the
-  widget's own content. It should instead be captured by whichever
-  widget is under the cursor and scroll that widget, not the Desk.
+  Originally paired with "scrolling while hovering over a widget
+  scrolls the Desk instead of the widget" — that underlying problem is
+  now fully resolved (TODO `3846190`/TODO `78bfa41`: a widget under the
+  cursor gets *all* of click/right-click/wheel/pinch, no exceptions,
+  not even for a non-scrollable widget), which means wheel-scroll is no
+  longer available as a canvas-pan gesture at all whenever the cursor
+  happens to be over any placed widget. A minimap (like
+  `world-timelines`'s) would give panning/navigating the canvas a
+  reliable way to work regardless of what's under the cursor.
 
-  Alongside that fix, add a minimap like `world-timelines`'s, so that
-  panning/navigating the Desk canvas still has a reliable way to get
-  around once wheel-scroll is no longer available as a canvas-pan
-  gesture over a widget.
-
-  Not designed yet -- parking rather than guessing at scope (e.g.
-  exactly which widget kinds currently rely on wheel-scroll-as-canvas
-  -pan today, and what the minimap should actually show/support beyond
-  "like world-timelines's").
+  Not designed yet -- parking rather than guessing at scope (what the
+  minimap should actually show/support beyond "like
+  `world-timelines`'s").
 
 - **Locked widgets still show the resize-edge cursors**
 

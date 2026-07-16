@@ -1,4 +1,4 @@
-# Plan: TODO 78bfa41 — scroll/zoom events always go to the widget under the cursor
+# Plan: TODO 78bfa41 (COMPLETED) — scroll/zoom events always go to the widget under the cursor
 
 ## Summary
 

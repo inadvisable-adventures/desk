@@ -2,9 +2,7 @@ import math
 from pathlib import Path
 
 from PyQt6.QtCore import QEvent, QPointF, Qt, QTimer, pyqtSignal
-from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
-    QAbstractScrollArea,
     QGraphicsProxyWidget,
     QGraphicsScene,
     QGraphicsView,
@@ -652,7 +650,16 @@ class WorkspaceView(QGraphicsView):
             proxy.moveBy(width - new_width, 0)
 
     def wheelEvent(self, event) -> None:
-        if self._scrollable_at(event.position()):
+        if self._frame_at(event.position()) is not None:
+            # TODO 78bfa41: any placed widget under the cursor wins,
+            # not just a scrollable one (TODO 3846190's original,
+            # narrower _scrollable_at gate) -- explicit user decision,
+            # trading away some canvas zoom/pan reachability in
+            # exchange for a widget never having wheel-scroll stolen
+            # out from under it. A widget that doesn't itself handle
+            # wheel (most of them, today) simply does nothing with it,
+            # same as any other unhandled event -- the canvas just
+            # doesn't zoom either.
             if self._forwarding_wheel:
                 # Re-entrant delivery: an embedded QWebEngineView bounces a
                 # wheel event it couldn't consume (a non-scrollable page, or
@@ -682,58 +689,34 @@ class WorkspaceView(QGraphicsView):
     def _frame_at(self, view_pos: QPointF) -> WidgetFrame | None:
         """The placed WidgetFrame (if any) whose bounds contain this
         viewport position -- true for *any* widget's own content, not
-        just chrome (see _hit_test_chrome) or scrollable content (see
-        _scrollable_at). Used to tell "over some widget's content" apart
-        from "truly empty canvas" (TODO 3846190), for the interactions
-        that should never fall back to canvas-level pan/zoom just
-        because the specific spot under the cursor doesn't itself
-        consume the event."""
+        just chrome (see _hit_test_chrome). Used to tell "over some
+        widget's content" apart from "truly empty canvas" (TODO
+        3846190), for the interactions that should never fall back to
+        canvas-level pan/zoom just because the specific spot under the
+        cursor doesn't itself consume the event -- as of TODO 78bfa41,
+        that's every one of them (click-drag, right-click,
+        wheel-scroll, pinch-zoom): a widget under the cursor always
+        wins, full stop, not just a scrollable one."""
         item = self.itemAt(view_pos.toPoint())
         if not isinstance(item, QGraphicsProxyWidget):
             return None
         frame = item.widget()
         return frame if isinstance(frame, WidgetFrame) else None
 
-    def _scrollable_at(self, view_pos: QPointF) -> bool:
-        """Whether a wheel event at this viewport position should scroll an
-        embedded widget's own content rather than zoom the canvas -- true
-        when the cursor is over (or inside) a QAbstractScrollArea (what
-        every scrollable Qt widget -- QListWidget, QScrollArea, QTextEdit,
-        ... -- is built on) or a QWebEngineView (the browser and
-        kind:"html" widgets, which are *not* scroll areas but scroll their
-        own page content -- TODO c44e88f). Same hit-testing shape as
-        _hit_test_chrome."""
-        item = self.itemAt(view_pos.toPoint())
-        if not isinstance(item, QGraphicsProxyWidget):
-            return False
-        frame = item.widget()
-        if frame is None:
-            return False
-
-        scene_pos = self.mapToScene(view_pos.toPoint())
-        local_point = (scene_pos - item.pos()).toPoint()
-        child = frame.childAt(local_point)
-        while child is not None:
-            if isinstance(child, (QAbstractScrollArea, QWebEngineView)):
-                return True
-            child = child.parentWidget()
-        return False
-
     def event(self, event) -> bool:
         if event.type() == QEvent.Type.NativeGesture:
             if event.gestureType() == Qt.NativeGestureType.ZoomNativeGesture:
-                # TODO 3846190: same _scrollable_at carve-out
-                # wheelEvent already uses -- a pinch landing on a
-                # scrollable/QWebEngineView widget's own content isn't
-                # a canvas-zoom gesture (this previously zoomed the
-                # canvas unconditionally, regardless of what was under
-                # the cursor -- see design-docs/widget-ux.md's
-                # "Trackpad Zoom Input"). Not the broader "any widget"
-                # check _frame_at gives mousePressEvent -- deliberately
-                # kept consistent with wheel's own existing, deliberate
-                # behavior (still zooms the canvas over non-scrollable
-                # content, e.g. a plain image viewer).
-                if not self._scrollable_at(event.position()):
+                # TODO 78bfa41: any placed widget under the cursor wins
+                # (same _frame_at gate wheelEvent/mousePressEvent/
+                # contextMenuEvent all use) -- previously only a
+                # scrollable/QWebEngineView widget (TODO 3846190),
+                # deliberately kept consistent with wheel's own
+                # then-existing behavior; broadened per explicit user
+                # decision. No widget implements its own pinch handling
+                # today, so this still just means "the canvas doesn't
+                # steal it" for pinch specifically, not genuine
+                # forwarding -- there's nothing to forward to yet.
+                if self._frame_at(event.position()) is None:
                     self._apply_zoom(1.0 + event.value())
                 return True
         return super().event(event)

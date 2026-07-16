@@ -647,22 +647,36 @@ Two independent trackpad-driven zoom inputs are supported:
   override instead). The gesture's `value()` is applied as `factor = 1.0 +
   value()`.
 
-Both are carved out when the cursor is over a widget's own scrollable
-content: `_scrollable_at` (same shape as `_hit_test_chrome`) hit-tests
-whether the position under the cursor is inside a `QAbstractScrollArea`
-(what every scrollable Qt widget — `QListWidget`, `QScrollArea`,
-`QTextEdit`, ...) is built on, or a `QWebEngineView` (not a scroll area,
-but scrolls its own page content the same way — TODO `c44e88f`). If so:
-`wheelEvent` forwards via `super().wheelEvent(event)` so Qt's normal
-scene-forwarding delivers it to that widget to scroll its own content,
-instead of zooming the canvas; `event()`'s native-gesture handling
-(TODO `3846190`) simply skips the canvas zoom the same way, rather than
-attempting to forward the gesture itself (no built-in widget implements
-its own pinch-to-zoom today, so there's nothing to forward *to* yet —
-this only stops the canvas from stealing it). Pinch over non-scrollable
-content (e.g. a plain image viewer) still zooms the canvas, same as
-wheel — deliberately kept consistent between the two gestures. See
-`plans/todo-widget-scrollable.md`/`plans/widget-content-event-priority.md`.
+Both are carved out whenever the cursor is over *any* placed widget's
+own content at all (TODO `78bfa41`, broadened from an earlier, narrower
+version of this carve-out that only applied to scrollable content — see
+below) — `_frame_at` (same shape as `_hit_test_chrome`) hit-tests
+whether the position under the cursor lands inside some widget's
+bounds. If so: `wheelEvent` forwards via `super().wheelEvent(event)` so
+Qt's normal scene-forwarding delivers it to that widget, instead of
+zooming the canvas; `event()`'s native-gesture handling simply skips
+the canvas zoom the same way, rather than attempting to forward the
+gesture itself (no built-in widget implements its own pinch-to-zoom
+today, so there's nothing to forward *to* yet — this only stops the
+canvas from stealing it). A widget that doesn't itself handle wheel
+(most of them, today) simply does nothing with it — the point is the
+canvas no longer zooms/scrolls out from under whichever widget the
+cursor happens to be over, full stop, even one with no scrollable
+content of its own. This is an explicit, direct user decision,
+knowingly trading away some canvas zoom/pan reachability (wheel/pinch
+can no longer zoom the canvas *at all* while hovering any widget,
+however large) in exchange for a widget under the cursor never having
+these events stolen out from under it.
+
+(History: TODO `3846190` first introduced this carve-out scoped only to
+`QAbstractScrollArea`/`QWebEngineView` content — `_scrollable_at`,
+since removed — deliberately still zooming the canvas over
+non-scrollable content like a plain image viewer, to stay consistent
+with what wheel already did. TODO `78bfa41` broadened both gestures to
+`_frame_at` instead, per explicit user instruction overriding that
+default.) See `plans/todo-widget-scrollable.md`/
+`plans/widget-content-event-priority.md`/
+`plans/widget-wheel-pinch-always-wins.md`.
 
 ## Open Questions
 
