@@ -10,6 +10,27 @@ from desk.shell import current_context
 
 POLL_INTERVAL_MS = 3000
 CLEAN_PLACEHOLDER = "Working tree clean"
+# TODO fd713a5: the resolved absolute Path for a status row, stashed on
+# its QListWidgetItem the same Qt.ItemDataRole.UserRole pattern
+# widgets/event_log/widget.py's own EVENT_ROLE already uses -- computed
+# once at population time, not re-parsed from the displayed text at
+# click time. The CLEAN_PLACEHOLDER row gets no such data, so clicking
+# it is naturally a no-op.
+PATH_ROLE = Qt.ItemDataRole.UserRole
+
+
+def _path_from_status_line(root: Path, line: str) -> Path | None:
+    """Parses a `git status --porcelain=v1` line: a fixed 2-char status
+    code, one space, then the path -- for a rename/copy (`R  old ->
+    new`), the part after " -> " is the file's *current* path, which is
+    what a diff/view/edit action should target."""
+    if len(line) < 4:
+        return None
+    rest = line[3:]
+    if " -> " in rest:
+        rest = rest.split(" -> ", 1)[1]
+    rest = rest.strip()
+    return root / rest if rest else None
 
 
 class _Relay(QObject):
@@ -64,6 +85,7 @@ class GitStatusWidget(QWidget):
         self._status_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
 
         self._list = QListWidget()
+        self._list.itemClicked.connect(self._on_item_clicked)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self._status_label)
@@ -133,7 +155,20 @@ class GitStatusWidget(QWidget):
             self._list.addItem(QListWidgetItem(CLEAN_PLACEHOLDER))
             return
         for line in lines:
-            self._list.addItem(QListWidgetItem(line))
+            item = QListWidgetItem(line)
+            if self._root is not None:
+                path = _path_from_status_line(self._root, line)
+                if path is not None:
+                    item.setData(PATH_ROLE, path)
+            self._list.addItem(item)
+
+    def _on_item_clicked(self, item: QListWidgetItem) -> None:
+        path = item.data(PATH_ROLE)
+        if path is None:
+            return
+        opener = current_context.get_git_diff_opener()
+        if opener is not None:
+            opener(path)
 
 
 def build() -> QWidget:

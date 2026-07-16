@@ -1,4 +1,4 @@
-# Plan: TODO fd713a5 — Git Diff Viewer widget + a `git-diff` file-type-registry role
+# Plan: TODO fd713a5 (COMPLETED) — Git Diff Viewer widget + a `git-diff` file-type-registry role
 
 ## Summary
 

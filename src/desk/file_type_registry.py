@@ -18,7 +18,7 @@ from pathlib import Path
 
 FILE_TYPE_REGISTRY_UPDATED_EVENT = "desk.file_type_registry.updated"
 
-ROLES = ("view", "edit", "consume", "produce")
+ROLES = ("view", "edit", "git-diff", "consume", "produce")
 
 
 @dataclass
@@ -119,6 +119,23 @@ def find_edit_handler(registry: list[FileTypeRegistryEntry], path: Path) -> str 
     no edit handler at all (the built-in text Editor widget), which
     isn't this function's concern."""
     return _find_handler(registry, path, "edit") or BUILTIN_EDIT_WIDGET_BY_SUFFIX.get(path.suffix.lower())
+
+
+# TODO fd713a5: unlike view/edit (suffix-specific -- an .svg needs a
+# different viewer than a .png), git diff is meaningful for *any* file
+# type at all, so this is a single unconditional fallback widget id,
+# not a suffix-keyed dict.
+GIT_DIFF_WIDGET_ID = "git_diff"
+
+
+def find_git_diff_handler(registry: list[FileTypeRegistryEntry], path: Path) -> str:
+    """A registered `"git-diff"` handler for `path`'s type, falling back
+    to the built-in Git Diff Viewer widget (`GIT_DIFF_WIDGET_ID`) if the
+    dynamic registry has nothing. Unlike `find_view_handler`/
+    `find_edit_handler`, always resolves to a real widget id (never
+    `None`) -- there's no "nothing can handle this" case for git diff,
+    it applies regardless of file type."""
+    return _find_handler(registry, path, "git-diff") or GIT_DIFF_WIDGET_ID
 
 
 def looks_like_text_file(path: Path, sniff_bytes: int = 8192) -> bool:

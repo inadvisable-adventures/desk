@@ -72,6 +72,7 @@ _current_directory: Path | None = None
 _widget_opener: Callable[[str], QWidget | None] | None = None
 _centered_widget_opener: Callable[[str], QWidget | None] | None = None
 _editor_or_scrap_opener: Callable[[Path], None] | None = None
+_git_diff_opener: Callable[[Path], None] | None = None
 _temp_ui_write_recorder: Callable[[Path, str], None] | None = None
 _main_window: QWidget | None = None
 _widget_path_resolver: Callable[[QPoint], str | None] | None = None
@@ -151,6 +152,19 @@ def set_editor_or_scrap_opener(opener: Callable[[Path], None]) -> None:
 
 def get_editor_or_scrap_opener() -> Callable[[Path], None] | None:
     return _editor_or_scrap_opener
+
+
+def set_git_diff_opener(opener: Callable[[Path], None]) -> None:
+    """The shared "open a Git Diff Viewer for this file" service (TODO
+    fd713a5) -- mirrors set_editor_or_scrap_opener. See
+    DeskWindow.open_git_diff. This hook is for `kind: "python"` widgets
+    only (the Git Status widget's own click handler)."""
+    global _git_diff_opener
+    _git_diff_opener = opener
+
+
+def get_git_diff_opener() -> Callable[[Path], None] | None:
+    return _git_diff_opener
 
 
 def set_popup_opener(opener: Callable[[str, str, list[str], str | None], str | None]) -> None:

@@ -118,7 +118,12 @@ PROMOTED_WIDGET_SRC_DIRNAME = "desk_widgets"
 # message+buttons popup, replacing the widget-triggered QMessageBox
 # call sites that used to render as real top-level windows misplaced
 # under canvas zoom/pan).
-TEMPUI_DOC_VERSION = 19
+#
+# TODO fd713a5: bumped 19 -> 20 -- desk.filetypes.get()/.set(entries)'s
+# capability description in _CUSTOM_WIDGETS_DOC now mentions the new
+# `git-diff` file-type-registry role (alongside view/edit/consume/
+# produce), and a new Git Diff Viewer widget consumes it.
+TEMPUI_DOC_VERSION = 20
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -640,7 +645,8 @@ built for genuine cross-widget signaling:
   widget instance. See "Inspecting another widget" below.
 - `desk.filetypes.get()` / `.set(entries)` (capability `filetypes`) —
   read/edit the file type registry (which widget(s) can view, edit,
-  consume, or produce which file type, by extension and/or MIME type).
+  git-diff, consume, or produce which file type, by extension and/or
+  MIME type).
   `get()` also subscribes you to future edits, delivered as a
   `"desk.file_type_registry.updated"` message via `desk.events
   .onMessage` (declare the `events` capability too if you want to
@@ -851,6 +857,15 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 20
+- `desk.filetypes.get()`/`.set(entries)` (capability `filetypes`): file
+  type registry entries can now declare a `"git-diff"` role alongside
+  the existing `view`/`edit`/`consume`/`produce` ones -- a built-in Git
+  Diff Viewer widget (`git_diff`) is the unconditional fallback for
+  this role (git diff is meaningful for any file type, not just
+  specific extensions), so registering a `git-diff` handler is only
+  needed to override that default for a particular type.
 
 ## Version 19
 - `desk.popups.show(title, message, buttons, default)` (capability

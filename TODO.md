@@ -4321,7 +4321,7 @@ dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidge
    check above exercises the exact same `set_view_scale`/counter
    -scaling code path every other widget's chrome already relies on,
    just not a human's own eyes on a real screen).
-fd713a5. Git diff viewer widget: shows a file's `git diff` when clicked in
+fd713a5. COMPLETED: Git diff viewer widget: shows a file's `git diff` when clicked in
    the Git Status widget (`widgets/git_status/widget.py`, which
    currently only displays `git status --porcelain=v1` output in a
    plain `QListWidget` with no click handling at all -- add it). Also
@@ -4338,3 +4338,83 @@ fd713a5. Git diff viewer widget: shows a file's `git diff` when clicked in
    show something like "(binary file, no diff)" instead of attempting
    to render a diff.
    [planned: git-diff-viewer-widget.md]
+
+   Added `"git-diff"` to `desk.file_type_registry.ROLES` and a new
+   `GIT_DIFF_WIDGET_ID`/`find_git_diff_handler` -- unlike
+   `find_view_handler`/`find_edit_handler`, this always resolves to a
+   real widget id (never `None`): git diff is meaningful for any file
+   type, not a suffix-specific concern, so the built-in fallback is a
+   single unconditional constant rather than a suffix-keyed dict.
+
+   New `widgets/git_diff/` (`GitDiffWidget`): `set_file(path)` runs
+   `git diff HEAD -- <path>` on a background thread (a `_Relay`
+   `pyqtSignal`, same shape as `git_status`/`todo`'s own git-subprocess
+   threads) -- resolving `find_git_root` on that same background
+   thread too, not on the GUI thread first the way `git_status`'s own
+   `_poll` does, per `LEARNINGS.md`'s "a blocking `subprocess.run()` on
+   the Qt GUI thread freezes the whole app's UI feedback" (a fresh
+   widget shouldn't copy that existing, separate wart). Binary
+   detection: git's own `"Binary files "` marker in the diff output is
+   authoritative; `desk.file_type_registry.looks_like_text_file(path)`
+   is only consulted when the file still exists locally -- checking it
+   unconditionally would misidentify a *deleted* file (a real, common
+   git-status entry, which no longer exists to sniff and so returns
+   `False` from that heuristic's own "can't tell, don't guess yes"
+   convention) as binary, hiding its real, meaningful diff. Empty diff
+   output shows "(no differences from the last commit)" rather than a
+   blank pane. `get_widget_local_storage`/`set_widget_local_storage`
+   persist the path via `desk.persisted_path.resolve_persisted_path`,
+   same convention as Editor/Markdown/SVG Editor.
+
+   `current_context.set_git_diff_opener`/`get_git_diff_opener` (bound
+   at `DeskWindow` startup to a new `DeskWindow.open_git_diff`,
+   mirroring `open_editor_or_scrap` but without its Scratch-note
+   fallback branch, since `find_git_diff_handler` always resolves) is
+   the shared, reusable "open a Git Diff Viewer for this file" service
+   the TODO asked for -- not hardcoded into the Git Status widget's own
+   click handler.
+
+   `widgets/git_status/widget.py`: `_populate_list` now stashes each
+   row's resolved absolute `Path` (parsed from the porcelain line --
+   fixed 2-char status + 1 space prefix, taking the part after `" -> "`
+   for a rename/copy line) as `Qt.ItemDataRole.UserRole` item data at
+   population time; the `CLEAN_PLACEHOLDER` row gets none, so clicking
+   it is a no-op. `itemClicked` (single click, matching the TODO's own
+   "when clicked" wording) reads that data and calls
+   `current_context.get_git_diff_opener()`.
+
+   Scope note: `ProjectFilesWidget` was **not** given a new context
+   menu in this pass -- it has no existing Edit/View menu at all today
+   (only a double-click -> view-handler lookup), so there's no existing
+   entry point to extend, and building a new right-click menu is a
+   separate UI-design decision (which actions, which gesture) beyond
+   what was concretely asked. The reusable `find_git_diff_handler`/
+   `open_git_diff` infrastructure this TODO built makes that addition
+   cheap whenever it's wanted.
+
+   Bumped `TEMPUI_DOC_VERSION` 19 -> 20: `desk.filetypes.get()/.set()`'s
+   capability description in `tempui-custom-widgets.md` now mentions
+   the new `git-diff` role, and `tempui-new-features.md` got a matching
+   Version 20 entry (this is a new, agent-visible capability of an
+   existing Bridge API route, per `development-process.md`'s standing
+   tempui-changelog rule).
+
+   Verified directly: new `tests/verify/verify_git_diff_widget.py` (16
+   checks) -- `find_git_diff_handler`'s dynamic-registry hit and
+   always-resolves fallback; the porcelain-line path parser (plain
+   line, rename line, garbage line); `_populate_list`'s item-data
+   stashing and the clean-placeholder's lack of it; the click handler
+   calling the opener for a real row and not for the placeholder; and,
+   against **real temporary git repos** (not mocked subprocess output):
+   a real uncommitted text change rendering as a real `-`/`+` diff, a
+   real binary-content change showing the binary placeholder, a
+   **deleted file's real diff still rendering** (the critical
+   regression check for the binary-detection ordering decision above),
+   an unchanged file's no-differences message, a not-a-repo message,
+   and the widget-local-storage round trip. Full regression suite: 69
+   scripts, 0 new failures (the one pre-existing, unrelated failure in
+   `verify_discuss_parking_lot_item.py` is still the only failure).
+
+   This was the last item in the TODO queue -- confirmed via `grep -n
+   "^[0-9a-f]\{7\}\." TODO.md | grep -vi "COMPLETED\|SUPERSEDED"`
+   returning empty after this commit.

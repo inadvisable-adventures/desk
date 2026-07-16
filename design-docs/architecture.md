@@ -275,7 +275,10 @@ Desk Bridge API.
     background thread (never the GUI thread, same reasoning as the TODO
     widget's own git-commit thread — see `LEARNINGS.md`), skip entirely
     while the widget isn't visible, and only trigger a redraw when the
-    output actually changed since the last poll. See
+    output actually changed since the last poll. Clicking a row (TODO
+    `fd713a5`) opens the Git Diff Viewer Widget for that file, via the
+    same `find_git_diff_handler`/`DeskWindow.open_git_diff` mechanism
+    described in that widget's own entry below. See
     `plans/git-status-widget.md`.
 14. **Markdown (Old, Basic) Widget** — a built-in, **deprecated**
     `kind: "python"` widget (`widgets/markdown_old_basic/`, id
@@ -558,6 +561,25 @@ Desk Bridge API.
     via the Bridge API (`POST /api/bridge/popups/show`). See
     `design-docs/widget-ux.md`'s "Desk-Internal Popups" section and
     `plans/desk-internal-popups.md`.
+27. **Git Diff Viewer Widget** (`widgets/git_diff/`, TODO `fd713a5`) —
+    shows `git diff HEAD -- <path>` for a single file, opened by
+    clicking a row in the Git Status Widget. The actual `git diff`
+    subprocess call (and `find_git_root`) runs on a background thread,
+    same reasoning as the Git Status/TODO widgets' own git subprocess
+    calls (`LEARNINGS.md`). Binary content is detected two ways: git's
+    own `"Binary files ... differ"` marker in the diff output
+    (authoritative), and, only when the file still exists locally,
+    `desk.file_type_registry.looks_like_text_file` -- checking the
+    local-file heuristic unconditionally would misidentify a *deleted*
+    file (which no longer exists to sniff) as binary, hiding its real,
+    meaningful diff. Also adds a new `"git-diff"` role to
+    `desk.file_type_registry.ROLES` alongside `view`/`edit` --
+    `find_git_diff_handler` always resolves to a real widget id (unlike
+    `find_view_handler`/`find_edit_handler`), since git diff is
+    meaningful for any file type, not just specific extensions. Reached
+    by other code the same way `open_editor_or_scrap` already is:
+    `current_context.get_git_diff_opener()`/`DeskWindow.open_git_diff`.
+    See `plans/git-diff-viewer-widget.md`.
 
 ### Widget Model
 

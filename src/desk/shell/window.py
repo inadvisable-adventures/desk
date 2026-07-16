@@ -17,6 +17,7 @@ from desk.file_type_registry import (
     entry_from_dict,
     entry_to_dict,
     find_edit_handler,
+    find_git_diff_handler,
     looks_like_text_file,
 )
 from desk.file_watch import SingleFileWatcher
@@ -280,6 +281,7 @@ class DeskWindow(QMainWindow):
         current_context.set_centered_widget_opener(self.open_widget_content_centered)
         current_context.set_editor_or_scrap_opener(self.open_editor_or_scrap)
         current_context.set_popup_opener(self._popups_service.show_blocking)
+        current_context.set_git_diff_opener(self.open_git_diff)
         current_context.set_temp_ui_write_recorder(self._temp_ui_manager.record_own_write)
         current_context.set_main_window(self)
         current_context.set_widget_path_resolver(self.view.describe_widget_at_global_pos)
@@ -703,6 +705,26 @@ class DeskWindow(QMainWindow):
             f"No editor is registered for this file type "
             f"({path.suffix or 'no extension'}), and it doesn't look like plain text."
         )
+
+    def open_git_diff(self, path: Path) -> None:
+        """The shared "open a Git Diff Viewer for `path`" service (TODO
+        fd713a5) -- mirrors open_editor_or_scrap. Simpler than that one:
+        find_git_diff_handler always resolves to a real widget id (git
+        diff is meaningful for any file type), so there's no Scratch
+        -note fallback branch. Bound to
+        current_context.set_git_diff_opener."""
+        registry = [entry_from_dict(d) for d in self.get_file_type_registry_dicts()]
+        widget_id = find_git_diff_handler(registry, path)
+        widget = self.open_widget_content_centered(widget_id)
+        if widget is not None and hasattr(widget, "set_file"):
+            # A broken set_file() must never propagate out of here (TODO
+            # 810a5d6) -- this may run inside a Qt slot (Git Status'
+            # click handler), and an uncaught exception there is fatal
+            # to the whole process in this PyQt6 setup.
+            try:
+                widget.set_file(path)
+            except Exception:
+                logger.error("Failed to open %s in the %r widget", path, widget_id, exc_info=True)
 
     def _bind_temp_ui_widget(self, frame: WidgetFrame, directory: Path, uuid_str: str) -> None:
         if not isinstance(frame.content, PythonWidgetHost):
