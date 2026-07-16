@@ -3698,10 +3698,19 @@ fea158d. COMPLETED: Investigate `tests/verify/disabled_verify_define_widget_auto
    `verify_fs_path_resolution_and_events_doc.py`. Full `tests/verify/`
    suite: 9 remaining known-disabled scripts, 0 new failures among the
    enabled ones.
-6a5202c. Investigate `tests/verify/disabled_verify_html_widget_local_storage.py`:
+6a5202c. COMPLETED: Investigate `tests/verify/disabled_verify_html_widget_local_storage.py`:
    its own fake `DeskWindow` double lacks `_bind_event_mediator`, which
    the real `_place_widget` has called unconditionally since TODO
    `6f9c51b`. Add the missing stub if that's the whole issue.
+   [planned: investigate-disabled-verify-html-widget-local-storage.md]
+
+   Confirmed fixture drift, plus a second gap found once the first was
+   fixed: `_custom_widget_content_hash` was also missing from the fake
+   double (same attribute several other disabled scripts in this batch
+   were missing too). Added both; re-enabled as
+   `verify_html_widget_local_storage.py`. Full `tests/verify/` suite: 8
+   remaining known-disabled scripts, 0 new failures among the enabled
+   ones.
 6e9def4. Investigate `tests/verify/disabled_verify_new_desk_directory.py`: its own
    fake `DeskWindow` double's `switch_desk` doesn't accept the real
    method's `provisioning` parameter. Update the fake double's

@@ -1,12 +1,3 @@
-# DISABLED (see tests/verify/README.md) -- TODO 6a5202c tracks
-# investigating this. Current failure: Fails with AttributeError: '_FakeWindowWithView' object has no
-# attribute '_bind_event_mediator' -- this script's own hand-written
-# fake DeskWindow double doesn't implement a method the real
-# _place_widget now calls unconditionally (added by TODO 6f9c51b, after
-# this script was written). Reasonable suspicion: fixture drift, not a
-# real bug -- the fake double just needs a no-op _bind_event_mediator
-# stub added.
-
 import json
 import os
 import sys
@@ -128,6 +119,7 @@ class _FakeWindowWithView:
         self.view.show()
         self._custom_widget_sources = {}
         self._custom_widget_definitions = {}
+        self._custom_widget_content_hash = {}
 
 
 class _FakeHandle:
@@ -140,6 +132,12 @@ class _FakeHandle:
 _FakeWindowWithView._place_widget = DeskWindow._place_widget
 _FakeWindowWithView._bind_claude_widget = DeskWindow._bind_claude_widget
 _FakeWindowWithView._bind_external_indicator = DeskWindow._bind_external_indicator
+# TODO 6f9c51b: _place_widget now calls this unconditionally too -- a
+# no-op here since every widget this script places is html-kind
+# (ChromiumWidget-backed), and _bind_event_mediator's own isinstance
+# check on PythonWidgetHost returns before ever touching
+# self._event_mediator, so no fake attribute is needed for it either.
+_FakeWindowWithView._bind_event_mediator = DeskWindow._bind_event_mediator
 
 
 def test_place_widget_chromium_instance_id_matches_frame():
