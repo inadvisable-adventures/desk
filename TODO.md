@@ -4471,10 +4471,14 @@ d9a46b6. COMPLETED: Rename the Event Recorder widget's display name (`widgets/ev
    moves a `.desk_temp/transforms/<id>/` directory to
    `desk_transforms/<id>/` (`shutil.move`, mirrors
    `_relocate_promoted_widget_source`). Reachable by `kind: "python"`
-   widgets via `current_context.get_transform_runner()`/
-   `get_transform_runner_blocking()` (bound at `DeskWindow` startup),
-   and by `kind: "html"` widgets via `POST /api/bridge/transforms/run`
-   (capability `transforms`, `run_on_gui_async`).
+   widgets via `current_context.get_transform_runner_blocking()`
+   (bound at `DeskWindow` startup), and by `kind: "html"` widgets via
+   `POST /api/bridge/transforms/run` (capability `transforms`,
+   `run_on_gui_async`). `identity`/`identity_blocking` are implemented
+   and tested at the service level but not wired out to
+   `current_context`/the Bridge API yet -- nothing consumes them (both
+   Mermaid transforms declare `has_identity: false`).
+   [planned: transforms-core-infrastructure.md]
 b5e15cf. Transforms, part 2/4: Transform Manager widget. A new
    `widgets/transform_manager/` (`kind: "python"`), modeled on
    `EventLogWidget`'s plain `QTableWidget` shape (no existing "list/
