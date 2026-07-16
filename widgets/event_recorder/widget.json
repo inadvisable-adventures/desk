@@ -1,5 +1,5 @@
 {
-  "name": "Event Recorder",
+  "name": "Qt UI Event Recorder",
   "kind": "python",
   "entry": "widget.py",
   "capabilities": [],

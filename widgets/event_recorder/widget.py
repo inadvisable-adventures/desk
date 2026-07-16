@@ -1,7 +1,8 @@
-"""Event Recorder (TODO 8d4826c) -- a diagnostic widget: "Record for 5s"
-temporarily replaces the widget's own content with a blank surface that
-records every raw Qt event landing on it, then shows a scrollable,
-collapsed summary. Motivated directly by TODO 3846190: the user still
+"""Qt UI Event Recorder (TODO 8d4826c, renamed by TODO d9a46b6) -- a
+diagnostic widget: "Record for 5s" temporarily replaces the widget's
+own content with a blank surface that records every raw Qt event
+landing on it, then shows a scrollable, collapsed summary. Motivated
+directly by TODO 3846190: the user still
 sees a trackpad two-finger-scroll gesture "getting missed" by widgets
 even after that fix, and wants to observe empirically which events
 actually arrive (this environment is headless and can't reproduce real

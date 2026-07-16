@@ -4418,7 +4418,7 @@ fd713a5. COMPLETED: Git diff viewer widget: shows a file's `git diff` when click
    This was the last item in the TODO queue -- confirmed via `grep -n
    "^[0-9a-f]\{7\}\." TODO.md | grep -vi "COMPLETED\|SUPERSEDED"`
    returning empty after this commit.
-d9a46b6. Rename the Event Recorder widget's display name (`widgets/event_recorder
+d9a46b6. COMPLETED: Rename the Event Recorder widget's display name (`widgets/event_recorder
    /widget.json`'s `"name"` field) to "Qt UI Event Recorder" -- the
    `widget_id` (`event_recorder`, derived from the directory name at
    discovery time, independent of the manifest's `name` field) is
@@ -4430,3 +4430,14 @@ d9a46b6. Rename the Event Recorder widget's display name (`widgets/event_recorde
    already-`COMPLETED` plan files) as the historical record of what was
    true when written, not retroactively renamed.
    [planned: rename-event-recorder-widget.md]
+
+   Changed `widget.json`'s `"name"` field, the widget's own module
+   docstring, `design-docs/architecture.md`'s numbered entry, and one
+   descriptive comment in `src/desk/shell/canvas.py`. `widget_id`
+   (`event_recorder`) confirmed unaffected (derived from the directory
+   name at discovery, independent of `name`) -- no already-placed
+   instance or `.desk` file is touched by this. Confirmed via grep that
+   no `tests/verify/*.py` script hardcodes the old display name, so no
+   test changes were needed. Full regression suite: 69 scripts, 0 new
+   failures (the one pre-existing, unrelated failure in
+   `verify_discuss_parking_lot_item.py` is still the only failure).

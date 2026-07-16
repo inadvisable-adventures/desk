@@ -527,7 +527,9 @@ Desk Bridge API.
     bound to the shared bus. `kind: "html"` children are out of scope
     for this first pass. See
     `plans/side-by-side-widget-container.md`.
-25. **Event Recorder Widget** — a built-in `kind: "python"` widget
+25. **Qt UI Event Recorder Widget** (renamed from "Event Recorder" by
+    TODO `d9a46b6`; `widget_id` is still `event_recorder`) — a built-in
+    `kind: "python"` widget
     (`widgets/event_recorder/`, TODO `8d4826c`), a diagnostic tool: a
     "Record for 5s" button swaps the widget's own content out for a
     blank, deliberately childless `_RecordingSurface` filling the same

@@ -1,4 +1,4 @@
-# Plan: TODO d9a46b6 — rename Event Recorder's display name to "Qt UI Event Recorder"
+# Plan: TODO d9a46b6 (COMPLETED) — rename Event Recorder's display name to "Qt UI Event Recorder"
 
 ## Summary
 

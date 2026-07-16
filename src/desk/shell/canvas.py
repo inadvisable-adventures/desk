@@ -757,7 +757,7 @@ class WorkspaceView(QGraphicsView):
             # includes every non-scrollable widget and any scroll area
             # already at the end of its scroll direction: exactly the
             # "events pass through" leak the user found (both by reading
-            # back the Event Recorder's own recording, and independently
+            # back the Qt UI Event Recorder's own recording, and independently
             # by scrolling a real scrollable widget past its limit).
             # `_forwarding_wheel`'s accept() alone doesn't stop it, since
             # the pan already happened synchronously inside the call below
