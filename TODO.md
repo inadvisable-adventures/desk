@@ -3818,11 +3818,27 @@ f7c2f60. COMPLETED: Investigate `tests/verify/disabled_verify_segfault_fix.py`: 
    The other two test functions needed no changes. Full `tests/verify/`
    suite: 2 remaining known-disabled scripts, 0 new failures among the
    enabled ones.
-28119c6. Investigate `tests/verify/disabled_verify_tempui_changelog_docs.py`: 3
+28119c6. COMPLETED: Investigate `tests/verify/disabled_verify_tempui_changelog_docs.py`: 3
    assertions hardcode the doc set's version range as of TODO `7462cdb`
    (when `TEMPUI_DOC_VERSION` was 14); it's since grown through 17.
    Decide whether to keep updating them by hand per bump or rewrite as
    a looser "covers every version up to current" check.
+   [planned: investigate-disabled-verify-tempui-changelog-docs.md]
+
+   Checked the actual current content before choosing a fix: the
+   version lists are **not** contiguous (`breaking_versions == [17,
+   14]`, `features_versions == [16, 14..7]` — version 15, TODO
+   `1a96c9f`, has no features-doc entry at all since it wasn't
+   agent-in-Desk-visible behavior) — a naive "contiguous through
+   current" rewrite would have been wrong, not just looser. Loosened
+   `TEMPUI_DOC_VERSION == 15` to `>= 15`, and replaced the two exact
+   -list-equality checks with ones confirming only that the *original*
+   `7462cdb` backfill is still present (`all(v in features_versions
+   for v in range(7, 15))`, `14 in breaking_versions`) — robust to
+   further versions being added later without needing hand-updates
+   each time. Re-enabled as `verify_tempui_changelog_docs.py`. Full
+   `tests/verify/` suite: 1 remaining known-disabled script, 0 new
+   failures among the enabled ones.
 d8a6c96. Investigate `tests/verify/disabled_verify_tempui_custom_widgets.py`: its
    own fake `DeskWindow` double lacks `_custom_widget_content_hash`,
    which the real `_register_custom_widget` now sets. Add the missing

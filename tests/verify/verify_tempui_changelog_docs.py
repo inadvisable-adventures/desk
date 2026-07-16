@@ -1,14 +1,3 @@
-# DISABLED (see tests/verify/README.md) -- TODO 28119c6 tracks
-# investigating this. Current failure: Fails on 3 stale range assertions ("features doc covers versions
-# 7-14", "breaking doc covers only version 14") written when
-# TEMPUI_DOC_VERSION was 14 (TODO 7462cdb, which created these docs) --
-# the doc set has since grown through version 17 across later TODOs
-# (1a96c9f, 029047b). Reasonable suspicion: not a real bug, just
-# assertions that need to grow alongside every future version bump --
-# worth deciding whether to keep updating them by hand or rewrite as a
-# looser "covers every version up to the current TEMPUI_DOC_VERSION"
-# check.
-
 import os
 import sys
 import tempfile
@@ -40,7 +29,7 @@ def check(name, condition):
         print(f"FAIL: {name}")
 
 
-check("TEMPUI_DOC_VERSION bumped to 15", TEMPUI_DOC_VERSION == 15)
+check("TEMPUI_DOC_VERSION bumped to at least 15", TEMPUI_DOC_VERSION >= 15)
 check("breaking-changes doc registered", BREAKING_CHANGES_DOC_FILENAME in SPLIT_DOC_CONTENT)
 check("new-features doc registered", NEW_FEATURES_DOC_FILENAME in SPLIT_DOC_CONTENT)
 
@@ -53,8 +42,14 @@ breaking_versions = [int(m) for m in re.findall(r"## Version (\d+)", breaking)]
 features_versions = [int(m) for m in re.findall(r"## Version (\d+)", features)]
 check("breaking doc versions strictly descending", breaking_versions == sorted(breaking_versions, reverse=True))
 check("features doc versions strictly descending", features_versions == sorted(features_versions, reverse=True))
-check("features doc covers versions 7-14", features_versions == [14, 13, 12, 11, 10, 9, 8, 7])
-check("breaking doc covers only version 14 (the one real breaking change)", breaking_versions == [14])
+# Not a contiguous 7-through-current range check: newer versions don't
+# all get an entry in both docs (e.g. version 15, TODO 1a96c9f, wasn't
+# agent-in-Desk-visible behavior, so it has no features-doc entry at
+# all) -- just confirm the original 7462cdb backfill is still present,
+# robust to further versions being added later without needing a
+# hand-update each time.
+check("features doc still covers the original 7-14 backfill", all(v in features_versions for v in range(7, 15)))
+check("breaking doc still covers version 14 (the original real breaking change)", 14 in breaking_versions)
 
 check("breaking doc mentions the source-directory move", "custom_widget_src" in breaking and ".desk_temp/widgets" in breaking)
 check("features doc mentions events capability (v7)", "events" in features.lower())
