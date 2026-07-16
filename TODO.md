@@ -3860,7 +3860,7 @@ d8a6c96. COMPLETED: Investigate `tests/verify/disabled_verify_tempui_custom_widg
    -disables commit) has now been investigated and either fixed,
    rewritten, or deleted; all 67 scripts in `tests/verify/` currently
    pass.
-dafbaab. Remove the feature where a newly defined tempui `DefineWidget`
+dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidget`
    keyword automatically gets one instance placed on the Desk (TODO
    `5ff02d2`) — per direct user feedback, it proved too confusing in
    practice. Revert the auto-place call entirely
@@ -3878,3 +3878,49 @@ dafbaab. Remove the feature where a newly defined tempui `DefineWidget`
    section 2, which currently proposes the two-part fix (louder docs +
    auto-place) as still-current design.
    [planned: remove-define-widget-auto-place.md]
+
+   `DeskWindow._on_temp_ui_file_added` now calls
+   `_handle_define_widget_file(path)` with no `is_new` argument;
+   `_handle_define_widget_file` no longer takes that parameter at all
+   (dropped along with the `keyword_already_known` local and the
+   auto-place call), and `_auto_place_new_custom_widget` is deleted
+   outright. Dropped the same method's mentions from
+   `open_widget_content_centered`'s docstring and
+   `current_context.set_centered_widget_opener`'s. `_CUSTOM_WIDGETS_DOC`'s
+   callout rewritten to state plainly that `DefineWidget` never places
+   an instance by itself — brand-new keyword or redefinition alike —
+   full stop, no auto-placed exception. `TEMPUI_DOC_VERSION` 17 → 18,
+   with a new Version 18 entry in `tempui-breaking-changes.md`
+   explicitly noting this reverts the Version 12 new-features entry;
+   that Version 12 entry itself is left untouched as dated historical
+   record (same precedent as Version 14's own breaking change
+   deferring to the breaking-changes doc rather than being rewritten).
+   `design-docs/custom-widget-authoring.md` section 2 rewritten to
+   describe the actual single-part fix (doc callout only) plus a
+   "tried and reverted" note explaining the auto-place half's own
+   history and why it was pulled.
+
+   `tests/verify/verify_define_widget_auto_place.py` renamed to
+   `verify_define_widget_no_auto_place.py` with every assertion
+   flipped: a brand-new keyword registered via the live-added path now
+   places zero instances too, converging with the other three
+   already-nothing-placed paths (edit-of-known-keyword, bulk rescan,
+   failed registration) — kept as explicit regression protection
+   against reintroducing the removed behavior by accident, rather than
+   deleted.
+
+   Verified directly: the real, unbound `DeskWindow
+   ._handle_define_widget_file` (no `is_new` param) registers a
+   brand-new keyword via a fake window double with a real
+   `WorkspaceView`, and `win.view._frames` stays empty — same for the
+   other three paths, all previously and still nothing-placed;
+   `_auto_place_new_custom_widget` no longer exists as an attribute on
+   `DeskWindow`; doc content (version bump, breaking-changes entry,
+   simplified callout, no remaining "auto-places" wording). Full
+   regression suite (`git stash` before/after): fixed one more of my
+   own earlier scripts' hardcoded exact-version assertion
+   (`verify_ensure_build_widget_script.py`, `== 17` → `>= 17`,
+   consistent with the `>=`-loosening already applied to several
+   similar assertions in the previous TODO batch) — confirmed not a
+   real regression. 0 other new failures across all 65 scripts in
+   `tests/verify/`.

@@ -1,4 +1,4 @@
-# Plan: TODO dafbaab — remove `DefineWidget` auto-place-new-instance behavior
+# Plan: TODO dafbaab (COMPLETED) — remove `DefineWidget` auto-place-new-instance behavior
 
 ## Summary
 

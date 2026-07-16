@@ -640,9 +640,8 @@ class DeskWindow(QMainWindow):
     ) -> QWidget | None:
         """Like open_widget_content, but placed centered in the current
         view (TODO efdad99) instead of open_widget's own `(0, 0)`
-        default -- the same centering math
-        `_place_discuss_claude_widget`/`_auto_place_new_custom_widget`
-        already use. Bound to `current_context
+        default -- the same centering math `_place_discuss_claude_widget`
+        already uses. Bound to `current_context
         .set_centered_widget_opener` for a `kind: "python"` widget that
         wants this placement convention without reaching into the
         view/scene directly."""
@@ -1356,7 +1355,7 @@ class DeskWindow(QMainWindow):
             self.view.centerOn(proxy.sceneBoundingRect().center())
 
     def _on_temp_ui_file_added(self, path: Path) -> None:
-        if self._handle_define_widget_file(path, is_new=True):
+        if self._handle_define_widget_file(path):
             return
         self._notify_temp_ui(path)
 
@@ -1834,7 +1833,7 @@ class DeskWindow(QMainWindow):
             if self._register_custom_widget(definition, source="tempui"):
                 self._custom_widget_source_paths[definition.keyword] = path
 
-    def _handle_define_widget_file(self, path: Path, is_new: bool = False) -> bool:
+    def _handle_define_widget_file(self, path: Path) -> bool:
         """Returns True if `path` is a DefineWidget tempui file (TODO
         91b3f42) -- handled entirely here (register + doc sync), never
         as an openable widget notification, since a widget *type*
@@ -1843,17 +1842,14 @@ class DeskWindow(QMainWindow):
         anything else, so the caller falls through to the normal
         notify/live-refresh flow.
 
-        `is_new` (TODO 5ff02d2, only ever passed True from
-        _on_temp_ui_file_added) auto-places one instance of a keyword
-        that's genuinely new -- never already present in
-        _custom_widget_definitions before this call -- since otherwise
-        DefineWidget is the only tempui kind that can silently succeed
-        with no visible next step (see
-        design-docs/custom-widget-authoring.md section 2). Deliberately
-        does not fire for a re-save of an already-known keyword, nor
-        for _register_custom_widgets_from_desk_temp's own bulk startup
-        /Desk-switch rescan (which never calls this method at all) --
-        both would otherwise place a duplicate instance every time."""
+        Registering never places an instance of the defined kind --
+        see the "louder docs" callout in _CUSTOM_WIDGETS_DOC (TODO
+        dafbaab) -- a separate, keyword-only tempui file always does
+        that (see "Invoking a defined widget"). TODO 5ff02d2 briefly
+        auto-placed one instance the first time a brand-new keyword was
+        registered live; reverted by TODO dafbaab (too confusing in
+        practice, per direct user feedback) -- see
+        design-docs/custom-widget-authoring.md section 2."""
         try:
             text = path.read_text()
         except OSError:
@@ -1863,25 +1859,10 @@ class DeskWindow(QMainWindow):
         definition = parse_define_widget(text)
         if definition is None:
             return False
-        keyword_already_known = definition.keyword in self._custom_widget_definitions
         if self._register_custom_widget(definition, source="tempui"):
             self._custom_widget_source_paths[definition.keyword] = path
             self._sync_tempui_doc()
-            if is_new and not keyword_already_known:
-                self._auto_place_new_custom_widget(definition.keyword)
         return True
-
-    def _auto_place_new_custom_widget(self, keyword: str) -> None:
-        """Places one instance of a brand-new DefineWidget kind, centered
-        in the current view -- same positioning as
-        _place_discuss_claude_widget/_activate_temp_ui's own
-        auto-placements. See _handle_define_widget_file's is_new
-        docstring for when this runs."""
-        widget = self._widgets.get(keyword)
-        if widget is None:
-            return
-        center = self.view.mapToScene(self.view.viewport().rect().center())
-        self._place_widget(keyword, widget, (center.x(), center.y()), widget.default_size)
 
     def _sync_tempui_doc(self) -> None:
         """Keeps desk-temporary-ui.md's dynamic custom-widgets section

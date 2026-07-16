@@ -82,7 +82,6 @@ _FakeWindow._register_custom_widget = DeskWindow._register_custom_widget
 _FakeWindow._refresh_stale_indicators_for = DeskWindow._refresh_stale_indicators_for
 _FakeWindow._register_custom_widgets_from_desk_temp = DeskWindow._register_custom_widgets_from_desk_temp
 _FakeWindow._handle_define_widget_file = DeskWindow._handle_define_widget_file
-_FakeWindow._auto_place_new_custom_widget = DeskWindow._auto_place_new_custom_widget
 _FakeWindow._sync_tempui_doc = DeskWindow._sync_tempui_doc
 _FakeWindow._place_widget = DeskWindow._place_widget
 _FakeWindow._bind_claude_widget = DeskWindow._bind_claude_widget
@@ -98,18 +97,18 @@ def _write_define_widget_file(directory, keyword="KanbanBoard", label="Kanban Bo
     return path
 
 
-def test_live_added_brand_new_keyword_auto_places_one_instance():
+def test_live_added_brand_new_keyword_places_nothing():
+    # TODO dafbaab: reverts TODO 5ff02d2's auto-place-one-instance
+    # behavior -- a brand-new keyword registered via the live-added
+    # path now places zero instances, same as every other case below.
     with tempfile.TemporaryDirectory() as d:
         directory = Path(d)
         win = _FakeWindow(directory)
         path = _write_define_widget_file(directory)
-        handled = win._handle_define_widget_file(path, is_new=True)
+        handled = win._handle_define_widget_file(path)
         check("returns True for a DefineWidget file", handled is True)
         check("keyword registered", "KanbanBoard" in win._widgets)
-        placed = win.view._frames
-        check("exactly one instance auto-placed", len(placed) == 1)
-        frame = placed[0]
-        check("placed instance is the new widget kind", frame.content.widget_id == "KanbanBoard")
+        check("no instance auto-placed", len(win.view._frames) == 0)
 
 
 def test_edit_of_already_known_keyword_places_nothing_new():
@@ -117,14 +116,13 @@ def test_edit_of_already_known_keyword_places_nothing_new():
         directory = Path(d)
         win = _FakeWindow(directory)
         path = _write_define_widget_file(directory)
-        win._handle_define_widget_file(path, is_new=True)
-        check("one instance after initial add", len(win.view._frames) == 1)
-        # Re-save (edit) the same file -- is_new stays False, as
-        # _on_temp_ui_file_edited always passes.
+        win._handle_define_widget_file(path)
+        check("zero instances after initial add", len(win.view._frames) == 0)
+        # Re-save (edit) the same file.
         path.write_text(f"DefineWidget\tKanbanBoard\tKanban Board (v2)\nSize\t600\t400\nHtml\t{SAMPLE_HTML_B64}\n")
-        win._handle_define_widget_file(path, is_new=False)
+        win._handle_define_widget_file(path)
         check("relabel took effect", win._widgets["KanbanBoard"].name == "Kanban Board (v2)")
-        check("no additional instance placed on edit", len(win.view._frames) == 1)
+        check("still no instance placed on edit", len(win.view._frames) == 0)
 
 
 def test_startup_bulk_rescan_places_nothing():
@@ -146,22 +144,23 @@ def test_failed_registration_places_nothing():
         # "Scratch" collides with a reserved built-in DSL keyword, so
         # _register_custom_widget refuses it.
         path = _write_define_widget_file(directory, keyword="Scratch", label="Sneaky")
-        handled = win._handle_define_widget_file(path, is_new=True)
+        handled = win._handle_define_widget_file(path)
         check("still recognized as a DefineWidget file", handled is True)
         check("reserved keyword refused", "Scratch" not in win._widgets)
         check("nothing placed for a refused registration", len(win.view._frames) == 0)
 
 
 def test_doc_callout_and_version():
-    check("TEMPUI_DOC_VERSION bumped to at least 12", TEMPUI_DOC_VERSION >= 12)
+    check("TEMPUI_DOC_VERSION bumped to at least 18", TEMPUI_DOC_VERSION >= 18)
     doc = SPLIT_DOC_CONTENT[CUSTOM_WIDGETS_DOC_FILENAME]
     check(
         "doc has the loud no-instance-placed callout",
         "only registers the new widget" in doc and "place an instance of it on the canvas" in doc,
     )
+    check("doc no longer mentions auto-placing", "auto-places" not in doc and "auto -places" not in doc)
 
 
-test_live_added_brand_new_keyword_auto_places_one_instance()
+test_live_added_brand_new_keyword_places_nothing()
 test_edit_of_already_known_keyword_places_nothing_new()
 test_startup_bulk_rescan_places_nothing()
 test_failed_registration_places_nothing()

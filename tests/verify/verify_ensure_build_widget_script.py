@@ -39,7 +39,7 @@ def check(name, condition):
 check("scripts/build_widget.py no longer exists", not (REPO_ROOT / "scripts" / "build_widget.py").exists())
 check("DeskWindow._seed_build_widget_script no longer exists", not hasattr(DeskWindow, "_seed_build_widget_script"))
 check("build_widget.py registered in SPLIT_DOC_CONTENT", BUILD_WIDGET_SCRIPT_FILENAME in SPLIT_DOC_CONTENT)
-check("TEMPUI_DOC_VERSION bumped to 17", TEMPUI_DOC_VERSION == 17)
+check("TEMPUI_DOC_VERSION bumped to at least 17", TEMPUI_DOC_VERSION >= 17)
 
 breaking = SPLIT_DOC_CONTENT["tempui-breaking-changes.md"]
 check("breaking-changes doc has a Version 17 entry", "## Version 17" in breaking)

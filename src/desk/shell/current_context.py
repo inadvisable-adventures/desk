@@ -122,10 +122,10 @@ def set_centered_widget_opener(opener: Callable[[str], QWidget | None]) -> None:
     centered in the current view (TODO efdad99) -- get_widget_opener's
     own DeskWindow.open_widget_content places at (0, 0) by default,
     which several tempui/programmatic placements elsewhere in this
-    codebase (_place_discuss_claude_widget, _auto_place_new_custom_widget)
-    deliberately avoid; this hook gives a kind:"python" widget the same
-    centered convention without needing to reach into DeskWindow's own
-    view/scene math itself."""
+    codebase (_place_discuss_claude_widget) deliberately avoid; this
+    hook gives a kind:"python" widget the same centered convention
+    without needing to reach into DeskWindow's own view/scene math
+    itself."""
     global _centered_widget_opener
     _centered_widget_opener = opener
 

@@ -119,23 +119,24 @@ returns `True` — skipping `_notify_temp_ui` entirely, with nothing else to
 signal that the drop succeeded but the "obvious next step" (seeing it) was
 never taken.
 
-**Fix, two parts:**
+**Fix**: a one-line callout at the very top of `DefineWidget`'s section in
+`tempui-custom-widgets.md` — defining a widget kind never places an
+instance, whether the keyword is brand-new or only being redefined; you
+always need a second, separate invocation file, see below — instead of
+leaving it implied by section ordering.
 
-- **Louder docs**: a one-line callout at the very top of `DefineWidget`'s
-  section in `tempui-custom-widgets.md` — "defining a widget kind does not
-  place an instance; you always need a second, separate invocation file,
-  see below" — instead of leaving it implied by section ordering.
-- **Auto-place the first instance**: the overwhelmingly common case for a
-  brand-new `DefineWidget` file dropped in live (not a bulk startup/Desk
-  -switch rescan of already-known definitions, and not a re-save/edit of an
-  existing one) is "I just wrote this widget, of course I want to see it."
-  `_handle_define_widget_file` should distinguish "newly added" from
-  "edited"/"rescanned at startup" and, only for a genuinely new keyword seen
-  via the live file-added path, place one instance automatically —
-  centered in the current view, the same as every other tempui-placed
-  widget — after registering it. Re-invocation (the explicit keyword-only
-  file) keeps working exactly the same afterward for placing *additional*
-  instances.
+**Tried and reverted**: TODO `5ff02d2` originally paired the doc callout
+above with also auto-placing one instance the first time a genuinely new
+keyword was registered live (not a bulk startup/Desk-switch rescan, and
+not a re-save/edit of an existing keyword) — the theory being that "I just
+wrote this widget, of course I want to see it" is the overwhelmingly
+common case. TODO `dafbaab` reverted the auto-place half entirely, per
+direct user feedback that it proved too confusing in practice (presumably
+because it made `DefineWidget` behave *inconsistently* with itself —
+sometimes a one-step dance, sometimes two, depending on whether the
+keyword happened to be new — rather than the flat, predictable "always
+two steps" rule every other case already had to learn anyway). Only the
+doc-callout half of the original fix remains.
 
 ## 3. Gap: no way to tell which code version a placed instance is running
 

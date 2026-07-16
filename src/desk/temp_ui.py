@@ -104,7 +104,15 @@ PROMOTED_WIDGET_SRC_DIRNAME = "desk_widgets"
 # rest of this doc set instead of going stale forever after a single
 # copy. Breaking for any project with an existing seeded copy at the
 # old location.
-TEMPUI_DOC_VERSION = 17
+#
+# TODO dafbaab: bumped 17 -> 18 -- reverted TODO 5ff02d2's
+# auto-place-one-instance-for-a-brand-new-keyword behavior entirely
+# (too confusing in practice, per direct user feedback); simplified
+# _CUSTOM_WIDGETS_DOC's callout accordingly (DefineWidget never places
+# an instance by itself, full stop, no auto-placed exception anymore).
+# Breaking for any project/agent that had learned to rely on the
+# now-removed auto-placement.
+TEMPUI_DOC_VERSION = 18
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -422,12 +430,12 @@ place an instance of it (see "Invoking a defined widget" below) — this
 is how the tempui DSL itself gets extended at runtime.
 
 **A `DefineWidget` file only registers the new widget *kind* — it does
-not, by itself, place an instance of it on the canvas.** Desk auto
--places one instance the first time a brand-new keyword is registered
-this way (see "Invoking a defined widget" below for placing additional
-instances later), but a `DefineWidget` file that only *redefines* an
-already-registered keyword places nothing — if you edit and re-save one
-to fix a mistake, use the separate keyword-only file to see the result.
+not, by itself, place an instance of it on the canvas, whether the
+keyword is brand-new or you're only redefining an already-registered
+one (e.g. re-saving one to fix a mistake).** Always use a separate,
+keyword-only tempui file afterward to actually see it (see "Invoking a
+defined widget" below) — the same two-step dance every use of a
+`DefineWidget` keyword requires, with no auto-placed exception.
 
 Lines are **tab**-separated (like `LightningRound`), since a label may
 contain spaces:
@@ -787,6 +795,17 @@ introduced the change -- read from the top down until you reach a
 version your own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 18
+- `DefineWidget` no longer auto-places one instance the first time a
+  brand-new keyword is registered (this reverts the Version 12 new
+  -features entry below) -- it now behaves like every other tempui
+  kind always has: registering a kind never places an instance by
+  itself, whether the keyword is brand-new or you're only redefining
+  an existing one. If your project/agent had come to rely on the
+  auto-placed instance, invoke the keyword explicitly afterward (a
+  separate tempui file whose entire first line is just the keyword --
+  see "Invoking a defined widget" in `tempui-custom-widgets.md`).
 
 ## Version 17
 - The "Authoring from real source" build script moved from a one-time
