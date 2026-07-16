@@ -4165,6 +4165,7 @@ dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidge
    .get_current_desk_directory()`), matching how the rest of Desk's UI
    generally prefers concise, Desk-relative paths over long absolute
    ones.
+   [planned: event-log-relative-path.md]
 359684f. Add a desk-internal popups service, and expose it via the Bridge
    API. Desk currently has several different, ad hoc popup mechanisms:
    real `Qt.WindowType.Popup` top-level windows (`WidgetSpawnMenu`,
