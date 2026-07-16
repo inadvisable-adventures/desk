@@ -4157,3 +4157,54 @@ dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidge
    pre-existing, unrelated failure in
    `verify_discuss_parking_lot_item.py` confirmed via `git stash` to
    already fail identically before this TODO's changes).
+41088da. The Event Log widget's status label (`widgets/event_log/widget.py`,
+   `_ensure_watching`) displays the events log's *absolute* path
+   (`str(self._log_path)`, where `self._log_path = directory /
+   TEMP_UI_DIRNAME / LOG_FILENAME`) -- show it relative instead (e.g.
+   relative to the current Desk directory, `current_context
+   .get_current_desk_directory()`), matching how the rest of Desk's UI
+   generally prefers concise, Desk-relative paths over long absolute
+   ones.
+359684f. Add a desk-internal popups service, and expose it via the Bridge
+   API. Desk currently has several different, ad hoc popup mechanisms:
+   real `Qt.WindowType.Popup` top-level windows (`WidgetSpawnMenu`,
+   `_DeskListPopup` in `desk.shell.desk_picker`), sequential modal
+   `QDialog`s (`desk.shell.new_desk_dialog`), and plain `QMessageBox`
+   confirmations/errors scattered across several widgets (Event Log's
+   Clear Log confirm, the TODO/Questions/Crash Log/Stack/SVG
+   Editor/Editor widgets). Replace all of these with one consistent
+   mechanism: a popup is a `WidgetFrame` placed on the canvas like any
+   other widget (so it scales correctly under zoom, unlike a real
+   top-level Qt window), with a title and a close button, and a body
+   that can show a message plus one or more buttons -- equivalent to
+   what a browser's or Qt's own built-in alert/confirm popups offer.
+   Unlike a normal widget frame: always frontmost in z-order (can't be
+   sent behind other widgets), never lockable (no lock button), and not
+   reachable via the eye button (`_EyeButton`/`zoom_to_widget` in
+   `desk.shell.widget_frame`) -- it's transient chrome, not placed
+   content worth zooming to or persisting across a reload. Implement as
+   a new service under `src/desk_services/` (same shape as TODO
+   `578cb6b`'s `desk_services/file_watcher`), and add Bridge API
+   endpoints for it (`desk.server.app`'s `/api/bridge/...` routes, same
+   `require_caller`/capability-scoping pattern as `events`/`fs`/
+   `widgets`) so both `kind: "python"` and `kind: "html"` widgets (and
+   eventually agents) can show one, not just Desk's own shell code.
+   Verify it renders and behaves correctly across a range of zoom
+   levels, the same scrutiny TODO `d0d7b37`/`7845a0f` already gave
+   normal widget chrome.
+fd713a5. Git diff viewer widget: shows a file's `git diff` when clicked in
+   the Git Status widget (`widgets/git_status/widget.py`, which
+   currently only displays `git status --porcelain=v1` output in a
+   plain `QListWidget` with no click handling at all -- add it). Also
+   add a new role to the file type registry (`desk.file_type_registry
+   .ROLES`, currently `("view", "edit", "consume", "produce")`)
+   alongside the existing `view`/`edit` ones: `git-diff`, with its own
+   `find_git_diff_handler` (mirroring `find_view_handler`/
+   `find_edit_handler`) so other places that already look up a
+   file's view/edit handler (`ProjectFilesWidget`, `open_editor_or_scrap`
+   in `desk.shell.window`) can offer a "Git Diff" action the same way,
+   not just the Git Status widget's click handler. If the clicked file
+   is binary (`git diff` reports it as such, or `looks_like_text_file`
+   says no), still open the widget rather than silently failing --
+   show something like "(binary file, no diff)" instead of attempting
+   to render a diff.
