@@ -1,13 +1,3 @@
-# DISABLED (see tests/verify/README.md) -- TODO d8a6c96 tracks
-# investigating this. Current failure: Fails with AttributeError: '_FakeWindow' object has no attribute
-# '_custom_widget_content_hash'. Did you mean:
-# '_custom_widget_source_paths' -- same fixture-drift category as the
-# other fake-DeskWindow-double failures above: the real
-# _register_custom_widget now sets
-# self._custom_widget_content_hash[keyword] (added after this fake
-# double was written). Reasonable suspicion: fixture drift, not a real
-# bug.
-
 import base64
 import os
 import sys
@@ -32,6 +22,7 @@ from desk.temp_ui import (  # noqa: E402
 )
 from desk.custom_widgets import materialize, materialized_widget_dir  # noqa: E402
 from desk.desks import Desk, save_desk, load_desk  # noqa: E402
+from desk.event_mediator import EventMediator  # noqa: E402
 from desk.widgets import WidgetInfo  # noqa: E402
 from desk.server.runner import start_server  # noqa: E402
 
@@ -272,6 +263,9 @@ class _FakeHandle:
 class _FakeView:
     def __init__(self):
         self.catalog_refreshes = []
+        # _refresh_stale_indicators_for iterates this -- empty since
+        # this lightweight fake never places any real WidgetFrame.
+        self._frames = []
 
     def set_widget_catalog(self, catalog):
         self.catalog_refreshes.append(dict(catalog))
@@ -286,6 +280,7 @@ class _FakeWindow:
         self._custom_widget_definitions = {}
         self._custom_widget_sources = {}
         self._custom_widget_source_paths = {}
+        self._custom_widget_content_hash = {}
         self.saved = []
         self.confirmed_messages = []
         self.info_messages = []
@@ -305,11 +300,13 @@ class _FakeWindow:
 
 
 _FakeWindow._register_custom_widget = DeskWindow._register_custom_widget
+_FakeWindow._refresh_stale_indicators_for = DeskWindow._refresh_stale_indicators_for
 _FakeWindow._register_custom_widgets_from_desk = DeskWindow._register_custom_widgets_from_desk
 _FakeWindow._register_custom_widgets_from_desk_temp = DeskWindow._register_custom_widgets_from_desk_temp
 _FakeWindow._handle_define_widget_file = DeskWindow._handle_define_widget_file
 _FakeWindow._sync_tempui_doc = DeskWindow._sync_tempui_doc
 _FakeWindow._on_tempui_promote_requested = DeskWindow._on_tempui_promote_requested
+_FakeWindow._relocate_promoted_widget_source = DeskWindow._relocate_promoted_widget_source
 
 
 def _definition(keyword="KanbanBoard", label="Kanban Board"):
@@ -536,11 +533,13 @@ class _FakeWindowWithView(_FakeWindow):
         self.view.resize(800, 600)
         self.view.show()
         self._broker = HotReloadBroker()
+        self._event_mediator = EventMediator()
 
 
 _FakeWindowWithView._place_widget = DeskWindow._place_widget
 _FakeWindowWithView._bind_claude_widget = DeskWindow._bind_claude_widget
 _FakeWindowWithView._bind_external_indicator = DeskWindow._bind_external_indicator
+_FakeWindowWithView._bind_event_mediator = DeskWindow._bind_event_mediator
 
 
 def test_place_widget_shows_tempui_button_only_for_custom_widgets():

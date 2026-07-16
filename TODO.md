@@ -3839,7 +3839,24 @@ f7c2f60. COMPLETED: Investigate `tests/verify/disabled_verify_segfault_fix.py`: 
    each time. Re-enabled as `verify_tempui_changelog_docs.py`. Full
    `tests/verify/` suite: 1 remaining known-disabled script, 0 new
    failures among the enabled ones.
-d8a6c96. Investigate `tests/verify/disabled_verify_tempui_custom_widgets.py`: its
+d8a6c96. COMPLETED: Investigate `tests/verify/disabled_verify_tempui_custom_widgets.py`: its
    own fake `DeskWindow` double lacks `_custom_widget_content_hash`,
    which the real `_register_custom_widget` now sets. Add the missing
    attribute if that's the whole issue.
+   [planned: investigate-disabled-verify-tempui-custom-widgets.md]
+
+   Confirmed fixture drift, plus two further gaps surfaced only once
+   earlier ones were fixed (each only reachable after the previous fix
+   let execution proceed further): `_refresh_stale_indicators_for`
+   needed binding (and its own `self.view._frames` dependency needed
+   an empty list added to the lightweight `_FakeView` double), and
+   `_relocate_promoted_widget_source` needed binding too. Also added
+   `_bind_event_mediator`/`_event_mediator` to `_FakeWindowWithView`
+   preemptively (same gap fixed in several sibling scripts this batch).
+   Re-enabled as `verify_tempui_custom_widgets.py`.
+
+   Full `tests/verify/` suite: **0 remaining disabled scripts** — every
+   one of the 17 disabled in this batch (TODO.md's own moves-and
+   -disables commit) has now been investigated and either fixed,
+   rewritten, or deleted; all 67 scripts in `tests/verify/` currently
+   pass.
