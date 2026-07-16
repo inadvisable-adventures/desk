@@ -3572,3 +3572,82 @@ d28885f. COMPLETED: New side-by-side widget container: two widget-instance slots
    storage) correctly restores every piece of state on a totally fresh
    instance. Full regression suite (`git stash` before/after): the same
    17 pre-existing/known-stale failures, 0 new.
+06fa070. Investigate `tests/verify/disabled_verify_bridge_api_editor_or_scrap.py`:
+   currently fails on a single stale `TEMPUI_DOC_VERSION == 16`
+   assertion (now 17); every other check in the script passes. Per the
+   new "Verification scripts" process (`development-process.md`):
+   update the assertion (or drop the version check) if that's genuinely
+   the whole issue, rewrite for equivalent coverage, or delete.
+1082bd4. Investigate `tests/verify/disabled_verify_build_widget.py`: fails at
+   import time (`import build_widget`) since TODO `029047b` deleted
+   `scripts/build_widget.py`, moving its content into
+   `src/desk/temp_ui.py`'s generated `_BUILD_WIDGET_SCRIPT`. Rewrite
+   against the generated script, or delete if
+   `tests/verify/verify_ensure_build_widget_script.py` already covers
+   the same ground.
+69ebfb0. Investigate `tests/verify/disabled_verify_build_widget_doc_and_seed.py`:
+   tests `DeskWindow._seed_build_widget_script` (removed by TODO
+   `029047b`) and pre-`59c5a70` doc content (`custom_widget_src`,
+   `TEMPUI_DOC_VERSION == 11`) — a design superseded twice over. Likely
+   just delete.
+a96c091. Investigate `tests/verify/disabled_verify_crash_handler.py`: checks for
+   `DESK-CRASH-*.log` in the Desk's project directory directly, but
+   TODO `7f51230` relocated crash logs to `.desk_temp/`. Update the
+   glob if that's the whole issue.
+fea158d. Investigate `tests/verify/disabled_verify_define_widget_auto_place.py`:
+   fails on a single stale `TEMPUI_DOC_VERSION == 12` assertion (now
+   17). Same category as TODO `06fa070`.
+3c613af. Investigate `tests/verify/disabled_verify_discuss_parking_lot_item.py`:
+   asserts `parse_discuss_parking_lot_item` returns `(label,
+   full_body_text)`, but TODO `624ff3a` deliberately changed its
+   contract to `(label, line_number)`. Rewrite against the current
+   contract, or delete if later coverage already exists.
+294f8a2. Investigate `tests/verify/disabled_verify_file_explorer.py`: imports the
+   pre-rename `widgets/file_explorer/` directory (TODO `8385dcc`
+   renamed it to `project_files`). Likely just delete, since
+   `verify_rename_project_files.py`/
+   `verify_file_explorer_fallback_chain.py` already cover the renamed
+   widget.
+9b89129. Investigate `tests/verify/disabled_verify_fs_path_resolution_and_events_doc.py`:
+   fails on a single stale `TEMPUI_DOC_VERSION == 13` assertion (now
+   17). Same category as TODO `06fa070`.
+6a5202c. Investigate `tests/verify/disabled_verify_html_widget_local_storage.py`:
+   its own fake `DeskWindow` double lacks `_bind_event_mediator`, which
+   the real `_place_widget` has called unconditionally since TODO
+   `6f9c51b`. Add the missing stub if that's the whole issue.
+6e9def4. Investigate `tests/verify/disabled_verify_new_desk_directory.py`: its own
+   fake `DeskWindow` double's `switch_desk` doesn't accept the real
+   method's `provisioning` parameter. Update the fake double's
+   signature if that's the whole issue.
+086e922. Investigate `tests/verify/disabled_verify_new_desk_flow.py`: its own fake
+   `DeskWindow` double lacks `_event_mediator`, which the real
+   `switch_desk` has called (`.clear_all()`) since TODO `6f9c51b`. Add
+   the missing attribute if that's the whole issue.
+f7469bc. Investigate `tests/verify/disabled_verify_questions_discuss_button.py`:
+   its own fake `DeskWindow` double lacks
+   `_write_discuss_instructions_file`, which the real
+   `_place_discuss_claude_widget` now calls. Add the missing stub if
+   that's the whole issue.
+ba0bd9a. Investigate `tests/verify/disabled_verify_relocate_promoted_widget_source.py`:
+   reads `scripts/build_widget.py` directly, deleted by TODO `029047b`
+   (already flagged as expected-stale at the time but never fixed).
+   Same category as TODO `1082bd4`.
+f3120bb. Investigate `tests/verify/disabled_verify_rename_project_files.py`: its
+   "no remaining File Explorer content anywhere" grep doesn't account
+   for this project's own convention of preserving historical mentions
+   (TODO.md's own completed-item text, a rename plan's prose). Confirm
+   whether the check's scope should just exclude those, or whether it
+   was always unsatisfiable.
+f7c2f60. Investigate `tests/verify/disabled_verify_segfault_fix.py`: imports the
+   pre-rename `widgets/markdown_ex/` directory (TODO `858752b` renamed
+   it to `markdown`). Update the path (and `MarkdownExWidget` →
+   `MarkdownWidget` if referenced) if that's the whole issue.
+28119c6. Investigate `tests/verify/disabled_verify_tempui_changelog_docs.py`: 3
+   assertions hardcode the doc set's version range as of TODO `7462cdb`
+   (when `TEMPUI_DOC_VERSION` was 14); it's since grown through 17.
+   Decide whether to keep updating them by hand per bump or rewrite as
+   a looser "covers every version up to current" check.
+d8a6c96. Investigate `tests/verify/disabled_verify_tempui_custom_widgets.py`: its
+   own fake `DeskWindow` double lacks `_custom_widget_content_hash`,
+   which the real `_register_custom_widget` now sets. Add the missing
+   attribute if that's the whole issue.
