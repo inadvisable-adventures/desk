@@ -3860,3 +3860,21 @@ d8a6c96. COMPLETED: Investigate `tests/verify/disabled_verify_tempui_custom_widg
    -disables commit) has now been investigated and either fixed,
    rewritten, or deleted; all 67 scripts in `tests/verify/` currently
    pass.
+dafbaab. Remove the feature where a newly defined tempui `DefineWidget`
+   keyword automatically gets one instance placed on the Desk (TODO
+   `5ff02d2`) — per direct user feedback, it proved too confusing in
+   practice. Revert the auto-place call entirely
+   (`DeskWindow._handle_define_widget_file`'s `is_new`-gated call to
+   `_auto_place_new_custom_widget`, itself deleted), keeping only the
+   "louder docs" half of `5ff02d2`'s original fix (the callout that
+   defining a kind never places an instance by itself) — update that
+   callout in `_CUSTOM_WIDGETS_DOC` (`src/desk/temp_ui.py`) to no
+   longer describe the now-removed auto-place behavior, bump
+   `TEMPUI_DOC_VERSION`, and add a `tempui-breaking-changes.md` entry
+   (this is breaking from an in-Desk agent's perspective — an agent
+   that had learned to rely on auto-placement for a brand-new keyword
+   now needs to invoke it explicitly, same as every other tempui kind
+   always required). Also update `design-docs/custom-widget-authoring.md`
+   section 2, which currently proposes the two-part fix (louder docs +
+   auto-place) as still-current design.
+   [planned: remove-define-widget-auto-place.md]
