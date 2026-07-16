@@ -3606,11 +3606,21 @@ d28885f. COMPLETED: New side-by-side widget container: two widget-instance slots
    `verify_build_widget.py`, all 6 original checks represented and
    passing. Full `tests/verify/` suite: 15 remaining known-disabled
    scripts, 0 new failures among the enabled ones.
-69ebfb0. Investigate `tests/verify/disabled_verify_build_widget_doc_and_seed.py`:
+69ebfb0. COMPLETED: Investigate `tests/verify/disabled_verify_build_widget_doc_and_seed.py`:
    tests `DeskWindow._seed_build_widget_script` (removed by TODO
    `029047b`) and pre-`59c5a70` doc content (`custom_widget_src`,
    `TEMPUI_DOC_VERSION == 11`) — a design superseded twice over. Likely
    just delete.
+   [planned: investigate-disabled-verify-build-widget-doc-and-seed.md]
+
+   Confirmed directly: the current `_CUSTOM_WIDGETS_DOC` content
+   contains neither `custom_widget_src/<name>/` nor
+   `scripts/build_widget.py` anymore, and `_seed_build_widget_script`
+   no longer exists at all. Deleted the file outright — the ensure
+   -mechanism's current behavior is already covered by
+   `verify_ensure_build_widget_script.py`, nothing here was worth
+   patching forward. Full `tests/verify/` suite: 14 remaining known
+   -disabled scripts, 0 new failures among the enabled ones.
 a96c091. Investigate `tests/verify/disabled_verify_crash_handler.py`: checks for
    `DESK-CRASH-*.log` in the Desk's project directory directly, but
    TODO `7f51230` relocated crash logs to `.desk_temp/`. Update the
