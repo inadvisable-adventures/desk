@@ -3924,3 +3924,25 @@ dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidge
    similar assertions in the previous TODO batch) — confirmed not a
    real regression. 0 other new failures across all 65 scripts in
    `tests/verify/`.
+3846190. Fix widget content event routing: zoom/pan interactions on
+   individual widgets are generally unsuccessful — Desk's own canvas
+   (`WorkspaceView`, `src/desk/shell/canvas.py`) is grabbing events that
+   should go to whichever widget's content the cursor is over. Per
+   direct user report: "If there is an active widget and the mouse
+   cursor is over the active widget, then that widget should get all
+   the events, including clicks (left and right), pans, zooms, etc."
+   Confirmed three independent, real gaps (one via a real, headless
+   repro, not just reading code — see the plan): (1) `contextMenuEvent`
+   unconditionally shows `WidgetSpawnMenu`, stealing every right-click
+   regardless of what's under the cursor; (2) the `event()` override's
+   `NativeGesture`/pinch-zoom handling unconditionally zooms the
+   canvas, with no carve-out at all (unlike wheel-scroll's own
+   existing, deliberate one); (3) click-and-drag starting inside a
+   placed widget's own content, when that specific spot doesn't itself
+   consume the drag, leaks through Qt's own `ScrollHandDrag` fallback
+   and pans the *outer* canvas instead — confirmed empirically (a real
+   press/move/release sequence against a real `WorkspaceView` moved the
+   view's own scrollbars by the exact drag delta). Wheel-scroll itself
+   is unaffected/already correct (TODO c44e88f's existing
+   `_scrollable_at` carve-out).
+   [planned: widget-content-event-priority.md]
