@@ -4337,3 +4337,4 @@ fd713a5. Git diff viewer widget: shows a file's `git diff` when clicked in
    says no), still open the widget rather than silently failing --
    show something like "(binary file, no diff)" instead of attempting
    to render a diff.
+   [planned: git-diff-viewer-widget.md]
