@@ -1,4 +1,4 @@
-# Plan: TODO 8d4826c — new Event Recorder widget
+# Plan: TODO 8d4826c (COMPLETED) — new Event Recorder widget
 
 ## Summary
 

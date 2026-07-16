@@ -3997,7 +3997,7 @@ dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidge
    own file-watcher-driven reload) to confirm chrome interactions are
    completely unaffected. 0 other new failures across all 66 scripts in
    `tests/verify/`.
-8d4826c. New Event Recorder widget: a "Record for 5s" button that
+8d4826c. COMPLETED: New Event Recorder widget: a "Record for 5s" button that
    temporarily hides the widget's own content (keeping its full size)
    and records every raw Qt event that lands on it during that window,
    then shows a scrollable list of what happened — chronologically
@@ -4012,3 +4012,45 @@ dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidge
    rather than (or alongside) a `Wheel` event, which TODO `3846190`'s
    own fix never considered at all (only `ZoomNativeGesture`/pinch).
    [planned: event-recorder-widget.md]
+
+   New `widgets/event_recorder/`: `_RecordingSurface(QWidget)` is
+   deliberately childless (so nothing can intercept an event before
+   its own `event()` override sees it) and passive (always calls
+   `super().event(event)`, recording is pure observation, never a
+   filter). `_collapse_adjacent` run-length-encodes the raw,
+   time-ordered event list by `event.type()`; `_group_to_display_dict`
+   strips the raw (non-JSON-serializable) `QEvent.Type` enum member
+   before the result is shown in a read-only `QTableWidget` (matching
+   Event Log widget's own established shape) or persisted via widget
+   -local storage. A live countdown in the status label updates every
+   second during the 5s window. Added a new numbered widget-list entry
+   (25) to `design-docs/architecture.md`.
+
+   Found and fixed one real bug during verification: `QWidget`'s own
+   constructor can dispatch an internal event (delivered through this
+   same overridden `event()`) *before* `_RecordingSurface.__init__`'s
+   body would otherwise get a chance to run — confirmed directly (an
+   `AttributeError` on `self._recording`, raised from inside
+   `super().__init__()` itself, not from any caller). Fixed by setting
+   `_recording`/`_events`/`_start_time` *before* calling
+   `super().__init__(parent)`.
+
+   Verified directly (real `QMouseEvent`/`QWheelEvent` instances
+   dispatched straight to `_RecordingSurface.event()` — constructing
+   and *dispatching* a real `QNativeGestureEvent` segfaulted in this
+   offscreen environment during TODO `3846190`'s own verification,
+   unrelated to the logic under test here, so `_describe_event`'s
+   native-gesture branch is verified separately via a duck-typed fake
+   instead, a plain function call with no `QWidget.event()` dispatch
+   involved): events are only captured between `start()`/`stop()`;
+   `_collapse_adjacent` produces the right number of groups and
+   correctly keeps two non-adjacent runs of the *same* type separate
+   (not merged into one); the full widget flow (bypassing the real 5s
+   timer directly) switches pages correctly, disables/re-enables the
+   record button, and populates the results table correctly;
+   `get_widget_local_storage`/`set_widget_local_storage` round-trips a
+   completed recording's groups onto a fresh instance, and an
+   empty/no-prior-recording payload is a safe no-op. `discover_widgets`
+   picks up the new manifest correctly. Full regression suite (`git
+   stash` before/after): 0 new failures across all 67 scripts in
+   `tests/verify/`.

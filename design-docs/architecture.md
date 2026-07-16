@@ -524,6 +524,28 @@ Desk Bridge API.
     bound to the shared bus. `kind: "html"` children are out of scope
     for this first pass. See
     `plans/side-by-side-widget-container.md`.
+25. **Event Recorder Widget** — a built-in `kind: "python"` widget
+    (`widgets/event_recorder/`, TODO `8d4826c`), a diagnostic tool: a
+    "Record for 5s" button swaps the widget's own content out for a
+    blank, deliberately childless `_RecordingSurface` filling the same
+    space, whose overridden `event()` passively records *every* raw Qt
+    event landing on it (no allowlist/blocklist) while still calling
+    `super().event(event)` for each one, so normal behavior is
+    completely unaffected. After 5 real seconds, the raw time-ordered
+    event list is run-length-encoded — chronologically adjacent events
+    sharing the same `event.type()` collapse into one summary group
+    regardless of how their own individual detail differs, never
+    re-merging with an earlier, non-adjacent run of the same type — and
+    shown as a read-only table (type / count / elapsed range / first →
+    last detail); groups aren't expandable, a one-way summary rather
+    than an accordion. The last completed recording's groups persist
+    via `get_widget_local_storage`/`set_widget_local_storage`. Built to
+    let a user empirically observe which events actually reach a widget
+    during a real interactive gesture — motivated by TODO `3846190`'s
+    own fix still not resolving a reported trackpad two-finger-scroll
+    gesture, and this environment having no way to reproduce real
+    trackpad hardware input to investigate further otherwise. See
+    `plans/event-recorder-widget.md`.
 
 ### Widget Model
 
