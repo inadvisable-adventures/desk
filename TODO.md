@@ -3997,3 +3997,18 @@ dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidge
    own file-watcher-driven reload) to confirm chrome interactions are
    completely unaffected. 0 other new failures across all 66 scripts in
    `tests/verify/`.
+8d4826c. New Event Recorder widget: a "Record for 5s" button that
+   temporarily hides the widget's own content (keeping its full size)
+   and records every raw Qt event that lands on it during that window,
+   then shows a scrollable list of what happened — chronologically
+   -adjacent events (even with differing payloads) collapsed into
+   collapsed-but-uncollapsable summary groups before display. Motivated
+   directly by TODO `3846190`: the user still sees a trackpad
+   two-finger-scroll gesture "getting missed" by widgets even after
+   that fix, and wants to observe empirically (this environment can't
+   reproduce real trackpad hardware input at all) exactly which events
+   actually arrive, rather than guessing further — e.g. some platforms
+   report two-finger scroll as a `NativeGesture` `PanNativeGesture`
+   rather than (or alongside) a `Wheel` event, which TODO `3846190`'s
+   own fix never considered at all (only `ZoomNativeGesture`/pinch).
+   [planned: event-recorder-widget.md]
