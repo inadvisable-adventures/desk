@@ -4568,6 +4568,7 @@ b5e15cf. Transforms, part 2/4: Transform Manager widget. A new
    file-watching -- transforms aren't edited anywhere near as often as
    `TODO.md`, this is a manager/introspection widget not a live-edited
    document).
+   [planned: transform-manager-widget.md]
 05cfccc. Transforms, part 3/4: extract Mermaid flowchart/state diagram
    rendering into individual transforms. `src/desk/mermaid.py` today
    produces a live `QGraphicsScene`, rendered directly by
