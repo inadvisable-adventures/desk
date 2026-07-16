@@ -3736,11 +3736,26 @@ fea158d. COMPLETED: Investigate `tests/verify/disabled_verify_define_widget_auto
    re-enabled as `verify_new_desk_flow.py`. Full `tests/verify/` suite:
    6 remaining known-disabled scripts, 0 new failures among the enabled
    ones.
-f7469bc. Investigate `tests/verify/disabled_verify_questions_discuss_button.py`:
+f7469bc. COMPLETED: Investigate `tests/verify/disabled_verify_questions_discuss_button.py`:
    its own fake `DeskWindow` double lacks
    `_write_discuss_instructions_file`, which the real
    `_place_discuss_claude_widget` now calls. Add the missing stub if
    that's the whole issue.
+   [planned: investigate-disabled-verify-questions-discuss-button.md]
+
+   Same root cause as TODO `3c613af`: instructions are now delivered
+   via a standalone `.desk_temp/discuss-instructions-*.md` file (TODO
+   `51be2bc`), not spliced into the prompt — affects this script's
+   `item_text` branch too, not just the `parking_lot_line` one. Added
+   the missing fake-double attributes/methods
+   (`_write_discuss_instructions_file`,
+   `_bind_event_mediator`/`_event_mediator`,
+   `_custom_widget_content_hash`) and rewrote the assertion checking
+   the widget's terminal output directly for the marker text —
+   confirms instead that the prompt points at a discuss-instructions
+   file and that the file itself contains the expected text. Full
+   `tests/verify/` suite: 5 remaining known-disabled scripts, 0 new
+   failures among the enabled ones.
 ba0bd9a. Investigate `tests/verify/disabled_verify_relocate_promoted_widget_source.py`:
    reads `scripts/build_widget.py` directly, deleted by TODO `029047b`
    (already flagged as expected-stale at the time but never fixed).
