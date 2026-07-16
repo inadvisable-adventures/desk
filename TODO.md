@@ -4054,3 +4054,21 @@ dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidge
    picks up the new manifest correctly. Full regression suite (`git
    stash` before/after): 0 new failures across all 67 scripts in
    `tests/verify/`.
+78bfa41. Broaden the scroll/zoom event priority policy from TODO
+   `3846190`: wheel-scroll and pinch-zoom should go to whichever
+   widget's content the cursor is over *no matter what*, not just when
+   it's a scrollable widget — explicit user decision, knowingly trading
+   away some canvas zoom/pan reachability ("I know that this will
+   sometimes make it difficult to zoom/scroll around in Desk, but I
+   care more about active widgets getting the events"). Currently
+   `wheelEvent`/the pinch branch of `event()` both gate on
+   `_scrollable_at` (`QAbstractScrollArea`/`QWebEngineView` only,
+   deliberately still zooming the canvas over e.g. a plain image
+   viewer); switch both to the broader `_frame_at` (any placed widget
+   at all) TODO `3846190` already introduced for the click-drag fix and
+   `contextMenuEvent` already uses. This also closes the exact blind
+   spot found reading back the Event Recorder widget's first real
+   recording (`.desk_temp/recorder.temp.md`'s task) — its own recording
+   surface is a plain, non-scroll-area `QWidget`, so it could never see
+   a real Wheel event under the old policy no matter what.
+   [planned: widget-wheel-pinch-always-wins.md]
