@@ -3689,9 +3689,15 @@ fea158d. COMPLETED: Investigate `tests/verify/disabled_verify_define_widget_auto
    coverage worth preserving on its own. Full `tests/verify/` suite: 10
    remaining known-disabled scripts, 0 new failures among the enabled
    ones.
-9b89129. Investigate `tests/verify/disabled_verify_fs_path_resolution_and_events_doc.py`:
+9b89129. COMPLETED: Investigate `tests/verify/disabled_verify_fs_path_resolution_and_events_doc.py`:
    fails on a single stale `TEMPUI_DOC_VERSION == 13` assertion (now
    17). Same category as TODO `06fa070`.
+   [planned: investigate-disabled-verify-fs-path-resolution-and-events-doc.md]
+
+   Confirmed same as TODO `06fa070`: loosened to `>= 13`, re-enabled as
+   `verify_fs_path_resolution_and_events_doc.py`. Full `tests/verify/`
+   suite: 9 remaining known-disabled scripts, 0 new failures among the
+   enabled ones.
 6a5202c. Investigate `tests/verify/disabled_verify_html_widget_local_storage.py`:
    its own fake `DeskWindow` double lacks `_bind_event_mediator`, which
    the real `_place_widget` has called unconditionally since TODO

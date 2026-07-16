@@ -1,8 +1,3 @@
-# DISABLED (see tests/verify/README.md) -- TODO 9b89129 tracks
-# investigating this. Current failure: Fails on a single stale assertion: hardcodes TEMPUI_DOC_VERSION ==
-# 13; every other check passes. Reasonable suspicion: same category as
-# the other stale-version-number failures in this directory.
-
 import json
 import os
 import sys
@@ -177,7 +172,7 @@ def test_get_manifest_includes_directory():
 
 
 def test_doc_content():
-    check("TEMPUI_DOC_VERSION bumped to 13", TEMPUI_DOC_VERSION == 13)
+    check("TEMPUI_DOC_VERSION bumped to at least 13", TEMPUI_DOC_VERSION >= 13)
     doc = SPLIT_DOC_CONTENT[CUSTOM_WIDGETS_DOC_FILENAME]
     check("getManifest bullet mentions directory field", "`directory`" in doc)
     check("events callout appears before fs bullet", doc.index("reach for `desk.events.*`\nfirst") < doc.index("desk.fs.readFile"))
