@@ -582,6 +582,30 @@ Desk Bridge API.
     by other code the same way `open_editor_or_scrap` already is:
     `current_context.get_git_diff_opener()`/`DeskWindow.open_git_diff`.
     See `plans/git-diff-viewer-widget.md`.
+28. **Transforms Service** (`desk_services.transforms`, TODO `54d8c18`)
+    — a transform converts data of one named type into another
+    (`input_type -> output_type`), optionally with `config`/`identity`,
+    written in Python, TypeScript, or JavaScript, discovered by
+    scanning `.desk_temp/transforms/<name>/` (TypeScript/JavaScript
+    only) and `desk_transforms/<name>/` (any of the 3 languages, wins
+    an id collision) directly -- unlike `DefineWidget` custom widgets,
+    no build-artifact indirection, since a transform is never "placed"
+    anywhere. Python transforms run in-process (`importlib`),
+    synchronously, on whichever thread calls them (required when a
+    transform touches Qt, not just simplest); TypeScript/JavaScript
+    transforms always run via a background thread invoking `node
+    <entry>.js` as a real subprocess (a JSON request on stdin, a JSON
+    response on stdout), same reasoning as every other git/subprocess
+    call in this app (`LEARNINGS.md`). TypeScript gets an on-demand
+    `tsc -p <dir>` build, cached until the source's mtime moves past
+    its compiled output, with a small auto-generated ambient
+    declarations file standing in for the real `@types/node` package
+    (avoiding a new dependency -- see CLAUDE.md). Reachable by
+    `kind: "python"` widgets via `current_context
+    .get_transform_runner_blocking()`, and by `kind: "html"` widgets
+    via `POST /api/bridge/transforms/run` (capability `transforms`).
+    See `design-docs/transforms.md` and
+    `plans/transforms-core-infrastructure.md`.
 
 ### Widget Model
 

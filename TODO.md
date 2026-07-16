@@ -4441,7 +4441,7 @@ d9a46b6. COMPLETED: Rename the Event Recorder widget's display name (`widgets/ev
    test changes were needed. Full regression suite: 69 scripts, 0 new
    failures (the one pre-existing, unrelated failure in
    `verify_discuss_parking_lot_item.py` is still the only failure).
-54d8c18. Transforms, part 1/4: the core infrastructure and the Desk Service.
+54d8c18. COMPLETED: Transforms, part 1/4: the core infrastructure and the Desk Service.
    See `design-docs/transforms.md` for the full design. A transform
    converts data of one named type into another (`input_type ->
    output_type`), optionally with `config` and an `identity` (input<->
@@ -4479,6 +4479,82 @@ d9a46b6. COMPLETED: Rename the Event Recorder widget's display name (`widgets/ev
    `current_context`/the Bridge API yet -- nothing consumes them (both
    Mermaid transforms declare `has_identity: false`).
    [planned: transforms-core-infrastructure.md]
+
+   Built `src/desk/transforms.py` (manifest parsing/discovery, no Qt
+   dependency, mirrors `desk.file_type_registry`'s own shape) and
+   `desk_services/transforms/service.py` (`TransformsService`) exactly
+   per plan, plus the `current_context`/`DeskWindow`/Bridge API wiring.
+   The str-in/str-out contract for `identity()` was tightened from the
+   design doc's original "-> object" to "-> str" (a Python transform's
+   `identity()` now encodes its own JSON-serializable result as a
+   string, same as `run()` and same as the JS/TS wire protocol's
+   `output` field already required) -- found while writing the first
+   real test fixture, for genuine cross-language consistency, not a
+   late scope change.
+
+   Two real bugs found and fixed via direct reproduction, not just
+   inspection:
+   - **A real hang**, reproduced directly (the test process had to be
+     killed after several minutes stuck with zero CPU usage and no
+     child `node`/`tsc` process running): `_run_blocking`'s `on_result`
+     called `loop.quit()` directly, but a Python transform's
+     `on_result` fires *synchronously*, inside `_invoke()`, before
+     `loop.exec()` even starts -- `QEventLoop.quit()` only has an
+     effect on an already-running loop, so a quit issued before
+     `exec()` starts can be silently dropped, leaving `exec()` block
+     forever waiting for a quit that already happened. Fixed by
+     deferring the actual `quit()` via `QTimer.singleShot(0, ...)`,
+     safe for both the synchronous (Python) and asynchronous (JS/TS)
+     resolution paths. Confirmed `PopupsService.show_blocking` does
+     *not* have this same bug -- a popup only ever resolves from a
+     real, later user interaction, never synchronously within `show()`
+     itself -- so nothing there needed changing.
+   - **A real `tsc` compile failure**: `process`/`Buffer` (Node's own
+     globals, needed by the stdin/stdout protocol) don't type-check
+     without `@types/node`, which was rejected as a new dependency
+     (CLAUDE.md). Fixed with a small, fixed, auto-generated ambient
+     declarations file (`_desk_transform_node_globals.d.ts`, only the
+     handful of members the protocol actually uses) written into a
+     TypeScript transform's own directory before each build --
+     `tsc -p <dir>`'s default "include everything in this directory"
+     behavior picks it up with no `tsconfig.json` changes needed.
+
+   Also found and fixed, incidentally, while adding `transforms` to
+   `bridge_client.py`'s JS convenience-wrapper template: `popups`
+   (TODO `359684f`) never got its own `window.desk.popups.show(...)`
+   entry there at all -- every other Bridge capability has one, popups
+   didn't, leaving `kind:"html"` widgets with only a raw `fetch()` to
+   reach it. Fixed alongside `transforms`' own entry; a regression
+   check added to `verify_desk_internal_popups.py`.
+
+   Bumped `TEMPUI_DOC_VERSION` 20 -> 21 for the new `transforms`
+   capability in `tempui-custom-widgets.md`/`tempui-new-features.md` --
+   initially referenced `design-docs/transforms.md` from inside the
+   shipped doc content, which `verify_tempui_doc_versioning.py`'s
+   "no doc mentions Desk-repo-internal material" check correctly
+   caught (a downstream project consuming these docs has no
+   `design-docs/` directory of its own) -- reworded to explain the
+   concept inline instead.
+
+   Verified directly: new `tests/verify/verify_transform_discovery.py`
+   (12 checks: manifest parsing, the Python-rejected-under-`.desk_temp`
+   rule, project-level winning an id collision, error-dict population)
+   and `tests/verify/verify_transforms_service.py` (18 checks,
+   including a real Python transform, a real JavaScript transform via
+   a real `node` subprocess, a real TypeScript transform via a real
+   on-demand `tsc` build that's confirmed cached then confirmed to
+   rebuild after a real mtime change, confirmation via a live `QTimer`
+   tick-counter that the JS/TS path genuinely doesn't block the event
+   loop -- not just asserted by code inspection -- and `promote`'s real
+   `shutil.move`). New `tests/verify/verify_bridge_api_transforms_run.py`
+   (8 checks, same real-HTTP-request-against-a-real-server pattern
+   `verify_bridge_api_editor_or_scrap.py` already established, with a
+   deliberately `QTimer`-delayed fake `run_transform` to prove
+   `run_on_gui_async` genuinely waits for a later callback rather than
+   only working by accident for an immediately-resolving one). Full
+   regression suite: 72 scripts, 0 new failures (the one pre-existing,
+   unrelated failure in `verify_discuss_parking_lot_item.py` is still
+   the only failure).
 b5e15cf. Transforms, part 2/4: Transform Manager widget. A new
    `widgets/transform_manager/` (`kind: "python"`), modeled on
    `EventLogWidget`'s plain `QTableWidget` shape (no existing "list/

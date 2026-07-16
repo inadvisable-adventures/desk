@@ -73,6 +73,7 @@ _widget_opener: Callable[[str], QWidget | None] | None = None
 _centered_widget_opener: Callable[[str], QWidget | None] | None = None
 _editor_or_scrap_opener: Callable[[Path], None] | None = None
 _git_diff_opener: Callable[[Path], None] | None = None
+_transform_runner_blocking: Callable[[str, str, dict | None], str] | None = None
 _temp_ui_write_recorder: Callable[[Path, str], None] | None = None
 _main_window: QWidget | None = None
 _widget_path_resolver: Callable[[QPoint], str | None] | None = None
@@ -165,6 +166,25 @@ def set_git_diff_opener(opener: Callable[[Path], None]) -> None:
 
 def get_git_diff_opener() -> Callable[[Path], None] | None:
     return _git_diff_opener
+
+
+def set_transform_runner_blocking(runner: Callable[[str, str, dict | None], str]) -> None:
+    """The shared "run a transform and wait for its output" service
+    (TODO `54d8c18`) -- `runner(transform_id, input_data, config) ->
+    output`, blocking (a nested event loop internally, see
+    desk_services.transforms.TransformsService.run_blocking) so a
+    simple `kind:"python"` caller (e.g. the Markdown widget rendering
+    a Mermaid block) doesn't need to deal with the callback-based
+    non-blocking form. See DeskWindow.run_transform_blocking.
+    `kind: "html"` widgets reach the same service over the Bridge API
+    instead (`POST /api/bridge/transforms/run`) -- this hook is for
+    `kind: "python"` widgets only."""
+    global _transform_runner_blocking
+    _transform_runner_blocking = runner
+
+
+def get_transform_runner_blocking() -> Callable[[str, str, dict | None], str] | None:
+    return _transform_runner_blocking
 
 
 def set_popup_opener(opener: Callable[[str, str, list[str], str | None], str | None]) -> None:

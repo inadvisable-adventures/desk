@@ -1,4 +1,4 @@
-# Plan: TODO 54d8c18 — Transforms core infrastructure + the Desk Service
+# Plan: TODO 54d8c18 (COMPLETED) — Transforms core infrastructure + the Desk Service
 
 See `design-docs/transforms.md` for the full design and rationale. This
 plan is the concrete implementation breakdown.

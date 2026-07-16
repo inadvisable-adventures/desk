@@ -102,7 +102,7 @@ A Python transform's `transform.py` exposes:
 
 ```python
 def run(input_data: str, config: dict | None) -> str: ...
-def identity(input_data: str, config: dict | None) -> object: ...  # only if has_identity
+def identity(input_data: str, config: dict | None) -> str: ...  # only if has_identity, same str-in/str-out contract as run() -- encode a JSON-serializable result as a string
 ```
 
 A TypeScript/JavaScript transform's entry, once resolved to a plain
@@ -205,6 +205,20 @@ session, and is cached (skipped) for subsequent invocations unless the
 `.ts` source's own mtime is newer than its compiled output — no
 file-watcher, no background rebuild service; simple and sufficient for
 a one-shot `input -> output` call.
+
+A TypeScript transform's own `process.stdin`/`process.stdout` (the
+stdin/stdout JSON protocol) don't type-check without Node's own global
+type declarations, which normally come from the `@types/node` npm
+package — adding that as a real dependency was rejected (see CLAUDE.md:
+avoid dependencies where a small bespoke alternative works). Instead, a
+small, fixed, auto-generated ambient declarations file
+(`_desk_transform_node_globals.d.ts`, covering only the handful of
+members a transform's protocol actually touches: `process.stdin.on`,
+`process.stdout.write`, `Buffer.toString`) is written into a
+TypeScript transform's own directory before each build (regenerated/
+overwritten every time, never hand-edited) — `tsc -p <dir>`'s default
+"include everything in this directory" behavior picks it up
+automatically, no `tsconfig.json` changes needed.
 
 ### Execution model
 

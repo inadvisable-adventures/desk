@@ -102,6 +102,14 @@ BRIDGE_CLIENT_TEMPLATE = """
     editor: {
       openOrScrap: (path) => call("POST", "/api/bridge/editor/openOrScrap", { path }),
     },
+    popups: {
+      show: (title, message, buttons, defaultButton) =>
+        call("POST", "/api/bridge/popups/show", { title, message, buttons, default: defaultButton }),
+    },
+    transforms: {
+      run: (transformId, input, config) =>
+        call("POST", "/api/bridge/transforms/run", { transform_id: transformId, input, config: config ?? null }),
+    },
     self: {
       getManifest: () => call("GET", "/api/bridge/self/getManifest"),
       getLocalStorage: () => call("GET", "/api/bridge/self/getLocalStorage"),

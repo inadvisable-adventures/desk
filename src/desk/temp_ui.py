@@ -123,7 +123,12 @@ PROMOTED_WIDGET_SRC_DIRNAME = "desk_widgets"
 # capability description in _CUSTOM_WIDGETS_DOC now mentions the new
 # `git-diff` file-type-registry role (alongside view/edit/consume/
 # produce), and a new Git Diff Viewer widget consumes it.
-TEMPUI_DOC_VERSION = 20
+#
+# TODO 54d8c18: bumped 20 -> 21 for a new Bridge API capability in
+# _CUSTOM_WIDGETS_DOC's capability list: `transforms` (run a transform
+# -- convert data of one named type into another, e.g. a Mermaid
+# diagram into SVG -- see design-docs/transforms.md).
+TEMPUI_DOC_VERSION = 21
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -667,6 +672,14 @@ built for genuine cross-widget signaling:
   (optional) names which button is the pre-selected/Enter-triggered
   one. The same service a `kind: "python"` widget reaches via
   `current_context.get_popup_opener()`.
+- `desk.transforms.run(transformId, input, config)` (capability
+  `transforms`) — runs a transform (a separate entity from a widget:
+  converts data of one named type into another, e.g. a Mermaid
+  diagram's source into SVG) and returns `{ output, error }` (exactly
+  one is non-`null`). `config` is optional, only meaningful to a
+  transform that declares `has_config: true`. The same service a
+  `kind: "python"` widget reaches via
+  `current_context.get_transform_runner_blocking()`.
 
 The calls above are almost always all a `DefineWidget` widget actually
 needs.
@@ -857,6 +870,15 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 21
+- `desk.transforms.run(transformId, input, config)` (capability
+  `transforms`): runs a transform -- a new entity, separate from a
+  widget: converts data of one named type into another
+  (`input_type -> output_type`), e.g. a Mermaid diagram's source into
+  SVG -- and returns `{ output, error }` (exactly one is non-`null`).
+  `config` is optional, only meaningful to a transform that declares
+  `has_config: true`.
 
 ## Version 20
 - `desk.filetypes.get()`/`.set(entries)` (capability `filetypes`): file

@@ -119,6 +119,12 @@ class PopupsShowRequest(BaseModel):
     default: str | None = None
 
 
+class TransformsRunRequest(BaseModel):
+    transform_id: str
+    input: str
+    config: dict | None = None
+
+
 def _event_dict(event) -> dict:
     return {
         "timestamp": event.timestamp,
@@ -422,6 +428,25 @@ def create_app(
             raise HTTPException(503, str(e)) from e
         except TimeoutError as e:
             raise HTTPException(504, str(e)) from e
+
+    @app.post("/api/bridge/transforms/run")
+    async def transforms_run(
+        body: TransformsRunRequest, widget: WidgetInfo = Depends(require_caller("transforms"))
+    ):
+        # run_on_gui_async, not the plain synchronous run_on_gui above:
+        # a transform invocation can genuinely take a while (a node
+        # subprocess for a TypeScript/JavaScript transform), and must
+        # not block the FastAPI event loop or the GUI thread while it
+        # runs -- same pattern introspect/snapshot below uses.
+        result = await run_on_gui_async(
+            lambda resolve: gui_bridge.window.run_transform(
+                body.transform_id,
+                body.input,
+                body.config,
+                lambda output, error: resolve({"output": output, "error": error}),
+            )
+        )
+        return result
 
     @app.post("/api/bridge/introspect/snapshot")
     async def introspect_snapshot(

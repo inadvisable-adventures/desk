@@ -33,7 +33,9 @@ from desk.shell.new_desk_dialog import NewDeskDialog
 from desk.shell.python_widget import PythonWidgetHost
 from desk.shell.temp_ui_manager import TempUiManager
 from desk.shell.widget_frame import WidgetFrame
+from desk.transforms import PROJECT_TRANSFORMS_DIRNAME, TEMP_TRANSFORMS_DIRNAME
 from desk_services.popups import get_service as get_popups_service
+from desk_services.transforms import get_service as get_transforms_service
 from desk.temp_ui import (
     CUSTOM_WIDGET_SRC_DIRNAME,
     CustomWidgetDefinition,
@@ -174,6 +176,7 @@ class DeskWindow(QMainWindow):
 
         self._popups_service = get_popups_service()
         self._popups_service.attach_view(self.view)
+        self._transforms_service = get_transforms_service()
 
         self.view.desk_picker.desk_chosen.connect(self._on_desk_chosen)
         self.view.desk_picker.browse_requested.connect(self._on_browse_requested)
@@ -281,6 +284,7 @@ class DeskWindow(QMainWindow):
         current_context.set_centered_widget_opener(self.open_widget_content_centered)
         current_context.set_editor_or_scrap_opener(self.open_editor_or_scrap)
         current_context.set_popup_opener(self._popups_service.show_blocking)
+        current_context.set_transform_runner_blocking(self.run_transform_blocking)
         current_context.set_git_diff_opener(self.open_git_diff)
         current_context.set_temp_ui_write_recorder(self._temp_ui_manager.record_own_write)
         current_context.set_main_window(self)
@@ -671,6 +675,24 @@ class DeskWindow(QMainWindow):
         synchronous run_on_gui, same as request_introspect_permission's
         own blocking confirmation dialog."""
         return self._popups_service.show_blocking(title, message, buttons, default)
+
+    def run_transform_blocking(self, transform_id: str, input_data: str, config: dict | None = None) -> str:
+        """The Transforms Desk Service (TODO `54d8c18`), for
+        `kind:"python"` widgets via
+        `current_context.get_transform_runner_blocking()`. Blocking
+        (see `TransformsService.run_blocking`) -- a nested event loop
+        internally, so the caller (e.g. the Markdown widget rendering
+        a Mermaid block) gets a plain return value."""
+        return self._transforms_service.run_blocking(transform_id, input_data, config)
+
+    def run_transform(
+        self, transform_id: str, input_data: str, config: dict | None, on_result: Callable[[str | None, str | None], None]
+    ) -> None:
+        """Non-blocking form, for the Bridge API's `POST
+        /api/bridge/transforms/run` (`kind:"html"` widgets) --
+        `kind:"python"` widgets use `run_transform_blocking` instead.
+        See `TransformsService.run`."""
+        self._transforms_service.run(transform_id, input_data, config, on_result)
 
     def open_editor_or_scrap(self, path: Path) -> None:
         """The shared "open an editor for `path`, or fall back to an
@@ -1608,6 +1630,17 @@ class DeskWindow(QMainWindow):
         # widget placed after a Desk switch reads the *new* Desk's own
         # file type registry, not a stale one left over from before.
         current_context.set_file_type_registry_provider(self.get_file_type_registry_dicts)
+        # Same choke point, for the same reason (TODO 54d8c18): a
+        # transform invocation after a Desk switch resolves against the
+        # *new* Desk's own discovered transforms, not a stale picture
+        # left over from before.
+        self._refresh_transforms()
+
+    def _refresh_transforms(self) -> None:
+        directory = self.current_desk.directory
+        self._transforms_service.discover(
+            directory / TEMP_UI_DIRNAME / TEMP_TRANSFORMS_DIRNAME, directory / PROJECT_TRANSFORMS_DIRNAME
+        )
 
     def _on_desk_chosen(self, path: Path) -> None:
         """Guards against an MRU entry whose file vanished between the

@@ -6,6 +6,7 @@ sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
 
 from PyQt6.QtWidgets import QApplication, QLabel, QPushButton  # noqa: E402
 
+from desk.server.bridge_client import BRIDGE_CLIENT_TEMPLATE  # noqa: E402
 from desk.shell.canvas import WorkspaceView  # noqa: E402
 from desk.shell.widget_frame import WidgetFrame  # noqa: E402
 from desk_services.popups.service import PopupsService  # noqa: E402
@@ -167,6 +168,18 @@ def test_popup_never_persisted_in_desk_state_frames():
     )
 
 
+def test_bridge_client_declares_popups_namespace():
+    # TODO 54d8c18: found missing while adding the transforms namespace --
+    # the /api/bridge/popups/show route (TODO 359684f) never got a
+    # window.desk.popups.show(...) convenience wrapper the way every
+    # other Bridge capability has, leaving kind:"html" widgets with only
+    # a raw fetch() to reach it.
+    check(
+        "bridge client declares popups.show",
+        '"/api/bridge/popups/show"' in BRIDGE_CLIENT_TEMPLATE and "popups:" in BRIDGE_CLIENT_TEMPLATE,
+    )
+
+
 test_popup_chrome_hides_lock_eye_bring_send()
 test_popup_is_always_frontmost()
 test_popup_not_in_normal_frame_pool()
@@ -175,6 +188,7 @@ test_show_blocking_resolves_on_button_click()
 test_close_button_resolves_none_and_does_not_touch_normal_close_flow()
 test_clear_widgets_resolves_any_open_popup()
 test_popup_never_persisted_in_desk_state_frames()
+test_bridge_client_declares_popups_namespace()
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
