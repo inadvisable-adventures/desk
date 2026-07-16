@@ -4185,32 +4185,46 @@ dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidge
    confirmed via `git stash` to already fail before this TODO's
    changes, is still the only failure).
 359684f. Add a desk-internal popups service, and expose it via the Bridge
-   API. Desk currently has several different, ad hoc popup mechanisms:
-   real `Qt.WindowType.Popup` top-level windows (`WidgetSpawnMenu`,
-   `_DeskListPopup` in `desk.shell.desk_picker`), sequential modal
-   `QDialog`s (`desk.shell.new_desk_dialog`), and plain `QMessageBox`
-   confirmations/errors scattered across several widgets (Event Log's
-   Clear Log confirm, the TODO/Questions/Crash Log/Stack/SVG
-   Editor/Editor widgets). Replace all of these with one consistent
-   mechanism: a popup is a `WidgetFrame` placed on the canvas like any
-   other widget (so it scales correctly under zoom, unlike a real
-   top-level Qt window), with a title and a close button, and a body
-   that can show a message plus one or more buttons -- equivalent to
-   what a browser's or Qt's own built-in alert/confirm popups offer.
-   Unlike a normal widget frame: always frontmost in z-order (can't be
-   sent behind other widgets), never lockable (no lock button), and not
-   reachable via the eye button (`_EyeButton`/`zoom_to_widget` in
-   `desk.shell.widget_frame`) -- it's transient chrome, not placed
-   content worth zooming to or persisting across a reload. Implement as
-   a new service under `src/desk_services/` (same shape as TODO
-   `578cb6b`'s `desk_services/file_watcher`), and add Bridge API
-   endpoints for it (`desk.server.app`'s `/api/bridge/...` routes, same
+   API. Scope clarified with the user: what they actually care about is
+   popups *triggered by widget code* (`widgets/*.py`) -- these construct
+   a real `QMessageBox` parented to `self` (the embedded content widget,
+   living inside a `QGraphicsProxyWidget`), which shows as a real
+   top-level macOS window (the native three-dot titlebar chrome) whose
+   position/size Qt computes from the parent's `mapToGlobal` -- that
+   doesn't account for the canvas's own zoom/pan transform, so at
+   non-1.0 zoom the dialog can render in the wrong place or with content
+   outside its own window bounds. Explicitly out of scope: `WidgetSpawnMenu`/
+   `_DeskListPopup`/`NewDeskDialog` and `desk.shell.window`'s own
+   `_confirm_fn`/`_prompt_fn`/`_warn`/`_info`/`_warn_with_selectable_text`/
+   `_confirm_stale_reload` -- these are parented to the main window (a
+   real top-level widget, not an embedded proxy, so they don't have this
+   bug), and several need a filterable list, a scrollable MRU list, or
+   free-text input rather than a message+buttons shape.
+   In scope: every `QMessageBox` call in `widgets/*.py` (Event Log's
+   Clear Log confirm, Crash Log/Questions/TODO's discard confirms,
+   Stack's warnings+question, Editor's warning +
+   Save/Discard/Cancel unsaved-changes flow, SVG Editor's warning).
+   Replace these with one consistent mechanism: a popup is a
+   `WidgetFrame` placed on the canvas like any other widget (so it
+   scales correctly under zoom, unlike a real top-level Qt window),
+   with a title and a close button, and a body that can show a message
+   plus one or more buttons -- equivalent to what a browser's or Qt's
+   own built-in alert/confirm popups offer. Unlike a normal widget
+   frame: always frontmost in z-order (can't be sent behind other
+   widgets), never lockable (no lock button), and not reachable via the
+   eye button (`_EyeButton`/`zoom_to_widget` in `desk.shell.widget_frame`)
+   -- it's transient chrome, not placed content worth zooming to or
+   persisting across a reload. Implement as a new service under
+   `src/desk_services/` (same shape as TODO `578cb6b`'s
+   `desk_services/file_watcher`), and add Bridge API endpoints for it
+   (`desk.server.app`'s `/api/bridge/...` routes, same
    `require_caller`/capability-scoping pattern as `events`/`fs`/
    `widgets`) so both `kind: "python"` and `kind: "html"` widgets (and
    eventually agents) can show one, not just Desk's own shell code.
    Verify it renders and behaves correctly across a range of zoom
    levels, the same scrutiny TODO `d0d7b37`/`7845a0f` already gave
    normal widget chrome.
+   [planned: desk-internal-popups.md]
 fd713a5. Git diff viewer widget: shows a file's `git diff` when clicked in
    the Git Status widget (`widgets/git_status/widget.py`, which
    currently only displays `git status --porcelain=v1` output in a
