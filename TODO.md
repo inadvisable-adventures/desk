@@ -4110,3 +4110,50 @@ dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidge
    wheel/pinch) stays unchanged. Full regression suite: 0 new failures
    across all 67 scripts in `tests/verify/` (after fixing the 8 found
    above).
+86ba292. COMPLETED: Wheel events forwarded to a widget under the cursor
+   (TODO `78bfa41`'s `_frame_at` gate) could still leak into canvas-level
+   pan. Found from two independent reports: reading back the Event
+   Recorder's second real recording (a continuous two-finger scroll
+   produced only 2 zero-delta Wheel events before the whole Desk started
+   scrolling), and the user separately noticing that scrolling a real
+   scrollable widget past the end of its scroll direction scrolls the
+   whole Desk too.
+   [planned: wheel-event-accept-no-fallthrough.md]
+
+   Root cause was more specific than initially suspected: it's not that
+   the forwarded event was left unaccepted (an initial fix along those
+   lines made no measurable difference -- confirmed directly, the
+   canvas's own scrollbars still moved even with the event marked
+   accepted). The actual culprit is `QGraphicsView.wheelEvent` (invoked
+   via `super().wheelEvent(event)` to forward into the scene) falling
+   back to panning *this view's own* scrollbars -- the whole canvas --
+   synchronously, inside that very call, whenever the scene doesn't
+   consume the event. That happens for any non-scrollable widget, or any
+   scroll area already at its scroll limit -- exactly the two cases
+   reported. Fixed by capturing `WorkspaceView`'s own horizontal/vertical
+   scrollbar values immediately before the forwarding call and restoring
+   them immediately after (the embedded widget's own scrollbars, if any,
+   are a separate object and untouched by this), then unconditionally
+   `event.accept()`-ing so nothing propagates further regardless of what
+   the embedded widget did with the event. A widget under the cursor now
+   truly wins full stop, per TODO `78bfa41`'s own policy -- whatever it
+   does or doesn't do with the event, the canvas itself never moves.
+
+   Verified directly and empirically, not just by inspection: a
+   standalone script confirmed a real `QScrollArea` at its scroll limit
+   does leave a `QWheelEvent` unaccepted when dispatched directly to its
+   own viewport, then confirmed (with `WorkspaceView`'s own scrollbar
+   values captured before/after, embedding the same scroll area as a
+   placed widget) that the canvas's own scrollbars moved on the
+   pre-86ba292 code and stopped moving after the fix. Added two new
+   checks to `tests/verify/verify_widget_content_event_priority.py`
+   (scroll-area-at-its-limit and non-scrollable-widget cases), asserting
+   both that the canvas's own scroll position is untouched and that the
+   event ends up accepted; confirmed via `git stash` that both fail on
+   the pre-fix code and pass after. Updated
+   `design-docs/widget-ux.md`'s "Trackpad Zoom Input" section to explain
+   the `QGraphicsView` fallback-pan mechanism and the capture/restore
+   fix. Full regression suite: 67 scripts, 0 new failures (one
+   pre-existing, unrelated failure in
+   `verify_discuss_parking_lot_item.py` confirmed via `git stash` to
+   already fail identically before this TODO's changes).

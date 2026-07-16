@@ -678,6 +678,27 @@ default.) See `plans/todo-widget-scrollable.md`/
 `plans/widget-content-event-priority.md`/
 `plans/widget-wheel-pinch-always-wins.md`.
 
+`wheelEvent`'s forward (`super().wheelEvent(event)`, i.e.
+`QGraphicsView.wheelEvent`) has its own fallback behavior worth calling
+out explicitly: whenever the scene doesn't consume the forwarded event
+— any non-scrollable widget, or a scroll area already at the end of its
+scroll direction — `QGraphicsView`'s base implementation pans *this
+view's own* scrollbars, i.e. the whole canvas, as a fallback. Left
+alone this directly contradicts "a widget under the cursor wins full
+stop": a continuous two-finger scroll that runs a scrollable widget
+past its limit (or lands on a widget that doesn't handle wheel at all)
+would silently hand off to canvas-level panning partway through,
+exactly the leak TODO `86ba292` found (both from reading back the Event
+Recorder widget's own recording, and independently from the user
+scrolling a real scrollable widget past its limit). Fixed by capturing
+this view's own scrollbar values immediately before the forwarding call
+and restoring them immediately after, then unconditionally
+`event.accept()`-ing — regardless of what the embedded widget did or
+didn't do with the event, the canvas itself never moves once `_frame_at`
+says a widget owns this position. The embedded widget's own scrollbars
+(a separate object) are untouched by this. See
+`plans/wheel-event-accept-no-fallthrough.md`.
+
 ## Open Questions
 
 - Corner handles for diagonal resize — deferred (Non-Goals); worth adding

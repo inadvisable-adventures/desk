@@ -661,24 +661,50 @@ class WorkspaceView(QGraphicsView):
             # same as any other unhandled event -- the canvas just
             # doesn't zoom either.
             if self._forwarding_wheel:
-                # Re-entrant delivery: an embedded QWebEngineView bounces a
-                # wheel event it couldn't consume (a non-scrollable page, or
-                # one already at its scroll limit) back up to its parent
-                # chain, which reaches this handler again while we're still
-                # inside the super().wheelEvent() call below. Re-forwarding
-                # would recurse until the stack overflows; zooming on a
-                # bounce-back would be wrong too -- so just stop here. See
-                # TODO c44e88f.
+                # Re-entrant delivery: an embedded widget (a QWebEngineView,
+                # or any QGraphicsProxyWidget-hosted widget that ignores the
+                # event -- e.g. a scroll area already at its scroll limit)
+                # bounces a wheel event it couldn't consume back up to its
+                # parent chain, which reaches this handler again while
+                # we're still inside the super().wheelEvent() call below.
+                # Re-forwarding would recurse until the stack overflows;
+                # zooming on a bounce-back would be wrong too -- so just
+                # stop here. See TODO c44e88f.
+                event.accept()
                 return
             # Let Qt's normal scene-forwarding deliver the event to the
             # embedded widget so it can scroll its own content, instead of
             # this view treating it as a canvas zoom gesture -- see
             # plans/todo-widget-scrollable.md.
+            #
+            # TODO 86ba292: QGraphicsView.wheelEvent (the base class
+            # implementation invoked below) falls back to panning *this
+            # view's own* scrollbars -- i.e. panning the whole Desk canvas
+            # -- whenever the scene doesn't consume the forwarded event.
+            # That happens for any widget that ignores wheel input, which
+            # includes every non-scrollable widget and any scroll area
+            # already at the end of its scroll direction: exactly the
+            # "events pass through" leak the user found (both by reading
+            # back the Event Recorder's own recording, and independently
+            # by scrolling a real scrollable widget past its limit).
+            # `_forwarding_wheel`'s accept() alone doesn't stop it, since
+            # the pan already happened synchronously inside the call below
+            # -- so capture this view's own scrollbar positions first and
+            # restore them afterward. A widget under the cursor owns this
+            # event full stop (TODO 78bfa41): whatever the embedded widget
+            # did or didn't do with it, the canvas itself must not move.
+            # The embedded widget's own scrollbars (if any) are separate
+            # objects, untouched by this.
+            hbar, vbar = self.horizontalScrollBar(), self.verticalScrollBar()
+            before_scroll = (hbar.value(), vbar.value())
             self._forwarding_wheel = True
             try:
                 super().wheelEvent(event)
             finally:
                 self._forwarding_wheel = False
+            hbar.setValue(before_scroll[0])
+            vbar.setValue(before_scroll[1])
+            event.accept()
             return
         delta = event.pixelDelta().y()
         if delta == 0:

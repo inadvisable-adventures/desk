@@ -8,7 +8,7 @@ sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
 
 from PyQt6.QtCore import QEvent, QPoint, QPointF, Qt
 from PyQt6.QtGui import QContextMenuEvent, QMouseEvent, QWheelEvent
-from PyQt6.QtWidgets import QApplication, QLabel, QTextEdit
+from PyQt6.QtWidgets import QApplication, QLabel, QScrollArea, QTextEdit
 
 import desk.shell.canvas as canvas_mod
 from desk.shell.canvas import WorkspaceView
@@ -152,6 +152,82 @@ def test_wheel_over_empty_canvas_still_zooms():
 
 test_wheel_over_non_scrollable_widget_no_longer_zooms_canvas()
 test_wheel_over_empty_canvas_still_zooms()
+
+
+# ---------- TODO 86ba292: a wheel event a widget ignores (already at its ----------
+# scroll limit, or simply not handled at all) is still accepted, not left
+# to leak past the view to canvas-level pan/zoom.
+
+
+def send_wheel_event(viewport, pos, angle_delta_y):
+    ev = QWheelEvent(
+        QPointF(pos),
+        QPointF(viewport.mapToGlobal(pos)),
+        QPoint(0, 0),
+        QPoint(0, angle_delta_y),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.NoScrollPhase,
+        False,
+    )
+    QApplication.sendEvent(viewport, ev)
+    return ev
+
+
+def test_wheel_ignored_by_widget_at_scroll_limit_does_not_pan_canvas():
+    view = make_view()
+    scroll_area = QScrollArea()
+    scroll_area.resize(300, 200)
+    inner = QLabel("tall content")
+    inner.setFixedHeight(2000)
+    scroll_area.setWidget(inner)
+    scroll_area.setWidgetResizable(False)
+    proxy = view.add_widget(scroll_area, title="SA", pos=(0, 0), size=(300, 200))
+    pump(0.3)
+    scroll_area.verticalScrollBar().setValue(scroll_area.verticalScrollBar().minimum())
+    pos = view.mapFromScene(proxy.sceneBoundingRect().center())
+    before_canvas = (view.horizontalScrollBar().value(), view.verticalScrollBar().value())
+    # Already at the top -- scrolling further up has nothing left to
+    # consume, so the scroll area itself ignores this event. Qt's
+    # QGraphicsView base class falls back to panning *this view's own*
+    # scrollbars when the scene doesn't consume a wheel event -- that
+    # fallback pan is exactly the leak under test here.
+    ev = send_wheel_event(view.viewport(), pos, 120)
+    after_canvas = (view.horizontalScrollBar().value(), view.verticalScrollBar().value())
+    check(
+        "wheel event ignored by a widget already at its scroll limit does "
+        "not pan the canvas underneath it (TODO 86ba292)",
+        before_canvas == after_canvas,
+    )
+    check(
+        "...and is still marked accepted, not left to leak further (TODO 86ba292)",
+        ev.isAccepted(),
+    )
+
+
+def test_wheel_ignored_by_non_scrollable_widget_does_not_pan_canvas():
+    view = make_view()
+    label_content = QLabel("plain, doesn't handle wheel at all")
+    label_content.resize(300, 200)
+    proxy = view.add_widget(label_content, title="L", pos=(0, 0), size=(300, 200))
+    pump(0.3)
+    pos = view.mapFromScene(proxy.sceneBoundingRect().center())
+    before_canvas = (view.horizontalScrollBar().value(), view.verticalScrollBar().value())
+    ev = send_wheel_event(view.viewport(), pos, 120)
+    after_canvas = (view.horizontalScrollBar().value(), view.verticalScrollBar().value())
+    check(
+        "wheel event ignored entirely by a non-scrollable widget does not "
+        "pan the canvas underneath it (TODO 86ba292)",
+        before_canvas == after_canvas,
+    )
+    check(
+        "...and is still marked accepted, not left to leak further (TODO 86ba292)",
+        ev.isAccepted(),
+    )
+
+
+test_wheel_ignored_by_widget_at_scroll_limit_does_not_pan_canvas()
+test_wheel_ignored_by_non_scrollable_widget_does_not_pan_canvas()
 
 
 # ---------- TODO 3846190, part 1: right-click over widget content ----------
