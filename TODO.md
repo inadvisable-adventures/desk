@@ -3585,13 +3585,27 @@ d28885f. COMPLETED: New side-by-side widget container: two widget-instance slots
    (renamed back to `verify_bridge_api_editor_or_scrap.py`, no other
    changes needed). Full `tests/verify/` suite: 16 remaining known
    -disabled scripts, 0 new failures among the enabled ones.
-1082bd4. Investigate `tests/verify/disabled_verify_build_widget.py`: fails at
+1082bd4. COMPLETED: Investigate `tests/verify/disabled_verify_build_widget.py`: fails at
    import time (`import build_widget`) since TODO `029047b` deleted
    `scripts/build_widget.py`, moving its content into
    `src/desk/temp_ui.py`'s generated `_BUILD_WIDGET_SCRIPT`. Rewrite
    against the generated script, or delete if
    `tests/verify/verify_ensure_build_widget_script.py` already covers
    the same ground.
+   [planned: investigate-disabled-verify-build-widget.md]
+
+   Not redundant with `verify_ensure_build_widget_script.py` (which
+   only covers the generated script's happy path) — this one exercises
+   5 distinct `BuildError` scenarios plus a "never falls back to npx"
+   check, real coverage worth keeping. Rewrote it: generates the real
+   script into a fresh temp `.desk_temp/` (`write_tempui_docs`) and
+   dynamically imports it (`importlib.util.spec_from_file_location`)
+   instead of a static `scripts/` import; every fixture now built
+   inline under `tempfile.TemporaryDirectory()` instead of the old
+   session-specific scratchpad path. Re-enabled as
+   `verify_build_widget.py`, all 6 original checks represented and
+   passing. Full `tests/verify/` suite: 15 remaining known-disabled
+   scripts, 0 new failures among the enabled ones.
 69ebfb0. Investigate `tests/verify/disabled_verify_build_widget_doc_and_seed.py`:
    tests `DeskWindow._seed_build_widget_script` (removed by TODO
    `029047b`) and pre-`59c5a70` doc content (`custom_widget_src`,
