@@ -4441,3 +4441,90 @@ d9a46b6. COMPLETED: Rename the Event Recorder widget's display name (`widgets/ev
    test changes were needed. Full regression suite: 69 scripts, 0 new
    failures (the one pre-existing, unrelated failure in
    `verify_discuss_parking_lot_item.py` is still the only failure).
+54d8c18. Transforms, part 1/4: the core infrastructure and the Desk Service.
+   See `design-docs/transforms.md` for the full design. A transform
+   converts data of one named type into another (`input_type ->
+   output_type`), optionally with `config` and an `identity` (input<->
+   output) mapping, written in Python/TypeScript/JavaScript, described
+   by a `transform.json` manifest next to its entry file. Discovery
+   scans `.desk_temp/transforms/<name>/` (TypeScript/JavaScript only --
+   Python is rejected there, surfaced as a Transform Manager error row)
+   and `desk_transforms/<name>/` (any of the 3 languages; wins on a
+   `transform_id` collision) directly -- no build-artifact indirection
+   the way `DefineWidget` custom widgets have, since a transform is
+   never "placed" anywhere. `desk_services.transforms.TransformsService`
+   (module-level `get_service()` singleton, same shape as
+   `file_watcher`/`popups`): Python transforms are `importlib`-loaded
+   and run in-process, synchronously, on whichever thread calls `run`
+   (required, not just simplest: both Mermaid transforms build a
+   `QGraphicsScene`, which must happen on the GUI thread); TypeScript/
+   JavaScript transforms always run via a background thread invoking
+   `node <entry>.js` as a real subprocess (a JSON request on stdin, a
+   JSON response on stdout -- see the design doc's exact protocol),
+   reporting back via a `_Relay` `pyqtSignal`, same shape
+   `git_status`/`git_diff`'s own git-subprocess calls already use.
+   TypeScript transforms get an on-demand `tsc -p <dir>` build, cached
+   until the `.ts` source's mtime moves past its compiled output.
+   `run`/`identity` are non-blocking/callback-based (mirrors
+   `PopupsService.show`); `run_blocking`/`identity_blocking` wrap them
+   in a nested `QEventLoop` for simple synchronous callers. `promote`
+   moves a `.desk_temp/transforms/<id>/` directory to
+   `desk_transforms/<id>/` (`shutil.move`, mirrors
+   `_relocate_promoted_widget_source`). Reachable by `kind: "python"`
+   widgets via `current_context.get_transform_runner()`/
+   `get_transform_runner_blocking()` (bound at `DeskWindow` startup),
+   and by `kind: "html"` widgets via `POST /api/bridge/transforms/run`
+   (capability `transforms`, `run_on_gui_async`).
+b5e15cf. Transforms, part 2/4: Transform Manager widget. A new
+   `widgets/transform_manager/` (`kind: "python"`), modeled on
+   `EventLogWidget`'s plain `QTableWidget` shape (no existing "list/
+   introspect other widgets or definitions" widget precedent to mirror
+   instead). One row per transform discovered by
+   `TransformsService.discover()`: Name / Input Type / Output Type /
+   Language / Config? / Identity? / Location, plus a Promote button
+   column shown only for a `.desk_temp/`-sourced row -- clicking it
+   shows a confirmation popup (TODO `359684f`'s desk-internal popups)
+   before calling `TransformsService.promote`. A Refresh button (no
+   file-watching -- transforms aren't edited anywhere near as often as
+   `TODO.md`, this is a manager/introspection widget not a live-edited
+   document).
+05cfccc. Transforms, part 3/4: extract Mermaid flowchart/state diagram
+   rendering into individual transforms. `src/desk/mermaid.py` today
+   produces a live `QGraphicsScene`, rendered directly by
+   `MermaidDiagramWidget` (a `QGraphicsView` subclass) -- no SVG is
+   ever generated anywhere in the current pipeline (confirmed directly
+   -- only two diagram kinds are actually implemented today despite
+   appearing to have "several": `flowchart`/`graph` and
+   `stateDiagram`/`stateDiagram-v2`; anything else already raises
+   `MermaidParseError`). Add `desk.mermaid.render_svg(scene) -> str`
+   (new code -- `PyQt6.QtSvg.QSvgGenerator`, a `QPaintDevice`, drawn
+   onto via `QPainter` into an in-memory `QBuffer`), keeping
+   `parse`/`layout`/`build_scene` exactly as-is as the shared engine.
+   Two new transforms at project level (`desk_transforms/`, not
+   `.desk_temp/` -- built-in Desk behavior, not a user experiment):
+   `mermaid_flowchart_svg` (`input_type: "mermaid-flowchart"`) and
+   `mermaid_state_svg` (`input_type: "mermaid-state"`), each a thin
+   `parse -> layout -> build_scene -> render_svg` wrapper, both
+   `output_type: "svg"`, `has_config: false`, `has_identity: false`.
+   Delete `MermaidDiagramWidget` (dead code once TODO `a9e2ba7` lands --
+   see that item).
+a9e2ba7. Transforms, part 4/4: Markdown widget consumes the Mermaid
+   transforms via the Desk Service. Extract `widgets/image_viewer/
+   widget.py`'s private `_AspectSvgView` (a bare `QSvgRenderer` into a
+   letterboxed, aspect-preserving rect) into a new shared
+   `src/desk/svg_view.py` module so both `image_viewer` and `markdown`
+   import the same implementation instead of duplicating it. Markdown's
+   Mermaid-block handling changes from "build a `MermaidDiagramWidget`
+   inline" to: detect the block's diagram header (same detection
+   `desk.mermaid.parse` already does) to pick `mermaid_flowchart_svg`
+   vs. `mermaid_state_svg` (or skip straight to the existing plain-text
+   fallback for any other diagram type -- no transform exists for it
+   yet, same as today's "unsupported" case); call
+   `current_context.get_transform_runner_blocking()(transform_id,
+   block_text, None)`; render the returned SVG via the new shared SVG
+   view widget on success, or the existing plain-text + "(unsupported
+   or unparseable Mermaid diagram)" fallback on failure. User-visible
+   change, accepted deliberately (see design doc): a Mermaid diagram
+   becomes a static SVG image instead of a live, pannable
+   `QGraphicsView` scene -- nothing in the current UI actually depended
+   on the scene being interactive.
