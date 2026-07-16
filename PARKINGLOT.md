@@ -698,3 +698,51 @@ This file captures thoughts and TODO items that arise during work on other thing
   entry (mirroring how the `tempui-*.md` split-doc convention already
   separates unrelated DSL concerns from each other) rather than one
   monolithic document covering every kind of widget at once.
+
+- **A way for agents (e.g. a CLI coding session working in this repo)
+  to reach into the running app for more than just reading/writing
+  files -- starting with forcing a save**
+
+  Surfaced when asked whether an agent working here could see a new
+  Event Recorder widget's (TODO `8d4826c`) state after it's placed on
+  the current Desk: right now the only channel into a running Desk
+  instance from outside the GUI process itself is the filesystem --
+  reading whatever's already been written to a `.desk` file,
+  `.desk_temp/`, etc. `save_current_desk()` (`src/desk/shell/window.py`)
+  only actually runs on specific structural actions (quit, Desk
+  switch, widget removal/rename, ...), not automatically after
+  ordinary widget interaction (e.g. clicking Event Recorder's "Record
+  for 5s"). So a filesystem-only agent has no way to force a fresh
+  snapshot of live widget state onto disk without asking the human
+  user to quit or switch Desks first.
+
+  The existing Bridge API (`src/desk/server/app.py`, `/api/bridge/...`)
+  already lets one *widget* call into the running app (workspace
+  state, local storage, opening/closing widgets, publishing events,
+  cross-widget introspection via `/api/bridge/introspect/snapshot`) --
+  but every endpoint is scoped to a specific widget instance/token
+  (`require_caller`/`require_instance_id`), not to an out-of-band
+  caller like a CLI agent working in the repo outside any widget.
+  Worth thinking about whether that same Bridge API could be extended
+  with a distinct "agent" caller identity, or whether a separate,
+  narrower channel makes more sense -- starting with the single most
+  obviously useful capability: forcing an on-demand
+  `save_current_desk()` so an agent doesn't have to wait for/ask for a
+  structural action to happen first.
+
+  Broader than just "force save" once started: what else should an
+  agent be able to reach into the running app for -- e.g. listing
+  currently-placed widgets and their instance ids without parsing the
+  `.desk` file by hand, reading a specific widget's *live* (not just
+  last-saved) local storage, or triggering a specific widget action
+  programmatically? Connects to the already-parked "how should Claude
+  better engage with tempui" and claude-widget items above, and to the
+  process-tracking meta-questions item's "real database/microservice
+  for work tracking" tangent -- this is the same underlying shape (a
+  real API surface for an agent to talk to Desk) applied to live app
+  state instead of task tracking.
+
+  Not designed -- needs its own security/trust discussion (should any
+  local process be able to force actions in a running GUI app the user
+  is looking at, and if so how is that authenticated/scoped) before
+  picking a mechanism.
