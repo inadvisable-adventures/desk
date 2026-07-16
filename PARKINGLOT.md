@@ -744,3 +744,37 @@ This file captures thoughts and TODO items that arise during work on other thing
   local process be able to force actions in a running GUI app the user
   is looking at, and if so how is that authenticated/scoped) before
   picking a mechanism.
+
+- **Two-finger trackpad scroll over a widget: still not fully clean
+  after TODO `86ba292`**
+
+  Two follow-on findings from a third Event Recorder recording (two
+  separate two-finger scroll gestures in one 5s window), after TODO
+  `86ba292` fixed the canvas-pan leak:
+
+  1. A Paint event landed in between the two gestures and "ate" the
+     meat of the data again -- i.e. the real wheel-delta events are
+     still hard to actually observe cleanly even once they're reaching
+     the widget, similar in flavor to the very first recording (TODO
+     `8d4826c`'s report) being dominated by Paint/PaletteChange/
+     StyleChange noise rather than the gesture itself. Not yet
+     understood why a Paint event would interrupt/obscure wheel
+     delivery between two gestures, or whether `_collapse_adjacent`'s
+     grouping is hiding something relevant here.
+  2. The user visibly saw the Desk's own scrollbars appear during the
+     two-finger scroll, even though the canvas itself never visibly
+     moved. This is presumably a side effect of TODO `86ba292`'s fix
+     itself: `QGraphicsView`'s fallback pan (which the fix restores
+     the scrollbar *value* after) may still flip the scrollbar
+     *visibility* on transiently, since Qt's auto-hide scrollbar
+     policy reacts to the pan happening at all, not just where it ends
+     up -- the value gets put back, but the "scrollbars became
+     visible" side effect isn't undone by that. Not confirmed by
+     direct reproduction yet, just the user's visual report.
+
+  Related: the still-unbuilt minimap idea above exists partly because
+  wheel-scroll is no longer available as a canvas-pan gesture over a
+  widget at all -- scrollbars flickering into view here could be
+  confusing/misleading in exactly that context (looks like the canvas
+  is pannable via scroll right when TODO `78bfa41` deliberately made it
+  not be, over a widget).
