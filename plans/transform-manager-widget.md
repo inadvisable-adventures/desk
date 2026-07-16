@@ -1,4 +1,4 @@
-# Plan: TODO b5e15cf — Transform Manager widget
+# Plan: TODO b5e15cf (COMPLETED) — Transform Manager widget
 
 See `design-docs/transforms.md`'s "Transform Manager widget" section
 for the design rationale.

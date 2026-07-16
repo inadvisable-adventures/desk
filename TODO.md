@@ -4555,7 +4555,7 @@ d9a46b6. COMPLETED: Rename the Event Recorder widget's display name (`widgets/ev
    regression suite: 72 scripts, 0 new failures (the one pre-existing,
    unrelated failure in `verify_discuss_parking_lot_item.py` is still
    the only failure).
-b5e15cf. Transforms, part 2/4: Transform Manager widget. A new
+b5e15cf. COMPLETED: Transforms, part 2/4: Transform Manager widget. A new
    `widgets/transform_manager/` (`kind: "python"`), modeled on
    `EventLogWidget`'s plain `QTableWidget` shape (no existing "list/
    introspect other widgets or definitions" widget precedent to mirror
@@ -4569,6 +4569,45 @@ b5e15cf. Transforms, part 2/4: Transform Manager widget. A new
    `TODO.md`, this is a manager/introspection widget not a live-edited
    document).
    [planned: transform-manager-widget.md]
+
+   Implemented per plan: `widgets/transform_manager/` (`kind:
+   "python"`), a `QTableWidget` modeled on `EventLogWidget`'s shape.
+   `refresh()` (also run once at construction, so a freshly-placed
+   instance isn't blank) resolves `.desk_temp/transforms/`/
+   `desk_transforms/` from `current_context
+   .get_current_desk_directory()` and calls
+   `desk_services.transforms.get_service().discover(...)` directly (no
+   `current_context` indirection needed -- this widget IS the
+   dedicated UI for the service, same relationship `GitStatusWidget`
+   has to `find_git_root`). A discovery error (e.g. a Python transform
+   under `.desk_temp/`) shows as a visible `[!]`-prefixed, full-width
+   error row via `QTableWidget.setSpan`, not silently dropped. Promote
+   shows a confirmation popup (`current_context.get_popup_opener()`,
+   TODO `359684f`) before calling `TransformsService.promote`; a
+   `TransformError` shows a second popup with the failure reason.
+
+   One real bug found and fixed via direct reproduction: after a
+   successful promote, the now-project-located row still showed a
+   stale Promote button. Root cause: `QTableWidget.setRowCount()`
+   doesn't clear an existing row's cell widget when the row count is
+   unchanged across a refresh (promoting a transform doesn't change
+   how many rows there are, just which directory one of them is
+   listed under) -- `setCellWidget`'s effects on a persisted row index
+   just linger. Fixed with an explicit `removeCellWidget` in the
+   non-`.desk_temp` branch of the per-row population logic.
+
+   Verified directly: new
+   `tests/verify/verify_transform_manager_widget.py` (13 checks,
+   against real `transform.json` files on disk, not mocked
+   `TransformInfo` objects) -- table population (columns, Promote
+   button presence/absence by location), a real discovery error
+   showing as a real error row, Promote's real `shutil.move` (the
+   directory actually relocates on disk) both confirmed and declined
+   (leaving the source untouched), and Refresh picking up a transform
+   added to disk after the widget was already built. Full regression
+   suite: 73 scripts, 0 new failures (the one pre-existing, unrelated
+   failure in `verify_discuss_parking_lot_item.py` is still the only
+   failure).
 05cfccc. Transforms, part 3/4: extract Mermaid flowchart/state diagram
    rendering into individual transforms. `src/desk/mermaid.py` today
    produces a live `QGraphicsScene`, rendered directly by

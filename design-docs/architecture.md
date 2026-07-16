@@ -606,6 +606,18 @@ Desk Bridge API.
     via `POST /api/bridge/transforms/run` (capability `transforms`).
     See `design-docs/transforms.md` and
     `plans/transforms-core-infrastructure.md`.
+29. **Transform Manager Widget** (`widgets/transform_manager/`, TODO
+    `b5e15cf`) — a built-in `kind: "python"` widget listing every
+    transform `TransformsService.discover()` finds: Name / Input Type
+    / Output Type / Language / Config? / Identity? / Location, plus a
+    Promote button (only on a `.desk_temp/`-sourced row) that shows a
+    desk-internal popup confirmation before calling
+    `TransformsService.promote`. A discovery error (e.g. a Python
+    transform under `.desk_temp/`, rejected at discovery time) shows as
+    a visible error row rather than being silently omitted. A Refresh
+    button re-runs discovery on demand -- no file-watching, transforms
+    aren't edited anywhere near as often as `TODO.md`. See
+    `plans/transform-manager-widget.md`.
 
 ### Widget Model
 
