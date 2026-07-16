@@ -4626,8 +4626,13 @@ b5e15cf. COMPLETED: Transforms, part 2/4: Transform Manager widget. A new
    `mermaid_state_svg` (`input_type: "mermaid-state"`), each a thin
    `parse -> layout -> build_scene -> render_svg` wrapper, both
    `output_type: "svg"`, `has_config: false`, `has_identity: false`.
-   Delete `MermaidDiagramWidget` (dead code once TODO `a9e2ba7` lands --
-   see that item).
+   `MermaidDiagramWidget` stays in place, still imported/used by
+   `widgets/markdown/widget.py` exactly as today, until TODO `a9e2ba7`
+   (part 4/4) actually stops calling it -- deleting it in *this* item
+   would leave the app's Mermaid rendering broken for the length of
+   time between these two commits; its deletion belongs in that item,
+   the one that removes its one remaining caller.
+   [planned: extract-mermaid-transforms.md]
 a9e2ba7. Transforms, part 4/4: Markdown widget consumes the Mermaid
    transforms via the Desk Service. Extract `widgets/image_viewer/
    widget.py`'s private `_AspectSvgView` (a bare `QSvgRenderer` into a
