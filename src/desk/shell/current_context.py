@@ -66,6 +66,7 @@ from PyQt6.QtCore import QPoint
 from PyQt6.QtWidgets import QWidget
 
 from desk.event_mediator import EventMediator
+from desk.hotreload import HotReloadBroker
 
 _current_directory: Path | None = None
 _widget_opener: Callable[[str], QWidget | None] | None = None
@@ -79,6 +80,8 @@ _event_mediator: EventMediator | None = None
 _widget_zoomer: Callable[[str], bool] | None = None
 _widget_display_name_resolver: Callable[[str], str] | None = None
 _file_type_registry_provider: Callable[[], list[dict]] | None = None
+_widget_catalog_provider: Callable[[], list[dict]] | None = None
+_hot_reload_broker: HotReloadBroker | None = None
 
 
 def set_current_desk_directory(directory: Path) -> None:
@@ -228,3 +231,34 @@ def set_file_type_registry_provider(provider: Callable[[], list[dict]]) -> None:
 
 def get_file_type_registry_provider() -> Callable[[], list[dict]] | None:
     return _file_type_registry_provider
+
+
+def set_widget_catalog_provider(provider: Callable[[], list[dict]]) -> None:
+    """TODO d28885f: lets a `kind: "python"` widget (the side-by-side
+    container's own per-slot picker) enumerate the discovered widget
+    catalog -- `kind: "python"` entries only, each `{"id", "name",
+    "path", "entry"}` -- without importing `desk.widgets`/reaching into
+    `DeskWindow` directly. Wired once at construction (the catalog is
+    discovered once at process start, unlike the file type registry
+    above, which is per-Desk)."""
+    global _widget_catalog_provider
+    _widget_catalog_provider = provider
+
+
+def get_widget_catalog_provider() -> Callable[[], list[dict]] | None:
+    return _widget_catalog_provider
+
+
+def set_hot_reload_broker(broker: HotReloadBroker) -> None:
+    """TODO d28885f: the same app-wide `HotReloadBroker` `DeskWindow`
+    itself holds -- lets the side-by-side container construct a
+    `desk.shell.python_widget.PythonWidgetHost` directly for each of its
+    two slots (never through `DeskWindow._place_widget`, since slot
+    content never gets its own canvas placement/`WidgetFrame`), with
+    ordinary hot-reload-on-source-change behavior for free."""
+    global _hot_reload_broker
+    _hot_reload_broker = broker
+
+
+def get_hot_reload_broker() -> HotReloadBroker | None:
+    return _hot_reload_broker

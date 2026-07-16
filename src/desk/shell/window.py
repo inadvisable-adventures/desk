@@ -282,6 +282,8 @@ class DeskWindow(QMainWindow):
         current_context.set_event_mediator(self._event_mediator)
         current_context.set_widget_zoomer(self.zoom_to_widget_by_instance_id)
         current_context.set_widget_display_name_resolver(self._display_name_for_instance)
+        current_context.set_widget_catalog_provider(self.get_widget_catalog_dicts)
+        current_context.set_hot_reload_broker(self._broker)
         self._sync_tempui_doc()
         self._open_crash_log_widgets()
 
@@ -1050,6 +1052,25 @@ class DeskWindow(QMainWindow):
         self.current_desk = desk
         add_to_mru(desk.path)
         self._refresh_picker()
+
+    def get_widget_catalog_dicts(self) -> list[dict]:
+        """TODO d28885f: the discovered widget catalog, `kind: "python"`
+        entries only, as JSON-serializable-shaped dicts -- backs
+        current_context.get_widget_catalog_provider() for the
+        side-by-side container's own per-slot picker. `kind: "html"`
+        is excluded (see plans/side-by-side-widget-container.md's
+        Non-Goals): nesting a QWebEngineView's own browser-profile
+        overhead inside another widget's layout is a separate, bigger
+        concern than this first pass takes on. Reads self._widgets
+        fresh on every call (not a snapshot), so a later
+        discover_widgets() refresh (e.g. a new tempui custom widget)
+        is picked up automatically, same as get_file_type_registry_dicts
+        below reads self.current_desk fresh each call."""
+        return [
+            {"id": widget_id, "name": info.name, "path": str(info.path), "entry": info.entry}
+            for widget_id, info in self._widgets.items()
+            if info.kind == "python"
+        ]
 
     def get_file_type_registry_dicts(self) -> list[dict]:
         """TODO b5d52c0: the current Desk's file type registry, as

@@ -501,6 +501,29 @@ Desk Bridge API.
     (`file_type_registry.BUILTIN_EDIT_WIDGET_BY_SUFFIX`), so Image
     Viewer's Edit button reaches it automatically. See
     `plans/svg-editor-widget.md`.
+24. **Side by Side Widget** — a built-in `kind: "python"` widget
+    (`widgets/side_by_side/`, TODO `d28885f`) that hosts two other
+    `kind: "python"` widget instances at once, laid out in a
+    `QSplitter` (a Swap button exchanges which splitter position each
+    slot occupies; an Orientation button toggles horizontal/vertical).
+    The first widget to nest another widget's content inside itself —
+    each slot's `PythonWidgetHost` is constructed directly (two new
+    `current_context` hooks, `get_widget_catalog_provider`/
+    `get_hot_reload_broker`, let it do this without going through
+    `DeskWindow._place_widget`, since slot content never gets its own
+    canvas placement or `WidgetFrame`). A slot's own instance id is
+    minted once and persisted (reused verbatim across rebuilds/reloads)
+    so a child that keeps its own event-mediator subscriptions or
+    widget-local storage doesn't lose them; the container's own
+    `get_widget_local_storage`/`set_widget_local_storage` recurse into
+    each occupied slot's content the same way, since a nested child
+    never gets a top-level `WidgetState` of its own. Inter-widget
+    communication is the *existing* mediated event system
+    (`desk.event_mediator`, TODO `6f9c51b`) — no bespoke protocol
+    invented; the container only guarantees both slots are properly
+    bound to the shared bus. `kind: "html"` children are out of scope
+    for this first pass. See
+    `plans/side-by-side-widget-container.md`.
 
 ### Widget Model
 

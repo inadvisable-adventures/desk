@@ -3469,7 +3469,7 @@ da4f9c0. COMPLETED: Give every "viewer" widget that shows the contents of a file
    ownership tree) and wrapped the slot's scene access in the same
    established defensive `try`/`except RuntimeError` pattern used for
    every other Qt-signal-invoked slot chain here.
-d28885f. New side-by-side widget container: two widget-instance slots in
+d28885f. COMPLETED: New side-by-side widget container: two widget-instance slots in
    one `WidgetFrame`, a button to swap which slot is on which side, and
    a horizontal/vertical orientation toggle — the parking-lot design
    (moved out of `PARKINGLOT.md`), except inter-widget communication
@@ -3519,3 +3519,56 @@ d28885f. New side-by-side widget container: two widget-instance slots in
      free, and swapping sides is just re-inserting the same two child
      widgets in the other order, no rebuild needed.
    [planned: side-by-side-widget-container.md]
+
+   New `widgets/side_by_side/widget.py`. Two new `current_context` hooks
+   (`get_widget_catalog_provider`/`set_widget_catalog_provider`,
+   `get_hot_reload_broker`/`set_hot_reload_broker`), wired once at
+   `DeskWindow.__init__`; a new `DeskWindow.get_widget_catalog_dicts()`
+   backs the former, filtered to `kind: "python"` (reads `self._widgets`
+   fresh each call, so a later `discover_widgets()` refresh is picked
+   up automatically). Persistence needed **no new `WidgetState`/`Desk`
+   field at all** — it reuses the existing generic widget-local-storage
+   mechanism (TODO `fb76057`) end to end: `{"orientation", "order":
+   [0,1]-or-[1,0], "slots": [{"widget_id", "instance_id",
+   "local_storage"}, ...]}`, with the container's own
+   `get_widget_local_storage`/`set_widget_local_storage` recursing into
+   each occupied slot's own content the same hooks (since a nested
+   child never gets a top-level `WidgetState`/`WidgetFrame` of its
+   own — without this, a slot's child would silently forget its own
+   state, e.g. an Editor's open file, every Desk reload). Two fixed
+   slot identities (`_Slot`, never reassigned) plus a separate
+   `self._order: list[int]` recording which slot occupies which
+   `QSplitter` position — Swap only flips `_order` and re-lays-out via
+   `QSplitter.insertWidget` (which natively re-parents/moves a widget
+   already in the splitter), so a slot's own instance id/mediator
+   bindings/local storage are never disturbed by swapping. Each
+   occupied slot's `PythonWidgetHost` is bound to the shared
+   `EventMediator` (`current_context.get_event_mediator()`, no new hook
+   needed there) via the same duck-typed `bind_event_mediator`
+   hook `DeskWindow._bind_event_mediator` already uses for top-level
+   frames — re-run after every hot-reload rebuild too (the container's
+   own `HotReloadBroker.widget_changed` connection, alongside the one
+   the host itself already has, since a rebuild swaps in a fresh
+   `.current` that needs re-binding). Re-picking a slot's widget type
+   mints a fresh instance id and unsubscribes the old one; the
+   container's own teardown (captured plain values in a closure
+   connected to `self.destroyed`, per the established "connecting to
+   your own bound method silently never fires" pattern) unsubscribes
+   both slots' instance ids when the container itself is destroyed.
+   Added a new numbered widget-list entry (24) to
+   `design-docs/architecture.md`.
+
+   Verified directly, with a real `EventMediator`/`HotReloadBroker` and
+   the real discovered widget catalog: choosing a widget for each slot
+   builds a real `PythonWidgetHost` showing that widget's actual
+   content; a publish from one slot's bound instance id is genuinely
+   received by a third, independently-subscribed instance (proof the
+   slots are on the shared bus, not an isolated one); re-picking a
+   slot's widget type mints a new instance id and fully unsubscribes
+   the old one; Swap exchanges splitter positions without changing
+   either slot's instance id or rebuilding either host; Orientation
+   toggles correctly; a full persistence round-trip (including a
+   swapped order and a nested Editor child's own open-file local
+   storage) correctly restores every piece of state on a totally fresh
+   instance. Full regression suite (`git stash` before/after): the same
+   17 pre-existing/known-stale failures, 0 new.

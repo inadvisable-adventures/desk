@@ -1,0 +1,7 @@
+{
+  "name": "Side by Side",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": [],
+  "default_size": { "width": 900, "height": 600 }
+}
