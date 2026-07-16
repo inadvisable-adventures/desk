@@ -1,15 +1,3 @@
-# DISABLED (see tests/verify/README.md) -- TODO f3120bb tracks
-# investigating this. Current failure: Fails on check("no remaining file_explorer/File Explorer content
-# anywhere", remaining == []) -- the grep this performs doesn't account
-# for this project's own explicit convention that historical mentions
-# (TODO.md's completed-item narrative, a rename plan's own prose) are
-# deliberately preserved, not scrubbed. Reasonable suspicion: the
-# assertion is overly strict relative to established project
-# convention -- TODO.md's own line describing TODO 8385dcc necessarily
-# still says "File Explorer", so this check may never have actually
-# passed; worth confirming intent (scope the grep to src/widgets/
-# design-docs only?) rather than assuming it's a real regression.
-
 import glob
 import os
 import subprocess
@@ -52,15 +40,19 @@ check("class renamed to ProjectFilesWidget", "class ProjectFilesWidget(QWidget):
 check("build() returns the renamed class", "return ProjectFilesWidget()" in class_source)
 check("old class name gone", "FileExplorerWidget" not in class_source)
 
-# No remaining "file_explorer"/"File Explorer" content anywhere except
-# stable plan filenames (deliberately not renamed -- see the plan).
-search_dirs = ["src", "widgets", "design-docs", "TODO.md", "PARKINGLOT.md", "LEARNINGS.md", "plans"]
+# No remaining "file_explorer"/"File Explorer" content in actual code
+# -- scoped to src/widgets only (not design-docs/TODO.md/PARKINGLOT.md/
+# LEARNINGS.md/plans, which legitimately preserve historical mentions
+# of the old name -- e.g. TODO.md's own line describing TODO 8385dcc,
+# or a later design doc citing this rename as precedent -- per this
+# project's own established convention).
+search_dirs = ["src", "widgets"]
 result = subprocess.run(
     ["grep", "-rl", "--exclude-dir=__pycache__", "file_explorer\\|File Explorer", *search_dirs],
     cwd=REPO_ROOT, capture_output=True, text=True,
 )
 remaining = [line for line in result.stdout.splitlines() if line]
-check("no remaining file_explorer/File Explorer content anywhere", remaining == [])
+check("no remaining file_explorer/File Explorer content in src/widgets", remaining == [])
 
 # Plan filenames themselves are deliberately preserved.
 old_plan_names = {

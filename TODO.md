@@ -3775,12 +3775,25 @@ ba0bd9a. COMPLETED: Investigate `tests/verify/disabled_verify_relocate_promoted_
    `verify_relocate_promoted_widget_source.py`. Full `tests/verify/`
    suite: 4 remaining known-disabled scripts, 0 new failures among the
    enabled ones.
-f3120bb. Investigate `tests/verify/disabled_verify_rename_project_files.py`: its
+f3120bb. COMPLETED: Investigate `tests/verify/disabled_verify_rename_project_files.py`: its
    "no remaining File Explorer content anywhere" grep doesn't account
    for this project's own convention of preserving historical mentions
    (TODO.md's own completed-item text, a rename plan's prose). Confirm
    whether the check's scope should just exclude those, or whether it
    was always unsatisfiable.
+   [planned: investigate-disabled-verify-rename-project-files.md]
+
+   Confirmed: the check's scope (`design-docs`, `TODO.md`,
+   `PARKINGLOT.md`, `LEARNINGS.md`, `plans`) was checking something
+   this project's own conventions never actually promise — likely
+   unsatisfiable from very early on, not a later regression. Scoped
+   the "no remaining content" grep down to `src`/`widgets` only (actual
+   code, where the old name genuinely shouldn't appear at all); the
+   plan-filenames-preserved check below it already covers the one
+   legitimate exception in `plans/` at the filename level. Re-enabled
+   as `verify_rename_project_files.py`. Full `tests/verify/` suite: 3
+   remaining known-disabled scripts, 0 new failures among the enabled
+   ones.
 f7c2f60. Investigate `tests/verify/disabled_verify_segfault_fix.py`: imports the
    pre-rename `widgets/markdown_ex/` directory (TODO `858752b` renamed
    it to `markdown`). Update the path (and `MarkdownExWidget` →
