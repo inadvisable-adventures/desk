@@ -137,9 +137,19 @@ untranslated coordinates regardless of zoom. The approach:
    `event.position()`), divide by `self._scale` to get the equivalent
    delta in *scene* units, and apply it directly: `proxy.moveBy(dx, dy)`
    for a titlebar hit, or the per-edge resize math below for a handle hit.
-3. If the press didn't hit chrome, `super().mousePressEvent(event)` runs
-   instead — normal content interaction and background `ScrollHandDrag`
-   panning are unaffected.
+3. If the press didn't hit chrome: on truly empty canvas,
+   `super().mousePressEvent(event)` runs as before — background
+   `ScrollHandDrag` panning is unaffected. If it landed on some placed
+   widget's own content instead (`_frame_at`, TODO `3846190`), drag
+   mode is temporarily switched to `NoDrag` for just that one
+   `super().mousePressEvent(event)` call (restored immediately after)
+   — normal content interaction still happens via the same call, but
+   Qt's own hand-scroll-start decision (which otherwise engages
+   whenever the embedded widget doesn't itself consume the press —
+   e.g. a passive, paint-only widget, or empty background inside a
+   nested `QGraphicsView`) never gets the chance to fall back to
+   panning the *canvas* out from under a widget the user is actually
+   interacting with. See `plans/widget-content-event-priority.md`.
 
 The chrome widgets themselves (`_TitleBar`, `_ResizeHandle`) are now purely
 visual — background, cursor shape, `apply_scale` — with no mouse event
@@ -555,9 +565,10 @@ substitutable in headless tests) for `rename_current_desk`, or
 
 ### Add Widget Menu
 
-Right-clicking anywhere on the Workspace Canvas opens a `WidgetSpawnMenu` —
-a small popup listing the discovered widget catalog, with a typeable
-filter box at the top. Qt has no built-in menu with a live-filterable
+Right-clicking empty canvas or a widget's own chrome opens a
+`WidgetSpawnMenu` — a small popup listing the discovered widget catalog,
+with a typeable filter box at the top. Qt has no built-in menu with a
+live-filterable
 query (`QMenu`'s keyboard handling only does prefix/mnemonic jumping), so
 this is a dedicated `QWidget` (`Qt.WindowType.Popup`, giving it the same
 click-away/focus-loss auto-close behavior as a real `QMenu`) rather than a
@@ -608,10 +619,14 @@ how widgets are placed anywhere else in the app.
   `PASTED-ITEM-<timestamp>.png` in the project directory — no widget is
   opened for that case. See `plans/paste-clipboard-routing.md`.
 
-Any right-click opens this same menu — there's no special-casing for
-right-clicking empty canvas vs. an existing widget's chrome/content. A
-widget-specific context menu (close, duplicate, etc.) is a reasonable
-future feature, not a reason to complicate this one.
+A right-click landing on a placed widget's own *content* (not chrome)
+does **not** open this menu (TODO `3846190`) — `contextMenuEvent`
+hit-tests first (`_hit_test_chrome`/`_frame_at`) and, when the position
+is over content, forwards via `super().contextMenuEvent(event)` instead,
+letting Qt's normal scene delivery reach the widget's own context menu
+if it has one (e.g. a `QTextEdit`'s copy/paste menu, a `QWebEngineView`'s
+browser menu). Right-clicking empty canvas or a widget's own chrome
+still opens `WidgetSpawnMenu` exactly as before.
 
 ## Trackpad Zoom Input
 
@@ -633,15 +648,21 @@ Two independent trackpad-driven zoom inputs are supported:
   value()`.
 
 Both are carved out when the cursor is over a widget's own scrollable
-content: `WorkspaceView.wheelEvent` hit-tests (`_scrollable_at`, same
-shape as `_hit_test_chrome`) whether the position under the cursor is
-inside a `QAbstractScrollArea` (what every scrollable Qt widget —
-`QListWidget`, `QScrollArea`, `QTextEdit`, ...) is built on; if so, the
-wheel event is forwarded via `super().wheelEvent(event)` so Qt's normal
+content: `_scrollable_at` (same shape as `_hit_test_chrome`) hit-tests
+whether the position under the cursor is inside a `QAbstractScrollArea`
+(what every scrollable Qt widget — `QListWidget`, `QScrollArea`,
+`QTextEdit`, ...) is built on, or a `QWebEngineView` (not a scroll area,
+but scrolls its own page content the same way — TODO `c44e88f`). If so:
+`wheelEvent` forwards via `super().wheelEvent(event)` so Qt's normal
 scene-forwarding delivers it to that widget to scroll its own content,
-instead of zooming the canvas. Pinch-to-zoom is unaffected by this carve
--out since it's handled separately, in `event()`, not `wheelEvent`. See
-`plans/todo-widget-scrollable.md`.
+instead of zooming the canvas; `event()`'s native-gesture handling
+(TODO `3846190`) simply skips the canvas zoom the same way, rather than
+attempting to forward the gesture itself (no built-in widget implements
+its own pinch-to-zoom today, so there's nothing to forward *to* yet —
+this only stops the canvas from stealing it). Pinch over non-scrollable
+content (e.g. a plain image viewer) still zooms the canvas, same as
+wheel — deliberately kept consistent between the two gestures. See
+`plans/todo-widget-scrollable.md`/`plans/widget-content-event-priority.md`.
 
 ## Open Questions
 

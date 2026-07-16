@@ -3924,7 +3924,7 @@ dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidge
    similar assertions in the previous TODO batch) — confirmed not a
    real regression. 0 other new failures across all 65 scripts in
    `tests/verify/`.
-3846190. Fix widget content event routing: zoom/pan interactions on
+3846190. COMPLETED: Fix widget content event routing: zoom/pan interactions on
    individual widgets are generally unsuccessful — Desk's own canvas
    (`WorkspaceView`, `src/desk/shell/canvas.py`) is grabbing events that
    should go to whichever widget's content the cursor is over. Per
@@ -3946,3 +3946,54 @@ dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidge
    is unaffected/already correct (TODO c44e88f's existing
    `_scrollable_at` carve-out).
    [planned: widget-content-event-priority.md]
+
+   New `WorkspaceView._frame_at(view_pos)` helper (same `itemAt`-based
+   shape as `_hit_test_chrome`/`_scrollable_at`, but broader — any
+   placed widget's bounds, not just chrome or scroll areas).
+   `contextMenuEvent` now hit-tests first and forwards via
+   `super().contextMenuEvent(event)` when over widget content, instead
+   of unconditionally showing `WidgetSpawnMenu`. `event()`'s
+   `NativeGesture` handling now reuses `_scrollable_at` (the same gate
+   `wheelEvent` already uses, deliberately not the broader
+   `_frame_at` — keeps pinch consistent with wheel's own existing
+   behavior, still zooming the canvas over non-scrollable content like
+   a plain image viewer). `mousePressEvent`'s existing chrome-vs-content
+   fallthrough now checks `_frame_at` for the non-chrome case: over
+   widget content, drag mode is temporarily switched to `NoDrag` for
+   just the one `super().mousePressEvent(event)` call (restored
+   immediately after), preventing Qt's own hand-scroll-start decision
+   from ever engaging for that press — content interaction still
+   happens normally in the same call. Updated `design-docs/widget-ux.md`
+   (Trackpad Zoom Input, Add Widget Menu, Zoom-Correct Dragging
+   sections) to match the new, actual behavior — the "Trackpad Zoom
+   Input" section's own opening line ("Both are carved out...") was
+   already inconsistent with its closing sentence ("Pinch-to-zoom is
+   unaffected by this carve-out") even before this fix; now genuinely
+   true.
+
+   Verified directly, each via a real, headless `WorkspaceView` (not
+   just reading code): (1) a real press/move/move/release `QMouseEvent`
+   sequence dragging inside a placed widget's own content no longer
+   moves the view's own scrollbars at all (previously moved them by the
+   exact drag delta — confirmed via `git stash`), while the identical
+   sequence starting on truly empty canvas still pans it exactly as
+   before; (2) a real `QContextMenuEvent` positioned over widget content
+   no longer constructs `WidgetSpawnMenu` (patched to confirm), while
+   the same event over empty canvas still does; (3) a duck-typed
+   native-gesture event (constructing/dispatching a *real*
+   `QNativeGestureEvent` segfaulted in this offscreen environment,
+   unrelated to the logic under test) confirms pinch no longer zooms
+   the canvas over a scrollable widget's content, while still zooming
+   over non-scrollable content and empty canvas alike. Full regression
+   suite (`git stash` before/after): the new
+   `verify_widget_content_event_priority.py` script's 3 previously
+   -failing checks (drag/right-click/pinch over content) are exactly
+   the ones this fix makes pass, with all 4 "should still work exactly
+   as before" checks (background pan, empty-canvas right-click, pinch
+   over non-scrollable content and empty canvas) passing both before
+   and after — confirming this is a targeted fix, not a side effect.
+   Re-ran every chrome-focused script (titlebar drag, resize handles,
+   lock, z-order, eye button, stale marker, widget focus, TODO widget's
+   own file-watcher-driven reload) to confirm chrome interactions are
+   completely unaffected. 0 other new failures across all 66 scripts in
+   `tests/verify/`.

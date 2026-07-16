@@ -167,6 +167,16 @@ class WorkspaceView(QGraphicsView):
         self._widget_catalog = catalog
 
     def contextMenuEvent(self, event) -> None:
+        # TODO 3846190: a right-click landing on a placed widget's own
+        # content (not chrome -- a right-click on a titlebar/button has
+        # no sensible "widget's own context menu" meaning) goes to the
+        # widget itself (e.g. a QTextEdit's copy/paste menu, a
+        # QWebEngineView's browser menu) via Qt's normal scene delivery,
+        # instead of this always showing Desk's own add-widget menu on
+        # top of it regardless of what's under the cursor.
+        if self._hit_test_chrome(QPointF(event.pos())) is None and self._frame_at(QPointF(event.pos())) is not None:
+            super().contextMenuEvent(event)
+            return
         scene_pos = self.mapToScene(event.pos())
         # Excludes tempui-DSL-defined custom widgets (TODO 91b3f42,
         # WidgetInfo.tempui_only) -- those can only ever be placed via
@@ -370,6 +380,31 @@ class WorkspaceView(QGraphicsView):
                 self._drag_frame, self._drag_edge = hit
                 self._drag_last_pos = event.position()
                 event.accept()
+                return
+            if self._frame_at(event.position()) is not None:
+                # TODO 3846190: the press landed inside some placed
+                # widget's own content (not chrome, not empty canvas).
+                # Qt's own ScrollHandDrag fallback (see __init__) only
+                # starts hand-panning the canvas when the scene doesn't
+                # itself accept the press -- a "passive" widget that
+                # never overrides mousePressEvent (a QLabel, a
+                # paint-only view, empty background inside a nested
+                # QGraphicsView, ...) leaves it unaccepted, which
+                # otherwise bubbles all the way up to this view's own
+                # hand-scroll start. Disabling drag mode for the
+                # duration of just this one call prevents that decision
+                # from ever engaging, while scene delivery to the
+                # embedded widget still happens completely normally in
+                # the same call -- confirmed directly (a real
+                # press/move/release sequence no longer moves this
+                # view's own scrollbars when it lands inside a widget's
+                # bounds). Truly empty canvas (_frame_at returns None)
+                # is untouched -- background drag-to-pan still works.
+                self.setDragMode(QGraphicsView.DragMode.NoDrag)
+                try:
+                    super().mousePressEvent(event)
+                finally:
+                    self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
                 return
         super().mousePressEvent(event)
 
@@ -644,6 +679,21 @@ class WorkspaceView(QGraphicsView):
         factor = math.exp(delta * WHEEL_ZOOM_SENSITIVITY)
         self._apply_zoom(factor)
 
+    def _frame_at(self, view_pos: QPointF) -> WidgetFrame | None:
+        """The placed WidgetFrame (if any) whose bounds contain this
+        viewport position -- true for *any* widget's own content, not
+        just chrome (see _hit_test_chrome) or scrollable content (see
+        _scrollable_at). Used to tell "over some widget's content" apart
+        from "truly empty canvas" (TODO 3846190), for the interactions
+        that should never fall back to canvas-level pan/zoom just
+        because the specific spot under the cursor doesn't itself
+        consume the event."""
+        item = self.itemAt(view_pos.toPoint())
+        if not isinstance(item, QGraphicsProxyWidget):
+            return None
+        frame = item.widget()
+        return frame if isinstance(frame, WidgetFrame) else None
+
     def _scrollable_at(self, view_pos: QPointF) -> bool:
         """Whether a wheel event at this viewport position should scroll an
         embedded widget's own content rather than zoom the canvas -- true
@@ -672,7 +722,19 @@ class WorkspaceView(QGraphicsView):
     def event(self, event) -> bool:
         if event.type() == QEvent.Type.NativeGesture:
             if event.gestureType() == Qt.NativeGestureType.ZoomNativeGesture:
-                self._apply_zoom(1.0 + event.value())
+                # TODO 3846190: same _scrollable_at carve-out
+                # wheelEvent already uses -- a pinch landing on a
+                # scrollable/QWebEngineView widget's own content isn't
+                # a canvas-zoom gesture (this previously zoomed the
+                # canvas unconditionally, regardless of what was under
+                # the cursor -- see design-docs/widget-ux.md's
+                # "Trackpad Zoom Input"). Not the broader "any widget"
+                # check _frame_at gives mousePressEvent -- deliberately
+                # kept consistent with wheel's own existing, deliberate
+                # behavior (still zooms the canvas over non-scrollable
+                # content, e.g. a plain image viewer).
+                if not self._scrollable_at(event.position()):
+                    self._apply_zoom(1.0 + event.value())
                 return True
         return super().event(event)
 

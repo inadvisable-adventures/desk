@@ -1,4 +1,4 @@
-# Plan: TODO 3846190 — widget content under the cursor should get all events, not the canvas
+# Plan: TODO 3846190 (COMPLETED) — widget content under the cursor should get all events, not the canvas
 
 ## Summary
 
