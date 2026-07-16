@@ -1,11 +1,3 @@
-# DISABLED (see tests/verify/README.md) -- TODO f7c2f60 tracks
-# investigating this. Current failure: Fails with FileNotFoundError for widgets/markdown_ex/widget.py --
-# TODO 858752b renamed markdown_ex/"Markdown (Extended)" to
-# markdown/"Markdown" (now the default). Reasonable suspicion: not a
-# real bug, just predates that rename -- needs its widget path updated
-# to widgets/markdown/widget.py (and MarkdownExWidget likely renamed to
-# MarkdownWidget in whatever it asserts).
-
 import importlib.util
 import os
 import sys
@@ -41,8 +33,7 @@ def load_widget_module(name, path):
 def test_refresh_external_path_status_hardened():
     for mod_name, mod_path in [
         ("md_mod2", "widgets/markdown/widget.py"),
-        ("mdex_mod2", "widgets/markdown_ex/widget.py"),
-        ("svg_mod2", "widgets/svg_viewer/widget.py"),
+        ("image_viewer_mod2", "widgets/image_viewer/widget.py"),
         ("editor_mod2", "widgets/editor/widget.py"),
         ("todo_mod2", "widgets/todo/widget.py"),
     ]:
@@ -64,24 +55,33 @@ def test_refresh_external_path_status_hardened():
 
 
 def test_open_index_hardened():
-    fe_mod = load_widget_module("fe_mod2", "widgets/file_explorer/widget.py")
+    # TODO 8385dcc/efdad99: file_explorer -> project_files, and
+    # _open_file now dispatches through a registered-view-handler ->
+    # editor-or-scrap fallback chain via get_centered_widget_opener(),
+    # not the plain get_widget_opener() this test used to register its
+    # broken fake through -- register a fake view handler for .txt so
+    # _open_in_widget's own try/except is what's actually exercised.
+    fe_mod = load_widget_module("fe_mod2", "widgets/project_files/widget.py")
     with tempfile.TemporaryDirectory() as d:
         directory = Path(d)
         (directory / "a.txt").write_text("a")
         current_context.set_current_desk_directory(directory)
+        current_context.set_file_type_registry_provider(
+            lambda: [{"extensions": [".txt"], "mime_types": [], "handlers": [{"widget_id": "broken_widget", "role": "view"}]}]
+        )
 
         fe = fe_mod.build()
         pump(0.2)
 
-        class FakeOpener:
-            def __call__(self, widget_id):
-                class Broken:
-                    def set_file(self, path):
-                        raise RuntimeError("boom")
+        class Broken:
+            def set_file(self, path):
+                raise RuntimeError("boom")
 
+        class FakeCenteredOpener:
+            def __call__(self, widget_id):
                 return Broken()
 
-        current_context.set_widget_opener(FakeOpener())
+        current_context.set_centered_widget_opener(FakeCenteredOpener())
         index = fe._fs_model.index(str(directory / "a.txt"))
         fe._open_index(index)  # must not raise
         pump(0.2)
@@ -90,8 +90,9 @@ def test_open_index_hardened():
         pump(1.0)
         assert fe._searching is True
         fe.deleteLater()
-        current_context.set_widget_opener(None)
-    print("FileExplorerWidget._open_index survives a raising set_file: PASS")
+        current_context.set_centered_widget_opener(None)
+        current_context.set_file_type_registry_provider(None)
+    print("ProjectFilesWidget._open_index survives a raising set_file: PASS")
 
 
 def test_editor_unreadable_file_no_crash():

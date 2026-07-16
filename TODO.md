@@ -3794,10 +3794,30 @@ f3120bb. COMPLETED: Investigate `tests/verify/disabled_verify_rename_project_fil
    as `verify_rename_project_files.py`. Full `tests/verify/` suite: 3
    remaining known-disabled scripts, 0 new failures among the enabled
    ones.
-f7c2f60. Investigate `tests/verify/disabled_verify_segfault_fix.py`: imports the
+f7c2f60. COMPLETED: Investigate `tests/verify/disabled_verify_segfault_fix.py`: imports the
    pre-rename `widgets/markdown_ex/` directory (TODO `858752b` renamed
    it to `markdown`). Update the path (and `MarkdownExWidget` →
    `MarkdownWidget` if referenced) if that's the whole issue.
+   [planned: investigate-disabled-verify-segfault-fix.md]
+
+   Three independent staleness issues across its 4 test functions, not
+   one: `test_refresh_external_path_status_hardened`'s widget list had
+   both a duplicate `markdown_ex` entry (already covered by `markdown`)
+   and a `svg_viewer` entry (retired by TODO `4d21e7c`, this same
+   session — replaced with `image_viewer`); `test_open_index_hardened`
+   imported the pre-rename `file_explorer` path *and* registered its
+   broken fake opener through the wrong hook
+   (`get_widget_opener`, not `get_centered_widget_opener`) with no
+   file-type-registry entry, meaning even a path-only fix would have
+   left it silently not exercising the actual hardening it claims to
+   (a downstream widget's broken `set_file()` not crashing
+   `_open_in_widget`'s own `try`/`except`) — rewrote it to register a
+   fake view handler via `current_context
+   .set_file_type_registry_provider` and the correct centered-opener
+   hook, so it now genuinely reaches and exercises that `try`/`except`.
+   The other two test functions needed no changes. Full `tests/verify/`
+   suite: 2 remaining known-disabled scripts, 0 new failures among the
+   enabled ones.
 28119c6. Investigate `tests/verify/disabled_verify_tempui_changelog_docs.py`: 3
    assertions hardcode the doc set's version range as of TODO `7462cdb`
    (when `TEMPUI_DOC_VERSION` was 14); it's since grown through 17.
