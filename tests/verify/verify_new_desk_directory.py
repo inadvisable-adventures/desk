@@ -1,10 +1,3 @@
-# DISABLED (see tests/verify/README.md) -- TODO 6e9def4 tracks
-# investigating this. Current failure: Fails with TypeError: _FakeWindow.switch_desk() got an unexpected
-# keyword argument 'provisioning' -- the real switch_desk gained a
-# provisioning parameter after this script's fake double was written.
-# Reasonable suspicion: fixture drift, not a real bug -- the fake
-# double's switch_desk signature needs updating to match.
-
 import os
 import sys
 import tempfile
@@ -39,7 +32,7 @@ class _FakeWindow:
     def _warn(self, title, message):
         self.warnings.append((title, message))
 
-    def switch_desk(self, path, confirm=None):
+    def switch_desk(self, path, confirm=None, provisioning=None):
         self.switch_desk_calls.append(path)
         if confirm is not None:
             assert confirm(), "new_desk must pass a confirm that's always True"

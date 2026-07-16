@@ -3711,10 +3711,18 @@ fea158d. COMPLETED: Investigate `tests/verify/disabled_verify_define_widget_auto
    `verify_html_widget_local_storage.py`. Full `tests/verify/` suite: 8
    remaining known-disabled scripts, 0 new failures among the enabled
    ones.
-6e9def4. Investigate `tests/verify/disabled_verify_new_desk_directory.py`: its own
+6e9def4. COMPLETED: Investigate `tests/verify/disabled_verify_new_desk_directory.py`: its own
    fake `DeskWindow` double's `switch_desk` doesn't accept the real
    method's `provisioning` parameter. Update the fake double's
    signature if that's the whole issue.
+   [planned: investigate-disabled-verify-new-desk-directory.md]
+
+   Confirmed the suspected cause was the whole issue: added
+   `provisioning=None` (accepted and ignored — nothing in this script's
+   own assertions inspects it) to the fake's `switch_desk` signature.
+   Re-enabled as `verify_new_desk_directory.py`. Full `tests/verify/`
+   suite: 7 remaining known-disabled scripts, 0 new failures among the
+   enabled ones.
 086e922. Investigate `tests/verify/disabled_verify_new_desk_flow.py`: its own fake
    `DeskWindow` double lacks `_event_mediator`, which the real
    `switch_desk` has called (`.clear_all()`) since TODO `6f9c51b`. Add
