@@ -3672,12 +3672,23 @@ fea158d. COMPLETED: Investigate `tests/verify/disabled_verify_define_widget_auto
    directly, unaffected by either contract change). Full
    `tests/verify/` suite: 11 remaining known-disabled scripts, 0 new
    failures among the enabled ones.
-294f8a2. Investigate `tests/verify/disabled_verify_file_explorer.py`: imports the
+294f8a2. COMPLETED: Investigate `tests/verify/disabled_verify_file_explorer.py`: imports the
    pre-rename `widgets/file_explorer/` directory (TODO `8385dcc`
    renamed it to `project_files`). Likely just delete, since
    `verify_rename_project_files.py`/
    `verify_file_explorer_fallback_chain.py` already cover the renamed
    widget.
+   [planned: investigate-disabled-verify-file-explorer.md]
+
+   Two independent reasons it was obsolete, not just the rename: its
+   actual assertions tested a per-widget manual Fusion-style-forcing
+   workaround (TODO `593a464`) that TODO `8afef71` removed entirely
+   (`_toolbar_style` no longer exists in `widgets/project_files/
+   widget.py` at all). Deleted outright — its Open Folder/search-box
+   coverage was incidental to that removed workaround, not dedicated
+   coverage worth preserving on its own. Full `tests/verify/` suite: 10
+   remaining known-disabled scripts, 0 new failures among the enabled
+   ones.
 9b89129. Investigate `tests/verify/disabled_verify_fs_path_resolution_and_events_doc.py`:
    fails on a single stale `TEMPUI_DOC_VERSION == 13` assertion (now
    17). Same category as TODO `06fa070`.
