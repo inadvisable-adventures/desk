@@ -3723,10 +3723,19 @@ fea158d. COMPLETED: Investigate `tests/verify/disabled_verify_define_widget_auto
    Re-enabled as `verify_new_desk_directory.py`. Full `tests/verify/`
    suite: 7 remaining known-disabled scripts, 0 new failures among the
    enabled ones.
-086e922. Investigate `tests/verify/disabled_verify_new_desk_flow.py`: its own fake
+086e922. COMPLETED: Investigate `tests/verify/disabled_verify_new_desk_flow.py`: its own fake
    `DeskWindow` double lacks `_event_mediator`, which the real
    `switch_desk` has called (`.clear_all()`) since TODO `6f9c51b`. Add
    the missing attribute if that's the whole issue.
+   [planned: investigate-disabled-verify-new-desk-flow.md]
+
+   Confirmed fixture drift, plus a second gap found once the first was
+   fixed: `_introspect_grants` (a Bridge API introspection-grant cache
+   `switch_desk` also clears) was missing too. Added a real
+   `EventMediator()` and an empty `set()` for the grant cache;
+   re-enabled as `verify_new_desk_flow.py`. Full `tests/verify/` suite:
+   6 remaining known-disabled scripts, 0 new failures among the enabled
+   ones.
 f7469bc. Investigate `tests/verify/disabled_verify_questions_discuss_button.py`:
    its own fake `DeskWindow` double lacks
    `_write_discuss_instructions_file`, which the real

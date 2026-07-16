@@ -1,11 +1,3 @@
-# DISABLED (see tests/verify/README.md) -- TODO 086e922 tracks
-# investigating this. Current failure: Fails with AttributeError: '_OrderTrackingWindow' object has no
-# attribute '_event_mediator' -- same category as
-# disabled_verify_html_widget_local_storage.py: the real switch_desk now
-# calls self._event_mediator.clear_all() (TODO 6f9c51b), which this
-# script's fake double predates. Reasonable suspicion: fixture drift,
-# not a real bug.
-
 import os
 import sys
 import tempfile
@@ -14,6 +6,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, "src")
 
+from desk.event_mediator import EventMediator  # noqa: E402
 from desk.shell.new_desk_dialog import NewDeskDialog  # noqa: E402
 from desk.shell.temp_ui_manager import TempUiManager  # noqa: E402
 from desk.temp_ui import ensure_gitignore_entry, GITIGNORE_ENTRIES, GITIGNORE_COMMENT  # noqa: E402
@@ -254,6 +247,10 @@ class _OrderTrackingWindow:
         # TODO 5734529: switch_desk also clears this alongside the
         # custom-widget dicts above.
         self._html_widget_local_storage = {}
+        # TODO 6f9c51b: switch_desk also calls self._event_mediator.clear_all().
+        self._event_mediator = EventMediator()
+        # switch_desk also clears this Bridge API introspection-grant cache.
+        self._introspect_grants = set()
 
     def save_current_desk(self):
         self.order.append("save_current_desk")
