@@ -1,0 +1,9 @@
+{
+  "name": "Mermaid Flowchart to SVG",
+  "kind": "python",
+  "entry": "transform.py",
+  "input_type": "mermaid-flowchart",
+  "output_type": "svg",
+  "has_config": false,
+  "has_identity": false
+}

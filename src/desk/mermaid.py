@@ -36,7 +36,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Callable
 
-from PyQt6.QtCore import QPointF, QRectF, Qt
+from PyQt6.QtCore import QBuffer, QIODevice, QPointF, QRectF, Qt
 from PyQt6.QtGui import (
     QBrush,
     QColor,
@@ -47,6 +47,7 @@ from PyQt6.QtGui import (
     QPen,
     QPolygonF,
 )
+from PyQt6.QtSvg import QSvgGenerator
 from PyQt6.QtWidgets import (
     QFrame,
     QGraphicsEllipseItem,
@@ -578,6 +579,27 @@ def build_scene(diagram: Diagram, result: LayoutResult, palette: QPalette) -> QG
         _add_edge(scene, src, tgt, edge, border, bg_color)
 
     return scene
+
+
+def render_svg(scene: QGraphicsScene) -> str:
+    """Serializes `scene` to a real SVG string (TODO `05cfccc`) --
+    genuinely new: nothing in this module previously ever produced an
+    SVG, only a live `QGraphicsScene` rendered directly by
+    `MermaidDiagramWidget`, with no serialization step at all. Used by
+    the `mermaid_flowchart_svg`/`mermaid_state_svg` transforms
+    (`desk_transforms/`), not by `MermaidDiagramWidget` itself."""
+    rect = scene.sceneRect()
+    buffer = QBuffer()
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    generator = QSvgGenerator()
+    generator.setOutputDevice(buffer)
+    generator.setSize(rect.size().toSize())
+    generator.setViewBox(rect)
+    painter = QPainter(generator)
+    scene.render(painter, target=QRectF(0, 0, rect.width(), rect.height()), source=rect)
+    painter.end()
+    buffer.close()
+    return bytes(buffer.data()).decode("utf-8")
 
 
 class MermaidDiagramWidget(QGraphicsView):

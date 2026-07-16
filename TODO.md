@@ -4608,7 +4608,7 @@ b5e15cf. COMPLETED: Transforms, part 2/4: Transform Manager widget. A new
    suite: 73 scripts, 0 new failures (the one pre-existing, unrelated
    failure in `verify_discuss_parking_lot_item.py` is still the only
    failure).
-05cfccc. Transforms, part 3/4: extract Mermaid flowchart/state diagram
+05cfccc. COMPLETED: Transforms, part 3/4: extract Mermaid flowchart/state diagram
    rendering into individual transforms. `src/desk/mermaid.py` today
    produces a live `QGraphicsScene`, rendered directly by
    `MermaidDiagramWidget` (a `QGraphicsView` subclass) -- no SVG is
@@ -4633,6 +4633,38 @@ b5e15cf. COMPLETED: Transforms, part 2/4: Transform Manager widget. A new
    time between these two commits; its deletion belongs in that item,
    the one that removes its one remaining caller.
    [planned: extract-mermaid-transforms.md]
+
+   Implemented per plan: `desk.mermaid.render_svg(scene) -> str`
+   (`PyQt6.QtSvg.QSvgGenerator` writing into an in-memory `QBuffer` via
+   a `QPainter`, decoded as UTF-8) added alongside
+   `parse`/`layout`/`build_scene`, all otherwise untouched. Two new
+   project-level transforms, `desk_transforms/mermaid_flowchart_svg/`
+   and `desk_transforms/mermaid_state_svg/`, each a thin
+   `parse -> layout -> build_scene -> render_svg` wrapper -- since
+   `parse` dispatches by the source's own header regardless of which
+   transform calls it, each explicitly checks the returned
+   `Diagram.kind` (`"flowchart"`/`"state"`, already a field on that
+   dataclass) and raises a clear `ValueError` if the wrong diagram type
+   reaches it, rather than silently parsing content from the *other*
+   supported kind. `MermaidDiagramWidget` deliberately left untouched
+   for now (see this item's own sequencing note above) -- still the
+   Markdown widget's only Mermaid renderer until TODO `a9e2ba7`.
+
+   Verified directly: new
+   `tests/verify/verify_mermaid_svg_transforms.py` (12 checks) --
+   `render_svg` produces real, well-formed SVG (including the
+   diagram's actual node-label text appearing in the output); both
+   transforms' `run()` called directly against real Mermaid source,
+   confirmed to reject the *other* transform's diagram type (proving
+   the `Diagram.kind` guard actually discriminates, not just that
+   `parse` doesn't crash) and to propagate `MermaidParseError`
+   (unswallowed) for a genuinely unsupported diagram
+   (`sequenceDiagram`); both transforms also exercised end-to-end
+   through a real `TransformsService` (real discovery under a real
+   `desk_transforms/`-shaped directory, real `run_blocking`
+   execution), not just as bare functions. Full regression suite: 74
+   scripts, 0 new failures (the one pre-existing, unrelated failure in
+   `verify_discuss_parking_lot_item.py` is still the only failure).
 a9e2ba7. Transforms, part 4/4: Markdown widget consumes the Mermaid
    transforms via the Desk Service. Extract `widgets/image_viewer/
    widget.py`'s private `_AspectSvgView` (a bare `QSvgRenderer` into a

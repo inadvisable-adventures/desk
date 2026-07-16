@@ -1,0 +1,9 @@
+{
+  "name": "Mermaid State Diagram to SVG",
+  "kind": "python",
+  "entry": "transform.py",
+  "input_type": "mermaid-state",
+  "output_type": "svg",
+  "has_config": false,
+  "has_identity": false
+}

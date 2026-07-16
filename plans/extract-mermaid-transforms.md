@@ -1,4 +1,4 @@
-# Plan: TODO 05cfccc — extract Mermaid flowchart/state rendering into transforms
+# Plan: TODO 05cfccc (COMPLETED) — extract Mermaid flowchart/state rendering into transforms
 
 See `design-docs/transforms.md`'s "Extracting Mermaid into transforms"
 section for the design rationale.
