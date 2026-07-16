@@ -1,4 +1,4 @@
-# Plan: TODO 41088da — Event Log widget shows the events log's relative path, not absolute
+# Plan: TODO 41088da (COMPLETED) — Event Log widget shows the events log's relative path, not absolute
 
 ## Summary
 

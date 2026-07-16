@@ -4157,15 +4157,33 @@ dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidge
    pre-existing, unrelated failure in
    `verify_discuss_parking_lot_item.py` confirmed via `git stash` to
    already fail identically before this TODO's changes).
-41088da. The Event Log widget's status label (`widgets/event_log/widget.py`,
-   `_ensure_watching`) displays the events log's *absolute* path
-   (`str(self._log_path)`, where `self._log_path = directory /
-   TEMP_UI_DIRNAME / LOG_FILENAME`) -- show it relative instead (e.g.
-   relative to the current Desk directory, `current_context
-   .get_current_desk_directory()`), matching how the rest of Desk's UI
-   generally prefers concise, Desk-relative paths over long absolute
-   ones.
+41088da. COMPLETED: The Event Log widget's status label
+   (`widgets/event_log/widget.py`, `_ensure_watching`) displays the
+   events log's *absolute* path (`str(self._log_path)`, where
+   `self._log_path = directory / TEMP_UI_DIRNAME / LOG_FILENAME`) --
+   show it relative instead (e.g. relative to the current Desk
+   directory, `current_context.get_current_desk_directory()`),
+   matching how the rest of Desk's UI generally prefers concise,
+   Desk-relative paths over long absolute ones.
    [planned: event-log-relative-path.md]
+
+   `self._log_path` is always constructed directly as `directory /
+   TEMP_UI_DIRNAME / LOG_FILENAME`, so `self._log_path
+   .relative_to(directory)` always succeeds by construction -- changed
+   the status label to display that instead of `str(self._log_path)`.
+   `self._log_path` itself stays absolute (still used for the actual
+   watch/read/write); only the displayed text changed.
+
+   Verified directly: updated
+   `tests/verify/verify_relocate_event_log.py`'s status-label check to
+   assert the label shows the relative form
+   (`.desk_temp/MEDIATED-EVENT-LOG.tsv`) and no longer contains the
+   Desk directory's own absolute prefix; confirmed via `git stash`
+   that it fails on the pre-fix code and passes after. Full regression
+   suite: 67 scripts, 0 new failures (the one pre-existing,
+   unrelated failure in `verify_discuss_parking_lot_item.py`,
+   confirmed via `git stash` to already fail before this TODO's
+   changes, is still the only failure).
 359684f. Add a desk-internal popups service, and expose it via the Bridge
    API. Desk currently has several different, ad hoc popup mechanisms:
    real `Qt.WindowType.Popup` top-level windows (`WidgetSpawnMenu`,

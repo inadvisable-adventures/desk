@@ -103,7 +103,7 @@ class EventLogWidget(QWidget):
             self._status_label.setText("No Desk directory available yet.")
             return
         self._log_path = directory / TEMP_UI_DIRNAME / LOG_FILENAME
-        self._status_label.setText(str(self._log_path))
+        self._status_label.setText(str(self._log_path.relative_to(directory)))
         self._watcher.watch(self._log_path)
         self._reload()
 

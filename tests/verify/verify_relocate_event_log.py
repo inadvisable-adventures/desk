@@ -79,8 +79,9 @@ with tempfile.TemporaryDirectory() as d:
         widget._log_path == project_dir / TEMP_UI_DIRNAME / LOG_FILENAME,
     )
     check(
-        "Event Log widget's status label shows the new path",
-        str(project_dir / TEMP_UI_DIRNAME / LOG_FILENAME) in widget._status_label.text(),
+        "Event Log widget's status label shows the relative path, not the absolute one (TODO 41088da)",
+        widget._status_label.text() == str(Path(TEMP_UI_DIRNAME) / LOG_FILENAME)
+        and str(project_dir) not in widget._status_label.text(),
     )
     widget.deleteLater()
 
