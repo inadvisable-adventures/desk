@@ -1,12 +1,3 @@
-# DISABLED (see tests/verify/README.md) -- TODO ba0bd9a tracks
-# investigating this. Current failure: Fails with FileNotFoundError reading scripts/build_widget.py
-# directly -- TODO 029047b deleted that file. This script was already
-# flagged as expected-stale during that same TODO's own verification but
-# never actually updated/removed. Reasonable suspicion: same category as
-# disabled_verify_build_widget.py -- needs its assertion rewritten
-# against the new .desk_temp/build_widget.py generated location, or
-# removed if redundant with newer coverage.
-
 import base64
 import os
 import sys
@@ -28,6 +19,7 @@ from desk.hotreload import HotReloadBroker  # noqa: E402
 from desk.shell.canvas import WorkspaceView  # noqa: E402
 from desk.shell.window import DeskWindow  # noqa: E402
 from desk.temp_ui import (  # noqa: E402
+    BUILD_WIDGET_SCRIPT_FILENAME,
     CUSTOM_WIDGET_SRC_DIRNAME,
     CUSTOM_WIDGETS_DOC_FILENAME,
     PROMOTED_WIDGET_SRC_DIRNAME,
@@ -188,7 +180,7 @@ def test_preexisting_destination_is_not_clobbered():
 
 
 def test_doc_content():
-    check("TEMPUI_DOC_VERSION bumped to 14", TEMPUI_DOC_VERSION == 14)
+    check("TEMPUI_DOC_VERSION bumped to at least 14", TEMPUI_DOC_VERSION >= 14)
     doc = SPLIT_DOC_CONTENT[CUSTOM_WIDGETS_DOC_FILENAME]
     check("doc recommends .desk_temp/widgets/<name>/", ".desk_temp/widgets/<name>/" in doc)
     check("custom_widget_src no longer mentioned", "custom_widget_src" not in doc)
@@ -196,7 +188,9 @@ def test_doc_content():
 
 
 def test_build_widget_script_docstring_updated():
-    text = Path("/Users/mphair/inadvisable-adventures/desk/scripts/build_widget.py").read_text()
+    # TODO 029047b: the script now lives generated in-memory
+    # (SPLIT_DOC_CONTENT), not as a static scripts/build_widget.py file.
+    text = SPLIT_DOC_CONTENT[BUILD_WIDGET_SCRIPT_FILENAME]
     check("build_widget.py docstring no longer hardcodes custom_widget_src", "custom_widget_src" not in text)
     check("build_widget.py docstring mentions .desk_temp/widgets", ".desk_temp/widgets/<name>" in text)
     check("build_widget.py docstring mentions desk_widgets", "desk_widgets/<name>" in text)

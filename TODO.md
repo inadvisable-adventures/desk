@@ -3756,10 +3756,25 @@ f7469bc. COMPLETED: Investigate `tests/verify/disabled_verify_questions_discuss_
    file and that the file itself contains the expected text. Full
    `tests/verify/` suite: 5 remaining known-disabled scripts, 0 new
    failures among the enabled ones.
-ba0bd9a. Investigate `tests/verify/disabled_verify_relocate_promoted_widget_source.py`:
+ba0bd9a. COMPLETED: Investigate `tests/verify/disabled_verify_relocate_promoted_widget_source.py`:
    reads `scripts/build_widget.py` directly, deleted by TODO `029047b`
    (already flagged as expected-stale at the time but never fixed).
    Same category as TODO `1082bd4`.
+   [planned: investigate-disabled-verify-relocate-promoted-widget-source.md]
+
+   Only 1 of the script's 5 test functions was actually stale — the
+   other 4 (source-directory-moved-on-promotion, no-source-no-op,
+   pre-existing-destination-not-clobbered) exercise
+   `_relocate_promoted_widget_source` directly, unrelated to the
+   build-widget-script relocation, still fully current. Fixed the one
+   stale function to check the in-memory generated content
+   (`SPLIT_DOC_CONTENT[BUILD_WIDGET_SCRIPT_FILENAME]`) instead of
+   reading the deleted `scripts/build_widget.py` from disk, plus
+   loosened one more stale `TEMPUI_DOC_VERSION == 14` assertion found
+   along the way. Re-enabled as
+   `verify_relocate_promoted_widget_source.py`. Full `tests/verify/`
+   suite: 4 remaining known-disabled scripts, 0 new failures among the
+   enabled ones.
 f3120bb. Investigate `tests/verify/disabled_verify_rename_project_files.py`: its
    "no remaining File Explorer content anywhere" grep doesn't account
    for this project's own convention of preserving historical mentions
