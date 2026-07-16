@@ -3633,9 +3633,15 @@ a96c091. COMPLETED: Investigate `tests/verify/disabled_verify_crash_handler.py`:
    ._log_path()`'s real current behavior. Re-enabled as
    `verify_crash_handler.py`. Full `tests/verify/` suite: 13 remaining
    known-disabled scripts, 0 new failures among the enabled ones.
-fea158d. Investigate `tests/verify/disabled_verify_define_widget_auto_place.py`:
+fea158d. COMPLETED: Investigate `tests/verify/disabled_verify_define_widget_auto_place.py`:
    fails on a single stale `TEMPUI_DOC_VERSION == 12` assertion (now
    17). Same category as TODO `06fa070`.
+   [planned: investigate-disabled-verify-define-widget-auto-place.md]
+
+   Confirmed same as TODO `06fa070`: loosened to `>= 12`, re-enabled as
+   `verify_define_widget_auto_place.py`. Full `tests/verify/` suite: 12
+   remaining known-disabled scripts, 0 new failures among the enabled
+   ones.
 3c613af. Investigate `tests/verify/disabled_verify_discuss_parking_lot_item.py`:
    asserts `parse_discuss_parking_lot_item` returns `(label,
    full_body_text)`, but TODO `624ff3a` deliberately changed its

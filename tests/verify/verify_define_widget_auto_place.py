@@ -1,9 +1,3 @@
-# DISABLED (see tests/verify/README.md) -- TODO fea158d tracks
-# investigating this. Current failure: Fails on a single stale assertion: hardcodes TEMPUI_DOC_VERSION ==
-# 12; every other check passes. Reasonable suspicion: same category as
-# disabled_verify_bridge_api_editor_or_scrap.py -- just an outdated
-# hardcoded version number, not a real bug.
-
 import os
 import sys
 import tempfile
@@ -159,7 +153,7 @@ def test_failed_registration_places_nothing():
 
 
 def test_doc_callout_and_version():
-    check("TEMPUI_DOC_VERSION bumped to 12", TEMPUI_DOC_VERSION == 12)
+    check("TEMPUI_DOC_VERSION bumped to at least 12", TEMPUI_DOC_VERSION >= 12)
     doc = SPLIT_DOC_CONTENT[CUSTOM_WIDGETS_DOC_FILENAME]
     check(
         "doc has the loud no-instance-placed callout",
