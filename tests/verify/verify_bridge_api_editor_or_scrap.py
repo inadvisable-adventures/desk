@@ -1,11 +1,3 @@
-# DISABLED (see tests/verify/README.md) -- TODO 06fa070 tracks
-# investigating this. Current failure: Fails on a single stale assertion: hardcodes TEMPUI_DOC_VERSION ==
-# 16, but the doc version has since moved on (now 17, after later TODOs
-# bumped it further). Every other check in this script still passes.
-# Reasonable suspicion: not a real bug, just an outdated hardcoded
-# version number -- rewrite the assertion to check `>= 16` (or drop the
-# version check from this script entirely).
-
 import json
 import os
 import sys
@@ -188,7 +180,7 @@ def test_bridge_client_declares_editor_namespace():
 
 
 def test_doc_content():
-    check("TEMPUI_DOC_VERSION bumped to 16", TEMPUI_DOC_VERSION == 16)
+    check("TEMPUI_DOC_VERSION bumped to at least 16", TEMPUI_DOC_VERSION >= 16)
     doc = SPLIT_DOC_CONTENT[CUSTOM_WIDGETS_DOC_FILENAME]
     check("doc lists the editor capability", "desk.editor.openOrScrap" in doc and "capability `editor`" in doc)
     check("doc lists the filetypes capability", "desk.filetypes.get()" in doc and "capability `filetypes`" in doc)

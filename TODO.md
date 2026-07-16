@@ -3572,12 +3572,19 @@ d28885f. COMPLETED: New side-by-side widget container: two widget-instance slots
    storage) correctly restores every piece of state on a totally fresh
    instance. Full regression suite (`git stash` before/after): the same
    17 pre-existing/known-stale failures, 0 new.
-06fa070. Investigate `tests/verify/disabled_verify_bridge_api_editor_or_scrap.py`:
+06fa070. COMPLETED: Investigate `tests/verify/disabled_verify_bridge_api_editor_or_scrap.py`:
    currently fails on a single stale `TEMPUI_DOC_VERSION == 16`
    assertion (now 17); every other check in the script passes. Per the
    new "Verification scripts" process (`development-process.md`):
    update the assertion (or drop the version check) if that's genuinely
    the whole issue, rewrite for equivalent coverage, or delete.
+   [planned: investigate-disabled-verify-bridge-api-editor-or-scrap.md]
+
+   Confirmed the suspected cause was the whole issue: loosened the
+   assertion to `TEMPUI_DOC_VERSION >= 16` and re-enabled the script
+   (renamed back to `verify_bridge_api_editor_or_scrap.py`, no other
+   changes needed). Full `tests/verify/` suite: 16 remaining known
+   -disabled scripts, 0 new failures among the enabled ones.
 1082bd4. Investigate `tests/verify/disabled_verify_build_widget.py`: fails at
    import time (`import build_widget`) since TODO `029047b` deleted
    `scripts/build_widget.py`, moving its content into
