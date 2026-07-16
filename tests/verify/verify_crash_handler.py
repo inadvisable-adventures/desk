@@ -1,11 +1,3 @@
-# DISABLED (see tests/verify/README.md) -- TODO a96c091 tracks
-# investigating this. Current failure: Fails at `assert len(logs) == 1` (found 0): checks for
-# DESK-CRASH-*.log directly in the Desk's project directory, but crash
-# logs were relocated to .desk_temp/DESK-CRASH-*.log (TODO 7f51230, see
-# the comment in src/desk/shell/window.py). Reasonable suspicion: not a
-# real regression, just a stale path assumption -- update the glob to
-# check .desk_temp/ instead.
-
 import os
 import sys
 import tempfile
@@ -50,7 +42,7 @@ def test_writes_log_in_current_desk_dir():
         exc_type, exc_value, tb = make_exc()
         sys.excepthook(exc_type, exc_value, tb)
 
-        logs = list(directory.glob("DESK-CRASH-*.log"))
+        logs = list((directory / ".desk_temp").glob("DESK-CRASH-*.log"))
         assert len(logs) == 1, logs
         content = logs[0].read_text()
         assert "RuntimeError: boom" in content, content
@@ -68,7 +60,7 @@ def test_falls_back_to_cwd():
             crash_handler.install()
             exc_type, exc_value, tb = make_exc()
             sys.excepthook(exc_type, exc_value, tb)
-            logs = list(Path(d).glob("DESK-CRASH-*.log"))
+            logs = list((Path(d) / ".desk_temp").glob("DESK-CRASH-*.log"))
             assert len(logs) == 1, logs
         finally:
             os.chdir(old_cwd)

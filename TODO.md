@@ -3621,10 +3621,18 @@ d28885f. COMPLETED: New side-by-side widget container: two widget-instance slots
    `verify_ensure_build_widget_script.py`, nothing here was worth
    patching forward. Full `tests/verify/` suite: 14 remaining known
    -disabled scripts, 0 new failures among the enabled ones.
-a96c091. Investigate `tests/verify/disabled_verify_crash_handler.py`: checks for
+a96c091. COMPLETED: Investigate `tests/verify/disabled_verify_crash_handler.py`: checks for
    `DESK-CRASH-*.log` in the Desk's project directory directly, but
    TODO `7f51230` relocated crash logs to `.desk_temp/`. Update the
    glob if that's the whole issue.
+   [planned: investigate-disabled-verify-crash-handler.md]
+
+   Confirmed the suspected cause was the whole issue: both globs
+   (`test_writes_log_in_current_desk_dir`/`test_falls_back_to_cwd`)
+   updated to look under `.desk_temp/`, matching `crash_handler
+   ._log_path()`'s real current behavior. Re-enabled as
+   `verify_crash_handler.py`. Full `tests/verify/` suite: 13 remaining
+   known-disabled scripts, 0 new failures among the enabled ones.
 fea158d. Investigate `tests/verify/disabled_verify_define_widget_auto_place.py`:
    fails on a single stale `TEMPUI_DOC_VERSION == 12` assertion (now
    17). Same category as TODO `06fa070`.
