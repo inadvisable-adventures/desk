@@ -3642,11 +3642,36 @@ fea158d. COMPLETED: Investigate `tests/verify/disabled_verify_define_widget_auto
    `verify_define_widget_auto_place.py`. Full `tests/verify/` suite: 12
    remaining known-disabled scripts, 0 new failures among the enabled
    ones.
-3c613af. Investigate `tests/verify/disabled_verify_discuss_parking_lot_item.py`:
+3c613af. COMPLETED: Investigate `tests/verify/disabled_verify_discuss_parking_lot_item.py`:
    asserts `parse_discuss_parking_lot_item` returns `(label,
    full_body_text)`, but TODO `624ff3a` deliberately changed its
    contract to `(label, line_number)`. Rewrite against the current
    contract, or delete if later coverage already exists.
+   [planned: investigate-disabled-verify-discuss-parking-lot-item.md]
+
+   No enabled script covered `_place_discuss_claude_widget`/
+   `_write_discuss_instructions_file`/`parse_discuss_parking_lot_item`
+   at all — real coverage gap, rewrote rather than deleted. Updated the
+   parsing test against `(label, line_number)`; loosened the stale
+   `TEMPUI_DOC_VERSION == 5` assertion; rewrote the end-to-end
+   `_activate_temp_ui` test against the current `Line <N>` tempui file
+   format and the file-based instructions delivery (TODO `51be2bc` —
+   no more embedding a marker string directly in the item text, which
+   was the entire point of `624ff3a`; instead confirms a
+   `.desk_temp/discuss-instructions-*.md` file was written with the
+   expected line-number reference and that the claude widget's prompt
+   points at it). Also had to add two more attributes/methods to the
+   test's own fake `DeskWindow` double
+   (`_bind_event_mediator`/`_event_mediator`,
+   `_custom_widget_content_hash`) that the real `_place_widget` now
+   requires — the exact same fixture-drift class of thing several other
+   disabled scripts in this batch hit independently.
+   `test_claude_widget_start_session_appends_extra_instructions`/
+   `test_claude_widget_start_session_resume_ignores_extra_instructions`
+   needed no changes (they exercise `ClaudeWidget.start_session`
+   directly, unaffected by either contract change). Full
+   `tests/verify/` suite: 11 remaining known-disabled scripts, 0 new
+   failures among the enabled ones.
 294f8a2. Investigate `tests/verify/disabled_verify_file_explorer.py`: imports the
    pre-rename `widgets/file_explorer/` directory (TODO `8385dcc`
    renamed it to `project_files`). Likely just delete, since
