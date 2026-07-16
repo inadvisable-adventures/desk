@@ -4418,3 +4418,15 @@ fd713a5. COMPLETED: Git diff viewer widget: shows a file's `git diff` when click
    This was the last item in the TODO queue -- confirmed via `grep -n
    "^[0-9a-f]\{7\}\." TODO.md | grep -vi "COMPLETED\|SUPERSEDED"`
    returning empty after this commit.
+d9a46b6. Rename the Event Recorder widget's display name (`widgets/event_recorder
+   /widget.json`'s `"name"` field) to "Qt UI Event Recorder" -- the
+   `widget_id` (`event_recorder`, derived from the directory name at
+   discovery time, independent of the manifest's `name` field) is
+   unaffected, so this doesn't touch any already-placed instance in a
+   `.desk` file. Update the display-name mentions in
+   `design-docs/architecture.md`'s numbered widget list and the
+   widget's own module docstring for consistency; leave historical
+   references (`TODO.md`'s own completed entries, `PARKINGLOT.md`,
+   already-`COMPLETED` plan files) as the historical record of what was
+   true when written, not retroactively renamed.
+   [planned: rename-event-recorder-widget.md]
