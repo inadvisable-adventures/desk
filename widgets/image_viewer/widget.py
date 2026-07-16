@@ -3,7 +3,6 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt, QRectF, QSizeF, pyqtSignal
 from PyQt6.QtGui import QPainter, QPixmap
-from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -17,6 +16,7 @@ from PyQt6.QtWidgets import (
 from desk.file_watch import SingleFileWatcher
 from desk.geometry import fit_rect
 from desk.shell import current_context
+from desk.svg_view import SvgView
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +25,8 @@ IMAGE_FILTER = (
     "All files (*)"
 )
 
-# TODO 4d21e7c: extensions dispatched to the vector (_AspectSvgView) page
-# rather than the raster (_AspectImageView) one -- extension-based, not
+# TODO 4d21e7c: extensions dispatched to the vector (desk.svg_view.SvgView)
+# page rather than the raster (_AspectImageView) one -- extension-based, not
 # content-sniffed, matching how file_type_registry.py's own view-handler
 # dispatch already works (an SVG's XML preamble isn't cheaply
 # distinguishable from other XML-ish text formats).
@@ -41,7 +41,7 @@ class _AspectImageView(QWidget):
     """Renders the loaded raster image into a letterboxed, aspect
     -preserving target rect (see `desk.geometry.fit_rect`) instead of
     `QLabel.setScaledContents(True)`'s own non-uniform stretch-to-fill
-    -- same shape as `_AspectSvgView` below, a `QPixmap` in place of a
+    -- same shape as `desk.svg_view.SvgView`, a `QPixmap` in place of a
     `QSvgRenderer`."""
 
     def __init__(self, parent=None) -> None:
@@ -71,53 +71,15 @@ class _AspectImageView(QWidget):
         painter.drawPixmap(target, self._pixmap, QRectF(self._pixmap.rect()))
 
 
-class _AspectSvgView(QWidget):
-    """Renders the loaded SVG via a bare `QSvgRenderer` into a
-    letterboxed, aspect-preserving target rect (see `desk.geometry.fit_rect`)
-    instead of `QSvgWidget`'s own non-uniform stretch-to-fill. Moved here
-    verbatim from the retired standalone SVG Viewer widget (TODO
-    `c7d6e4d`) by TODO `4d21e7c` -- see
-    `design-docs/svg-viewing-and-editing.md`."""
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self._renderer = QSvgRenderer()
-
-    def load(self, data: bytes) -> bool:
-        ok = self._renderer.load(data)
-        self.update()
-        return ok
-
-    def is_valid(self) -> bool:
-        return self._renderer.isValid()
-
-    def clear(self) -> None:
-        self._renderer.load(bytes())
-        self.update()
-
-    def _content_size(self) -> QSizeF:
-        default_size = self._renderer.defaultSize()
-        if not default_size.isEmpty():
-            return QSizeF(default_size)
-        return QSizeF(self._renderer.viewBoxF().size())
-
-    def paintEvent(self, event) -> None:
-        if not self._renderer.isValid():
-            return
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        target = fit_rect(self._content_size(), QSizeF(self.size()))
-        self._renderer.render(painter, target)
-
-
 class ImageViewerWidget(QWidget):
     """Opens and displays a single image file, scaled to fit the widget
     while preserving aspect ratio, auto-reloading on changes. Handles
     both raster formats (`_AspectImageView`, a `QPixmap`) and vector
-    (`_AspectSvgView`, a `QSvgRenderer`) -- TODO `4d21e7c` folded in the
-    formerly-standalone SVG Viewer widget's rendering path so this is
-    the one widget for viewing both. See
-    `design-docs/svg-viewing-and-editing.md` and
+    (`desk.svg_view.SvgView`, a `QSvgRenderer` -- shared with the
+    Markdown widget's own Mermaid-diagram-as-SVG rendering, TODO
+    `a9e2ba7`) -- TODO `4d21e7c` folded in the formerly-standalone SVG
+    Viewer widget's rendering path so this is the one widget for
+    viewing both. See `design-docs/svg-viewing-and-editing.md` and
     plans/image-drop-tempui.md (TODO 6e731c1)."""
 
     external_path_changed = pyqtSignal(bool)
@@ -128,7 +90,7 @@ class ImageViewerWidget(QWidget):
         self._last_dir = current_context.get_current_desk_directory() or Path.home()
 
         self._raster_view = _AspectImageView()
-        self._vector_view = _AspectSvgView()
+        self._vector_view = SvgView()
 
         self._stack = QStackedLayout()
         self._stack.addWidget(self._raster_view)

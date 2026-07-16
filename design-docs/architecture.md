@@ -325,16 +325,29 @@ Desk Bridge API.
     `QTextBrowser.setMarkdown()` (reusing Qt's native Markdown/image/
     indirect-SVG handling for free, same as the deprecated old-basic
     widget — see `qtextbrowser-images-svg-controls.md`), and each
-    `mermaid` fence is rendered by `desk.mermaid.MermaidDiagramWidget`. Folding
-    and the TOC are pure native-Qt composition (nested `QToolButton`
-    disclosure sections) — no HTML/JS involved anywhere in this widget.
+    `mermaid` fence is rendered via the Transforms Desk Service (TODO
+    `a9e2ba7`, see item 28/`design-docs/transforms.md`): the block's
+    diagram header picks `mermaid_flowchart_svg` or
+    `mermaid_state_svg` (or, for any other diagram type -- no
+    transform exists for it -- skips straight to the fallback below),
+    `current_context.get_transform_runner_blocking()` runs it, and the
+    resulting SVG string is displayed via the shared `desk.svg_view
+    .SvgView` (a bare `QSvgRenderer`, also used by the Image Viewer
+    widget, item 18) -- a static image, not the live, pannable
+    `QGraphicsView` scene this widget used to embed directly via the
+    now-retired `desk.mermaid.MermaidDiagramWidget`. Folding and the
+    TOC are pure native-Qt composition (nested `QToolButton` disclosure
+    sections) — no HTML/JS involved anywhere in this widget.
     `desk.mermaid` is a **bespoke, intentionally partial** Mermaid
-    parser/layout/`QGraphicsScene` renderer (flowchart basic shapes +
+    parser/layout/`QGraphicsScene` engine (flowchart basic shapes +
     flat state diagrams only) rather than a vendored `mermaid.js` —
     per `CLAUDE.md`'s dependency aversion and direct user direction;
     any other diagram type or unparseable source falls back to showing
-    the raw fenced source as plain text instead of erroring. See
-    `plans/markdown-ex-widget.md`. Also TempUI-backed (TODO `42dd260`):
+    the raw fenced source as plain text instead of erroring (now the
+    Markdown widget's own responsibility, not `MermaidDiagramWidget`'s
+    former internal fallback). See `plans/markdown-ex-widget.md` and
+    `plans/markdown-consumes-mermaid-transforms.md`. Also TempUI-backed
+    (TODO `42dd260`):
     an `OpenMarkdown <path>` temp-ui file (see
     `.desk_temp/desk-temporary-ui.md`'s DSL doc, `src/desk/temp_ui.py`)
     places a new instance and calls its `set_file` with the parsed
@@ -374,8 +387,10 @@ Desk Bridge API.
     -driven live reload, a `set_file(path)` for programmatic opening):
     displays a single image file scaled to fit the widget with aspect
     ratio preserved, for both raster formats (`QPixmap`) and vector
-    (`.svg`/`.svgz`, `QtSvg`'s bare `QSvgRenderer`), dispatched by
-    extension and swapped via an internal `QStackedLayout`. Neither
+    (`.svg`/`.svgz`, `QtSvg`'s bare `QSvgRenderer` -- extracted into a
+    shared `desk.svg_view.SvgView` by TODO `a9e2ba7`, also used by the
+    Markdown widget's own Mermaid-diagram-as-SVG rendering), dispatched
+    by extension and swapped via an internal `QStackedLayout`. Neither
     backend uses a stock `QLabel.setScaledContents`/`QSvgWidget` — both
     stretch non-uniformly to fill their whole rect regardless of the
     image's own aspect ratio (confirmed directly for `QSvgWidget`: a

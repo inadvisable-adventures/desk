@@ -4665,7 +4665,7 @@ b5e15cf. COMPLETED: Transforms, part 2/4: Transform Manager widget. A new
    execution), not just as bare functions. Full regression suite: 74
    scripts, 0 new failures (the one pre-existing, unrelated failure in
    `verify_discuss_parking_lot_item.py` is still the only failure).
-a9e2ba7. Transforms, part 4/4: Markdown widget consumes the Mermaid
+a9e2ba7. COMPLETED: Transforms, part 4/4: Markdown widget consumes the Mermaid
    transforms via the Desk Service. Extract `widgets/image_viewer/
    widget.py`'s private `_AspectSvgView` (a bare `QSvgRenderer` into a
    letterboxed, aspect-preserving rect) into a new shared
@@ -4685,3 +4685,38 @@ a9e2ba7. Transforms, part 4/4: Markdown widget consumes the Mermaid
    becomes a static SVG image instead of a live, pannable
    `QGraphicsView` scene -- nothing in the current UI actually depended
    on the scene being interactive.
+   [planned: markdown-consumes-mermaid-transforms.md]
+
+   Implemented per plan. Also added `desk.mermaid.detect_diagram_kind`
+   (the diagram kind `parse()` would dispatch to, without doing the
+   full parse) so the Markdown widget doesn't need to duplicate
+   `desk.mermaid`'s own private header-detection regexes to decide
+   which transform to call. `MermaidDiagramWidget` deleted here (the
+   item that removes its one remaining caller, per TODO `05cfccc`'s
+   own sequencing note), along with its now-unused `QFrame`/
+   `QGraphicsView` imports. `SvgView.content_size()` (renamed from
+   `_AspectSvgView`'s private `_content_size`) is now public, since a
+   caller embedding it in a layout that doesn't otherwise size it (the
+   Markdown widget's own per-block height calculation, bounded the
+   same 560px max `MermaidDiagramWidget` used to use) needs the
+   content's real natural size.
+
+   Verified directly: new
+   `tests/verify/verify_markdown_mermaid_transforms.py` (12 checks) --
+   correct transform-id dispatch per diagram kind, an unsupported
+   diagram type (`sequenceDiagram`) never calling any transform and
+   showing the plain-text fallback, a successful render producing a
+   real valid `SvgView`, graceful plain-text fallback for a raising
+   transform/invalid SVG output/no registered runner at all (never a
+   crash), and a real end-to-end pass through a real
+   `TransformsService` against the real `desk_transforms/
+   mermaid_flowchart_svg`/`mermaid_state_svg` directories for both
+   diagram kinds. Re-ran `verify_image_viewer_svg_integration.py` (22
+   checks) to confirm the `SvgView` extraction didn't regress the
+   Image Viewer widget -- unaffected. Full regression suite: 75
+   scripts, 0 new failures (the one pre-existing, unrelated failure in
+   `verify_discuss_parking_lot_item.py` is still the only failure).
+
+   This was the last item in the Transforms feature (design doc +
+   4 TODO items) -- confirmed via `grep -n "^[0-9a-f]\{7\}\." TODO.md |
+   grep -vi "COMPLETED\|SUPERSEDED"` returning empty after this commit.

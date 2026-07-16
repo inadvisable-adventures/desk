@@ -18,15 +18,24 @@ solutions" plus direct user direction (see `plans/markdown-ex-widget
 
 Any other diagram type (sequence, class, ER, gantt, pie, ...), or
 source that doesn't match the supported grammar, raises
-`MermaidParseError` -- callers (see `MermaidDiagramWidget`) should
-catch this and fall back to showing the raw source as plain text rather
-than erroring or silently producing a wrong diagram.
+`MermaidParseError` -- callers should catch this and fall back to
+showing the raw source as plain text rather than erroring or silently
+producing a wrong diagram.
 
 Layout is a simplified layered (Sugiyama-style) algorithm: longest-path
 rank assignment (cycle-safe, but not crossing-minimized) plus
 first-seen ordering within a rank -- no barycenter crossing
 minimization, no orthogonal/curved edge routing. Good enough to be
 readable, not a faithful reproduction of Mermaid's own layout engine.
+
+`parse`/`layout`/`build_scene`/`render_svg` are consumed by the
+`mermaid_flowchart_svg`/`mermaid_state_svg` transforms
+(`desk_transforms/`, TODO `05cfccc`) -- see design-docs/transforms.md.
+This module used to also host `MermaidDiagramWidget`, a `QGraphicsView`
+subclass embedding a live, interactive scene directly into the Markdown
+widget; retired by TODO `a9e2ba7` once the Markdown widget switched to
+rendering a diagram via the transform + a shared, static `desk.svg_view
+.SvgView` instead.
 """
 
 from __future__ import annotations
@@ -49,14 +58,12 @@ from PyQt6.QtGui import (
 )
 from PyQt6.QtSvg import QSvgGenerator
 from PyQt6.QtWidgets import (
-    QFrame,
     QGraphicsEllipseItem,
     QGraphicsPathItem,
     QGraphicsPolygonItem,
     QGraphicsRectItem,
     QGraphicsScene,
     QGraphicsSimpleTextItem,
-    QGraphicsView,
 )
 
 
@@ -122,6 +129,26 @@ _STATE_TRANSITION_RE = re.compile(
 )
 _STATE_DESC_RE = re.compile(r"^(?P<id>[A-Za-z0-9_]+)\s*:\s*(?P<label>.*)$")
 _STATE_COMPOSITE_OPEN_RE = re.compile(r"^state\s+.*\{\s*$", re.IGNORECASE)
+
+
+def detect_diagram_kind(text: str) -> str | None:
+    """The diagram kind `parse(text)` would dispatch to (`"flowchart"`
+    | `"state"`), without doing the full parse -- `None` for anything
+    else (an unrecognized header, or empty content). Lets a caller
+    (the Markdown widget, TODO `a9e2ba7`) decide which transform to
+    invoke -- or skip straight to a plain-text fallback for a diagram
+    type with no transform (yet) -- without duplicating this module's
+    own header-detection regexes."""
+    lines = [ln.strip() for ln in text.splitlines()]
+    lines = [ln for ln in lines if ln and not ln.startswith("%%")]
+    if not lines:
+        return None
+    header = lines[0]
+    if _FLOWCHART_HEADER.match(header) or _FLOWCHART_HEADER_NO_DIR.match(header):
+        return "flowchart"
+    if _STATE_HEADER.match(header):
+        return "state"
+    return None
 
 
 def parse(text: str) -> Diagram:
@@ -584,10 +611,10 @@ def build_scene(diagram: Diagram, result: LayoutResult, palette: QPalette) -> QG
 def render_svg(scene: QGraphicsScene) -> str:
     """Serializes `scene` to a real SVG string (TODO `05cfccc`) --
     genuinely new: nothing in this module previously ever produced an
-    SVG, only a live `QGraphicsScene` rendered directly by
-    `MermaidDiagramWidget`, with no serialization step at all. Used by
-    the `mermaid_flowchart_svg`/`mermaid_state_svg` transforms
-    (`desk_transforms/`), not by `MermaidDiagramWidget` itself."""
+    SVG, only a live `QGraphicsScene` rendered directly by the
+    (now-retired) `MermaidDiagramWidget`, with no serialization step at
+    all. Used by the `mermaid_flowchart_svg`/`mermaid_state_svg`
+    transforms (`desk_transforms/`)."""
     rect = scene.sceneRect()
     buffer = QBuffer()
     buffer.open(QIODevice.OpenModeFlag.WriteOnly)
@@ -600,43 +627,3 @@ def render_svg(scene: QGraphicsScene) -> str:
     painter.end()
     buffer.close()
     return bytes(buffer.data()).decode("utf-8")
-
-
-class MermaidDiagramWidget(QGraphicsView):
-    """Renders Mermaid source via the parser/layout/renderer above.
-    Falls back to showing the raw source as plain text for any
-    unsupported diagram type/syntax (`MermaidParseError`) instead of
-    erroring. Sized to fit its content up to `MAX_HEIGHT`, past which
-    its own scrollbars take over -- keeps it usable as an inline block
-    inside a larger scrollable document without nested-scroll fighting.
-    """
-
-    MAX_HEIGHT = 560
-
-    def __init__(self, source: str, parent=None) -> None:
-        super().__init__(parent)
-        self.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self.setFrameShape(QFrame.Shape.NoFrame)
-        self._render(source)
-
-    def _measure(self, text: str) -> tuple[float, float]:
-        metrics = QFontMetricsF(self.font())
-        return metrics.horizontalAdvance(text), metrics.height()
-
-    def _render(self, source: str) -> None:
-        try:
-            diagram = parse(source)
-            result = layout(diagram, self._measure)
-            scene = build_scene(diagram, result, self.palette())
-        except MermaidParseError:
-            scene = QGraphicsScene()
-            text_item = scene.addText(source)
-            text_item.setDefaultTextColor(self.palette().color(QPalette.ColorRole.Text))
-            note = scene.addSimpleText("(unsupported or unparseable Mermaid diagram)")
-            note.setBrush(QBrush(self.palette().color(QPalette.ColorRole.PlaceholderText)))
-            note.setPos(0, text_item.boundingRect().height() + 4)
-            scene.setSceneRect(scene.itemsBoundingRect().adjusted(-4, -4, 4, 4))
-
-        self.setScene(scene)
-        height = min(scene.sceneRect().height() + 16, self.MAX_HEIGHT)
-        self.setFixedHeight(int(max(height, 60)))

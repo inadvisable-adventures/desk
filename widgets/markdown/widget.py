@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, QUrl, pyqtSignal
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -23,9 +24,10 @@ from PyQt6.QtWidgets import (
 )
 
 from desk.file_watch import SingleFileWatcher
-from desk.mermaid import MermaidDiagramWidget
+from desk.mermaid import detect_diagram_kind
 from desk.persisted_path import resolve_persisted_path
 from desk.shell import current_context
+from desk.svg_view import SvgView
 
 logger = logging.getLogger(__name__)
 
@@ -176,9 +178,61 @@ class _AutoHeightTextBrowser(QTextBrowser):
         self._update_height()
 
 
+_MERMAID_TRANSFORM_ID_BY_KIND = {
+    "flowchart": "mermaid_flowchart_svg",
+    "state": "mermaid_state_svg",
+}
+_MERMAID_MAX_HEIGHT = 560  # matches the retired MermaidDiagramWidget's own bound
+
+
+def _build_mermaid_widget(content: str) -> QWidget:
+    """Renders a ```mermaid fence's content by calling the Desk
+    Service (TODO `a9e2ba7`, see design-docs/transforms.md) for the
+    diagram-type-specific transform, instead of embedding a live
+    `MermaidDiagramWidget` scene directly (retired -- see
+    `desk.mermaid`). Falls back to the raw source text + an
+    explanatory note (matching that widget's own former fallback
+    shape) for a diagram type with no transform yet, or if the
+    transform itself fails -- a broken/missing transform must never
+    propagate out of here (TODO `810a5d6`'s reasoning: this runs while
+    building a document's block widgets, an uncaught exception there
+    is fatal to the whole process in this PyQt6 setup)."""
+    transform_id = _MERMAID_TRANSFORM_ID_BY_KIND.get(detect_diagram_kind(content))
+    if transform_id is not None:
+        runner = current_context.get_transform_runner_blocking()
+        if runner is not None:
+            try:
+                svg = runner(transform_id, content, None)
+                view = SvgView()
+                if view.load(svg.encode("utf-8")) and view.is_valid():
+                    natural = view.content_size()
+                    if natural.width() > 0:
+                        height = min(_MERMAID_MAX_HEIGHT, max(60, natural.height()))
+                        view.setMinimumHeight(int(height))
+                    return view
+            except Exception:
+                logger.error("Failed to render Mermaid diagram via transform %r", transform_id, exc_info=True)
+    return _mermaid_fallback_widget(content)
+
+
+def _mermaid_fallback_widget(content: str) -> QWidget:
+    widget = QWidget()
+    layout = QVBoxLayout(widget)
+    layout.setContentsMargins(0, 0, 0, 0)
+    source_label = QLabel(content)
+    source_label.setWordWrap(True)
+    source_label.setFont(QFont("Menlo"))
+    source_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    layout.addWidget(source_label)
+    note_label = QLabel("(unsupported or unparseable Mermaid diagram)")
+    note_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+    layout.addWidget(note_label)
+    return widget
+
+
 def _build_block_widget(block: _RawBlock, base_dir: Path) -> QWidget:
     if block.kind == "mermaid":
-        return MermaidDiagramWidget(block.content)
+        return _build_mermaid_widget(block.content)
     return _AutoHeightTextBrowser(block.content, base_dir)
 
 
