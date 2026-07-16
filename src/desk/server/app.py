@@ -112,6 +112,13 @@ class OpenEditorOrScrapRequest(BaseModel):
     path: str
 
 
+class PopupsShowRequest(BaseModel):
+    title: str
+    message: str
+    buttons: list[str]
+    default: str | None = None
+
+
 def _event_dict(event) -> dict:
     return {
         "timestamp": event.timestamp,
@@ -380,6 +387,20 @@ def create_app(
         resolved = await _resolve_fs_path(body.path)
         await run_on_gui(lambda: gui_bridge.window.open_editor_or_scrap(resolved))
         return {"ok": True}
+
+    @app.post("/api/bridge/popups/show")
+    async def popups_show(
+        body: PopupsShowRequest, widget: WidgetInfo = Depends(require_caller("popups"))
+    ):
+        # Blocking (PopupsService.show_blocking runs its own nested
+        # QEventLoop on the GUI thread until a button is clicked/the
+        # popup is dismissed) -- run_on_gui (synchronous), not
+        # run_on_gui_async, same as request_introspect_permission's own
+        # blocking confirmation dialog below.
+        clicked = await run_on_gui(
+            lambda: gui_bridge.window.show_popup(body.title, body.message, body.buttons, body.default)
+        )
+        return {"clicked": clicked}
 
     # --- introspect (TODO 9767c1a) -- unlike every other capability
     # above, a declared capability alone isn't enough: the Desk user

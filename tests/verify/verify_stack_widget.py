@@ -8,7 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, "src")
 sys.path.insert(0, "widgets/stack")
 
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtWidgets import QApplication
 
 from desk.shell import current_context
 from desk.stack_file import StackFrame, parse_stack_file, render_stack_file
@@ -119,7 +119,7 @@ def test_load_replaces_stack_with_confirmation():
         w._rows[0].title_edit.setText("Original frame")
 
         with patch.object(stack_mod.QFileDialog, "getOpenFileName", return_value=(str(stack_path), "")):
-            with patch.object(stack_mod.QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes):
+            with patch.object(w, "_show_popup", return_value="Yes"):
                 w._load()
 
         assert len(w._rows) == 1
@@ -138,7 +138,7 @@ def test_load_declined_confirmation_keeps_stack():
         w._rows[0].title_edit.setText("Original frame")
 
         with patch.object(stack_mod.QFileDialog, "getOpenFileName", return_value=(str(stack_path), "")):
-            with patch.object(stack_mod.QMessageBox, "question", return_value=QMessageBox.StandardButton.No):
+            with patch.object(w, "_show_popup", return_value="No"):
                 w._load()
 
         assert len(w._rows) == 1

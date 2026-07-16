@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
@@ -135,7 +134,7 @@ class StackWidget(QWidget):
             target.write_text(render_stack_file(self._current_frames()))
         except OSError as error:
             logger.error("Failed to save stack to %s", target, exc_info=True)
-            QMessageBox.warning(self, "Save as Markdown", f"Could not save: {error}")
+            self._show_popup("Save as Markdown", f"Could not save: {error}", ["OK"], "OK")
             return
         self._status_label.setText(f"Saved to {target.name}")
 
@@ -146,10 +145,10 @@ class StackWidget(QWidget):
         if not filename:
             return
         if self._rows:
-            result = QMessageBox.question(
-                self, "Load Stack", "Loading will replace the current stack. Continue?"
+            result = self._show_popup(
+                "Load Stack", "Loading will replace the current stack. Continue?", ["Yes", "No"], "No"
             )
-            if result != QMessageBox.StandardButton.Yes:
+            if result != "Yes":
                 return
         path = Path(filename)
         self._last_dir = path.parent
@@ -157,9 +156,20 @@ class StackWidget(QWidget):
             frames = parse_stack_file(path.read_text())
         except OSError as error:
             logger.error("Failed to load stack from %s", path, exc_info=True)
-            QMessageBox.warning(self, "Load Stack", f"Could not read: {error}")
+            self._show_popup("Load Stack", f"Could not read: {error}", ["OK"], "OK")
             return
         self._replace_frames(frames)
+
+    def _show_popup(self, title: str, message: str, buttons: list[str], default: str | None) -> str | None:
+        """Desk-internal popup (TODO 359684f), not a QMessageBox parented
+        to self -- that used to render as a real top-level window whose
+        position didn't account for the canvas's own zoom/pan transform.
+        Split out (mirrors widgets/event_log/widget.py's _confirm_clear)
+        so headless verification can monkeypatch just this one method."""
+        opener = current_context.get_popup_opener()
+        if opener is None:
+            return None
+        return opener(title, message, buttons, default)
 
     # -- widget-local storage (TODO fb76057) ----------------------------
 

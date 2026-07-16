@@ -15,7 +15,7 @@ from PyQt6.Qsci import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFontDatabase, QKeySequence, QShortcut
-from PyQt6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from desk.file_watch import SingleFileWatcher
 from desk.persisted_path import resolve_persisted_path
@@ -190,7 +190,9 @@ class EditorWidget(QWidget):
             text = path.read_text()
         except OSError as error:
             logger.error("Failed to read %s", path, exc_info=True)
-            QMessageBox.warning(self, "Open File", f"Could not read {path.name}: {error}")
+            opener = current_context.get_popup_opener()
+            if opener is not None:
+                opener("Open File", f"Could not read {path.name}: {error}", ["OK"], "OK")
             return
         self.editor.setText(text)
         self.editor.setModified(False)
@@ -293,19 +295,23 @@ class EditorWidget(QWidget):
         if self._confirm_unsaved is not None:
             action = self._confirm_unsaved()
         else:
-            box = QMessageBox(self)
-            box.setWindowTitle("Unsaved Changes")
+            # Desk-internal popup (TODO 359684f), not a QMessageBox
+            # parented to self -- that used to render as a real
+            # top-level window whose position didn't account for the
+            # canvas's own zoom/pan transform. "Cancel" (the safe,
+            # non-destructive choice) is the popup's default button --
+            # QMessageBox's own implicit default here wasn't a
+            # deliberate choice worth preserving byte-for-byte.
             name = self._current_path.name if self._current_path else "this file"
-            box.setText(f"Save changes to {name}?")
-            box.setStandardButtons(
-                QMessageBox.StandardButton.Save
-                | QMessageBox.StandardButton.Discard
-                | QMessageBox.StandardButton.Cancel
+            opener = current_context.get_popup_opener()
+            result = (
+                opener("Unsaved Changes", f"Save changes to {name}?", ["Save", "Discard", "Cancel"], "Cancel")
+                if opener is not None
+                else None
             )
-            result = box.exec()
-            if result == QMessageBox.StandardButton.Save:
+            if result == "Save":
                 action = "save"
-            elif result == QMessageBox.StandardButton.Discard:
+            elif result == "Discard":
                 action = "discard"
             else:
                 action = "cancel"

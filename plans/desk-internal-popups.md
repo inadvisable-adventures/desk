@@ -1,4 +1,4 @@
-# Plan: TODO 359684f — desk-internal popups (scoped: widget-triggered confirm/warning dialogs)
+# Plan: TODO 359684f (COMPLETED) — desk-internal popups (scoped: widget-triggered confirm/warning dialogs)
 
 ## Scope (clarified with the user)
 

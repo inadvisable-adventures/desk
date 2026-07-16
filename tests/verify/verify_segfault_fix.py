@@ -105,9 +105,9 @@ def test_editor_unreadable_file_no_crash():
         ed = editor_mod.build()
         ed.editor.setText("existing buffer")
         ed.editor.setModified(False)
-        with patch.object(editor_mod.QMessageBox, "warning") as warn:
+        with patch.object(current_context, "get_popup_opener", return_value=lambda *a: "OK") as get_opener:
             ed._load_file(missing)  # must not raise
-            assert warn.called
+            assert get_opener.called
         # Buffer/current_path untouched since the read failed.
         assert ed.editor.text() == "existing buffer"
         assert ed._current_path is None

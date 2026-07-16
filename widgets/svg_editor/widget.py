@@ -36,7 +36,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QInputDialog,
     QLabel,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -1055,7 +1054,9 @@ class SvgEditorWidget(QWidget):
         try:
             path.write_bytes(data)
         except OSError as error:
-            QMessageBox.warning(self, "Save", f"Could not save: {error}")
+            opener = current_context.get_popup_opener()
+            if opener is not None:
+                opener("Save", f"Could not save: {error}", ["OK"], "OK")
             return False
         self._watcher.record_own_write(data.decode("utf-8"))
         return True

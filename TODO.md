@@ -4184,7 +4184,7 @@ dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidge
    unrelated failure in `verify_discuss_parking_lot_item.py`,
    confirmed via `git stash` to already fail before this TODO's
    changes, is still the only failure).
-359684f. Add a desk-internal popups service, and expose it via the Bridge
+359684f. COMPLETED: Add a desk-internal popups service, and expose it via the Bridge
    API. Scope clarified with the user: what they actually care about is
    popups *triggered by widget code* (`widgets/*.py`) -- these construct
    a real `QMessageBox` parented to `self` (the embedded content widget,
@@ -4225,6 +4225,102 @@ dafbaab. COMPLETED: Remove the feature where a newly defined tempui `DefineWidge
    levels, the same scrutiny TODO `d0d7b37`/`7845a0f` already gave
    normal widget chrome.
    [planned: desk-internal-popups.md]
+
+   Implemented `WidgetFrame(..., is_popup=True)`: its titlebar shows
+   only the title label and close button, regardless of any other
+   state -- so "never lockable" and "not eye-button-focusable" both
+   fall out of this one flag, no new interaction code needed. Popups
+   get 100% of the existing zoom counter-scaling for free
+   (`WidgetFrame.set_view_scale`) since they're placed via a new
+   `WorkspaceView.add_popup` (a sibling of `add_widget`), but are
+   tracked in a separate `_popup_frames` list, never `_frames` --
+   `DeskWindow`'s placed-widget bookkeeping (`_capture_desk_state`,
+   `find_frame_by_instance_id`, `_find_frame_by_widget_id`, stale-hash
+   refresh) iterates `_frames` and assumes every entry is a real,
+   persisted widget with a `widget_id`; a popup has none of that and
+   must never be seen by any of it. "Always frontmost" needed a fixed,
+   far-above-normal-frames z-value band (`POPUP_Z_BASE = 1_000_000.0`)
+   rather than a dynamic `max(normal frame z-values) + 1` -- confirmed
+   directly that the dynamic version breaks the guarantee the moment a
+   normal frame is brought to front *again* after the popup was placed
+   (it just catches up to and ties with the snapshotted max); the fixed
+   band doesn't have this problem since `_frame_z_values()` (the pool
+   `bring_to_front`/`send_to_back` compute against) only ever iterates
+   `_frames`, so popups are automatically excluded.
+
+   `desk_services/popups/service.py` (`PopupsService`): `show(...)` is
+   the non-blocking core (builds a message label + one button per
+   label, wraps it in a popup `WidgetFrame`, resolves `on_result`
+   exactly once on a button click, the close button, Escape, or a Desk
+   switch happening while still open -- `WorkspaceView.clear_widgets`
+   now also resolves any still-open popup instead of leaving its caller
+   hanging forever); `show_blocking(...)` wraps it in a nested
+   `QEventLoop` for widget call sites that expect a synchronous return
+   value, the same idea `QDialog.exec()` already uses internally (a new
+   pattern in this codebase -- no prior `QEventLoop` usage). A popup's
+   close button is special-cased in `WorkspaceView.mouseReleaseEvent`'s
+   existing `kind == "close"` dispatch (`frame.is_popup` routes to a
+   new `popup_closed` signal instead of `widget_close_requested`, which
+   triggers `DeskWindow`'s full "close a placed widget" bookkeeping --
+   wrong for something that was never part of Desk's persisted widget
+   list).
+
+   `current_context.set_popup_opener`/`get_popup_opener` (bound at
+   `DeskWindow` startup to `PopupsService.show_blocking`) is how
+   `kind: "python"` widgets reach this; `POST /api/bridge/popups/show`
+   (capability `popups`, via `DeskWindow.show_popup`) is how
+   `kind: "html"` widgets do -- using the plain synchronous
+   `run_on_gui`/`GuiBridge.call` (not `run_on_gui_async`), the same
+   pattern `request_introspect_permission`'s own blocking confirmation
+   dialog already uses, since `show_blocking`'s nested event loop
+   already makes the GUI-thread call synchronous from the caller's
+   side.
+
+   Migrated all 7 in-scope call sites (`widgets/event_log`,
+   `crash_log`, `questions`, `todo`, `stack` (x3), `editor` (warning +
+   the Save/Discard/Cancel unsaved-changes flow, picking "Cancel" as
+   the popup's default button -- the safe, non-destructive choice;
+   `QMessageBox`'s own implicit default there wasn't a deliberate
+   choice worth preserving byte-for-byte), `svg_editor`) -- removed the
+   now-unused `QMessageBox` import from each.
+
+   Updated `design-docs/widget-ux.md` (new "Desk-Internal Popups"
+   section) and `design-docs/architecture.md` (new numbered entry for
+   the Popups Service). Bumped `TEMPUI_DOC_VERSION` 18 -> 19 and added a
+   `desk.popups.show(...)` capability entry to both
+   `tempui-custom-widgets.md`'s capability list and
+   `tempui-new-features.md`'s Version 19 entry (this is a new Bridge
+   API capability from the perspective of an agent running inside
+   Desk, per `development-process.md`'s standing tempui-changelog
+   rule).
+
+   Verified directly: new `tests/verify/verify_desk_internal_popups.py`
+   (24 checks) -- popup chrome hides lock/unlock/eye/bring/send/tempui/
+   stale buttons; a popup's z-value is above every normal frame's and
+   stays there even after a normal frame is brought to front again
+   (confirmed this genuinely fails with the naive dynamic-max
+   implementation and passes with the fixed z-band, not just asserted
+   by inspection); popups are excluded from `_frame_z_values()`'s
+   bring/send-to-back pool; a popup's titlebar counter-scales on zoom;
+   `show`/`show_blocking` resolve correctly on a button click, on
+   close, and on `clear_widgets`; a popup is never visible to
+   `_frames`-based persistence iteration. Updated the two existing
+   verify scripts that patched `QMessageBox` directly
+   (`verify_stack_widget.py`, `verify_segfault_fix.py`) to patch the
+   new popup-opener seam instead; `verify_crash_log.py` needed no
+   change (already patched `_confirm_delete` itself, not
+   `QMessageBox`). Full regression suite: 68 scripts, 0 new failures
+   (the one pre-existing, unrelated failure in
+   `verify_discuss_parking_lot_item.py`, confirmed via `git stash` in
+   TODO `86ba292`'s own work to already fail before any of this
+   session's changes, is still the only failure).
+
+   Not done: actually visually confirming a popup renders correctly at
+   non-1.0 zoom in a real windowed run -- this environment is
+   offscreen-only, so this step is skipped per process (the automated
+   check above exercises the exact same `set_view_scale`/counter
+   -scaling code path every other widget's chrome already relies on,
+   just not a human's own eyes on a real screen).
 fd713a5. Git diff viewer widget: shows a file's `git diff` when clicked in
    the Git Status widget (`widgets/git_status/widget.py`, which
    currently only displays `git status --porcelain=v1` output in a

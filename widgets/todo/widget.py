@@ -14,7 +14,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
@@ -277,19 +276,16 @@ class _ItemDialog(QWidget):
 
     def _confirm_discard(self) -> bool:
         """Split out from _attempt_discard so headless verification can
-        monkeypatch just this one method instead of driving a real modal
-        QMessageBox."""
+        monkeypatch just this one method instead of driving a real
+        popup. Uses the desk-internal popups service (TODO 359684f),
+        not a QMessageBox parented to self -- that used to render as a
+        real top-level window whose position didn't account for the
+        canvas's own zoom/pan transform."""
+        opener = current_context.get_popup_opener()
+        if opener is None:
+            return False
         message = "Discard changes?" if self._editing else "Discard this new item?"
-        return (
-            QMessageBox.question(
-                self,
-                message,
-                message,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            == QMessageBox.StandardButton.Yes
-        )
+        return opener(message, message, ["Yes", "No"], "No") == "Yes"
 
     def eventFilter(self, obj, event) -> bool:
         if obj is self._field and event.type() == QEvent.Type.KeyPress:

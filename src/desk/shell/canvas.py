@@ -37,6 +37,14 @@ DEFAULT_WIDGET_SIZE = (680, 520)
 WHEEL_ZOOM_SENSITIVITY = 0.0025
 FIT_MARGIN_FRACTION = 0.001  # 0.1%, per design-docs/widget-ux.md
 WIDGET_ZOOM_MARGIN_FRACTION = 0.2  # 20%, per TODO 33d3e8d -- see zoom_to_widget
+# TODO 359684f: a fixed, far-above-normal-frames z-value band for
+# desk-internal popups -- not a dynamic max(normal frame z-values) + 1,
+# since a *later* bring_to_front on a normal frame would just catch up
+# and tie with (or exceed) that snapshot, breaking "always frontmost"
+# for anything but the instant the popup was created. Normal frames'
+# z-values only ever grow by 1 per bring_to_front click; reaching this
+# band would take on the order of a million clicks in one session.
+POPUP_Z_BASE = 1_000_000.0
 ZOOM_CONTROL_MARGIN = 12
 DESK_PICKER_MARGIN = 12
 TEMP_UI_NOTIFICATIONS_MARGIN = 12
@@ -86,6 +94,7 @@ class WorkspaceView(QGraphicsView):
     paste_requested = pyqtSignal(QPointF)  # scene pos of the click that opened the menu
     tempui_promote_requested = pyqtSignal(WidgetFrame)  # TODO 91b3f42
     widget_stale_clicked = pyqtSignal(WidgetFrame)  # TODO 3e2c4f2
+    popup_closed = pyqtSignal(WidgetFrame)  # TODO 359684f: a popup's close (X) button
 
     def __init__(self, parent=None) -> None:
         super().__init__(QGraphicsScene(parent), parent)
@@ -95,6 +104,14 @@ class WorkspaceView(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self._scale = 1.0
         self._frames: list[WidgetFrame] = []
+        # TODO 359684f: kept entirely separate from _frames -- DeskWindow's
+        # placed-widget bookkeeping (_capture_desk_state, find_frame_by_
+        # instance_id, _find_frame_by_widget_id, stale-hash refresh, ...)
+        # iterates _frames and assumes every entry is a real, persisted
+        # widget with a widget_id; a popup's plain content widget has
+        # none of that and must never be seen by any of it.
+        self._popup_frames: list[WidgetFrame] = []
+        self._next_popup_z = POPUP_Z_BASE
         self._widget_catalog: dict[str, WidgetInfo] = {}
 
         self._drag_frame: WidgetFrame | None = None
@@ -156,6 +173,39 @@ class WorkspaceView(QGraphicsView):
         proxy.setPos(*pos)
         self._frames.append(frame)
         return proxy
+
+    def add_popup(self, frame: WidgetFrame) -> QGraphicsProxyWidget:
+        """Places a desk-internal popup (TODO 359684f, `WidgetFrame(...,
+        is_popup=True)`) on the canvas: centered in the current viewport
+        (same centering math as DeskWindow.open_widget_content_centered),
+        always frontmost (a z-value above every normal frame's *and*
+        every previously-added popup's -- monotonically increasing via
+        _next_popup_z, so several stacked popups still order correctly
+        relative to each other), and tracked in _popup_frames rather than
+        _frames (see __init__) -- but still fully counter-scaled for
+        zoom via the normal set_view_scale/_on_scale_changed machinery,
+        and fully hit-testable via the normal _frame_at/_hit_test_chrome
+        (both work off scene items directly, not off _frames)."""
+        frame.set_view_scale(self._scale)
+        proxy = self.scene().addWidget(frame)
+        center = self.mapToScene(self.viewport().rect().center())
+        proxy.setPos(center.x() - frame.width() / 2, center.y() - frame.height() / 2)
+        proxy.setZValue(self._next_popup_z)
+        self._next_popup_z += 1
+        self._popup_frames.append(frame)
+        return proxy
+
+    def remove_popup(self, frame: WidgetFrame) -> None:
+        """Removes a single popup from the canvas -- see add_popup. Not
+        `remove_widget`: that removes from `_frames` and is only ever
+        meant for a real placed widget (its close-button flow also does
+        DeskWindow-side Desk-state bookkeeping a popup has no part in)."""
+        proxy = frame.graphicsProxyWidget()
+        if proxy is not None:
+            self.scene().removeItem(proxy)
+        if frame in self._popup_frames:
+            self._popup_frames.remove(frame)
+        frame.deleteLater()
 
     def set_widget_catalog(self, catalog: dict[str, WidgetInfo]) -> None:
         """Registers the discovered widget types offered by the right-click
@@ -231,6 +281,21 @@ class WorkspaceView(QGraphicsView):
             if proxy is not None:
                 self.scene().removeItem(proxy)
         self._frames = []
+        # TODO 359684f: a popup happening to still be open across a Desk
+        # switch must not leave its caller's blocking show_blocking()
+        # nested event loop stuck forever -- emit popup_closed first so
+        # PopupsService's own per-popup listener resolves it with None
+        # (which also calls remove_popup); the membership check below is
+        # a defensive fallback for a popup added with no listener
+        # attached (e.g. an isolated test), not the normal path.
+        for frame in list(self._popup_frames):
+            self.popup_closed.emit(frame)
+            if frame in self._popup_frames:
+                proxy = frame.graphicsProxyWidget()
+                if proxy is not None:
+                    self.scene().removeItem(proxy)
+                self._popup_frames.remove(frame)
+                frame.deleteLater()
 
     def remove_widget(self, frame: WidgetFrame) -> None:
         """Removes a single widget from the canvas (used by the close
@@ -426,7 +491,14 @@ class WorkspaceView(QGraphicsView):
             hit = self._hit_test_chrome(event.position())
             if hit is not None and hit[0] is frame and hit[1] == kind:
                 if kind == "close":
-                    self.widget_close_requested.emit(frame)
+                    # TODO 359684f: a popup's close button must never go
+                    # through DeskWindow's normal "close a placed widget"
+                    # flow (Desk-state removal, PTY/subprocess cleanup,
+                    # ...) -- it was never part of that state.
+                    if frame.is_popup:
+                        self.popup_closed.emit(frame)
+                    else:
+                        self.widget_close_requested.emit(frame)
                 elif kind == "bring_to_front":
                     self.bring_to_front(frame)
                 elif kind == "send_to_back":
@@ -813,6 +885,8 @@ class WorkspaceView(QGraphicsView):
 
     def _on_scale_changed(self) -> None:
         for frame in self._frames:
+            frame.set_view_scale(self._scale)
+        for frame in self._popup_frames:
             frame.set_view_scale(self._scale)
         self.zoom_control.set_zoom(self._scale)
         self.zoom_control.setVisible(abs(self._scale - 1.0) > SCALE_EPSILON)

@@ -699,6 +699,98 @@ says a widget owns this position. The embedded widget's own scrollbars
 (a separate object) are untouched by this. See
 `plans/wheel-event-accept-no-fallthrough.md`.
 
+## Desk-Internal Popups
+
+A widget-triggered confirm/warning dialog (e.g. Event Log's "Clear the
+entire event log?") used to be a real `QMessageBox` parented to the
+widget's own content — which lives inside a `QGraphicsProxyWidget` on
+the canvas. That shows as a genuine top-level macOS window whose
+position/size Qt computes from the parent's `mapToGlobal`, a
+computation that doesn't account for the canvas's own zoom/pan
+transform: at non-1.0 zoom the dialog could render in the wrong place,
+or with content that appeared to spill outside its own window bounds
+(TODO `359684f`).
+
+Fixed by adding a distinct popup chrome mode instead:
+`WidgetFrame(title, content, is_popup=True)` builds a titlebar showing
+**only** the title label and close button — no lock/unlock,
+bring-to-front/send-to-back, eye button, or tempui/stale indicators,
+regardless of any other state — so "never lockable" and "not reachable
+via the eye button" both fall out of this one flag with no new
+interaction code. A popup still gets the exact same zoom
+counter-scaling every other widget's chrome already has
+(`WidgetFrame.set_view_scale`) entirely for free, since it's placed the
+same way (`WorkspaceView.add_popup`, a sibling of `add_widget`) and
+still rescaled by `_on_scale_changed`.
+
+**Always frontmost, but never in the normal frame pool.** A popup is
+tracked in a separate `WorkspaceView._popup_frames` list, not
+`_frames` — `DeskWindow`'s placed-widget bookkeeping
+(`_capture_desk_state`, `find_frame_by_instance_id`,
+`_find_frame_by_widget_id`, stale-hash refresh) iterates `_frames` and
+assumes every entry is a real, persisted widget with a `widget_id`; a
+popup's plain content widget has none of that and must never be seen
+by any of it. Its z-value comes from a fixed, far-above-normal-frames
+band (`POPUP_Z_BASE = 1_000_000.0`, incremented per popup so several
+stacked popups still order correctly relative to each other) rather
+than a dynamic `max(normal frame z-values) + 1` — a *later*
+`bring_to_front` on a normal frame would just catch up to and tie with
+a merely-snapshotted max, breaking "always frontmost" for anything but
+the instant the popup was created. Since `_frame_z_values()` (the pool
+`bring_to_front`/`send_to_back` compute against) only ever iterates
+`_frames`, popups are automatically excluded with no extra check
+needed there. Hit-testing (`_frame_at`/`_hit_test_chrome`) needs no
+changes either — both work off `self.itemAt(...)` plus an
+`isinstance(..., WidgetFrame)` check on whatever the scene returns, not
+off `_frames`/`_popup_frames`.
+
+**Resolving a popup.** `desk_services.popups.PopupsService.show(title,
+message, buttons, default, on_result)` is the non-blocking core: builds
+a message label + one button per label (the `default` one gets
+`setDefault(True)` and initial focus, matching every migrated call
+site's old `QMessageBox.StandardButton.No`-as-default safety
+convention), wraps it in a popup `WidgetFrame`, and calls `on_result`
+exactly once — with the clicked label, or `None` if dismissed via the
+close button, Escape, or a Desk switch happening while the popup is
+still open (`WorkspaceView.clear_widgets` emits `popup_closed` for any
+popup still open at that point). `show_blocking(...)` is a synchronous
+convenience (a nested `QEventLoop`, quit by the same resolver) for
+widget call sites that used to call `QMessageBox.question(...)` and use
+the return value immediately — a new pattern in this codebase (no
+prior `QEventLoop` usage), though the same idea `QDialog.exec()`
+already uses internally.
+
+A popup's close (X) button is special-cased in
+`WorkspaceView.mouseReleaseEvent`'s existing `kind == "close"` chrome
+dispatch: `frame.is_popup` routes to a new `popup_closed` signal instead
+of the normal `widget_close_requested` (which triggers `DeskWindow`'s
+full "close a placed widget" bookkeeping — wrong for a popup that was
+never part of Desk's persisted widget list).
+
+**Reaching this from a widget.** `kind: "python"` widgets call
+`current_context.get_popup_opener()(title, message, buttons, default)`
+(bound once at startup to `PopupsService.show_blocking`, same
+paired-functions convention as `set_editor_or_scrap_opener`/etc.) — no
+`self`/parent-widget argument needed, since a popup is always centered
+in the current viewport regardless of which widget triggered it.
+`kind: "html"` widgets reach the same service via the Bridge API
+(`POST /api/bridge/popups/show`, `require_caller("popups")`), which
+(since the FastAPI server runs off the GUI thread) calls
+`DeskWindow.show_popup` through the already-established synchronous
+`run_on_gui`/`GuiBridge.call` pattern — the same one
+`request_introspect_permission`'s own blocking confirmation dialog
+already uses, since `show_blocking`'s nested event loop makes the
+GUI-thread call itself synchronous from the caller's point of view.
+
+**Scope.** This covers every `QMessageBox` call in `widgets/*.py` (all
+parented to `self`, hence the bug). Desk's own shell-level popups —
+`WidgetSpawnMenu`, the desk-switcher's `_DeskListPopup`, `NewDeskDialog`
+— are parented to the main window (a real top-level widget, not an
+embedded proxy, so they don't have this positioning bug) and mostly
+need a filterable list, a scrollable MRU list, or free-text/file-picker
+input rather than a message+buttons shape; left as-is. See
+`plans/desk-internal-popups.md`.
+
 ## Open Questions
 
 - Corner handles for diagonal resize — deferred (Non-Goals); worth adding

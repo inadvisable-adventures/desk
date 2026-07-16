@@ -82,6 +82,7 @@ _widget_display_name_resolver: Callable[[str], str] | None = None
 _file_type_registry_provider: Callable[[], list[dict]] | None = None
 _widget_catalog_provider: Callable[[], list[dict]] | None = None
 _hot_reload_broker: HotReloadBroker | None = None
+_popup_opener: Callable[[str, str, list[str], str | None], str | None] | None = None
 
 
 def set_current_desk_directory(directory: Path) -> None:
@@ -150,6 +151,26 @@ def set_editor_or_scrap_opener(opener: Callable[[Path], None]) -> None:
 
 def get_editor_or_scrap_opener() -> Callable[[Path], None] | None:
     return _editor_or_scrap_opener
+
+
+def set_popup_opener(opener: Callable[[str, str, list[str], str | None], str | None]) -> None:
+    """The shared "show a desk-internal popup" service (TODO 359684f) --
+    `opener(title, message, buttons, default) -> clicked_button_or_None`,
+    blocking (runs a nested event loop) so existing widget call sites
+    that used to call `QMessageBox.question(...)` and use its return
+    value immediately need almost no restructuring. Replaces a real
+    `QMessageBox` parented to the widget itself (a native top-level
+    window whose position doesn't account for the canvas's own zoom/pan
+    transform) with a `WidgetFrame`-based popup placed on the canvas.
+    `kind: "html"` widgets reach the same service over the Bridge API
+    instead (`/api/bridge/popups/show`) -- this hook is for
+    `kind: "python"` widgets only. See desk_services.popups.service."""
+    global _popup_opener
+    _popup_opener = opener
+
+
+def get_popup_opener() -> Callable[[str, str, list[str], str | None], str | None] | None:
+    return _popup_opener
 
 
 def set_temp_ui_write_recorder(recorder: Callable[[Path, str], None]) -> None:

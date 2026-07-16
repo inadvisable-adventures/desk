@@ -5,12 +5,13 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
+
+from desk.shell import current_context
 
 # Only these two, exact segment names -- this project only has these,
 # not a general "look configurable" system. See plans/crash-log-widget.md.
@@ -93,20 +94,18 @@ class CrashLogWidget(QWidget):
 
     def _confirm_delete(self) -> bool:
         """Split out so headless verification can monkeypatch just this
-        one method instead of driving a real modal QMessageBox --
-        mirrors the same pattern used elsewhere in this codebase (e.g.
-        widgets/todo/widget.py's _ItemDialog._confirm_discard)."""
+        one method instead of driving a real popup -- mirrors the same
+        pattern used elsewhere in this codebase (e.g. widgets/todo/
+        widget.py's _ItemDialog._confirm_discard). Uses the
+        desk-internal popups service (TODO 359684f), not a QMessageBox
+        parented to self -- that used to render as a real top-level
+        window whose position didn't account for the canvas's own
+        zoom/pan transform."""
+        opener = current_context.get_popup_opener()
+        if opener is None:
+            return False
         message = "Delete this crash log file? This can't be undone."
-        return (
-            QMessageBox.question(
-                self,
-                "Delete Log File",
-                message,
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
-            )
-            == QMessageBox.StandardButton.Yes
-        )
+        return opener("Delete Log File", message, ["Yes", "No"], "No") == "Yes"
 
 
 def build() -> QWidget:

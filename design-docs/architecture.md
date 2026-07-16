@@ -546,6 +546,18 @@ Desk Bridge API.
     gesture, and this environment having no way to reproduce real
     trackpad hardware input to investigate further otherwise. See
     `plans/event-recorder-widget.md`.
+26. **Popups Service** (`desk_services.popups`, TODO `359684f`) — a
+    single shared implementation of "show a desk-internal popup":
+    `WidgetFrame(title, content, is_popup=True)` placed on the canvas
+    (title + close button only, always frontmost, never lockable, not
+    eye-button-focusable) instead of a real `QMessageBox` parented to
+    the requesting widget's own content — a native top-level window
+    whose position doesn't account for the canvas's own zoom/pan
+    transform. Reached by `kind: "python"` widgets via
+    `current_context.get_popup_opener()`, and by `kind: "html"` widgets
+    via the Bridge API (`POST /api/bridge/popups/show`). See
+    `design-docs/widget-ux.md`'s "Desk-Internal Popups" section and
+    `plans/desk-internal-popups.md`.
 
 ### Widget Model
 

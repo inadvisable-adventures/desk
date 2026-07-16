@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -175,18 +174,24 @@ class EventLogWidget(QWidget):
 
     def _confirm_clear(self) -> bool:
         """Split out so headless verification can monkeypatch just this
-        one method instead of driving a real modal QMessageBox -- mirrors
+        one method instead of driving a real popup -- mirrors
         widgets/crash_log/widget.py's _confirm_delete and widgets/todo/
-        widget.py's _ItemDialog._confirm_discard."""
+        widget.py's _ItemDialog._confirm_discard. Uses the
+        desk-internal popups service (TODO 359684f), not a QMessageBox
+        parented to self -- that used to render as a real top-level
+        window whose position didn't account for the canvas's own
+        zoom/pan transform."""
+        opener = current_context.get_popup_opener()
+        if opener is None:
+            return False
         return (
-            QMessageBox.question(
-                self,
+            opener(
                 "Clear Log",
                 "Clear the entire event log? This can't be undone.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No,
+                ["Yes", "No"],
+                "No",
             )
-            == QMessageBox.StandardButton.Yes
+            == "Yes"
         )
 
 

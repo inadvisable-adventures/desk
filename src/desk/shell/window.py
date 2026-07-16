@@ -32,6 +32,7 @@ from desk.shell.new_desk_dialog import NewDeskDialog
 from desk.shell.python_widget import PythonWidgetHost
 from desk.shell.temp_ui_manager import TempUiManager
 from desk.shell.widget_frame import WidgetFrame
+from desk_services.popups import get_service as get_popups_service
 from desk.temp_ui import (
     CUSTOM_WIDGET_SRC_DIRNAME,
     CustomWidgetDefinition,
@@ -170,6 +171,9 @@ class DeskWindow(QMainWindow):
         self.view = WorkspaceView()
         self.setCentralWidget(self.view)
 
+        self._popups_service = get_popups_service()
+        self._popups_service.attach_view(self.view)
+
         self.view.desk_picker.desk_chosen.connect(self._on_desk_chosen)
         self.view.desk_picker.browse_requested.connect(self._on_browse_requested)
         self.view.desk_picker.new_desk_requested.connect(self._on_new_desk_requested)
@@ -275,6 +279,7 @@ class DeskWindow(QMainWindow):
         current_context.set_widget_opener(self.open_widget_content)
         current_context.set_centered_widget_opener(self.open_widget_content_centered)
         current_context.set_editor_or_scrap_opener(self.open_editor_or_scrap)
+        current_context.set_popup_opener(self._popups_service.show_blocking)
         current_context.set_temp_ui_write_recorder(self._temp_ui_manager.record_own_write)
         current_context.set_main_window(self)
         current_context.set_widget_path_resolver(self.view.describe_widget_at_global_pos)
@@ -652,6 +657,18 @@ class DeskWindow(QMainWindow):
         return self.open_widget_content(
             widget_id, pos=(center.x(), center.y()), size=size or widget.default_size, instance_id=instance_id
         )
+
+    def show_popup(
+        self, title: str, message: str, buttons: list[str], default: str | None = None
+    ) -> str | None:
+        """The desk-internal popups service (TODO 359684f), for the
+        Bridge API's popups.show (kind:"html" widgets) -- kind:"python"
+        widgets instead reach the exact same PopupsService directly via
+        current_context.get_popup_opener(). Blocking (see
+        PopupsService.show_blocking) -- safe to call via GuiBridge's
+        synchronous run_on_gui, same as request_introspect_permission's
+        own blocking confirmation dialog."""
+        return self._popups_service.show_blocking(title, message, buttons, default)
 
     def open_editor_or_scrap(self, path: Path) -> None:
         """The shared "open an editor for `path`, or fall back to an

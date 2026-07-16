@@ -249,7 +249,7 @@ class _TitleBar(QWidget):
     label. Dragging is handled centrally by WorkspaceView (not by this
     widget itself) — see design-docs/widget-ux.md for why."""
 
-    def __init__(self, title: str, parent=None) -> None:
+    def __init__(self, title: str, parent=None, is_popup: bool = False) -> None:
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.SizeAllCursor)
         self._title = title
@@ -258,6 +258,11 @@ class _TitleBar(QWidget):
         self._locked = False
         self._tempui_promotable = False
         self._buttons_hidden = False  # True in the title_only chrome state (TODO 33d3e8d)
+        # TODO 359684f: a desk-internal popup's titlebar shows only the
+        # title and close button, always -- no lock/unlock, bring-to
+        # -front/send-to-back, eye, or tempui/stale indicators, and
+        # regardless of any other state (_buttons_hidden, _locked, ...).
+        self._is_popup = is_popup
         self.set_focused(False)
 
         layout = QHBoxLayout(self)
@@ -348,6 +353,16 @@ class _TitleBar(QWidget):
         self._refresh_button_visibility()
 
     def _refresh_button_visibility(self) -> None:
+        if self._is_popup:
+            self.tempui_promote_button.setVisible(False)
+            self.stale_button.setVisible(False)
+            self.lock_button.setVisible(False)
+            self.bring_to_front_button.setVisible(False)
+            self.send_to_back_button.setVisible(False)
+            self.close_button.setVisible(True)
+            self.eye_button.setVisible(False)
+            self.unlock_button.setVisible(False)
+            return
         show = not self._buttons_hidden
         self.tempui_promote_button.setVisible(show and self._tempui_promotable)
         self.stale_button.setVisible(show and self._stale)
@@ -374,6 +389,8 @@ class _TitleBar(QWidget):
         needs the answer for show=True regardless of the titlebar's
         *current* _buttons_hidden state (that's exactly what's being
         decided)."""
+        if self._is_popup:
+            return [self.close_button]
         buttons: list[QWidget] = []
         if self._tempui_promotable:
             buttons.append(self.tempui_promote_button)
@@ -484,10 +501,22 @@ class WidgetFrame(QWidget):
     reliably reflect real screen coordinates at non-unity view scale)."""
 
     def __init__(
-        self, title: str, content: QWidget, instance_id: str | None = None, parent=None
+        self,
+        title: str,
+        content: QWidget,
+        instance_id: str | None = None,
+        parent=None,
+        is_popup: bool = False,
     ) -> None:
         super().__init__(parent)
         self.instance_id = instance_id or uuid.uuid4().hex[:8]
+        # TODO 359684f: a desk-internal popup -- title + close button
+        # only, always frontmost, never lockable, not reachable via the
+        # eye button. See WorkspaceView.add_popup/_popup_frames (a
+        # separate list from the normal _frames, so DeskWindow's
+        # placed-widget bookkeeping -- persistence, instance-id lookup,
+        # stale-hash refresh -- never sees or touches it).
+        self.is_popup = is_popup
         content.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         outer = QVBoxLayout(self)
@@ -525,7 +554,7 @@ class WidgetFrame(QWidget):
         normal_layout.setContentsMargins(0, 0, 0, 0)
         normal_layout.setSpacing(0)
 
-        self._titlebar = _TitleBar(title)
+        self._titlebar = _TitleBar(title, is_popup=is_popup)
         normal_layout.addWidget(self._titlebar)
 
         body = QHBoxLayout()

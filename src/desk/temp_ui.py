@@ -112,7 +112,13 @@ PROMOTED_WIDGET_SRC_DIRNAME = "desk_widgets"
 # an instance by itself, full stop, no auto-placed exception anymore).
 # Breaking for any project/agent that had learned to rely on the
 # now-removed auto-placement.
-TEMPUI_DOC_VERSION = 18
+#
+# TODO 359684f: bumped 18 -> 19 for a new Bridge API capability in
+# _CUSTOM_WIDGETS_DOC's capability list: `popups` (show a desk-internal
+# message+buttons popup, replacing the widget-triggered QMessageBox
+# call sites that used to render as real top-level windows misplaced
+# under canvas zoom/pan).
+TEMPUI_DOC_VERSION = 19
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -647,6 +653,14 @@ built for genuine cross-widget signaling:
   service a `kind: "python"` widget reaches via `current_context
   .get_editor_or_scrap_opener()`. A relative `path` resolves against
   the current Desk's own directory, same as `desk.fs.*`.
+- `desk.popups.show(title, message, buttons, default)` (capability
+  `popups`) — shows a desk-internal popup (a small `WidgetFrame` placed
+  on the canvas, not a real OS window) with `message` and one button
+  per label in `buttons`; blocks until the Desk user clicks one (or
+  returns `null` if dismissed via its close button/Escape). `default`
+  (optional) names which button is the pre-selected/Enter-triggered
+  one. The same service a `kind: "python"` widget reaches via
+  `current_context.get_popup_opener()`.
 
 The calls above are almost always all a `DefineWidget` widget actually
 needs.
@@ -837,6 +851,14 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 19
+- `desk.popups.show(title, message, buttons, default)` (capability
+  `popups`): shows a desk-internal popup -- a small `WidgetFrame`
+  placed on the canvas, not a real OS window -- with `message` and one
+  button per label in `buttons`; blocks until the Desk user clicks one
+  (or returns `null` if dismissed via its close button/Escape).
+  `default` (optional) names the pre-selected/Enter-triggered button.
 
 ## Version 16
 - `desk.editor.openOrScrap(path)` (capability `editor`): open an
