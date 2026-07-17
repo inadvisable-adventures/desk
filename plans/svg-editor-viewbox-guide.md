@@ -1,4 +1,4 @@
-# Plan: TODO d1d176f — SVG Editor: viewBox guide, Reset View, bounded scene, hexagon preview mask
+# Plan: TODO d1d176f (COMPLETED) — SVG Editor: viewBox guide, Reset View, bounded scene, hexagon preview mask
 
 Source: `../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-guide-2026-07-16-1156.md`
 (a `widgets/feedback/` note left for a future Claude instance working on

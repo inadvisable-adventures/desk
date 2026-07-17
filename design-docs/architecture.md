@@ -519,6 +519,23 @@ Desk Bridge API.
     (`file_type_registry.BUILTIN_EDIT_WIDGET_BY_SUFFIX`), so Image
     Viewer's Edit button reaches it automatically. See
     `plans/svg-editor-widget.md`.
+
+    The document's own bounds (`viewBox`/`width`/`height`) are now
+    always rendered as a visible, non-exported dashed guide rect (TODO
+    `d1d176f`, from a `widgets/feedback/`-authored note describing a
+    real case where drawn shapes silently drifted outside the
+    exportable area with no indication, looking correct in the editor
+    but invisible to any real SVG consumer) — plus a "Reset View"
+    action (`fitInView` to the document bounds), a scene rect bounded
+    generously (not exactly) around those bounds instead of the
+    previously effectively-unbounded default, and a toggleable, non
+    -hittable hexagon preview overlay mask (`QPainterPath.subtracted`)
+    for authors targeting a hex-tile-clipped consumer. All three are
+    plain `QGraphicsItem`s added directly to the scene, never touching
+    `self._root`/`self._objects` — automatically excluded from the
+    saved file the same way the drag handles already were, since
+    `_save_to_path` only ever serializes `self._objects`. See
+    `plans/svg-editor-viewbox-guide.md`.
 24. **Side by Side Widget** — a built-in `kind: "python"` widget
     (`widgets/side_by_side/`, TODO `d28885f`) that hosts two other
     `kind: "python"` widget instances at once, laid out in a

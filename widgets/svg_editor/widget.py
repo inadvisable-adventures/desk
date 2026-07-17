@@ -13,11 +13,12 @@ PathObject) is simply never touched, so it round-trips verbatim on save
 with no separate bookkeeping needed. See plans/svg-editor-widget.md."""
 
 import logging
+import math
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QPointF, pyqtSignal
+from PyQt6.QtCore import Qt, QPointF, QRectF, QTimer, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPolygonF
 from PyQt6.QtWidgets import (
     QButtonGroup,
@@ -647,6 +648,61 @@ def _new_empty_root() -> ET.Element:
     return root
 
 
+_DEFAULT_BOUNDS = QRectF(0, 0, 400, 300)
+_UNIT_SUFFIX_RE = re.compile(r"[a-zA-Z%]+$")
+
+
+def _document_bounds(root: ET.Element) -> QRectF:
+    """The document's real, exportable bounds -- what any real SVG
+    consumer (a browser, an `<img>`/`<image>` tag) clips to, unlike
+    this editor itself, which never clips while editing (TODO
+    `d1d176f` -- see FEEDBACK-DESK-svg-editor-viewbox-guide
+    -2026-07-16-1156.md). `viewBox` (`min-x min-y width height`) is the
+    primary, authoritative source; falls back to a `0,0,width,height`
+    rect from the `width`/`height` attributes (stripping a trailing
+    unit suffix, e.g. `"400px"`) if `viewBox` is absent/unparseable --
+    a hand-authored or externally-produced `.svg` opened via
+    `_load_file` isn't guaranteed to have a clean, unitless `viewBox`.
+    Falls back to `_new_empty_root`'s own default size if neither
+    attribute is usable at all."""
+    view_box = root.get("viewBox")
+    if view_box:
+        parts = view_box.split()
+        if len(parts) == 4:
+            try:
+                min_x, min_y, width, height = (float(p) for p in parts)
+                return QRectF(min_x, min_y, width, height)
+            except ValueError:
+                pass
+    width_attr = root.get("width")
+    height_attr = root.get("height")
+    if width_attr and height_attr:
+        try:
+            width = float(_UNIT_SUFFIX_RE.sub("", width_attr))
+            height = float(_UNIT_SUFFIX_RE.sub("", height_attr))
+            return QRectF(0, 0, width, height)
+        except ValueError:
+            pass
+    return QRectF(_DEFAULT_BOUNDS)
+
+
+def _hexagon_path(bounds: QRectF) -> QPainterPath:
+    """A regular hexagon centered in `bounds`, radius `min(width,
+    height) / 2` (the largest that fits without touching the shorter
+    edge) -- the shape a hex-tile consumer (e.g. `necro-4x`'s terrain
+    art pipeline) actually clips artwork to via an SVG `<clipPath>`."""
+    cx, cy = bounds.center().x(), bounds.center().y()
+    radius = min(bounds.width(), bounds.height()) / 2
+    polygon = QPolygonF()
+    for i in range(6):
+        angle = math.radians(60 * i - 90)  # pointy-top hexagon, first vertex straight up
+        polygon.append(QPointF(cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
+    path = QPainterPath()
+    path.addPolygon(polygon)
+    path.closeSubpath()
+    return path
+
+
 class _EditorView(QGraphicsView):
     """Hit-tests handles/create-tool clicks at the view level -- same
     "centralize drag tracking in the view, keep the item itself purely
@@ -722,6 +778,13 @@ class SvgEditorWidget(QWidget):
         self._pending_points: list[QPointF] | None = None
         self._pending_preview_items: list = []
         self.current_tool = "shapes"
+        # TODO d1d176f: purely visual, never touch self._root/self._objects
+        # (see _document_bounds/_refresh_document_guides) -- excluded from
+        # the saved file automatically, the same way _Handle already is,
+        # since _save_to_path only ever serializes self._objects.
+        self._bounds_guide_item = None
+        self._hex_preview_item = None
+        self._hex_preview_enabled = False
 
         self._scene = QGraphicsScene(self)
         self._scene.selectionChanged.connect(self._on_selection_changed)
@@ -736,11 +799,18 @@ class SvgEditorWidget(QWidget):
         save_button.clicked.connect(self._save)
         save_as_button = QPushButton("Save As")
         save_as_button.clicked.connect(self._save_as)
+        reset_view_button = QPushButton("Reset View")
+        reset_view_button.clicked.connect(self._reset_view)
+        self._hex_preview_button = QPushButton("Hex Preview")
+        self._hex_preview_button.setCheckable(True)
+        self._hex_preview_button.clicked.connect(self._toggle_hex_preview)
 
         top_toolbar = QHBoxLayout()
         top_toolbar.addWidget(open_button)
         top_toolbar.addWidget(save_button)
         top_toolbar.addWidget(save_as_button)
+        top_toolbar.addWidget(reset_view_button)
+        top_toolbar.addWidget(self._hex_preview_button)
         top_toolbar.addStretch()
         top_toolbar.addWidget(self._label)
 
@@ -761,6 +831,13 @@ class SvgEditorWidget(QWidget):
         self._watcher.changed.connect(self._on_external_change)
         watcher = self._watcher
         self.destroyed.connect(lambda: watcher.stop())
+
+        self._refresh_document_guides()
+        # fitInView needs the view's real viewport size, not yet available
+        # here (before this widget has actually been laid out/shown) --
+        # deferred to the next event-loop iteration, a well-known Qt
+        # gotcha, not specific to this codebase.
+        QTimer.singleShot(0, self._reset_view)
 
         self._update_label()
 
@@ -1004,14 +1081,22 @@ class SvgEditorWidget(QWidget):
         self._watcher.watch(path)
         self.refresh_external_path_status()
         self._update_label()
+        self._reset_view()
 
     def _rebuild_scene_from_root(self) -> None:
+        # _scene.clear() deletes every scene item, including the guide/
+        # hex-preview items (TODO d1d176f) -- clear these references too
+        # (same reason _handles is reset alongside it) so
+        # _refresh_document_guides() below doesn't try to remove an
+        # already-deleted item.
         self._scene.clear()
         self._objects = []
         self._selected_object = None
         self._handles = []
         self._pending_points = None
         self._pending_preview_items = []
+        self._bounds_guide_item = None
+        self._hex_preview_item = None
         for element in list(self._root):
             cls = TAG_TO_CLASS.get(_local_tag(element.tag))
             if cls is None:
@@ -1024,6 +1109,71 @@ class SvgEditorWidget(QWidget):
             obj.item.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
             self._scene.addItem(obj.item)
             self._objects.append(obj)
+        self._refresh_document_guides()
+
+    # --- document bounds guide / hex preview mask (TODO d1d176f) --------
+
+    def _refresh_document_guides(self) -> None:
+        """(Re-)builds the document-bounds guide rect, the scene's own
+        bounded rect, and (if enabled) the hex preview mask -- called
+        whenever bounds might have changed: __init__, and after
+        _rebuild_scene_from_root's _scene.clear() (nothing here
+        survives a scene clear)."""
+        bounds = _document_bounds(self._root)
+        self._refresh_bounds_guide(bounds)
+        # Generous, not exact -- drawing slightly outside the canvas
+        # mid-edit, before trimming, is reasonable (see the feedback
+        # this TODO comes from); just no longer effectively unbounded.
+        # Proportional to the document's own size so a small document
+        # gets a modest margin and a much larger one gets a
+        # proportionally larger one.
+        margin = max(bounds.width(), bounds.height())
+        self._scene.setSceneRect(bounds.adjusted(-margin, -margin, margin, margin))
+        self._refresh_hex_preview(bounds)
+
+    def _refresh_bounds_guide(self, bounds: QRectF) -> None:
+        if self._bounds_guide_item is not None:
+            self._scene.removeItem(self._bounds_guide_item)
+            self._bounds_guide_item = None
+        pen = QPen(QColor(DEFAULT_FILL))
+        pen.setStyle(Qt.PenStyle.DashLine)
+        pen.setWidthF(1.5)
+        item = QGraphicsRectItem(bounds)
+        item.setPen(pen)
+        item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        item.setZValue(-1000)  # always behind real content
+        # Click-through: Qt's own mechanism for "receive/paint this item,
+        # but never intercept mouse events meant for whatever's beneath
+        # it" -- editing must work identically with the guide present.
+        item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self._scene.addItem(item)
+        self._bounds_guide_item = item
+
+    def _toggle_hex_preview(self, checked: bool) -> None:
+        self._hex_preview_enabled = checked
+        self._refresh_hex_preview()
+
+    def _refresh_hex_preview(self, bounds: QRectF | None = None) -> None:
+        if self._hex_preview_item is not None:
+            self._scene.removeItem(self._hex_preview_item)
+            self._hex_preview_item = None
+        if not self._hex_preview_enabled:
+            return
+        if bounds is None:
+            bounds = _document_bounds(self._root)
+        full_rect_path = QPainterPath()
+        full_rect_path.addRect(bounds)
+        path = full_rect_path.subtracted(_hexagon_path(bounds))
+        item = QGraphicsPathItem(path)
+        item.setPen(QPen(Qt.PenStyle.NoPen))
+        item.setBrush(QBrush(QColor(0, 0, 0, 140)))
+        item.setZValue(2000)  # always on top, including over handles
+        item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+        self._scene.addItem(item)
+        self._hex_preview_item = item
+
+    def _reset_view(self) -> None:
+        self._view.fitInView(_document_bounds(self._root), Qt.AspectRatioMode.KeepAspectRatio)
 
     def _on_external_change(self) -> None:
         if self._current_path is not None:

@@ -4720,7 +4720,7 @@ a9e2ba7. COMPLETED: Transforms, part 4/4: Markdown widget consumes the Mermaid
    This was the last item in the Transforms feature (design doc +
    4 TODO items) -- confirmed via `grep -n "^[0-9a-f]\{7\}\." TODO.md |
    grep -vi "COMPLETED\|SUPERSEDED"` returning empty after this commit.
-d1d176f. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-guide
+d1d176f. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-guide
    -2026-07-16-1156.md`): the SVG Editor never shows its own document
    bounds (`viewBox`/`width`/`height`) anywhere, so a view that drifts
    during editing leaves shapes drawn far outside the exportable area
@@ -4742,3 +4742,49 @@ d1d176f. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-guide
    (like `necro-4x`'s own terrain art pipeline) would actually clip the
    artwork to, live during editing.
    [planned: svg-editor-viewbox-guide.md]
+
+   Implemented per plan. `_document_bounds(root)`: `viewBox` primary
+   (`min-x min-y width height`), falling back to `width`/`height`
+   attributes (stripping a trailing unit suffix like `"px"`) if
+   `viewBox` is absent/unparseable, falling back to `_new_empty_root`'s
+   own `0 0 400 300` default if neither is usable. The bounds guide
+   rect, scene-rect bounding, and hex preview mask are all built by one
+   `_refresh_document_guides()` (plus `_refresh_bounds_guide`/
+   `_refresh_hex_preview`), called from `__init__` and at the end of
+   `_rebuild_scene_from_root` -- `_scene.clear()` (already called there)
+   destroys every scene item including these, so their Python
+   references (`self._bounds_guide_item`/`self._hex_preview_item`) are
+   reset to `None` alongside the pre-existing `self._handles = []`
+   reset, for the same reason. Both new overlay items use
+   `setAcceptedMouseButtons(Qt.MouseButton.NoButton)` (Qt's own
+   click-through mechanism) so editing works identically whether either
+   is present. "Reset View" (`fitInView`) is also called automatically
+   at the end of `_load_file`, and once at startup via
+   `QTimer.singleShot(0, self._reset_view)` -- `fitInView` needs the
+   view's real viewport size, not yet available synchronously in
+   `__init__` before the widget has actually been laid out/shown (a
+   well-known Qt gotcha). Scene rect bounding uses a margin
+   proportional to the document's own size (`max(width, height)` per
+   side), not a fixed constant. The hexagon mask is built via
+   `QPainterPath.subtracted()` (Qt's own boolean path algebra: full
+   document rect minus a centered regular hexagon, radius `min(width,
+   height) / 2`) rather than hand-building an even-odd-fill path.
+
+   Verified directly: extended the existing
+   `tests/verify/verify_svg_editor_widget.py` (13 new checks, 56 total
+   now) -- `_document_bounds`'s three parse paths; the guide item
+   surviving both construction and a full reload; **the core regression
+   this feedback is about**, confirmed directly: neither the guide rect
+   nor the hex mask ever appears in a saved file's XML (save, re-parse,
+   confirm only real drawn objects are present); both overlay items
+   confirmed click-through (`acceptedMouseButtons() ==
+   Qt.MouseButton.NoButton`); the scene rect strictly containing the
+   document bounds with room on every side; Reset View confirmed to
+   actually restore visibility of the document bounds after a real pan
+   away from them (`centerOn`, not `translate` -- caught during writing
+   this test that `QGraphicsView.translate()` doesn't move the
+   viewport's *visible scene region* the way a real pan/scroll does,
+   confirmed directly by comparing before/after visible rects; switched
+   to `centerOn`, which does); and the hex preview toggle's add/remove/
+   persist-across-reload behavior. Full regression suite: 75 scripts, 0
+   failures.

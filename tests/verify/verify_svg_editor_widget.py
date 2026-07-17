@@ -266,6 +266,160 @@ def test_unsupported_path_grammar_rejected():
 test_unsupported_path_grammar_rejected()
 
 
+# ---------- document bounds guide / Reset View / hex preview (TODO d1d176f) ----------
+# see ../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-guide-2026-07-16-1156.md
+
+
+def test_document_bounds_parsing():
+    root = ET.Element("svg")
+    root.set("viewBox", "10 20 300 200")
+    bounds = mod._document_bounds(root)
+    check(
+        "_document_bounds reads a normal viewBox (incl. non-zero origin)",
+        (bounds.x(), bounds.y(), bounds.width(), bounds.height()) == (10.0, 20.0, 300.0, 200.0),
+    )
+
+    root2 = ET.Element("svg")
+    root2.set("width", "500px")
+    root2.set("height", "250px")
+    bounds2 = mod._document_bounds(root2)
+    check(
+        "_document_bounds falls back to width/height (stripping a unit suffix) when viewBox is absent",
+        (bounds2.x(), bounds2.y(), bounds2.width(), bounds2.height()) == (0.0, 0.0, 500.0, 250.0),
+    )
+
+    root3 = ET.Element("svg")
+    bounds3 = mod._document_bounds(root3)
+    check(
+        "_document_bounds falls back to the 400x300 default when nothing usable is present",
+        (bounds3.width(), bounds3.height()) == (400.0, 300.0),
+    )
+
+
+test_document_bounds_parsing()
+
+
+def test_bounds_guide_present_after_init_and_reload():
+    widget = mod.SvgEditorWidget()
+    check("the bounds guide item exists right after construction", widget._bounds_guide_item is not None)
+
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "reload_test.svg"
+        path.write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>')
+        widget._load_file(path)
+        check("the bounds guide item survives a full reload (_rebuild_scene_from_root)", widget._bounds_guide_item is not None)
+    widget.deleteLater()
+
+
+test_bounds_guide_present_after_init_and_reload()
+
+
+def test_bounds_guide_and_hex_preview_never_appear_in_a_saved_file():
+    widget = mod.SvgEditorWidget()
+    widget._create_single_click_object("rect", QPointF(50, 50))
+    widget._hex_preview_button.setChecked(True)
+    widget._toggle_hex_preview(True)
+
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "saved.svg"
+        widget._save_to_path(path)
+        saved_root = ET.fromstring(path.read_bytes())
+        tags = [local_tag(el.tag) for el in saved_root]
+        check(
+            "the bounds guide rect never appears in a saved file",
+            "rect" in tags and len(tags) == 1,
+        )
+    widget.deleteLater()
+
+
+test_bounds_guide_and_hex_preview_never_appear_in_a_saved_file()
+
+
+def test_guide_items_are_click_through():
+    widget = mod.SvgEditorWidget()
+    # A point inside the document bounds but with nothing real drawn there --
+    # only the (always-present) bounds guide sits under it.
+    check(
+        "the bounds guide item doesn't accept mouse buttons (click-through)",
+        widget._bounds_guide_item.acceptedMouseButtons() == mod.Qt.MouseButton.NoButton,
+    )
+    widget._hex_preview_button.setChecked(True)
+    widget._toggle_hex_preview(True)
+    check(
+        "the hex preview item doesn't accept mouse buttons (click-through)",
+        widget._hex_preview_item.acceptedMouseButtons() == mod.Qt.MouseButton.NoButton,
+    )
+    widget.deleteLater()
+
+
+test_guide_items_are_click_through()
+
+
+def test_scene_rect_bounded_generously_around_document():
+    widget = mod.SvgEditorWidget()
+    bounds = mod._document_bounds(widget._root)
+    scene_rect = widget._scene.sceneRect()
+    check(
+        "the scene rect strictly contains the document bounds with room to spare on every side",
+        scene_rect.left() < bounds.left()
+        and scene_rect.top() < bounds.top()
+        and scene_rect.right() > bounds.right()
+        and scene_rect.bottom() > bounds.bottom(),
+    )
+    widget.deleteLater()
+
+
+test_scene_rect_bounded_generously_around_document()
+
+
+def test_reset_view_shows_the_document_bounds():
+    widget = mod.SvgEditorWidget()
+    widget.resize(400, 400)
+    widget.show()
+    # Pan the view far away from the document bounds.
+    widget._view.centerOn(5000, 5000)
+    visible = widget._view.mapToScene(widget._view.viewport().rect()).boundingRect()
+    bounds = mod._document_bounds(widget._root)
+    check("panning away genuinely leaves the document bounds out of view", not visible.intersects(bounds))
+
+    widget._reset_view()
+    visible_after = widget._view.mapToScene(widget._view.viewport().rect()).boundingRect()
+    check("Reset View restores a transform that actually shows the document bounds", visible_after.contains(bounds))
+    widget.deleteLater()
+
+
+test_reset_view_shows_the_document_bounds()
+
+
+def test_hex_preview_toggle_add_remove_and_persists_across_reload():
+    widget = mod.SvgEditorWidget()
+    check("hex preview is off by default", widget._hex_preview_item is None)
+
+    widget._hex_preview_button.setChecked(True)
+    widget._toggle_hex_preview(True)
+    check("toggling on adds exactly one hex preview item", widget._hex_preview_item is not None)
+    hex_bounds = widget._hex_preview_item.path().boundingRect()
+    doc_bounds = mod._document_bounds(widget._root)
+    check(
+        "the hex preview's own path is bounded by the document bounds",
+        doc_bounds.contains(hex_bounds) or abs(hex_bounds.width() - doc_bounds.width()) < 1.0,
+    )
+
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "reload_hex.svg"
+        path.write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>')
+        widget._load_file(path)
+        check("the hex preview toggle state survives a reload (re-added, not silently dropped)", widget._hex_preview_item is not None)
+
+    widget._hex_preview_button.setChecked(False)
+    widget._toggle_hex_preview(False)
+    check("toggling off removes the hex preview item", widget._hex_preview_item is None)
+    widget.deleteLater()
+
+
+test_hex_preview_toggle_add_remove_and_persists_across_reload()
+
+
 # ---------- file_type_registry wiring ----------
 
 from desk.file_type_registry import BUILTIN_EDIT_WIDGET_BY_SUFFIX, find_edit_handler  # noqa: E402
