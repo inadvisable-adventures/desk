@@ -91,7 +91,21 @@ def test_claude_widget_start_session_appends_extra_instructions():
         # shlex.quote escapes the apostrophe in "Let's" as '"'"' when the
         # whole prompt is single-quoted for the shell -- check the
         # unambiguous, apostrophe-free part of the phrase instead.
-        assert "discuss an item from PARKINGLOT.md" in text
+        #
+        # Whitespace-normalized (collapse all runs of whitespace,
+        # including the newline + indentation a wrapped terminal row
+        # inserts, to a single space) before checking: this is a real
+        # PTY rendering claude's actual TUI, which word-wraps its
+        # display of the prompt at the terminal's column width --
+        # confirmed directly (by printing the raw captured text) that a
+        # wrap can land exactly between two words of this checked
+        # phrase (e.g. "...an item from\nPARKINGLOT.md..."), splitting
+        # it across rows even though the real, correct, unmodified
+        # prompt was genuinely received and displayed. A literal,
+        # un-normalized substring check here is fragile to word-wrap,
+        # not a meaningful assertion about whether the feature works.
+        normalized_text = " ".join(text.split())
+        assert "discuss an item from PARKINGLOT.md" in normalized_text, text
     finally:
         widget._process.terminate()
     print("ClaudeWidget.start_session: extra_instructions appended to the fresh-launch prompt: PASS")
