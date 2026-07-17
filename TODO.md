@@ -4720,3 +4720,25 @@ a9e2ba7. COMPLETED: Transforms, part 4/4: Markdown widget consumes the Mermaid
    This was the last item in the Transforms feature (design doc +
    4 TODO items) -- confirmed via `grep -n "^[0-9a-f]\{7\}\." TODO.md |
    grep -vi "COMPLETED\|SUPERSEDED"` returning empty after this commit.
+d1d176f. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-guide
+   -2026-07-16-1156.md`): the SVG Editor never shows its own document
+   bounds (`viewBox`/`width`/`height`) anywhere, so a view that drifts
+   during editing leaves shapes drawn far outside the exportable area
+   with zero visual indication -- the editor itself never clips while
+   editing, but any real SVG consumer (a browser, an `<img>`/`<image>`
+   tag) clips strictly to `viewBox` and shows nothing. Concrete case
+   this was extracted from: a `necro-4x` `terrain-types-editor`
+   widget's `grassy-hills.svg`, whose shapes ended up 250-950 units
+   outside its own declared `0 0 400 300` viewBox. Suggested fix (all
+   in `widgets/svg_editor/widget.py`): (1) render the document's own
+   bounds as a visible, non-exported guide rectangle; (2) a "Reset
+   View"/"Zoom to Fit Document" action; (3) optionally bound the scene
+   rect to something generously larger than the document bounds
+   (not exactly equal) so panning has some natural limit instead of
+   the current effectively-unbounded default. Additional feature
+   specifically requested: a toggleable, non-hittable hexagon preview
+   overlay (a semi-transparent mask with a hexagon-shaped hole cut out,
+   sized to the document bounds) -- previews what a hex-tile consumer
+   (like `necro-4x`'s own terrain art pipeline) would actually clip the
+   artwork to, live during editing.
+   [planned: svg-editor-viewbox-guide.md]
