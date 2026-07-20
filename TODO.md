@@ -4831,9 +4831,39 @@ d1d176f. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-
    the existing no-capabilities-key case now also explicitly asserts
    `capabilities == []` (backward compatible). Full regression suite:
    75 scripts, 0 failures.
-9d1544b. Investigate why Desk's shutdown might be taking a long time: create
+9d1544b. COMPLETED: Investigate why Desk's shutdown might be taking a long time: create
    a new top-level `./investigations/` directory and write up findings
    (root-caused, with evidence) plus recommendations in
    `investigations/shutdown_perf.md`. No application code changes --
    a pure investigation.
    [planned: investigate-shutdown-perf.md]
+
+   Traced the full shutdown path (the four `QApplication.aboutToQuit`
+   handlers in `src/desk/app.py`, plus the easy-to-miss second phase --
+   Qt's own widget-tree destruction cascade after `app.exec()` returns,
+   where `TerminalWidget`'s `destroyed`-signal-connected cleanup runs)
+   and measured each candidate directly rather than reading code and
+   guessing. Two real, empirically-confirmed, additive findings:
+   `TerminalWidget._cleanup_resources` (Console/Claude widgets) can
+   take up to ~2s *per open terminal widget*, sequentially -- measured
+   2.005s precisely for a child process that installs a real `SIGTERM`
+   handler and takes >2s to respond, vs. 0.004s for a plain shell;
+   `ServerHandle.stop`'s `join(timeout=5.0)` can block the GUI thread
+   for the full 5 seconds whenever a `kind: "html"` widget has an
+   in-flight `events/poll` long-poll open (measured: `handle.stop()`
+   took 5.002s with a real in-flight poll, which still hadn't finished
+   when the join gave up) -- and that's the steady-state behavior of
+   `events.onMessage`, not a rare edge case. A third candidate
+   (`FileWatcherService.stop`'s own 5s timeout) was measured and ruled
+   out (0.000s under real, active watching). Findings and ranked
+   recommendations (parallelize terminal-widget teardown; shorten/drop
+   the two 5s join timeouts, since both underlying threads are already
+   confirmed `daemon=True` so the join only affects *knowing* it's
+   done, not correctness; proactively cancel in-flight long-polls as a
+   fallback; lower the long-poll's own default timeout as a smaller,
+   complementary mitigation) written up in
+   `investigations/shutdown_perf.md`.
+
+   No application code changed -- a pure investigation. Confirmed the
+   new file exists; full regression suite: 75 scripts, 0 failures
+   (unchanged, as expected).

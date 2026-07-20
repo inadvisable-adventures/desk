@@ -1,4 +1,4 @@
-# Plan: TODO 9d1544b — investigate shutdown performance
+# Plan: TODO 9d1544b (COMPLETED) — investigate shutdown performance
 
 Create a new top-level `./investigations/` directory and a
 `shutdown_perf.md` document there, investigating why Desk's shutdown
