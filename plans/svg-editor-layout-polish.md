@@ -1,4 +1,4 @@
-# Plan: TODO 556f623 — SVG Editor layout polish (hex label, square viewBox, toolbox sections)
+# Plan: TODO 556f623 (COMPLETED) — SVG Editor layout polish (hex label, square viewBox, toolbox sections)
 
 Direct user feedback, three independent UI/layout refinements:
 

@@ -83,7 +83,14 @@ QPushButton:checked {
 SINGLE_CLICK_TOOLS = {"rect", "circle", "ellipse", "line", "text"}
 MULTI_CLICK_TOOLS = {"polyline", "polygon", "path"}
 
-TOOL_LABELS = [
+# TODO 556f623: split into two headed toolbox sections -- see
+# _build_toolbox. TOOL_LABELS (their concatenation) remains the single
+# source of truth for "all valid tool ids".
+SELECT_EDIT_TOOL_LABELS = [
+    ("shapes", "Shapes"),
+    ("points", "Points"),
+]
+ADD_TOOL_LABELS = [
     ("rect", "Rectangle"),
     ("circle", "Circle"),
     ("ellipse", "Ellipse"),
@@ -92,9 +99,8 @@ TOOL_LABELS = [
     ("polygon", "Polygon"),
     ("path", "Path"),
     ("text", "Text"),
-    ("shapes", "Shapes"),
-    ("points", "Points"),
 ]
+TOOL_LABELS = SELECT_EDIT_TOOL_LABELS + ADD_TOOL_LABELS
 
 
 def _qn(tag: str) -> str:
@@ -663,14 +669,16 @@ TAG_TO_CLASS = {
 
 
 def _new_empty_root() -> ET.Element:
+    # TODO 556f623: square, not 400x300 -- so both hex preview
+    # orientations fit the default document nicely out of the box.
     root = ET.Element(_qn("svg"))
-    root.set("viewBox", "0 0 400 300")
+    root.set("viewBox", "0 0 400 400")
     root.set("width", "400")
-    root.set("height", "300")
+    root.set("height", "400")
     return root
 
 
-_DEFAULT_BOUNDS = QRectF(0, 0, 400, 300)
+_DEFAULT_BOUNDS = QRectF(0, 0, 400, 400)
 _UNIT_SUFFIX_RE = re.compile(r"[a-zA-Z%]+$")
 
 
@@ -854,18 +862,25 @@ class SvgEditorWidget(QWidget):
         # lean on without verifying; explicit mutual exclusion via
         # _set_hex_preview_orientation is simpler to reason about and
         # test, and makes "neither" unambiguously reachable.
-        self._hex_preview_flat_button = QPushButton("Hex (Flat-top) Preview")
+        # TODO 556f623: the buttons themselves just say "Flat-top"/
+        # "Pointy-top" now -- the shared "Hex Preview" label below
+        # makes clear both buttons belong to the same feature, instead
+        # of repeating "Hex Preview" on each one.
+        self._hex_preview_flat_button = QPushButton("Flat-top")
         self._hex_preview_flat_button.setCheckable(True)
         self._hex_preview_flat_button.setStyleSheet(HEX_PREVIEW_BUTTON_STYLE)
         self._hex_preview_flat_button.clicked.connect(
             lambda checked: self._set_hex_preview_orientation("flat" if checked else None)
         )
-        self._hex_preview_pointy_button = QPushButton("Hex (Pointy-top) Preview")
+        self._hex_preview_pointy_button = QPushButton("Pointy-top")
         self._hex_preview_pointy_button.setCheckable(True)
         self._hex_preview_pointy_button.setStyleSheet(HEX_PREVIEW_BUTTON_STYLE)
         self._hex_preview_pointy_button.clicked.connect(
             lambda checked: self._set_hex_preview_orientation("pointy" if checked else None)
         )
+        hex_preview_label = QLabel("Hex\nPreview")
+        hex_preview_label.setStyleSheet("font-size: 9pt;")
+        hex_preview_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         # TODO 9874bc3: framed and spaced apart from the plain toolbar
         # buttons -- same shape as widgets/todo/widget.py's own
         # filter_frame (a QFrame(StyledPanel) grouping its own set of
@@ -875,6 +890,7 @@ class SvgEditorWidget(QWidget):
         hex_preview_layout = QHBoxLayout(hex_preview_frame)
         hex_preview_layout.setContentsMargins(4, 4, 4, 4)
         hex_preview_layout.setSpacing(4)
+        hex_preview_layout.addWidget(hex_preview_label)
         hex_preview_layout.addWidget(self._hex_preview_flat_button)
         hex_preview_layout.addWidget(self._hex_preview_pointy_button)
 
@@ -922,14 +938,30 @@ class SvgEditorWidget(QWidget):
         layout = QVBoxLayout(panel)
         group = QButtonGroup(panel)
         group.setExclusive(True)
-        for tool_id, label in TOOL_LABELS:
-            button = QPushButton(label)
-            button.setCheckable(True)
-            button.clicked.connect(lambda checked, t=tool_id: self._set_tool(t))
-            group.addButton(button)
-            layout.addWidget(button)
-            if tool_id == "shapes":
-                button.setChecked(True)
+
+        def add_header(text: str) -> None:
+            header = QLabel(text)
+            header.setStyleSheet("font-weight: bold;")
+            header.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+            layout.addWidget(header)
+
+        def add_tool_buttons(tool_labels: list[tuple[str, str]]) -> None:
+            for tool_id, label in tool_labels:
+                button = QPushButton(label)
+                button.setCheckable(True)
+                button.clicked.connect(lambda checked, t=tool_id: self._set_tool(t))
+                group.addButton(button)
+                layout.addWidget(button)
+                if tool_id == "shapes":
+                    button.setChecked(True)
+
+        # TODO 556f623: Select+Edit tools grouped at the top, Add tools
+        # below -- one QButtonGroup(exclusive=True) still spans both
+        # sections, so exactly one tool remains active at a time.
+        add_header("Select + Edit")
+        add_tool_buttons(SELECT_EDIT_TOOL_LABELS)
+        add_header("Add")
+        add_tool_buttons(ADD_TOOL_LABELS)
         layout.addStretch()
         self._tool_group = group
         return panel

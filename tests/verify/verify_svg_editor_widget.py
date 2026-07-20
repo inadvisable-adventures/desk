@@ -291,8 +291,10 @@ def test_document_bounds_parsing():
     root3 = ET.Element("svg")
     bounds3 = mod._document_bounds(root3)
     check(
-        "_document_bounds falls back to the 400x300 default when nothing usable is present",
-        (bounds3.width(), bounds3.height()) == (400.0, 300.0),
+        # TODO 556f623: the default became square (400x400), so both
+        # hex preview orientations fit the default document nicely.
+        "_document_bounds falls back to the 400x400 default when nothing usable is present",
+        (bounds3.width(), bounds3.height()) == (400.0, 400.0),
     )
 
 
@@ -402,9 +404,15 @@ def test_hex_preview_toggle_add_remove_and_persists_across_reload():
     check("orientation state is 'flat'", widget._hex_preview_orientation == "flat")
     hex_bounds = widget._hex_preview_item.path().boundingRect()
     doc_bounds = mod._document_bounds(widget._root)
+    # TODO 556f623: the default document is square now, so flat-top's
+    # own vertex-to-vertex width (2R, see _hexagon_path) legitimately
+    # exceeds it -- documented, deliberate behavior, already covered
+    # precisely by test_flat_top_hex_top_and_bottom_align_with_the_
+    # document_bounds. The aspect-ratio-independent invariant checked
+    # here is that its top/bottom edges still align with the document.
     check(
-        "the hex preview's own path is bounded by the document bounds",
-        doc_bounds.contains(hex_bounds) or abs(hex_bounds.width() - doc_bounds.width()) < 1.0,
+        "the hex preview's own path is vertically bounded by the document (top/bottom aligned)",
+        abs(hex_bounds.height() - doc_bounds.height()) < 1.0,
     )
 
     with tempfile.TemporaryDirectory() as d:
@@ -528,6 +536,63 @@ def test_flat_top_hex_top_and_bottom_align_with_the_document_bounds():
 
 
 test_flat_top_hex_top_and_bottom_align_with_the_document_bounds()
+
+
+# ---------- TODO 556f623: layout polish ----------
+
+
+def test_hex_preview_buttons_have_a_shared_label_and_short_text():
+    widget = mod.SvgEditorWidget()
+    check(
+        "the flat-top button's own text is now just 'Flat-top'",
+        widget._hex_preview_flat_button.text() == "Flat-top",
+    )
+    check(
+        "the pointy-top button's own text is now just 'Pointy-top'",
+        widget._hex_preview_pointy_button.text() == "Pointy-top",
+    )
+    frame = widget._hex_preview_flat_button.parent()
+    labels = [child for child in frame.children() if isinstance(child, mod.QLabel)]
+    check(
+        "a shared 'Hex Preview' label lives alongside the two buttons in their frame",
+        any("Hex" in label.text() and "Preview" in label.text() for label in labels),
+    )
+    widget.deleteLater()
+
+
+test_hex_preview_buttons_have_a_shared_label_and_short_text()
+
+
+def test_new_empty_document_is_square():
+    widget = mod.SvgEditorWidget()
+    bounds = mod._document_bounds(widget._root)
+    check("a brand-new document's bounds are square", bounds.width() == bounds.height())
+    check("a brand-new document's bounds are 400x400", (bounds.width(), bounds.height()) == (400.0, 400.0))
+    check("_DEFAULT_BOUNDS itself is also square now", mod._DEFAULT_BOUNDS.width() == mod._DEFAULT_BOUNDS.height())
+    widget.deleteLater()
+
+
+test_new_empty_document_is_square()
+
+
+def test_toolbox_has_select_edit_and_add_sections():
+    widget = mod.SvgEditorWidget()
+    layout = widget._toolbox.layout()
+    texts = []
+    for i in range(layout.count()):
+        item = layout.itemAt(i).widget()
+        if isinstance(item, (mod.QLabel, mod.QPushButton)):
+            texts.append(item.text())
+    check("'Select + Edit' header precedes the Shapes/Points buttons", texts.index("Select + Edit") < texts.index("Shapes"))
+    check("'Select + Edit' header precedes the Points button too", texts.index("Select + Edit") < texts.index("Points"))
+    check("'Add' header precedes the Rectangle button", texts.index("Add") < texts.index("Rectangle"))
+    check("'Add' header comes after the Select+Edit tool buttons", texts.index("Add") > texts.index("Points"))
+    all_tool_buttons = [button for button in widget._tool_group.buttons()]
+    check("all 10 tools remain in one exclusive button group", len(all_tool_buttons) == 10)
+    widget.deleteLater()
+
+
+test_toolbox_has_select_edit_and_add_sections()
 
 
 # ---------- file_type_registry wiring ----------

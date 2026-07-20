@@ -4939,7 +4939,7 @@ d1d176f. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-
    unchanged; the resized flat-top hex confirmed still genuinely
    regular (all six edge lengths equal, not just "the right height").
    Full regression suite: 75 scripts, 0 failures.
-556f623. SVG Editor toolbox/hex-preview layout polish: put "Hex Preview" as a
+556f623. COMPLETED: SVG Editor toolbox/hex-preview layout polish: put "Hex Preview" as a
    smaller two-lines-of-text shared label in the left part of the hex
    preview button frame (buttons themselves just show "Pointy-top"/
    "Flat-top"); change the default viewBox (`_new_empty_root`/
@@ -4948,6 +4948,31 @@ d1d176f. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-
    toolbox under a "Select + Edit" header, with an "Add" header above
    the remaining creation tools.
    [planned: svg-editor-layout-polish.md]
+
+   Implemented per plan. `SELECT_EDIT_TOOL_LABELS`/`ADD_TOOL_LABELS`
+   split `TOOL_LABELS` (kept as their concatenation); `_build_toolbox`
+   inserts a non-selectable, bold "Select + Edit" `QLabel` header
+   before the Shapes/Points buttons and an "Add" header before the
+   remaining 8 -- still one `QButtonGroup(exclusive=True)` spanning all
+   10. `_new_empty_root`/`_DEFAULT_BOUNDS` both changed to 400x400.
+   `hex_preview_frame` gained a small, non-selectable two-line
+   `QLabel("Hex\nPreview")` before the two buttons, whose own text
+   shrank to "Flat-top"/"Pointy-top".
+
+   Verified directly: extended `tests/verify/verify_svg_editor_widget.py`
+   (11 new checks, 84 total now). Caught and fixed one test made stale
+   by the square-default change: `test_hex_preview_toggle_add_remove_
+   and_persists_across_reload`'s bounds check asserted the flat-top
+   hex's *width* stays within (or very near) the document bounds --
+   true only by coincidence for the old 400x300 aspect ratio (flat-top
+   circumradius `height/sqrt(3)` happened to still fit within 400
+   width); at the new square 400x400 default it legitimately overflows
+   width, exactly as `_hexagon_path`'s own docstring already documents
+   and as `test_flat_top_hex_top_and_bottom_align_with_the_document_
+   bounds` already verifies precisely. Replaced with the actual
+   aspect-ratio-independent invariant: the mask's vertical extent still
+   matches the document's height (top/bottom aligned). Full regression
+   suite: 75 scripts, 0 failures.
 
 ebf641d. SVG Editor pending polygon/polyline drawing fixes: show a "Complete
    (ENTER)" button at the bottom-right of the editor view while a
