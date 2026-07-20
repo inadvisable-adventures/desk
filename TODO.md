@@ -4939,3 +4939,30 @@ d1d176f. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-
    unchanged; the resized flat-top hex confirmed still genuinely
    regular (all six edge lengths equal, not just "the right height").
    Full regression suite: 75 scripts, 0 failures.
+556f623. SVG Editor toolbox/hex-preview layout polish: put "Hex Preview" as a
+   smaller two-lines-of-text shared label in the left part of the hex
+   preview button frame (buttons themselves just show "Pointy-top"/
+   "Flat-top"); change the default viewBox (`_new_empty_root`/
+   `_DEFAULT_BOUNDS`) to a square so both hex previews fit nicely by
+   default; move the Shapes/Points editing tools to the top of the
+   toolbox under a "Select + Edit" header, with an "Add" header above
+   the remaining creation tools.
+   [planned: svg-editor-layout-polish.md]
+
+ebf641d. SVG Editor pending polygon/polyline drawing fixes: show a "Complete
+   (ENTER)" button at the bottom-right of the editor view while a
+   polygon/polyline is pending, doing the same thing Enter already
+   does; a drawn polyline currently renders visually indistinguishable
+   from a closed/filled polygon -- investigate and fix (a polyline is
+   an open, conventionally unfilled shape, unlike a polygon); and
+   route Fill/Stroke/Stroke-width property panel edits to the
+   currently-drawing pending polygon/polyline rather than to whatever
+   object was selected before the current draw started.
+   [planned: svg-editor-pending-shape-fixes.md]
+
+1fb365e. SVG Editor selection delete affordances: show a delete icon
+   hovering on/near a shape selected in the Shapes tool; show a delete
+   button near a point selected in the Points tool (requires a new
+   "selected point" concept, since today only drag-in-progress state
+   exists).
+   [planned: svg-editor-delete-affordances.md]
