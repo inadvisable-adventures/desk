@@ -681,6 +681,125 @@ def test_property_panel_targets_the_pending_shape_not_a_stale_selection():
 test_property_panel_targets_the_pending_shape_not_a_stale_selection()
 
 
+# ---------- TODO 1fb365e: selection delete affordances ----------
+
+
+def test_shape_delete_button_shows_and_deletes_selected_shape():
+    widget = mod.SvgEditorWidget()
+    widget.resize(400, 400)
+    widget.show()
+    widget._create_single_click_object("rect", QPointF(100, 100))
+    rect_obj = widget._objects[0]
+    check("Shapes tool is the default, so the delete icon shows for the just-created (selected) shape", widget._shape_delete_button.isVisible())
+
+    widget._shape_delete_button.click()
+    check("clicking the delete icon removes the object from self._objects", rect_obj not in widget._objects)
+    check("clicking the delete icon removes the element from self._root", rect_obj.element not in list(widget._root))
+    check("the delete icon hides again once nothing is selected", not widget._shape_delete_button.isVisible())
+    widget.deleteLater()
+
+
+test_shape_delete_button_shows_and_deletes_selected_shape()
+
+
+def test_point_delete_button_shows_and_deletes_selected_point():
+    widget = mod.SvgEditorWidget()
+    widget.resize(400, 400)
+    widget.show()
+    pts = [QPointF(0, 0), QPointF(100, 0), QPointF(100, 100), QPointF(0, 100)]
+    widget.current_tool = "polygon"
+    widget._pending_points = list(pts)
+    widget._finish_pending()
+    polygon_obj = widget._objects[-1]
+
+    widget._set_tool("points")
+    check("no delete-point button before any point is selected", not widget._point_delete_button.isVisible())
+
+    widget._begin_handle_drag(0)
+    check("delete-point button shows once a (deletable) point is selected", widget._point_delete_button.isVisible())
+
+    widget._point_delete_button.click()
+    check("clicking it removes just that one point", len(polygon_obj.point_positions()) == 3)
+    check("the rest of the object is still intact (still a polygon)", polygon_obj in widget._objects)
+    check("the point selection is cleared afterward", widget._selected_point_index is None)
+    check("the button hides again afterward", not widget._point_delete_button.isVisible())
+    widget.deleteLater()
+
+
+test_point_delete_button_shows_and_deletes_selected_point()
+
+
+def test_point_deletion_refuses_at_the_minimum_point_count():
+    widget = mod.SvgEditorWidget()
+    widget.resize(400, 400)
+    widget.show()
+
+    triangle = [QPointF(0, 0), QPointF(100, 0), QPointF(50, 100)]
+    widget.current_tool = "polygon"
+    widget._pending_points = list(triangle)
+    widget._finish_pending()
+    triangle_obj = widget._objects[-1]
+    widget._set_tool("points")
+    widget._begin_handle_drag(0)
+    check("a 3-point polygon (the minimum) refuses to delete a point", not triangle_obj.can_delete_point(0))
+    check("the delete-point button stays hidden at the polygon minimum", not widget._point_delete_button.isVisible())
+
+    segment = [QPointF(0, 0), QPointF(100, 0)]
+    widget._set_tool("polyline")
+    widget._pending_points = list(segment)
+    widget._finish_pending()
+    segment_obj = widget._objects[-1]
+    widget._set_tool("points")
+    widget._begin_handle_drag(0)
+    check("a 2-point polyline (the minimum) refuses to delete a point", not segment_obj.can_delete_point(0))
+    check("the delete-point button stays hidden at the polyline minimum", not widget._point_delete_button.isVisible())
+    widget.deleteLater()
+
+
+test_point_deletion_refuses_at_the_minimum_point_count()
+
+
+def test_line_object_points_are_never_deletable():
+    widget = mod.SvgEditorWidget()
+    widget.resize(400, 400)
+    widget.show()
+    widget._create_single_click_object("line", QPointF(50, 50))
+    line_obj = widget._objects[0]
+    widget._set_tool("points")
+    widget._begin_handle_drag(0)
+    check("a line's endpoints are never deletable", not line_obj.can_delete_point(0) and not line_obj.can_delete_point(1))
+    check("no delete-point button ever appears for a line", not widget._point_delete_button.isVisible())
+    widget.deleteLater()
+
+
+test_line_object_points_are_never_deletable()
+
+
+def test_switching_tools_or_selection_clears_point_selection():
+    widget = mod.SvgEditorWidget()
+    widget.resize(400, 400)
+    widget.show()
+    pts = [QPointF(0, 0), QPointF(100, 0), QPointF(100, 100), QPointF(0, 100)]
+    widget.current_tool = "polygon"
+    widget._pending_points = list(pts)
+    widget._finish_pending()
+    widget._set_tool("points")
+    widget._begin_handle_drag(0)
+    check("a point is selected", widget._selected_point_index is not None)
+
+    widget._set_tool("shapes")
+    check("switching tools clears the selected point", widget._selected_point_index is None)
+    check("no delete-point button in the Shapes tool", not widget._point_delete_button.isVisible())
+    check("the shape delete icon shows instead, in the Shapes tool", widget._shape_delete_button.isVisible())
+
+    widget._scene.clearSelection()
+    check("clearing the selection hides the shape delete icon too", not widget._shape_delete_button.isVisible())
+    widget.deleteLater()
+
+
+test_switching_tools_or_selection_clears_point_selection()
+
+
 # ---------- file_type_registry wiring ----------
 
 from desk.file_type_registry import BUILTIN_EDIT_WIDGET_BY_SUFFIX, find_edit_handler  # noqa: E402

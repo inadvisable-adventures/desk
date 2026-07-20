@@ -5027,9 +5027,44 @@ ebf641d. COMPLETED: SVG Editor pending polygon/polyline drawing fixes: show a "C
    save -- fixed by re-syncing whenever any override was actually
    applied. Full regression suite: 75 scripts, 0 failures.
 
-1fb365e. SVG Editor selection delete affordances: show a delete icon
+1fb365e. COMPLETED: SVG Editor selection delete affordances: show a delete icon
    hovering on/near a shape selected in the Shapes tool; show a delete
    button near a point selected in the Points tool (requires a new
    "selected point" concept, since today only drag-in-progress state
    exists).
    [planned: svg-editor-delete-affordances.md]
+
+   Implemented per plan. Both affordances are small `"✕"` `QPushButton`s
+   floating directly on `self._view` (not scene items, so they stay a
+   constant on-screen size regardless of zoom), positioned via
+   `mapFromScene`: `self._shape_delete_button` (near a selected
+   shape's top-right corner, Shapes tool) and `self._point_delete_button`
+   (near a selected point, Points tool). A new `self._selected_point_index`
+   tracks "which point was last interacted with" independent of
+   `_dragging_handle_index` (which resets to `None` the instant a drag
+   ends) -- set in `_begin_handle_drag` when `current_tool == "points"`,
+   reset on tool switch and on any scene selection change.
+   `SvgObject.can_delete_point`/`delete_point` (default: never
+   deletable) are overridden by `PolylineObject`/`PolygonObject`/
+   `PathObject` (refusing at their respective minimum point count --
+   2/3/2-or-3 depending on `PathObject._closed` -- so a shape can't be
+   deleted down to a degenerate 0/1-point remnant); `LineObject` has no
+   override, so its 2 endpoints are never deletable. Both delete
+   buttons refresh from the exact same call sites `_refresh_handles()`
+   already had (selection change, tool switch, every drag step), plus
+   `_reset_view` and a new `_EditorView.resizeEvent` override, so they
+   track live resizing/dragging/reloading with no new call sites beyond
+   what handle-refreshing already covered.
+
+   Verified directly: extended
+   `tests/verify/verify_svg_editor_widget.py` (23 new checks, 117
+   total now) -- the shape delete icon shows for a selected shape and
+   deleting it removes the object from the scene/`self._objects`/
+   `self._root`; the point delete button shows for a selected,
+   deletable point and deleting it removes just that point while
+   leaving the rest of the object intact; both a 3-point polygon and a
+   2-point polyline (their respective minimums) correctly refuse
+   further point deletion and hide the button; a line's endpoints are
+   never deletable; switching tools or the object selection correctly
+   clears the selected point and hides/shows the right button. Full
+   regression suite: 75 scripts, 0 failures.

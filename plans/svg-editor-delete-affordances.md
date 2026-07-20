@@ -1,4 +1,4 @@
-# Plan: TODO 1fb365e — SVG Editor selection delete affordances
+# Plan: TODO 1fb365e (COMPLETED) — SVG Editor selection delete affordances
 
 Two related additions, both direct user feedback:
 

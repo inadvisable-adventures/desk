@@ -249,6 +249,10 @@ class _PolylineItem(QGraphicsPathItem):
         self._points[index] = pos
         self._rebuild()
 
+    def remove_point(self, index: int) -> None:
+        del self._points[index]
+        self._rebuild()
+
 
 class _Handle(QGraphicsRectItem):
     """A small, purely visual square handle -- dragging is tracked
@@ -294,6 +298,15 @@ class SvgObject:
         pass
 
     def resize_corner(self, corner_index: int, scene_pos: QPointF) -> None:
+        pass
+
+    def can_delete_point(self, index: int) -> bool:
+        # TODO 1fb365e: a LineObject (2 fixed endpoints) doesn't
+        # override this -- removing either one would leave a
+        # degenerate line, not a smaller line.
+        return False
+
+    def delete_point(self, index: int) -> None:
         pass
 
     def fill_color(self) -> QColor:
@@ -529,6 +542,13 @@ class PolylineObject(SvgObject):
     def move_point(self, index: int, scene_pos: QPointF) -> None:
         self.item.set_point(index, self.item.mapFromScene(scene_pos))
 
+    def can_delete_point(self, index: int) -> bool:
+        # A polyline segment needs at least 2 points to remain one.
+        return len(self.item.points()) > 2
+
+    def delete_point(self, index: int) -> None:
+        self.item.remove_point(index)
+
 
 class PolygonObject(SvgObject):
     tag = "polygon"
@@ -559,6 +579,15 @@ class PolygonObject(SvgObject):
         poly = QPolygonF(self.item.polygon())
         poly[index] = self.item.mapFromScene(scene_pos)
         self.item.setPolygon(poly)
+
+    def can_delete_point(self, index: int) -> bool:
+        # A polygon needs at least 3 vertices to remain a real polygon.
+        return len(self.item.polygon()) > 3
+
+    def delete_point(self, index: int) -> None:
+        points = list(self.item.polygon())
+        del points[index]
+        self.item.setPolygon(QPolygonF(points))
 
 
 class PathObject(SvgObject):
@@ -611,6 +640,20 @@ class PathObject(SvgObject):
             self.item.setPolygon(poly)
         else:
             self.item.set_point(index, local)
+
+    def can_delete_point(self, index: int) -> bool:
+        # Same rule as PolygonObject/PolylineObject, split on whether
+        # this path is closed (mirrors _local_points's own branch).
+        minimum = 3 if self._closed else 2
+        return len(self._local_points()) > minimum
+
+    def delete_point(self, index: int) -> None:
+        if isinstance(self.item, QGraphicsPolygonItem):
+            points = list(self.item.polygon())
+            del points[index]
+            self.item.setPolygon(QPolygonF(points))
+        else:
+            self.item.remove_point(index)
 
 
 class TextObject(SvgObject):
@@ -820,10 +863,12 @@ class _EditorView(QGraphicsView):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        # TODO ebf641d: the Complete button is a floating child widget
-        # of this view (not a scene item), so it needs manual
+        # TODO ebf641d/1fb365e: these are all floating child widgets of
+        # this view (not scene items), so they need manual
         # repositioning whenever the view's own size changes.
         self._editor._reposition_complete_button()
+        self._editor._refresh_shape_delete_button()
+        self._editor._refresh_point_delete_button()
 
 
 class SvgEditorWidget(QWidget):
@@ -841,6 +886,12 @@ class SvgEditorWidget(QWidget):
         self._selected_object: SvgObject | None = None
         self._handles: list[tuple[_Handle, int]] = []
         self._dragging_handle_index: int | None = None
+        # TODO 1fb365e: distinct from _dragging_handle_index -- that
+        # resets to None the instant a drag ends, but the delete-point
+        # button needs the selection to persist afterward, until the
+        # user clicks elsewhere/switches tools/changes the object
+        # selection.
+        self._selected_point_index: int | None = None
         self._pending_points: list[QPointF] | None = None
         self._pending_preview_items: list = []
         # TODO ebf641d: None means "not touched during this draw -- let
@@ -876,6 +927,25 @@ class SvgEditorWidget(QWidget):
         self._complete_button = QPushButton("Complete (ENTER)", self._view)
         self._complete_button.clicked.connect(self._finish_pending)
         self._complete_button.hide()
+
+        # TODO 1fb365e: same floating-widget-over-the-view shape as
+        # self._complete_button above -- a small "delete" affordance
+        # hovering near a selected shape (Shapes tool) / a selected
+        # point (Points tool), each shown/positioned by its own
+        # _refresh_*_delete_button, both called from the same places
+        # _refresh_handles already is (selection change, tool switch,
+        # every drag step).
+        delete_button_style = "QPushButton { color: #c0392b; font-weight: bold; }"
+        self._shape_delete_button = QPushButton("✕", self._view)
+        self._shape_delete_button.setFixedSize(20, 20)
+        self._shape_delete_button.setStyleSheet(delete_button_style)
+        self._shape_delete_button.clicked.connect(self._delete_selected_object)
+        self._shape_delete_button.hide()
+        self._point_delete_button = QPushButton("✕", self._view)
+        self._point_delete_button.setFixedSize(20, 20)
+        self._point_delete_button.setStyleSheet(delete_button_style)
+        self._point_delete_button.clicked.connect(self._delete_selected_point)
+        self._point_delete_button.hide()
 
         self._label = QLabel()
         self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
@@ -1024,6 +1094,7 @@ class SvgEditorWidget(QWidget):
     def _set_tool(self, tool_id: str) -> None:
         self._cancel_pending()
         self.current_tool = tool_id
+        self._selected_point_index = None
         self._refresh_handles()
 
     def is_dragging_handle(self) -> bool:
@@ -1044,16 +1115,20 @@ class SvgEditorWidget(QWidget):
         for handle, _ in self._handles:
             self._scene.removeItem(handle)
         self._handles = []
-        if self._selected_object is None:
-            return
-        if self.current_tool == "shapes":
-            rect = self._selected_object.item.sceneBoundingRect()
-            corners = [rect.topLeft(), rect.topRight(), rect.bottomRight(), rect.bottomLeft()]
-            for index, point in enumerate(corners):
-                self._add_handle(point, index)
-        elif self.current_tool == "points":
-            for index, point in enumerate(self._selected_object.point_positions()):
-                self._add_handle(point, index)
+        if self._selected_object is not None:
+            if self.current_tool == "shapes":
+                rect = self._selected_object.item.sceneBoundingRect()
+                corners = [rect.topLeft(), rect.topRight(), rect.bottomRight(), rect.bottomLeft()]
+                for index, point in enumerate(corners):
+                    self._add_handle(point, index)
+            elif self.current_tool == "points":
+                for index, point in enumerate(self._selected_object.point_positions()):
+                    self._add_handle(point, index)
+        # TODO 1fb365e: both delete affordances track selection/tool/
+        # drag state the same way the handles above just did, so they
+        # refresh from every place _refresh_handles already is.
+        self._refresh_shape_delete_button()
+        self._refresh_point_delete_button()
 
     def _add_handle(self, scene_pos: QPointF, index: int) -> None:
         handle = _Handle()
@@ -1063,6 +1138,9 @@ class SvgEditorWidget(QWidget):
 
     def _begin_handle_drag(self, index: int) -> None:
         self._dragging_handle_index = index
+        if self.current_tool == "points":
+            self._selected_point_index = index
+            self._refresh_point_delete_button()
 
     def _update_handle_drag(self, scene_pos: QPointF) -> None:
         if self._selected_object is None or self._dragging_handle_index is None:
@@ -1075,6 +1153,59 @@ class SvgEditorWidget(QWidget):
 
     def _end_handle_drag(self) -> None:
         self._dragging_handle_index = None
+
+    def _refresh_shape_delete_button(self) -> None:
+        if self.current_tool != "shapes" or self._selected_object is None:
+            self._shape_delete_button.hide()
+            return
+        rect = self._selected_object.item.sceneBoundingRect()
+        view_pos = self._view.mapFromScene(rect.topRight())
+        self._shape_delete_button.move(
+            int(view_pos.x()) - self._shape_delete_button.width() // 2,
+            int(view_pos.y()) - self._shape_delete_button.height() // 2,
+        )
+        self._shape_delete_button.raise_()
+        self._shape_delete_button.show()
+
+    def _refresh_point_delete_button(self) -> None:
+        obj = self._selected_object
+        index = self._selected_point_index
+        if (
+            self.current_tool != "points"
+            or obj is None
+            or index is None
+            or index >= len(obj.point_positions())
+            or not obj.can_delete_point(index)
+        ):
+            self._point_delete_button.hide()
+            return
+        pos = obj.point_positions()[index]
+        view_pos = self._view.mapFromScene(pos)
+        self._point_delete_button.move(int(view_pos.x()) + 10, int(view_pos.y()) - self._point_delete_button.height() // 2)
+        self._point_delete_button.raise_()
+        self._point_delete_button.show()
+
+    def _delete_selected_object(self) -> None:
+        obj = self._selected_object
+        if obj is None:
+            return
+        self._scene.removeItem(obj.item)
+        self._root.remove(obj.element)
+        self._objects.remove(obj)
+        self._selected_object = None
+        self._selected_point_index = None
+        self._scene.clearSelection()
+        self._refresh_handles()
+        self._refresh_property_panel()
+
+    def _delete_selected_point(self) -> None:
+        obj = self._selected_object
+        index = self._selected_point_index
+        if obj is None or index is None or not obj.can_delete_point(index):
+            return
+        obj.delete_point(index)
+        self._selected_point_index = None
+        self._refresh_handles()
 
     # --- selection / property panel --------------------------------------
 
@@ -1090,6 +1221,7 @@ class SvgEditorWidget(QWidget):
         except RuntimeError:
             return
         self._selected_object = self._object_for_item(selected[0]) if len(selected) == 1 else None
+        self._selected_point_index = None
         self._refresh_handles()
         self._refresh_property_panel()
 
@@ -1306,11 +1438,18 @@ class SvgEditorWidget(QWidget):
         self._scene.clear()
         self._objects = []
         self._selected_object = None
+        self._selected_point_index = None
         self._handles = []
         self._pending_points = None
         self._pending_preview_items = []
         self._bounds_guide_item = None
         self._hex_preview_item = None
+        # Nothing survives a reload as "selected" -- hide these
+        # directly (cheaper than a full _refresh_handles(), and
+        # correct either way since both would just hide with no
+        # selected object).
+        self._shape_delete_button.hide()
+        self._point_delete_button.hide()
         for element in list(self._root):
             cls = TAG_TO_CLASS.get(_local_tag(element.tag))
             if cls is None:
@@ -1394,6 +1533,9 @@ class SvgEditorWidget(QWidget):
 
     def _reset_view(self) -> None:
         self._view.fitInView(_document_bounds(self._root), Qt.AspectRatioMode.KeepAspectRatio)
+        # The view's transform just changed -- any floating overlay
+        # widget's on-screen position needs recomputing (TODO 1fb365e).
+        self._refresh_handles()
 
     def _on_external_change(self) -> None:
         if self._current_path is not None:
