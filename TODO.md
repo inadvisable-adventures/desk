@@ -4831,3 +4831,9 @@ d1d176f. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-
    the existing no-capabilities-key case now also explicitly asserts
    `capabilities == []` (backward compatible). Full regression suite:
    75 scripts, 0 failures.
+9d1544b. Investigate why Desk's shutdown might be taking a long time: create
+   a new top-level `./investigations/` directory and write up findings
+   (root-caused, with evidence) plus recommendations in
+   `investigations/shutdown_perf.md`. No application code changes --
+   a pure investigation.
+   [planned: investigate-shutdown-perf.md]
