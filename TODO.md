@@ -4901,3 +4901,14 @@ d1d176f. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-
    instead, which genuinely differ (width/height swap between the two
    orientations, confirmed). Full regression suite: 75 scripts, 0
    failures.
+9874bc3. SVG Editor hex preview polish, two independent refinements: (1)
+   separate the flat-top/pointy-top buttons (TODO `1c7d5b9`) from the
+   rest of the toolbar with a frame and spacing, and visually
+   distinguish the buttons themselves from the plain toolbar buttons
+   (Open/Save/Save As/Reset View); (2) the flat-top hex should be sized
+   so its top/bottom edges land exactly on the document's own bounds
+   (`viewBox`), while remaining a regular hexagon (constant radius,
+   equal sides) -- `_hexagon_path` currently inscribes both
+   orientations to `min(width, height) / 2`, which doesn't align
+   flat-top's own flat edges with the bounds at all.
+   [planned: svg-editor-hex-preview-polish.md]
