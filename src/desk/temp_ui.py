@@ -128,7 +128,14 @@ PROMOTED_WIDGET_SRC_DIRNAME = "desk_widgets"
 # _CUSTOM_WIDGETS_DOC's capability list: `transforms` (run a transform
 # -- convert data of one named type into another, e.g. a Mermaid
 # diagram into SVG -- see design-docs/transforms.md).
-TEMPUI_DOC_VERSION = 21
+#
+# TODO 31db3f6: bumped 21 -> 22 -- "Authoring from real source"'s
+# widget.json field list now documents an optional `capabilities` key,
+# which the generated .desk_temp/build_widget.py itself now reads and
+# emits as `Capability<TAB>name` lines (previously silently ignored,
+# forcing an easy-to-forget hand-edit of the generated tempui file
+# after every build).
+TEMPUI_DOC_VERSION = 22
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -528,7 +535,15 @@ not-yet-promoted widget's source too. Four files:
 - `tsconfig.json` — whatever strictness the project wants; must set
   `compilerOptions.outDir`.
 - `widget.json` — `{"keyword", "label", "width", "height"}`, exactly the
-  fields a `DefineWidget`/`Size` line above needs.
+  fields a `DefineWidget`/`Size` line above needs, plus an optional
+  `"capabilities": [...]` (a list of the same coarse, resource-level
+  strings a real `widgets/<id>/widget.json`'s own `capabilities` list
+  already uses -- `workspace`, `fs`, `widgets`, `events`, ...) — the
+  build script emits one `Capability<TAB>name` line per entry, so
+  `widget.json` is the one place a defined widget's capabilities need
+  to be declared, the same way a real `kind: "python"`/`"html"`
+  widget's manifest already works. Omit it entirely for a widget that
+  needs none (the default).
 
 Then `python3 .desk_temp/build_widget.py .desk_temp/widgets/<name>`
 compiles it (`tsc -p <dir>`), concatenates the compiled JS, substitutes
@@ -871,6 +886,17 @@ own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
 
+## Version 22
+- "Authoring from real source"'s `widget.json` now supports an
+  optional `"capabilities": [...]` key -- `.desk_temp/build_widget.py`
+  reads it and emits one `Capability<TAB>name` line per entry into the
+  generated `DefineWidget` tempui file automatically. Previously this
+  had to be hand-edited into the *generated* file after every build
+  (easy to forget, silently dropped otherwise, with no error surfaced
+  anywhere beyond whatever Bridge API call the missing capability broke
+  at runtime). Omit the key entirely for a widget that needs no
+  capabilities -- unchanged, the default.
+
 ## Version 21
 - `desk.transforms.run(transformId, input, config)` (capability
   `transforms`): runs a transform -- a new entity, separate from a
@@ -1002,7 +1028,8 @@ Expects, in that directory:
                         `/* BUILD:COMPILED_JS */`.
     tsconfig.json   -- must set compilerOptions.outDir.
     widget.json     -- {"keyword": str, "label": str, "width": int,
-                        "height": int}.
+                        "height": int, "capabilities": list[str]
+                        (optional, defaults to [])}.
 
 Writes a fresh `.desk_temp/<uuid>` tempui file and prints its path.
 """
@@ -1104,6 +1131,7 @@ def build_widget(widget_dir: Path) -> str:
         f"DefineWidget\\t{manifest['keyword']}\\t{manifest['label']}",
         f"Size\\t{manifest['width']}\\t{manifest['height']}",
     ]
+    lines.extend(f"Capability\\t{cap}" for cap in manifest.get("capabilities", []))
     lines.extend(f"Html\\t{chunk}" for chunk in _chunk(html_b64, HTML_CHUNK_SIZE))
     return "\\n".join(lines) + "\\n"
 

@@ -4788,7 +4788,7 @@ d1d176f. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-
    to `centerOn`, which does); and the hex preview toggle's add/remove/
    persist-across-reload behavior. Full regression suite: 75 scripts, 0
    failures.
-31db3f6. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-build-widget-capabilities
+31db3f6. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-build-widget-capabilities
    -2026-07-16-1010.md`): `.desk_temp/build_widget.py` (generated from
    `_BUILD_WIDGET_SCRIPT` in `src/desk/temp_ui.py`) silently ignores a
    `DefineWidget`-authored widget's `widget.json` `capabilities` field
@@ -4809,3 +4809,25 @@ d1d176f. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-
    `Size` line -- the exact position/format already used when this is
    done by hand today.
    [planned: build-widget-capabilities.md]
+
+   Implemented per plan (primary fix, not the fallback mismatch-warning
+   option -- no reason found to prefer it, and the primary fix closes
+   the gap completely). `build_widget()` now reads
+   `manifest.get("capabilities", [])` and emits one
+   `Capability<TAB>name` line per entry right after the `Size` line;
+   `REQUIRED_MANIFEST_KEYS` unchanged (still optional). Updated the
+   generated script's own module docstring and
+   `tempui-custom-widgets.md`'s "Authoring from real source" widget.json
+   field list to document the new optional key. Bumped
+   `TEMPUI_DOC_VERSION` 21 -> 22 with a matching `tempui-new-features.md`
+   entry.
+
+   Verified directly: extended `tests/verify/verify_build_widget.py`
+   (real `_BUILD_WIDGET_SCRIPT` content loaded via `write_tempui_docs`,
+   real `tsc` compile, real `parse_define_widget` round-trip, not
+   mocked) -- a `widget.json` declaring `"capabilities": ["fs",
+   "editor"]` produces the correct `Capability<TAB>name` lines and
+   round-trips through the real parser to exactly `["fs", "editor"]`;
+   the existing no-capabilities-key case now also explicitly asserts
+   `capabilities == []` (backward compatible). Full regression suite:
+   75 scripts, 0 failures.

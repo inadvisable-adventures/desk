@@ -82,6 +82,10 @@ else:
     check("keyword round-trips", definition.keyword == "HelloWidget")
     check("label round-trips", definition.label == "Hello Widget")
     check("size round-trips", definition.default_size == (300, 200))
+    check(
+        "no capabilities key in widget.json -> no Capability lines (backward compatible, TODO 31db3f6)",
+        definition.capabilities == [],
+    )
     decoded = base64.b64decode(definition.html_b64).decode("utf-8")
     check(
         "decoded html has compiled JS, not the marker",
@@ -136,6 +140,33 @@ finally:
 # Test 6: never falls back to npx (the doc comment mentions "npx" by
 # name as a cautionary note, so check for an actual invocation instead).
 check("no npx subprocess invocation in source", '"npx"' not in script_path.read_text())
+
+# Test 7 (TODO 31db3f6): widget.json's optional "capabilities" list is
+# read and emitted as Capability<TAB>name lines -- real round-trip
+# through the real generated script + the real parser, not mocked.
+if shutil.which("tsc") is None:
+    check("tsc available for the capabilities check", False)
+else:
+    caps_dir = widget_src_root / "with_caps"
+    caps_dir.mkdir(parents=True, exist_ok=True)
+    (caps_dir / "widget.json").write_text(
+        '{"keyword": "WithCaps", "label": "With Caps", "width": 300, "height": 200, '
+        '"capabilities": ["fs", "editor"]}'
+    )
+    (caps_dir / "tsconfig.json").write_text('{"compilerOptions": {"outDir": "build"}}')
+    (caps_dir / "with_caps.ts").write_text("console.log(1);\n")
+    (caps_dir / "widget.html").write_text("<html><script>\n/* BUILD:COMPILED_JS */\n</script></html>")
+
+    caps_text = build_widget.build_widget(caps_dir)
+    check(
+        "widget.json's capabilities produce Capability<TAB>name lines in the generated file",
+        "Capability\tfs" in caps_text and "Capability\teditor" in caps_text,
+    )
+    caps_definition = parse_define_widget(caps_text)
+    check(
+        "the real parser round-trips both declared capabilities",
+        caps_definition is not None and caps_definition.capabilities == ["fs", "editor"],
+    )
 
 tempdir.cleanup()
 

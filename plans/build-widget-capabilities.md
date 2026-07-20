@@ -1,4 +1,4 @@
-# Plan: TODO 31db3f6 — `build_widget.py` reads `capabilities` from `widget.json`
+# Plan: TODO 31db3f6 (COMPLETED) — `build_widget.py` reads `capabilities` from `widget.json`
 
 Source: `../FEEDBACK/FEEDBACK-DESK-build-widget-capabilities-2026-07-16-1010.md`.
 `.desk_temp/build_widget.py` (generated from `_BUILD_WIDGET_SCRIPT` in
