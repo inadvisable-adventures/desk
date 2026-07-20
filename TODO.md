@@ -4867,3 +4867,10 @@ d1d176f. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-
    No application code changed -- a pure investigation. Confirmed the
    new file exists; full regression suite: 75 scripts, 0 failures
    (unchanged, as expected).
+1c7d5b9. Split the SVG Editor's Hex Preview toggle (TODO `d1d176f`) into
+   two mutually-exclusive buttons -- (a) Hex (Flat-top) Preview, (b)
+   Hex (Pointy-top) Preview -- neither selected is also a possible
+   state (the mask can still be off entirely, as it already could be).
+   `_hexagon_path` currently hardcodes the pointy-top angle offset;
+   needs a `flat_top` parameter so both orientations are selectable.
+   [planned: svg-editor-hex-orientation-buttons.md]
