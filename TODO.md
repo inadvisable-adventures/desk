@@ -4901,7 +4901,7 @@ d1d176f. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-
    instead, which genuinely differ (width/height swap between the two
    orientations, confirmed). Full regression suite: 75 scripts, 0
    failures.
-9874bc3. SVG Editor hex preview polish, two independent refinements: (1)
+9874bc3. COMPLETED: SVG Editor hex preview polish, two independent refinements: (1)
    separate the flat-top/pointy-top buttons (TODO `1c7d5b9`) from the
    rest of the toolbar with a frame and spacing, and visually
    distinguish the buttons themselves from the plain toolbar buttons
@@ -4912,3 +4912,30 @@ d1d176f. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-
    orientations to `min(width, height) / 2`, which doesn't align
    flat-top's own flat edges with the bounds at all.
    [planned: svg-editor-hex-preview-polish.md]
+
+   Implemented per plan. (1) A `QFrame(QFrame.Shape.StyledPanel)`
+   (mirroring `widgets/todo/widget.py`'s own `filter_frame`) with its
+   own margins/spacing now holds just the flat-top/pointy-top buttons,
+   separated from the plain toolbar buttons by an extra
+   `top_toolbar.addSpacing(12)`; both buttons get a new
+   `HEX_PREVIEW_BUTTON_STYLE` QSS constant (unchecked vs. `:checked`
+   styling, same rationale as `todo`'s own `FILTER_BUTTON_STYLE`: a
+   plain checkable `QPushButton` looks nearly identical checked vs.
+   unchecked on some platform styles). (2) `_hexagon_path`'s
+   `flat_top=True` branch now computes `radius = bounds.height() /
+   sqrt(3)` (the flat-to-flat distance for a regular hexagon with
+   circumradius R is `R * sqrt(3)`; solving for R against the
+   document's own height lands the flat top/bottom edges exactly on
+   the bounds) instead of sharing pointy-top's `min(width, height) /
+   2`. Pointy-top's own sizing is unchanged.
+
+   Verified directly: extended
+   `tests/verify/verify_svg_editor_widget.py` (11 new checks, 73 total
+   now) -- both buttons share one `QFrame` parent distinct from the
+   toolbox's own parent, and carry the new stylesheet; the flat-top
+   hex's vertical extent exactly matches a non-square document's
+   height while its horizontal extent is confirmed independent of the
+   document's width (not clamped to fit); pointy-top's sizing confirmed
+   unchanged; the resized flat-top hex confirmed still genuinely
+   regular (all six edge lengths equal, not just "the right height").
+   Full regression suite: 75 scripts, 0 failures.

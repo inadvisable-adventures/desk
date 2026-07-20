@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
     QColorDialog,
     QDoubleSpinBox,
     QFileDialog,
+    QFrame,
     QGraphicsEllipseItem,
     QGraphicsItem,
     QGraphicsLineItem,
@@ -57,6 +58,27 @@ DEFAULT_STROKE = "#000000"
 DEFAULT_STROKE_WIDTH = 1.0
 
 HANDLE_SIZE = 8.0
+
+# TODO 9874bc3: same shape/rationale as widgets/todo/widget.py's own
+# FILTER_BUTTON_STYLE -- a plain QPushButton(checkable=True) looks
+# nearly identical checked vs. unchecked on some platform styles
+# (macOS's native style included), so this makes the toggle state
+# unambiguous, and also visually distinguishes these two buttons from
+# the plain toolbar buttons (Open/Save/Save As/Reset View) even when
+# unchecked. QSS on a native Qt widget, not browser CSS.
+HEX_PREVIEW_BUTTON_STYLE = """
+QPushButton {
+    padding: 3px 10px;
+    border: 1px solid #888;
+    border-radius: 3px;
+    background-color: #3a3d42;
+}
+QPushButton:checked {
+    background-color: #3daee9;
+    color: white;
+    border-color: #2a8cc4;
+}
+"""
 
 SINGLE_CLICK_TOOLS = {"rect", "circle", "ellipse", "line", "text"}
 MULTI_CLICK_TOOLS = {"polyline", "polygon", "path"}
@@ -687,15 +709,32 @@ def _document_bounds(root: ET.Element) -> QRectF:
 
 
 def _hexagon_path(bounds: QRectF, flat_top: bool) -> QPainterPath:
-    """A regular hexagon centered in `bounds`, radius `min(width,
-    height) / 2` (the largest that fits without touching the shorter
-    edge) -- the shape a hex-tile consumer (e.g. `necro-4x`'s terrain
-    art pipeline) actually clips artwork to via an SVG `<clipPath>`.
-    `flat_top`: a flat edge (not a vertex) at the top/bottom -- vertices
-    at 0/60/120/180/240/300 degrees, vs. pointy-top's -90/-30/30/90/
-    150/210 (a vertex straight up/down, the `-90` angle offset)."""
+    """A regular hexagon centered in `bounds` -- the shape a hex-tile
+    consumer (e.g. `necro-4x`'s terrain art pipeline) actually clips
+    artwork to via an SVG `<clipPath>`. `flat_top`: a flat edge (not a
+    vertex) at the top/bottom -- vertices at 0/60/120/180/240/300
+    degrees, vs. pointy-top's -90/-30/30/90/150/210 (a vertex straight
+    up/down, the `-90` angle offset).
+
+    Sizing (TODO `9874bc3`) differs by orientation. Pointy-top:
+    `min(width, height) / 2` -- the largest that fits without touching
+    the shorter edge, unchanged from before this TODO. Flat-top:
+    `bounds.height() / sqrt(3)` -- for a regular hexagon with
+    circumradius R, the flat-to-flat distance (here, top-to-bottom,
+    since the flat edges are on top/bottom in this orientation) is `R *
+    sqrt(3)`; solving for R so that distance exactly equals
+    `bounds.height()` lands the hex's own top/bottom edges exactly on
+    the document bounds. This can legitimately make the hex *wider*
+    than the document (vertex-to-vertex width is `2R`, independent of
+    `bounds.width()`) -- accepted deliberately: real flat-top hex-tile
+    art conventionally spans the tile's full height and overlaps
+    horizontally in an actual tessellated grid, which is exactly what
+    this preview is trying to show."""
     cx, cy = bounds.center().x(), bounds.center().y()
-    radius = min(bounds.width(), bounds.height()) / 2
+    if flat_top:
+        radius = bounds.height() / math.sqrt(3)
+    else:
+        radius = min(bounds.width(), bounds.height()) / 2
     angle_offset = 0 if flat_top else -90
     polygon = QPolygonF()
     for i in range(6):
@@ -817,22 +856,35 @@ class SvgEditorWidget(QWidget):
         # test, and makes "neither" unambiguously reachable.
         self._hex_preview_flat_button = QPushButton("Hex (Flat-top) Preview")
         self._hex_preview_flat_button.setCheckable(True)
+        self._hex_preview_flat_button.setStyleSheet(HEX_PREVIEW_BUTTON_STYLE)
         self._hex_preview_flat_button.clicked.connect(
             lambda checked: self._set_hex_preview_orientation("flat" if checked else None)
         )
         self._hex_preview_pointy_button = QPushButton("Hex (Pointy-top) Preview")
         self._hex_preview_pointy_button.setCheckable(True)
+        self._hex_preview_pointy_button.setStyleSheet(HEX_PREVIEW_BUTTON_STYLE)
         self._hex_preview_pointy_button.clicked.connect(
             lambda checked: self._set_hex_preview_orientation("pointy" if checked else None)
         )
+        # TODO 9874bc3: framed and spaced apart from the plain toolbar
+        # buttons -- same shape as widgets/todo/widget.py's own
+        # filter_frame (a QFrame(StyledPanel) grouping its own set of
+        # related checkable buttons).
+        hex_preview_frame = QFrame()
+        hex_preview_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        hex_preview_layout = QHBoxLayout(hex_preview_frame)
+        hex_preview_layout.setContentsMargins(4, 4, 4, 4)
+        hex_preview_layout.setSpacing(4)
+        hex_preview_layout.addWidget(self._hex_preview_flat_button)
+        hex_preview_layout.addWidget(self._hex_preview_pointy_button)
 
         top_toolbar = QHBoxLayout()
         top_toolbar.addWidget(open_button)
         top_toolbar.addWidget(save_button)
         top_toolbar.addWidget(save_as_button)
         top_toolbar.addWidget(reset_view_button)
-        top_toolbar.addWidget(self._hex_preview_flat_button)
-        top_toolbar.addWidget(self._hex_preview_pointy_button)
+        top_toolbar.addSpacing(12)
+        top_toolbar.addWidget(hex_preview_frame)
         top_toolbar.addStretch()
         top_toolbar.addWidget(self._label)
 

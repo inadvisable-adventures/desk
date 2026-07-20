@@ -541,6 +541,22 @@ Desk Bridge API.
     handles already were, since `_save_to_path` only ever serializes
     `self._objects`. See `plans/svg-editor-viewbox-guide.md` and
     `plans/svg-editor-hex-orientation-buttons.md`.
+
+    TODO `9874bc3`: the two hex-preview buttons are grouped in their
+    own `QFrame(StyledPanel)` (separated from the plain toolbar buttons
+    by spacing), and styled distinctly (`HEX_PREVIEW_BUTTON_STYLE`) so
+    their checked state is unambiguous regardless of platform style —
+    the same shape `widgets/todo/widget.py`'s own `filter_frame`/
+    `FILTER_BUTTON_STYLE` already established. The flat-top hexagon's
+    sizing is no longer shared with pointy-top's `min(width, height) /
+    2` — it solves for the circumradius that makes the flat-to-flat
+    (top-to-bottom) distance exactly equal the document's height, so
+    its own top/bottom edges land exactly on the document bounds while
+    staying a regular hexagon; this can legitimately make it *wider*
+    than the document, matching how real flat-top hex-tile art
+    conventionally spans a tile's full height and overlaps horizontally
+    in an actual tessellated grid. See
+    `plans/svg-editor-hex-preview-polish.md`.
 24. **Side by Side Widget** — a built-in `kind: "python"` widget
     (`widgets/side_by_side/`, TODO `d28885f`) that hosts two other
     `kind: "python"` widget instances at once, laid out in a

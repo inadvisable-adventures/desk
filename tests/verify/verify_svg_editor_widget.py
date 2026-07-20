@@ -470,6 +470,66 @@ def test_hex_preview_flat_and_pointy_are_mutually_exclusive_with_different_geome
 test_hex_preview_flat_and_pointy_are_mutually_exclusive_with_different_geometry()
 
 
+def test_hex_preview_buttons_are_grouped_in_their_own_frame():
+    widget = mod.SvgEditorWidget()
+    flat_parent = widget._hex_preview_flat_button.parent()
+    pointy_parent = widget._hex_preview_pointy_button.parent()
+    check(
+        "both hex-preview buttons share the same parent frame, distinct from a plain toolbar button's parent",
+        isinstance(flat_parent, mod.QFrame)
+        and flat_parent is pointy_parent
+        and flat_parent is not widget._toolbox.parent(),
+    )
+    check(
+        "the hex-preview buttons have their own distinct stylesheet, unlike a plain toolbar button",
+        widget._hex_preview_flat_button.styleSheet() == mod.HEX_PREVIEW_BUTTON_STYLE
+        and widget._hex_preview_flat_button.styleSheet() != "",
+    )
+    widget.deleteLater()
+
+
+test_hex_preview_buttons_are_grouped_in_their_own_frame()
+
+
+def test_flat_top_hex_top_and_bottom_align_with_the_document_bounds():
+    # A non-square document, so "sized off height alone" and "sized off
+    # min(width, height)" would produce visibly different results if
+    # this regressed back to the old (shared) sizing.
+    bounds = mod.QRectF(0, 0, 400, 300)
+
+    flat_bounds = mod._hexagon_path(bounds, flat_top=True).boundingRect()
+    check(
+        "the flat-top hex's vertical extent exactly matches the document's height (top/bottom aligned)",
+        abs(flat_bounds.height() - bounds.height()) < 0.01,
+    )
+    check(
+        "the flat-top hex's horizontal extent is independent of the document's width (not clamped to fit)",
+        abs(flat_bounds.width() - 2 * (bounds.height() / (3 ** 0.5))) < 0.01,
+    )
+
+    pointy_bounds = mod._hexagon_path(bounds, flat_top=False).boundingRect()
+    check(
+        "pointy-top's own sizing is unchanged (still min(width, height) / 2 based)",
+        abs(pointy_bounds.height() - min(bounds.width(), bounds.height())) < 0.01,
+    )
+
+    # Still a genuinely *regular* hexagon at the new radius -- all six
+    # edges the same length, not just "the right height."
+    flat_hex = mod._hexagon_path(bounds, flat_top=True)
+    points = [flat_hex.elementAt(i) for i in range(flat_hex.elementCount())]
+    edge_lengths = [
+        ((points[i].x - points[(i + 1) % 6].x) ** 2 + (points[i].y - points[(i + 1) % 6].y) ** 2) ** 0.5
+        for i in range(6)
+    ]
+    check(
+        "the resized flat-top hex is still regular (all six edges equal length)",
+        max(edge_lengths) - min(edge_lengths) < 0.01,
+    )
+
+
+test_flat_top_hex_top_and_bottom_align_with_the_document_bounds()
+
+
 # ---------- file_type_registry wiring ----------
 
 from desk.file_type_registry import BUILTIN_EDIT_WIDGET_BY_SUFFIX, find_edit_handler  # noqa: E402

@@ -1,4 +1,4 @@
-# Plan: TODO 9874bc3 — SVG Editor hex preview: visual grouping + flat-top sizing
+# Plan: TODO 9874bc3 (COMPLETED) — SVG Editor hex preview: visual grouping + flat-top sizing
 
 Follow-up to TODO `1c7d5b9` (the flat-top/pointy-top button split). Two
 independent refinements, direct from user feedback:
