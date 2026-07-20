@@ -686,16 +686,20 @@ def _document_bounds(root: ET.Element) -> QRectF:
     return QRectF(_DEFAULT_BOUNDS)
 
 
-def _hexagon_path(bounds: QRectF) -> QPainterPath:
+def _hexagon_path(bounds: QRectF, flat_top: bool) -> QPainterPath:
     """A regular hexagon centered in `bounds`, radius `min(width,
     height) / 2` (the largest that fits without touching the shorter
     edge) -- the shape a hex-tile consumer (e.g. `necro-4x`'s terrain
-    art pipeline) actually clips artwork to via an SVG `<clipPath>`."""
+    art pipeline) actually clips artwork to via an SVG `<clipPath>`.
+    `flat_top`: a flat edge (not a vertex) at the top/bottom -- vertices
+    at 0/60/120/180/240/300 degrees, vs. pointy-top's -90/-30/30/90/
+    150/210 (a vertex straight up/down, the `-90` angle offset)."""
     cx, cy = bounds.center().x(), bounds.center().y()
     radius = min(bounds.width(), bounds.height()) / 2
+    angle_offset = 0 if flat_top else -90
     polygon = QPolygonF()
     for i in range(6):
-        angle = math.radians(60 * i - 90)  # pointy-top hexagon, first vertex straight up
+        angle = math.radians(60 * i + angle_offset)
         polygon.append(QPointF(cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
     path = QPainterPath()
     path.addPolygon(polygon)
@@ -784,7 +788,10 @@ class SvgEditorWidget(QWidget):
         # since _save_to_path only ever serializes self._objects.
         self._bounds_guide_item = None
         self._hex_preview_item = None
-        self._hex_preview_enabled = False
+        # TODO 1c7d5b9: "flat", "pointy", or None (off) -- flat-top and
+        # pointy-top are mutually exclusive, but neither selected is
+        # also a valid state, so this isn't a plain bool anymore.
+        self._hex_preview_orientation = None
 
         self._scene = QGraphicsScene(self)
         self._scene.selectionChanged.connect(self._on_selection_changed)
@@ -801,16 +808,31 @@ class SvgEditorWidget(QWidget):
         save_as_button.clicked.connect(self._save_as)
         reset_view_button = QPushButton("Reset View")
         reset_view_button.clicked.connect(self._reset_view)
-        self._hex_preview_button = QPushButton("Hex Preview")
-        self._hex_preview_button.setCheckable(True)
-        self._hex_preview_button.clicked.connect(self._toggle_hex_preview)
+        # TODO 1c7d5b9: two independent checkable buttons, not a
+        # QButtonGroup(exclusive=True) -- that enforces "at most one
+        # checked," but whether it lets the user manually uncheck the
+        # currently-checked one (clicking it again) isn't something to
+        # lean on without verifying; explicit mutual exclusion via
+        # _set_hex_preview_orientation is simpler to reason about and
+        # test, and makes "neither" unambiguously reachable.
+        self._hex_preview_flat_button = QPushButton("Hex (Flat-top) Preview")
+        self._hex_preview_flat_button.setCheckable(True)
+        self._hex_preview_flat_button.clicked.connect(
+            lambda checked: self._set_hex_preview_orientation("flat" if checked else None)
+        )
+        self._hex_preview_pointy_button = QPushButton("Hex (Pointy-top) Preview")
+        self._hex_preview_pointy_button.setCheckable(True)
+        self._hex_preview_pointy_button.clicked.connect(
+            lambda checked: self._set_hex_preview_orientation("pointy" if checked else None)
+        )
 
         top_toolbar = QHBoxLayout()
         top_toolbar.addWidget(open_button)
         top_toolbar.addWidget(save_button)
         top_toolbar.addWidget(save_as_button)
         top_toolbar.addWidget(reset_view_button)
-        top_toolbar.addWidget(self._hex_preview_button)
+        top_toolbar.addWidget(self._hex_preview_flat_button)
+        top_toolbar.addWidget(self._hex_preview_pointy_button)
         top_toolbar.addStretch()
         top_toolbar.addWidget(self._label)
 
@@ -1149,21 +1171,27 @@ class SvgEditorWidget(QWidget):
         self._scene.addItem(item)
         self._bounds_guide_item = item
 
-    def _toggle_hex_preview(self, checked: bool) -> None:
-        self._hex_preview_enabled = checked
+    def _set_hex_preview_orientation(self, orientation: str | None) -> None:
+        self._hex_preview_orientation = orientation
+        # .setChecked() doesn't re-emit clicked (only toggled, which
+        # nothing here is connected to), so syncing both buttons this
+        # way can't cause a feedback loop back into this method.
+        self._hex_preview_flat_button.setChecked(orientation == "flat")
+        self._hex_preview_pointy_button.setChecked(orientation == "pointy")
         self._refresh_hex_preview()
 
     def _refresh_hex_preview(self, bounds: QRectF | None = None) -> None:
         if self._hex_preview_item is not None:
             self._scene.removeItem(self._hex_preview_item)
             self._hex_preview_item = None
-        if not self._hex_preview_enabled:
+        if self._hex_preview_orientation is None:
             return
         if bounds is None:
             bounds = _document_bounds(self._root)
         full_rect_path = QPainterPath()
         full_rect_path.addRect(bounds)
-        path = full_rect_path.subtracted(_hexagon_path(bounds))
+        hex_path = _hexagon_path(bounds, flat_top=(self._hex_preview_orientation == "flat"))
+        path = full_rect_path.subtracted(hex_path)
         item = QGraphicsPathItem(path)
         item.setPen(QPen(Qt.PenStyle.NoPen))
         item.setBrush(QBrush(QColor(0, 0, 0, 140)))

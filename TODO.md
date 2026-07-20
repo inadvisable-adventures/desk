@@ -4867,10 +4867,37 @@ d1d176f. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-
    No application code changed -- a pure investigation. Confirmed the
    new file exists; full regression suite: 75 scripts, 0 failures
    (unchanged, as expected).
-1c7d5b9. Split the SVG Editor's Hex Preview toggle (TODO `d1d176f`) into
+1c7d5b9. COMPLETED: Split the SVG Editor's Hex Preview toggle (TODO `d1d176f`) into
    two mutually-exclusive buttons -- (a) Hex (Flat-top) Preview, (b)
    Hex (Pointy-top) Preview -- neither selected is also a possible
    state (the mask can still be off entirely, as it already could be).
    `_hexagon_path` currently hardcodes the pointy-top angle offset;
    needs a `flat_top` parameter so both orientations are selectable.
    [planned: svg-editor-hex-orientation-buttons.md]
+
+   Implemented per plan. `_hexagon_path(bounds, flat_top)` gets an
+   `angle_offset` (0 for flat-top: vertices at 0/60/120/180/240/300°,
+   an edge -- not a vertex -- on top/bottom; `-90` for pointy-top,
+   already the existing behavior). `self._hex_preview_orientation:
+   str | None` (`"flat"`/`"pointy"`/`None`) replaces the old bool.
+   `_set_hex_preview_orientation` is the one place that sets it and
+   syncs both buttons' checked state -- confirmed `.setChecked()`
+   doesn't re-emit `clicked` (only `toggled`, unconnected here), so
+   this can't create a feedback loop back into itself.
+
+   Verified directly: extended
+   `tests/verify/verify_svg_editor_widget.py` (11 new/changed checks,
+   67 total now) -- neither button checked by default; clicking
+   flat-top sets state/UI correctly and survives a reload; clicking the
+   *active* button again turns the mask off entirely and unchecks both
+   (the "neither" state is genuinely reachable, not just theoretically
+   possible); clicking pointy-top while flat-top is active switches
+   cleanly (mutual exclusion). Caught and fixed one test bug along the
+   way: comparing the *mask* item's own `boundingRect()` between
+   orientations doesn't actually distinguish them (the hexagon-shaped
+   hole doesn't touch the outer document rect's edges, so the mask's
+   bounding box is just the document rect's own, identical either way)
+   -- fixed by comparing the bare `_hexagon_path(...)` results directly
+   instead, which genuinely differ (width/height swap between the two
+   orientations, confirmed). Full regression suite: 75 scripts, 0
+   failures.

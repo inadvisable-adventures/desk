@@ -530,12 +530,17 @@ Desk Bridge API.
     generously (not exactly) around those bounds instead of the
     previously effectively-unbounded default, and a toggleable, non
     -hittable hexagon preview overlay mask (`QPainterPath.subtracted`)
-    for authors targeting a hex-tile-clipped consumer. All three are
-    plain `QGraphicsItem`s added directly to the scene, never touching
-    `self._root`/`self._objects` — automatically excluded from the
-    saved file the same way the drag handles already were, since
-    `_save_to_path` only ever serializes `self._objects`. See
-    `plans/svg-editor-viewbox-guide.md`.
+    for authors targeting a hex-tile-clipped consumer — two mutually
+    -exclusive buttons, "Hex (Flat-top) Preview"/"Hex (Pointy-top)
+    Preview" (TODO `1c7d5b9`; "neither" is a real third state, not a
+    `QButtonGroup`, kept in sync explicitly via
+    `_set_hex_preview_orientation` so clicking the active button again
+    turns the mask off). All three are plain `QGraphicsItem`s added
+    directly to the scene, never touching `self._root`/`self._objects`
+    — automatically excluded from the saved file the same way the drag
+    handles already were, since `_save_to_path` only ever serializes
+    `self._objects`. See `plans/svg-editor-viewbox-guide.md` and
+    `plans/svg-editor-hex-orientation-buttons.md`.
 24. **Side by Side Widget** — a built-in `kind: "python"` widget
     (`widgets/side_by_side/`, TODO `d28885f`) that hosts two other
     `kind: "python"` widget instances at once, laid out in a

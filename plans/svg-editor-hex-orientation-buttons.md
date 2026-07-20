@@ -1,4 +1,4 @@
-# Plan: TODO 1c7d5b9 — split SVG Editor's Hex Preview into flat-top/pointy-top buttons
+# Plan: TODO 1c7d5b9 (COMPLETED) — split SVG Editor's Hex Preview into flat-top/pointy-top buttons
 
 Follow-up to TODO `d1d176f` (the original hex preview mask). The single
 `"Hex Preview"` toggle only ever built a pointy-top hexagon

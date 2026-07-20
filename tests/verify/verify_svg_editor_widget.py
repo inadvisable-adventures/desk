@@ -317,8 +317,7 @@ test_bounds_guide_present_after_init_and_reload()
 def test_bounds_guide_and_hex_preview_never_appear_in_a_saved_file():
     widget = mod.SvgEditorWidget()
     widget._create_single_click_object("rect", QPointF(50, 50))
-    widget._hex_preview_button.setChecked(True)
-    widget._toggle_hex_preview(True)
+    widget._hex_preview_flat_button.click()
 
     with tempfile.TemporaryDirectory() as d:
         path = Path(d) / "saved.svg"
@@ -343,8 +342,7 @@ def test_guide_items_are_click_through():
         "the bounds guide item doesn't accept mouse buttons (click-through)",
         widget._bounds_guide_item.acceptedMouseButtons() == mod.Qt.MouseButton.NoButton,
     )
-    widget._hex_preview_button.setChecked(True)
-    widget._toggle_hex_preview(True)
+    widget._hex_preview_pointy_button.click()
     check(
         "the hex preview item doesn't accept mouse buttons (click-through)",
         widget._hex_preview_item.acceptedMouseButtons() == mod.Qt.MouseButton.NoButton,
@@ -394,10 +392,14 @@ test_reset_view_shows_the_document_bounds()
 def test_hex_preview_toggle_add_remove_and_persists_across_reload():
     widget = mod.SvgEditorWidget()
     check("hex preview is off by default", widget._hex_preview_item is None)
+    check(
+        "neither hex-orientation button is checked by default",
+        not widget._hex_preview_flat_button.isChecked() and not widget._hex_preview_pointy_button.isChecked(),
+    )
 
-    widget._hex_preview_button.setChecked(True)
-    widget._toggle_hex_preview(True)
-    check("toggling on adds exactly one hex preview item", widget._hex_preview_item is not None)
+    widget._hex_preview_flat_button.click()
+    check("clicking flat-top adds exactly one hex preview item", widget._hex_preview_item is not None)
+    check("orientation state is 'flat'", widget._hex_preview_orientation == "flat")
     hex_bounds = widget._hex_preview_item.path().boundingRect()
     doc_bounds = mod._document_bounds(widget._root)
     check(
@@ -410,14 +412,62 @@ def test_hex_preview_toggle_add_remove_and_persists_across_reload():
         path.write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>')
         widget._load_file(path)
         check("the hex preview toggle state survives a reload (re-added, not silently dropped)", widget._hex_preview_item is not None)
+        check("the orientation itself also survives a reload", widget._hex_preview_orientation == "flat")
 
-    widget._hex_preview_button.setChecked(False)
-    widget._toggle_hex_preview(False)
-    check("toggling off removes the hex preview item", widget._hex_preview_item is None)
+    widget._hex_preview_flat_button.click()
+    check("clicking the active button again turns the mask off entirely", widget._hex_preview_item is None)
+    check("orientation state is back to None (neither)", widget._hex_preview_orientation is None)
+    check(
+        "both buttons end up unchecked",
+        not widget._hex_preview_flat_button.isChecked() and not widget._hex_preview_pointy_button.isChecked(),
+    )
     widget.deleteLater()
 
 
 test_hex_preview_toggle_add_remove_and_persists_across_reload()
+
+
+def test_hex_preview_flat_and_pointy_are_mutually_exclusive_with_different_geometry():
+    widget = mod.SvgEditorWidget()
+    bounds = mod._document_bounds(widget._root)
+
+    widget._hex_preview_flat_button.click()
+    check("flat-top is checked, pointy-top is not", widget._hex_preview_flat_button.isChecked() and not widget._hex_preview_pointy_button.isChecked())
+
+    widget._hex_preview_pointy_button.click()
+    check(
+        "clicking pointy-top while flat-top is active switches to pointy-top",
+        widget._hex_preview_pointy_button.isChecked() and not widget._hex_preview_flat_button.isChecked(),
+    )
+    check("orientation state is 'pointy'", widget._hex_preview_orientation == "pointy")
+
+    # The mask item's own boundingRect() is dominated by the outer
+    # document rect (the hexagon-shaped hole doesn't touch its edges),
+    # so it can't distinguish orientation -- compare the bare hexagon
+    # paths' own bounding boxes instead, which genuinely differ (a
+    # regular hexagon's bounding box swaps width/height between the two
+    # orientations).
+    flat_hex_bounds = mod._hexagon_path(bounds, flat_top=True).boundingRect()
+    pointy_hex_bounds = mod._hexagon_path(bounds, flat_top=False).boundingRect()
+    check(
+        "flat-top and pointy-top produce genuinely different hexagon geometry for the same bounds",
+        (flat_hex_bounds.width(), flat_hex_bounds.height()) != (pointy_hex_bounds.width(), pointy_hex_bounds.height()),
+    )
+
+    flat_hex = mod._hexagon_path(bounds, flat_top=True)
+    pointy_hex = mod._hexagon_path(bounds, flat_top=False)
+    check(
+        "_hexagon_path(flat_top=True) has a vertex on the horizontal center line (flat top/bottom edges)",
+        any(abs(flat_hex.elementAt(i).y - bounds.center().y()) < 0.01 for i in range(flat_hex.elementCount())),
+    )
+    check(
+        "_hexagon_path(flat_top=False) has a vertex on the vertical center line (pointy top/bottom)",
+        any(abs(pointy_hex.elementAt(i).x - bounds.center().x()) < 0.01 for i in range(pointy_hex.elementCount())),
+    )
+    widget.deleteLater()
+
+
+test_hex_preview_flat_and_pointy_are_mutually_exclusive_with_different_geometry()
 
 
 # ---------- file_type_registry wiring ----------
