@@ -1,4 +1,4 @@
-# Plan: TODO ebf641d — SVG Editor pending polygon/polyline drawing fixes
+# Plan: TODO ebf641d (COMPLETED) — SVG Editor pending polygon/polyline drawing fixes
 
 Three related fixes to the multi-click (polyline/polygon/path) drawing
 flow, all from direct user feedback:

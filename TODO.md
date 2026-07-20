@@ -4974,7 +4974,7 @@ d1d176f. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-
    matches the document's height (top/bottom aligned). Full regression
    suite: 75 scripts, 0 failures.
 
-ebf641d. SVG Editor pending polygon/polyline drawing fixes: show a "Complete
+ebf641d. COMPLETED: SVG Editor pending polygon/polyline drawing fixes: show a "Complete
    (ENTER)" button at the bottom-right of the editor view while a
    polygon/polyline is pending, doing the same thing Enter already
    does; a drawn polyline currently renders visually indistinguishable
@@ -4984,6 +4984,48 @@ ebf641d. SVG Editor pending polygon/polyline drawing fixes: show a "Complete
    currently-drawing pending polygon/polyline rather than to whatever
    object was selected before the current draw started.
    [planned: svg-editor-pending-shape-fixes.md]
+
+   Implemented per plan. (1) `self._complete_button`, a floating
+   `QPushButton` child of `self._view` (not a scene item, so it stays a
+   constant on-screen size regardless of zoom), shown/hidden and
+   repositioned via `_reposition_complete_button()` -- called from
+   `_add_pending_point`, `_finish_pending`/`_cancel_pending`, and a new
+   `_EditorView.resizeEvent` override. (2) Root cause confirmed: the
+   underlying data model was already correctly open (`_PolylineItem`
+   never closes its subpath, `PolylineObject.sync_to_element` writes a
+   plain unclosed `points` list) -- the visual "completed it like a
+   polygon" impression came entirely from Qt (like any real SVG
+   renderer) filling an open path's implied closing segment by
+   default. Fixed by having `PolylineObject.create_default` explicitly
+   set `fill: none`; still fully editable afterward via the Fill
+   button, and loading an existing polyline from a file is unaffected.
+   (3) Three new `None`-means-"untouched" pending-style attributes
+   (`_pending_fill`/`_pending_stroke`/`_pending_stroke_width`);
+   `_pick_fill`/`_pick_stroke`/`_on_stroke_width_changed` and
+   `_refresh_property_panel` now check `has_pending_points()` first and
+   route to these instead of `self._selected_object` while a shape is
+   pending (this also fixes the panel being stuck disabled while
+   drawing with nothing previously selected); `_finish_pending` applies
+   only the properties actually touched during the draw, then
+   re-syncs the object to its element (an override applied after
+   `create_default`'s own initial sync wouldn't otherwise reach the
+   serialized attributes).
+
+   Verified directly: extended
+   `tests/verify/verify_svg_editor_widget.py` (12 new checks, 96 total
+   now) -- Complete button visibility/positioning and that clicking it
+   finishes the pending shape identically to Enter; a freshly drawn
+   polyline serializes `fill="none"` while a freshly drawn polygon is
+   unaffected; changing style while a polygon is pending leaves a
+   previously-selected rect's own fill untouched, and the pending
+   style correctly lands on the finished shape's fill/stroke/stroke-
+   width. Caught and fixed one bug while writing the last of these:
+   the pending-style override in `_finish_pending` updated the
+   `SvgObject`'s live Qt item (via `set_fill`/etc.) but never re-called
+   `sync_to_element()` afterward, so the serialized element attributes
+   still reflected `create_default`'s own initial style until the next
+   save -- fixed by re-syncing whenever any override was actually
+   applied. Full regression suite: 75 scripts, 0 failures.
 
 1fb365e. SVG Editor selection delete affordances: show a delete icon
    hovering on/near a shape selected in the Shapes tool; show a delete

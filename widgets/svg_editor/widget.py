@@ -500,6 +500,14 @@ class PolylineObject(SvgObject):
     def create_default(cls, points: list[QPointF]) -> "PolylineObject":
         item = _PolylineItem(points)
         _apply_default_style(item)
+        # TODO ebf641d: a polyline is an open, conventionally unfilled
+        # shape (unlike a polygon) -- without this, Qt (like any real
+        # SVG renderer) still fills the region as if a straight
+        # closing segment connected the last point back to the first,
+        # which visually reads as "it completed it like a polygon"
+        # even though the underlying points/path stay genuinely open.
+        # Still fully editable afterward via the Fill button.
+        item.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         obj = cls(ET.Element(_qn("polyline")), item)
         obj.sync_to_element()
         return obj
@@ -810,6 +818,13 @@ class _EditorView(QGraphicsView):
             return
         super().keyPressEvent(event)
 
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        # TODO ebf641d: the Complete button is a floating child widget
+        # of this view (not a scene item), so it needs manual
+        # repositioning whenever the view's own size changes.
+        self._editor._reposition_complete_button()
+
 
 class SvgEditorWidget(QWidget):
     """Toolbox SVG editor -- see the module docstring and
@@ -828,6 +843,15 @@ class SvgEditorWidget(QWidget):
         self._dragging_handle_index: int | None = None
         self._pending_points: list[QPointF] | None = None
         self._pending_preview_items: list = []
+        # TODO ebf641d: None means "not touched during this draw -- let
+        # the finished object's own type-level default apply" (see
+        # PolylineObject.create_default's fill="none" default vs.
+        # everything else's ordinary default). Set by
+        # _pick_fill/_pick_stroke/_on_stroke_width_changed while a
+        # multi-click shape is pending, applied in _finish_pending.
+        self._pending_fill: str | None = None
+        self._pending_stroke: str | None = None
+        self._pending_stroke_width: float | None = None
         self.current_tool = "shapes"
         # TODO d1d176f: purely visual, never touch self._root/self._objects
         # (see _document_bounds/_refresh_document_guides) -- excluded from
@@ -843,6 +867,15 @@ class SvgEditorWidget(QWidget):
         self._scene = QGraphicsScene(self)
         self._scene.selectionChanged.connect(self._on_selection_changed)
         self._view = _EditorView(self, self._scene)
+
+        # TODO ebf641d: a floating child widget of the view, not a
+        # scene item -- keeps it a constant on-screen size regardless
+        # of zoom (design-docs/widget-ux.md's "counter-scaled chrome"),
+        # positioned imperatively rather than by a layout. Hidden until
+        # a polygon/polyline is actually pending.
+        self._complete_button = QPushButton("Complete (ENTER)", self._view)
+        self._complete_button.clicked.connect(self._finish_pending)
+        self._complete_button.hide()
 
         self._label = QLabel()
         self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
@@ -1067,6 +1100,22 @@ class SvgEditorWidget(QWidget):
         return None
 
     def _refresh_property_panel(self) -> None:
+        # TODO ebf641d: while a polygon/polyline is pending, it has no
+        # SvgObject/element of its own yet -- route the panel to the
+        # tracked pending style instead of whatever was selected
+        # *before* this draw started. Also what makes the panel
+        # genuinely usable while drawing with nothing selected at all
+        # (previously just stayed disabled).
+        if self.has_pending_points():
+            self._property_panel.setEnabled(True)
+            self._fill_button.setStyleSheet(f"background-color: {self._pending_fill or DEFAULT_FILL};")
+            self._stroke_button.setStyleSheet(f"background-color: {self._pending_stroke or DEFAULT_STROKE};")
+            self._stroke_width_spin.blockSignals(True)
+            self._stroke_width_spin.setValue(
+                self._pending_stroke_width if self._pending_stroke_width is not None else DEFAULT_STROKE_WIDTH
+            )
+            self._stroke_width_spin.blockSignals(False)
+            return
         obj = self._selected_object
         self._property_panel.setEnabled(obj is not None)
         if obj is None:
@@ -1078,6 +1127,12 @@ class SvgEditorWidget(QWidget):
         self._stroke_width_spin.blockSignals(False)
 
     def _pick_fill(self) -> None:
+        if self.has_pending_points():
+            color = QColorDialog.getColor(QColor(self._pending_fill or DEFAULT_FILL), self)
+            if color.isValid():
+                self._pending_fill = color.name()
+                self._refresh_property_panel()
+            return
         if self._selected_object is None:
             return
         color = QColorDialog.getColor(self._selected_object.fill_color(), self)
@@ -1086,6 +1141,12 @@ class SvgEditorWidget(QWidget):
             self._refresh_property_panel()
 
     def _pick_stroke(self) -> None:
+        if self.has_pending_points():
+            color = QColorDialog.getColor(QColor(self._pending_stroke or DEFAULT_STROKE), self)
+            if color.isValid():
+                self._pending_stroke = color.name()
+                self._refresh_property_panel()
+            return
         if self._selected_object is None:
             return
         color = QColorDialog.getColor(self._selected_object.stroke_color(), self)
@@ -1094,6 +1155,9 @@ class SvgEditorWidget(QWidget):
             self._refresh_property_panel()
 
     def _on_stroke_width_changed(self, value: float) -> None:
+        if self.has_pending_points():
+            self._pending_stroke_width = value
+            return
         if self._selected_object is not None:
             self._selected_object.set_stroke_width(value)
 
@@ -1108,6 +1172,8 @@ class SvgEditorWidget(QWidget):
             self._pending_points = []
         self._pending_points.append(pos)
         self._refresh_pending_preview()
+        self._refresh_property_panel()
+        self._reposition_complete_button()
 
     def _clear_preview_items(self) -> None:
         for item in self._pending_preview_items:
@@ -1126,18 +1192,60 @@ class SvgEditorWidget(QWidget):
             line = self._scene.addLine(a.x(), a.y(), b.x(), b.y(), pen)
             self._pending_preview_items.append(line)
 
+    def _reposition_complete_button(self) -> None:
+        if not self.has_pending_points():
+            self._complete_button.hide()
+            return
+        self._complete_button.adjustSize()
+        margin = 12
+        x = self._view.width() - self._complete_button.width() - margin
+        y = self._view.height() - self._complete_button.height() - margin
+        self._complete_button.move(max(0, x), max(0, y))
+        self._complete_button.raise_()
+        self._complete_button.show()
+
     def _cancel_pending(self) -> None:
         self._clear_preview_items()
         self._pending_points = None
+        self._pending_fill = None
+        self._pending_stroke = None
+        self._pending_stroke_width = None
+        self._reposition_complete_button()
+        self._refresh_property_panel()
 
     def _finish_pending(self) -> None:
         points = self._pending_points
         tool = self.current_tool
+        fill = self._pending_fill
+        stroke = self._pending_stroke
+        stroke_width = self._pending_stroke_width
         self._clear_preview_items()
         self._pending_points = None
+        self._pending_fill = None
+        self._pending_stroke = None
+        self._pending_stroke_width = None
+        self._reposition_complete_button()
         if points is None or len(points) < 2:
+            self._refresh_property_panel()
             return
         obj = TAG_TO_CLASS[tool].create_default(points)
+        # TODO ebf641d: only override whatever the type's own
+        # create_default already applied for a property the user
+        # actually touched during this draw -- e.g. an untouched
+        # pending polyline still ends up fill="none" (see
+        # PolylineObject.create_default), an untouched pending polygon
+        # still gets the ordinary default fill.
+        if fill is not None:
+            obj.set_fill(fill)
+        if stroke is not None:
+            obj.set_stroke_color(stroke)
+        if stroke_width is not None:
+            obj.set_stroke_width(stroke_width)
+        if fill is not None or stroke is not None or stroke_width is not None:
+            # create_default already synced its own default style to
+            # the element -- re-sync so the overrides just applied
+            # above actually land in the serialized attributes too.
+            obj.sync_to_element()
         self._add_object(obj)
 
     def _add_object(self, obj: SvgObject) -> None:

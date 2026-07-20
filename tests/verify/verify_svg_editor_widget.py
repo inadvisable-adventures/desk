@@ -595,6 +595,92 @@ def test_toolbox_has_select_edit_and_add_sections():
 test_toolbox_has_select_edit_and_add_sections()
 
 
+# ---------- TODO ebf641d: pending polygon/polyline drawing fixes ----------
+
+
+def test_complete_button_shows_while_pending_and_finishes_the_shape():
+    widget = mod.SvgEditorWidget()
+    widget.resize(400, 400)
+    widget.show()
+    widget.current_tool = "polygon"
+    check("Complete button hidden with no pending points", not widget._complete_button.isVisible())
+
+    widget._add_pending_point(QPointF(10, 10))
+    check("Complete button visible after the first pending point", widget._complete_button.isVisible())
+    widget._add_pending_point(QPointF(60, 10))
+    widget._add_pending_point(QPointF(35, 50))
+
+    widget._complete_button.click()
+    check("clicking Complete finished the pending shape", len(widget._objects) == 1)
+    check("finished shape has all 3 points", "points" in widget._objects[0].element.attrib)
+    check("Complete button hides again once nothing is pending", not widget._complete_button.isVisible())
+    widget.deleteLater()
+
+
+test_complete_button_shows_while_pending_and_finishes_the_shape()
+
+
+def test_new_polyline_defaults_to_no_fill_unlike_a_polygon():
+    widget = mod.SvgEditorWidget()
+    pts = [QPointF(10, 10), QPointF(60, 10), QPointF(35, 50)]
+
+    widget.current_tool = "polyline"
+    widget._pending_points = list(pts)
+    widget._finish_pending()
+    polyline_obj = widget._objects[-1]
+    check("a freshly drawn polyline defaults to fill=none", polyline_obj.element.get("fill") == "none")
+
+    widget.current_tool = "polygon"
+    widget._pending_points = list(pts)
+    widget._finish_pending()
+    polygon_obj = widget._objects[-1]
+    check("a freshly drawn polygon is unaffected -- still the ordinary default fill", polygon_obj.element.get("fill") not in (None, "none"))
+    widget.deleteLater()
+
+
+test_new_polyline_defaults_to_no_fill_unlike_a_polygon()
+
+
+def test_property_panel_targets_the_pending_shape_not_a_stale_selection():
+    widget = mod.SvgEditorWidget()
+    widget._create_single_click_object("rect", QPointF(100, 100))
+    rect_obj = widget._objects[0]
+    original_rect_fill = rect_obj.fill_color().name()
+
+    widget.current_tool = "polygon"
+    check("property panel is enabled as soon as a pending draw starts", widget._property_panel.isEnabled())
+    widget._add_pending_point(QPointF(10, 10))
+    widget._add_pending_point(QPointF(60, 10))
+    widget._add_pending_point(QPointF(35, 50))
+
+    # Simulate picking a fill color while the polygon is pending --
+    # bypass the modal QColorDialog the same way _pick_fill would use
+    # it, by setting the tracked pending state directly (mirrors how
+    # _pick_fill itself would update it after a valid dialog result).
+    widget._pending_fill = "#ff0000"
+    widget._pending_stroke = "#00ff00"
+    widget._pending_stroke_width = 3.0
+    widget._refresh_property_panel()
+
+    check(
+        "changing style while a polygon is pending does not touch the previously-selected rect",
+        rect_obj.fill_color().name() == original_rect_fill,
+    )
+
+    widget._finish_pending()
+    finished_obj = widget._objects[-1]
+    check("the pending style ends up applied to the finished shape's fill", finished_obj.element.get("fill") == "#ff0000")
+    check("the pending style ends up applied to the finished shape's stroke", finished_obj.element.get("stroke") == "#00ff00")
+    check(
+        "the pending style ends up applied to the finished shape's stroke-width",
+        float(finished_obj.element.get("stroke-width")) == 3.0,
+    )
+    widget.deleteLater()
+
+
+test_property_panel_targets_the_pending_shape_not_a_stale_selection()
+
+
 # ---------- file_type_registry wiring ----------
 
 from desk.file_type_registry import BUILTIN_EDIT_WIDGET_BY_SUFFIX, find_edit_handler  # noqa: E402
