@@ -4788,3 +4788,24 @@ d1d176f. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-viewbox-
    to `centerOn`, which does); and the hex preview toggle's add/remove/
    persist-across-reload behavior. Full regression suite: 75 scripts, 0
    failures.
+31db3f6. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-build-widget-capabilities
+   -2026-07-16-1010.md`): `.desk_temp/build_widget.py` (generated from
+   `_BUILD_WIDGET_SCRIPT` in `src/desk/temp_ui.py`) silently ignores a
+   `DefineWidget`-authored widget's `widget.json` `capabilities` field
+   entirely, forcing a hand-edit of the *generated* tempui file after
+   every build (adding `Capability<TAB>name` lines by hand) that's easy
+   to forget -- confirmed twice in the reporting project, the second
+   time producing a widget with a silently-empty table and no error
+   surfaced anywhere beyond the widget's own devtools console (missing
+   `desk.fs`/`desk.editor` grants meant `desk.fs.readFile(...)` failed
+   as an unhandled promise rejection). `widget.json`'s own
+   `capabilities` field is already the obvious, expected place for this
+   by direct analogy with a real `kind: "python"`/`"html"` widget's own
+   manifest -- three widgets in the reporting project already added it
+   unofficially, even though nothing reads it. Fix: `build_widget()`
+   reads `manifest.get("capabilities", [])` (optional, defaults to `[]`
+   -- no behavior change for a `widget.json` with no such key) and
+   emits one `Capability<TAB>name` line per entry, right after the
+   `Size` line -- the exact position/format already used when this is
+   done by hand today.
+   [planned: build-widget-capabilities.md]
