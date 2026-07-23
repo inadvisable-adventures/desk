@@ -5068,3 +5068,81 @@ ebf641d. COMPLETED: SVG Editor pending polygon/polyline drawing fixes: show a "C
    never deletable; switching tools or the object selection correctly
    clears the selected point and hides/shows the right button. Full
    regression suite: 75 scripts, 0 failures.
+70789ee. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-duplicate-shape-button
+   -2026-07-22-1819.md`): the SVG Editor's Shapes tool has a hovering
+   delete button on a selected shape (`_shape_delete_button`, TODO
+   `1fb365e`) but no way to duplicate one -- today, cloning a shape
+   (e.g. laying out several evenly-spaced copies of the same stripe)
+   requires hand-editing the saved `.svg`'s XML outside the tool
+   entirely. Add a second floating button, `_shape_duplicate_button`,
+   next to the existing delete button (same construction/visibility
+   triggers -- `current_tool == "shapes"` and a selection, refreshed
+   from the same `_refresh_handles` call sites -- just a different
+   corner so the two don't overlap), wired to a new
+   `_duplicate_selected_object`: `copy.deepcopy` the selected object's
+   `ET.Element`, append it to `self._root`, rebuild an `SvgObject` via
+   the element's own class's existing `from_element` classmethod
+   (already used for file loading), nudge it by a small fixed offset
+   so it's not perfectly on top of the original, and select it --
+   ready to drag into position via the existing handle-drag path.
+
+d4d6c71. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-widget-error-visibility
+   -2026-07-21-0053.md`): no widget kind currently surfaces "this
+   widget instance hit an error" anywhere in the UI -- a `kind:
+   "python"` widget's top-level exception and an HTML/browser-kind
+   widget's uncaught JS exception/unhandled promise rejection both
+   currently vanish with zero visible difference from "working
+   correctly but the user misunderstood what it does," discoverable
+   only by already suspecting a specific widget enough to open its
+   devtools console. Concrete cost cited: three separate widgets in a
+   downstream project (`necro-4x`) shipped the identical latent bug
+   (an unguarded `desk.fs.writeFile` to a not-yet-existing directory,
+   silently rejected, never surfaced), each found only days later when
+   a human noticed a specific symptom conversationally -- and each
+   passed its own headless-Chrome verification beforehand, since no
+   mock modeled that specific failure mode.
+   Suggested fix: a small, high-contrast error indicator (e.g. a red
+   "!") in a widget instance's own titlebar, shown whenever a `kind:
+   "python"` widget's request handler raises past whatever top-level
+   try/catch Desk's server-side dispatch already has, or an HTML/
+   browser-kind widget's embedded page logs an uncaught exception/
+   unhandled rejection to its own console (observable from the
+   embedding side today via `window.onerror`/`unhandledrejection`, no
+   cooperation needed from the widget's own code) -- clicking it shows
+   the actual error text/stack in a small popover. Fallback, if full
+   error-capture is a bigger lift than expected: even a bare boolean
+   ("this instance has logged at least one console error since it
+   loaded," no message capture) would still close most of the actual
+   gap described above.
+
+3b1ef3d. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-color-picker-mini-component
+   -library-2026-07-22-1811.md`): `DefineWidget`/browser-kind widgets
+   are self-contained HTML with no module system and (per this
+   project's own CLAUDE.md) a hard "avoid adding dependencies, prefer
+   bespoke solutions" constraint -- so any widget author needing a
+   genuinely non-trivial UI control (a color picker, a date picker, a
+   multi-select) has to design and implement it from first principles
+   every time, in every project, with no canonical reference to start
+   from. Concrete cost cited: a downstream project's HSV color-wheel +
+   brightness-bar color picker (`necro-4x`'s `TerrainColorInitializer`)
+   went through three iterations of real design work (native `<input
+   type="color">`, rejected -- always opens as an undockable OS popup;
+   three RGB range sliders, functional but visually unintuitive; a
+   CSS-gradient HSV wheel + brightness bar, the one that shipped) and
+   required non-obvious, easy-to-get-backwards work even once the
+   right approach was chosen (a `+90°` screen-angle-to-CSS-angle
+   correction for `conic-gradient`, keeping raw hue/sat/val state
+   rather than re-deriving from hex so a grayscale color doesn't reset
+   the wheel's cursor to an arbitrary angle, wrapping
+   `setPointerCapture` in try/catch since a synthetically-dispatched
+   `PointerEvent` in a headless-Chrome test harness has no real
+   pointer to capture).
+   Suggested fix: maintain or seed a small library of self-contained,
+   dependency-free UI mini-components that widget authors copy locally
+   into their own project's `custom_widget_src/shared/` (source is
+   copied, never by-reference imported, since these widgets can't
+   depend on anything at runtime) -- published somewhere a widget
+   author would think to check before building one from scratch (e.g.
+   alongside `tempui-custom-widgets.md`, or a `shared-components/`
+   reference tree in this repo), starting with the HSV color-wheel +
+   brightness-bar picker described above.
