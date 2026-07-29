@@ -5114,6 +5114,7 @@ d4d6c71. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-widget-error-visibility
    ("this instance has logged at least one console error since it
    loaded," no message capture) would still close most of the actual
    gap described above.
+   [planned: widget-error-indicator.md]
 
 3b1ef3d. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-color-picker-mini-component
    -library-2026-07-22-1811.md`): `DefineWidget`/browser-kind widgets
