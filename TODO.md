@@ -5349,3 +5349,4 @@ d4d6c71. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-widget-error-visibi
    `stackAfter`, Qt's own API for reordering within a shared parent's
    insertion order, rather than inventing an explicit z-value scheme).
    Each button icon + hover text, same convention as Duplicate/Delete.
+   [planned: svg-editor-shape-zorder-buttons.md]
