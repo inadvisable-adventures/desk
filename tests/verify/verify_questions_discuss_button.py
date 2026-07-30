@@ -117,6 +117,7 @@ _FakeWindow._place_widget = DeskWindow._place_widget
 _FakeWindow._bind_event_mediator = DeskWindow._bind_event_mediator
 _FakeWindow._bind_claude_widget = DeskWindow._bind_claude_widget
 _FakeWindow._bind_external_indicator = DeskWindow._bind_external_indicator
+_FakeWindow._bind_error_indicator = DeskWindow._bind_error_indicator
 _FakeWindow._place_discuss_claude_widget = DeskWindow._place_discuss_claude_widget
 _FakeWindow._write_discuss_instructions_file = DeskWindow._write_discuss_instructions_file
 _FakeWindow.start_discussion = DeskWindow.start_discussion

@@ -192,6 +192,7 @@ class DeskWindow(QMainWindow):
         self.view.paste_requested.connect(self._on_paste_requested)
         self.view.tempui_promote_requested.connect(self._on_tempui_promote_requested)
         self.view.widget_stale_clicked.connect(self._on_widget_stale_clicked)
+        self.view.widget_error_clicked.connect(self._on_widget_error_clicked)
         if widgets_dir is not None:
             broker.widget_changed.connect(self._on_widget_changed_refresh_catalog)
 
@@ -425,6 +426,7 @@ class DeskWindow(QMainWindow):
             )
         self._bind_external_indicator(frame)
         self._bind_event_mediator(frame)
+        self._bind_error_indicator(frame)
         # Only while still tempui-sourced (TODO 6857997) -- once
         # promoted, the widget's [TEMPUI] button has nothing left to
         # offer, so it never shows for a "desk"-sourced instance,
@@ -475,6 +477,31 @@ class DeskWindow(QMainWindow):
         if content is None or not hasattr(content, "bind_event_mediator"):
             return
         content.bind_event_mediator(frame.instance_id, self._event_mediator)
+
+    def _bind_error_indicator(self, frame: WidgetFrame) -> None:
+        """Wires a freshly-placed widget's titlebar `[ERROR]` marker (TODO
+        d4d6c71): a kind:"html"/DefineWidget widget's own captured
+        console errors (ChromiumWidget.error_state_changed), or a
+        kind:"python" widget's build()-time failures
+        (PythonWidgetHost.build_error_changed) -- confirmed directly that
+        a *runtime* exception from a python widget's own code (e.g. a
+        button's click handler) can't be centrally attributed this way at
+        all: PyQt6 intercepts it at the point it escapes the offending
+        slot/virtual-method override (aborting the process), before it
+        could ever reach a handler here, regardless of mechanism. Same
+        "connect the signal, then immediately check whether it's already
+        in a failed state" shape as _bind_external_indicator -- a
+        kind:"python" widget's initial build (in PythonWidgetHost.__init__)
+        already ran, and may have already failed, before this binding
+        (which needs a WidgetFrame that doesn't exist until after that)
+        could possibly have existed."""
+        content = frame.content
+        if isinstance(content, ChromiumWidget):
+            content.error_state_changed.connect(frame.set_error)
+        elif isinstance(content, PythonWidgetHost):
+            content.build_error_changed.connect(frame.set_error)
+            if content.build_error:
+                frame.set_error(True, content.build_error)
 
     def _bind_claude_widget(
         self, frame: WidgetFrame, resume: bool, extra_instructions: str = ""
@@ -1870,6 +1897,28 @@ class DeskWindow(QMainWindow):
         box.addButton("Keep for Now", QMessageBox.ButtonRole.RejectRole)
         box.exec()
         return box.clickedButton() is reload_button
+
+    def _on_widget_error_clicked(self, frame: WidgetFrame) -> None:
+        """The `[ERROR]` titlebar button's handler (TODO d4d6c71): shows
+        the captured error text, then clears the indicator -- same
+        "diagnosed, now handled" shape as reloading clears `[STALE]`. A
+        later error on the same instance re-lights it (WidgetFrame.set_error
+        is called fresh each time one is captured)."""
+        if not frame.last_error_message:
+            return
+        self._confirm_widget_error_dismissed(frame.last_error_message)
+        frame.set_error(False)
+
+    def _confirm_widget_error_dismissed(self, message: str) -> None:
+        """Split out so headless verification can monkeypatch just this
+        one method instead of driving a real modal QMessageBox --
+        mirrors _confirm_stale_reload above."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Widget Error")
+        box.setText("This widget instance hit an unhandled error.")
+        box.setInformativeText(message)
+        box.addButton("OK", QMessageBox.ButtonRole.AcceptRole)
+        box.exec()
 
     def _register_custom_widgets_from_desk(self, desk: Desk) -> None:
         """Registers every custom widget already promoted into `desk`'s

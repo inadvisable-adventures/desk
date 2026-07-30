@@ -144,6 +144,10 @@ _FakeWindowWithView._bind_external_indicator = DeskWindow._bind_external_indicat
 # check on PythonWidgetHost returns before ever touching
 # self._event_mediator, so no fake attribute is needed for it either.
 _FakeWindowWithView._bind_event_mediator = DeskWindow._bind_event_mediator
+# TODO d4d6c71: _place_widget now calls this unconditionally too --
+# real signal wiring here is exactly what this file's own ChromiumWidget
+# construction needs, no fake attribute required.
+_FakeWindowWithView._bind_error_indicator = DeskWindow._bind_error_indicator
 
 
 def test_place_widget_chromium_instance_id_matches_frame():

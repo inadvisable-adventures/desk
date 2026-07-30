@@ -90,6 +90,7 @@ _FakeWindow._place_widget = DeskWindow._place_widget
 _FakeWindow._bind_claude_widget = DeskWindow._bind_claude_widget
 _FakeWindow._bind_external_indicator = DeskWindow._bind_external_indicator
 _FakeWindow._bind_event_mediator = DeskWindow._bind_event_mediator
+_FakeWindow._bind_error_indicator = DeskWindow._bind_error_indicator
 _FakeWindow._load_desk_widgets = DeskWindow._load_desk_widgets
 _FakeWindow._seed_new_desk_widgets = DeskWindow._seed_new_desk_widgets
 _FakeWindow._bind_temp_ui_widget = DeskWindow._bind_temp_ui_widget

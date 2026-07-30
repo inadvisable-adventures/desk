@@ -226,15 +226,54 @@ class _StaleIndicatorButton(QWidget):
         self._label.setStyleSheet(f"color: #e8e8e8; font-size: {font_pt}pt;")
 
 
+class _ErrorIndicatorButton(QWidget):
+    """Shown only on a widget instance that hit an unhandled error (TODO
+    d4d6c71) -- a kind:"html" widget's uncaught JS exception/unhandled
+    promise rejection/explicit console.error, or a kind:"python" widget's
+    runtime exception anywhere in its own code. Clicking it (handled
+    centrally by WorkspaceView, same as every other titlebar button) shows
+    the captured error text and clears the indicator -- see
+    DeskWindow._on_widget_error_clicked. Same variable-width-sized-to-its
+    -own-text shape as _StaleIndicatorButton/_TempuiPromoteButton, but
+    deliberately colored (high-contrast red, not the standard #e8e8e8) so
+    it reads as urgent at a glance -- the feedback this TODO comes from
+    asks for exactly that ("a red '!', or similar")."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("This widget instance hit an unhandled error -- click for details.")
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(TEMPUI_BUTTON_MARGIN, 0, TEMPUI_BUTTON_MARGIN, 0)
+        self._label = QLabel("[ERROR]")
+        self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        layout.addWidget(self._label)
+
+        self.apply_scale(1.0)
+
+    def apply_scale(self, view_scale: float) -> None:
+        """See _TitleBar.apply_scale: keeps this button a constant
+        on-screen size regardless of the WorkspaceView's current zoom."""
+        view_scale = view_scale or 1.0
+        self.setFixedHeight(max(1, round(TITLEBAR_HEIGHT / view_scale)))
+        font_pt = max(1, round(TITLEBAR_FONT_PT / view_scale))
+        self._label.setStyleSheet(f"color: #ff5c5c; font-weight: bold; font-size: {font_pt}pt;")
+
+
 def _button_target_width(button: QWidget) -> int:
     """TODO 33d3e8d: this button's own fixed on-screen width -- the same
     width it always renders at once counter-scaled (apply_scale), so this
     is measured independent of the WorkspaceView's current zoom. Every
     _TitlebarButton (close/lock/unlock/bring-to-front/send-to-back/eye)
     is a fixed CLOSE_BUTTON_SIZE square; _TempuiPromoteButton/
-    _StaleIndicatorButton are sized to their own text at the titlebar's
-    fixed on-screen font size."""
-    text_by_type = {_TempuiPromoteButton: "[TEMPUI]", _StaleIndicatorButton: "[STALE]"}
+    _StaleIndicatorButton/_ErrorIndicatorButton are sized to their own
+    text at the titlebar's fixed on-screen font size."""
+    text_by_type = {
+        _TempuiPromoteButton: "[TEMPUI]",
+        _StaleIndicatorButton: "[STALE]",
+        _ErrorIndicatorButton: "[ERROR]",
+    }
     for button_type, text in text_by_type.items():
         if isinstance(button, button_type):
             font = QFont()
@@ -255,6 +294,7 @@ class _TitleBar(QWidget):
         self._title = title
         self._external = False
         self._stale = False
+        self._has_error = False
         self._locked = False
         self._tempui_promotable = False
         self._buttons_hidden = False  # True in the title_only chrome state (TODO 33d3e8d)
@@ -277,6 +317,8 @@ class _TitleBar(QWidget):
         layout.addWidget(self.tempui_promote_button)
         self.stale_button = _StaleIndicatorButton()
         layout.addWidget(self.stale_button)
+        self.error_button = _ErrorIndicatorButton()
+        layout.addWidget(self.error_button)
         self.lock_button = _LockButton()
         layout.addWidget(self.lock_button)
         self.bring_to_front_button = _BringToFrontButton()
@@ -313,6 +355,17 @@ class _TitleBar(QWidget):
         titlebar button -- see DeskWindow._on_widget_stale_clicked for
         what it actually does."""
         self._stale = is_stale
+        self._refresh_button_visibility()
+
+    def set_error(self, has_error: bool) -> None:
+        """Shows/hides the clickable `[ERROR]` titlebar button (TODO
+        d4d6c71) -- for a widget instance that hit an unhandled error
+        (a kind:"html" widget's uncaught JS exception/unhandled promise
+        rejection/console.error, or a kind:"python" widget's runtime
+        exception). Clicking it is handled centrally by WorkspaceView,
+        same as every other titlebar button -- see
+        DeskWindow._on_widget_error_clicked for what it actually does."""
+        self._has_error = has_error
         self._refresh_button_visibility()
 
     def set_focused(self, focused: bool) -> None:
@@ -356,6 +409,7 @@ class _TitleBar(QWidget):
         if self._is_popup:
             self.tempui_promote_button.setVisible(False)
             self.stale_button.setVisible(False)
+            self.error_button.setVisible(False)
             self.lock_button.setVisible(False)
             self.bring_to_front_button.setVisible(False)
             self.send_to_back_button.setVisible(False)
@@ -366,6 +420,7 @@ class _TitleBar(QWidget):
         show = not self._buttons_hidden
         self.tempui_promote_button.setVisible(show and self._tempui_promotable)
         self.stale_button.setVisible(show and self._stale)
+        self.error_button.setVisible(show and self._has_error)
         self.lock_button.setVisible(show and not self._locked)
         self.bring_to_front_button.setVisible(show and not self._locked)
         self.send_to_back_button.setVisible(show and not self._locked)
@@ -396,6 +451,8 @@ class _TitleBar(QWidget):
             buttons.append(self.tempui_promote_button)
         if self._stale:
             buttons.append(self.stale_button)
+        if self._has_error:
+            buttons.append(self.error_button)
         if self._locked:
             buttons.append(self.unlock_button)
         else:
@@ -448,6 +505,7 @@ class _TitleBar(QWidget):
         self._label.setStyleSheet(f"color: #e8e8e8; font-size: {font_pt}pt;")
         self.tempui_promote_button.apply_scale(view_scale)
         self.stale_button.apply_scale(view_scale)
+        self.error_button.apply_scale(view_scale)
         self.lock_button.apply_scale(view_scale)
         self.bring_to_front_button.apply_scale(view_scale)
         self.send_to_back_button.apply_scale(view_scale)
@@ -591,6 +649,11 @@ class WidgetFrame(QWidget):
         # _refresh_stale_indicators_for (who compares it against the
         # live definition later).
         self.placed_content_hash: str | None = None
+        # The most recently captured error text for this instance (TODO
+        # d4d6c71) -- "" while no error is currently indicated. Shown by
+        # DeskWindow._on_widget_error_clicked when the [ERROR] button is
+        # clicked; see set_error.
+        self.last_error_message: str = ""
         self._view_scale = 1.0
         self._chrome_state = "full"
         self._apply_border_scale(1.0)
@@ -677,6 +740,20 @@ class WidgetFrame(QWidget):
         5995ffd/3e2c4f2) -- see
         `desk.shell.window.DeskWindow._refresh_stale_indicators_for`."""
         self._titlebar.set_stale(is_stale)
+        self._update_chrome_state()
+
+    def set_error(self, has_error: bool, message: str = "") -> None:
+        """Shows/hides the titlebar's clickable `[ERROR]` button (TODO
+        d4d6c71) -- see `desk.shell.window.DeskWindow._bind_error_indicator`
+        (kind:"html") and `desk.shell.app_notify.DeskApplication.notify`
+        (kind:"python"), the two things that call this. `message` is
+        stored for `_on_widget_error_clicked` to display; ignored when
+        `has_error` is False (clearing the indicator doesn't need to also
+        clear the last message -- a stale message is never shown since
+        the button is hidden)."""
+        if has_error:
+            self.last_error_message = message
+        self._titlebar.set_error(has_error)
         self._update_chrome_state()
 
     @property

@@ -1,10 +1,11 @@
 import importlib.util
 import logging
 import sys
+import traceback
 from pathlib import Path
 from types import ModuleType
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 from desk.hotreload import HotReloadBroker
@@ -39,6 +40,22 @@ class PythonWidgetHost(QWidget):
     module fresh (no caching) and swaps in a newly-built widget. See
     design-docs/architecture.md#widget-model."""
 
+    # TODO d4d6c71: (True, traceback text) when _rebuild's own try/except
+    # below catches a failed build() (already caught, just not previously
+    # surfaced anywhere but the log); (False, "") on a subsequent
+    # successful rebuild. Drives the titlebar [ERROR] indicator -- see
+    # DeskWindow._bind_error_indicator. Deliberately does NOT attempt to
+    # cover a runtime exception from this widget's own code after a
+    # successful build (e.g. a button's click handler) -- confirmed
+    # directly that any such exception is intercepted by PyQt6 at the
+    # point it escapes a Python slot/virtual-method override (calling
+    # sys.excepthook and aborting the process, see LEARNINGS.md's
+    # "uncaught Python exception escaping a Qt-signal-invoked slot" entry)
+    # before it could ever reach any single centralized handler here,
+    # regardless of mechanism -- there is no live WidgetFrame left to show
+    # an indicator on by that point anyway.
+    build_error_changed = pyqtSignal(bool, str)
+
     def __init__(
         self,
         widget_id: str,
@@ -54,6 +71,14 @@ class PythonWidgetHost(QWidget):
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._current: QWidget | None = None
+        # Mirrors ChromiumWidget's own error-state tracking shape: ""
+        # means no error, else the traceback text of the last failed
+        # build. Checked immediately after binding by
+        # DeskWindow._bind_error_indicator -- this can already be
+        # non-empty by the time that binding happens, since _rebuild
+        # below runs synchronously during this very __init__, before any
+        # WidgetFrame wrapping this host even exists yet to bind to.
+        self.build_error: str = ""
 
         self._rebuild()
         broker.widget_changed.connect(self._on_widget_changed)
@@ -76,6 +101,8 @@ class PythonWidgetHost(QWidget):
                 self.widget_id,
                 exc_info=True,
             )
+            self.build_error = traceback.format_exc()
+            self.build_error_changed.emit(True, self.build_error)
             if self._current is None:
                 # No previous version to fall back to (this was the
                 # first build) -- show something rather than an entirely
@@ -89,6 +116,8 @@ class PythonWidgetHost(QWidget):
             self._current.deleteLater()
         self._layout.addWidget(widget)
         self._current = widget
+        self.build_error = ""
+        self.build_error_changed.emit(False, "")
 
     @property
     def current(self) -> QWidget | None:

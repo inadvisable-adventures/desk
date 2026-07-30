@@ -1,4 +1,4 @@
-# Plan: TODO d4d6c71 — widget instance titlebar error indicator
+# Plan: TODO d4d6c71 (COMPLETED) — widget instance titlebar error indicator
 
 From `../FEEDBACK/FEEDBACK-DESK-widget-error-visibility-2026-07-21-0053.md`:
 no widget kind currently surfaces "this instance hit an error" anywhere in
@@ -14,14 +14,51 @@ that lights up for:
    QtWebEngine/Chromium's own devtools console is backed by, so an
    uncaught exception reaching the browser's console reaches this
    callback too, not just an explicit `console.error(...)` call).
-2. A `kind: "python"` widget's runtime exception, from **anywhere** in its
-   own code (not just a `build()`-time failure) — per direct user
-   decision, via a new `QApplication.notify()` override that wraps every
-   Qt event dispatch app-wide and attributes an exception to the
-   enclosing `WidgetFrame` by walking the receiver's `QObject` parent
-   chain. This deliberately makes the *whole app* resilient to an
-   uncaught exception during event dispatch, not just widget content —
-   see "Scope note" below.
+2. A `kind: "python"` widget's `build()`-time failure (`widget.py` fails
+   to import/construct) — already caught today, per-instance, by
+   `PythonWidgetHost._rebuild`'s own try/except, just not surfaced
+   anywhere but the log.
+
+   **Revised scope, found during implementation (see "Investigation"
+   below):** the user's first choice was full runtime coverage — any
+   exception anywhere in a `kind: "python"` widget's own code, e.g. a
+   button's click handler, not just a build failure — via a new
+   `QApplication.notify()` override attributing an exception to the
+   enclosing `WidgetFrame`. Empirically confirmed this doesn't work:
+   PyQt6 intercepts an exception escaping a Python slot/virtual-method
+   override *at the point it escapes that specific callback* (calling
+   `sys.excepthook`, then aborting the process) — it never propagates
+   back up through the call stack to an outer `notify()` override's own
+   try/except at all. There is no single centralized mechanism that can
+   catch this class of exception without it already having been fatal;
+   only a try/except at each individual call site (inside the widget's
+   own code) actually works, which is a fundamentally different,
+   much larger task than this TODO's scope (retrofitting every widget's
+   own callbacks, not a one-time infra change). Presented this finding to
+   the user directly; re-scoped to build-time-failure coverage only (the
+   originally-recommended option) per their decision.
+
+### Investigation: why a `notify()` override can't catch a python
+    widget's runtime exception
+
+Reproduced directly, not just reasoned about: a `QApplication` subclass
+overriding `notify()` with `try: return super().notify(...) except
+Exception: ...`, given a real widget whose `event()` override raises when
+sent a real `QEvent` via `app.sendEvent(...)` — the process aborted
+(`SIGABRT`), the `except` block never ran. This matches, and is already
+documented by, this repo's own `LEARNINGS.md` (`810a5d6` entry): *"a
+single global backstop now exists (`desk.crash_handler`, ...
+`sys.excepthook`-based logger, which does **not** prevent the crash
+itself, only records it), but each hazard still has to be found and
+hardened at its own call site."* PyQt6's own internal exception handling
+for a Python virtual-method reimplementation or signal/slot callback
+intercepts an escaping exception right there (calling `sys.excepthook`
+and then, by default, aborting) — a `notify()` override one or more
+frames up the call chain never gets a chance to catch it via ordinary
+Python exception propagation, because the C++ call stack in between
+can't safely unwind through a Python exception at all. This is a hard
+architectural constraint of this app's PyQt6 setup, not a mistake in the
+override's own implementation.
 
 Clicking the button shows the captured error text in a small dialog and
 clears the indicator (mirrors `_on_widget_stale_clicked`'s
@@ -105,57 +142,23 @@ of duplicating it:
   signal and is skipped here entirely — its errors are attributed a
   different way, see below.
 
-### 4. `kind: "python"` wiring — `QApplication.notify()` override
+### 4. `kind: "python"` wiring — `PythonWidgetHost.build_error_changed`
 
-New file `src/desk/shell/app_notify.py`:
+Mirrors `ChromiumWidget.error_state_changed`'s own `(bool, str)` shape:
 
-```python
-class DeskApplication(QApplication):
-    def notify(self, receiver, event) -> bool:
-        try:
-            return super().notify(receiver, event)
-        except Exception:
-            logger.error("Uncaught exception dispatching %s to %r", event.type(), receiver, exc_info=True)
-            frame = _enclosing_widget_frame(receiver)
-            if frame is not None and isinstance(frame.content, PythonWidgetHost):
-                message = traceback.format_exc()
-                QTimer.singleShot(0, lambda f=frame, m=message: f.set_error(True, m))
-            return False
-```
-
-- `_enclosing_widget_frame(receiver)`: walks `receiver.parent()`
-  (`QObject.parent()`, works for any `QObject`, not just `QWidget`)
-  until it finds a `WidgetFrame` instance or runs out of ancestors.
-- Deferred via `QTimer.singleShot(0, ...)` rather than calling
-  `frame.set_error` synchronously from inside `notify()` itself —
-  `notify()` is about as reentrancy-sensitive a call stack as this
-  codebase has (it's *the* dispatch point for literally every Qt
-  event); deferring one event-loop turn is the same defensive shape
-  already used elsewhere here for exactly this kind of concern (see
-  `WidgetFrame._reassert_size`'s own comment).
-  `src/desk/app.py`: `app = DeskApplication(sys.argv)` instead of the
-  plain `QApplication` — the only call site that needs to change.
-
-#### Scope note (explicit, per direct user decision)
-
-Catching every exception during `notify()` app-wide is necessarily
-uniform — there's no way to try/except only for "receivers that happen
-to live inside a widget's own content" *before* the exception has
-already happened and been walked back to its receiver. A structural side
-effect: an uncaught exception anywhere in Desk's own chrome code (not
-just widget content) now also gets caught and logged here instead of
-propagating (previously fatal in this app, per `crash_handler.py`'s own
-docstring and several existing call-site comments describing exactly
-that). This is an intentional, disclosed consequence of the chosen
-approach (full runtime coverage), not an accidental scope expansion —
-still fully logged (via `logger.error(..., exc_info=True)`, same
-diagnostic visibility `crash_handler.py`'s existing global
-`sys.excepthook` already provides, just one layer earlier and with
-per-widget attribution when a `WidgetFrame` is found in the receiver's
-ancestry). `crash_handler.py`'s own `sys.excepthook` installation is
-unchanged and stays as a second, independent safety net for anything
-`notify()` itself doesn't cover (e.g. an exception raised outside any
-Qt event dispatch at all).
+- `PythonWidgetHost.build_error_changed = pyqtSignal(bool, str)`, plus a
+  plain `self.build_error: str` attribute (`""` = no error). `_rebuild`'s
+  existing except branch sets `self.build_error =
+  traceback.format_exc()` and emits `(True, self.build_error)`; its
+  success path sets `self.build_error = ""` and emits `(False, "")`.
+- `DeskWindow._bind_error_indicator`: for a `PythonWidgetHost`, connects
+  `build_error_changed` to `frame.set_error`, then immediately checks
+  `content.build_error` and calls `frame.set_error(True, ...)` if
+  already non-empty — same "connect, then check for already-happened
+  state" shape `_bind_external_indicator` already uses, needed here
+  because `_rebuild()` runs synchronously inside `PythonWidgetHost
+  .__init__`, before any `WidgetFrame` wrapping it (and thus before this
+  binding) exists yet.
 
 ### 5. Clicking the indicator (`src/desk/shell/window.py`)
 
@@ -207,15 +210,14 @@ click-hit-test-dispatch shape):
   call) confirms the *uncaught exception* path specifically, not just
   literal `console.error` calls; confirm `reload()` emits
   `(False, "")` and clears `frame.last_error_message`.
-- **`kind: "python"` real notify() capture**: a real `DeskApplication`,
-  a real `WidgetFrame` wrapping a real `PythonWidgetHost`-hosted widget
-  whose button click handler raises — dispatch a real `QMouseEvent`/
-  direct `event()` call so it genuinely goes through `notify()`, confirm
-  `frame.set_error(True, ...)` was called (via `app.processEvents()` to
-  let the deferred `singleShot(0)` fire) and the app did not crash;
-  confirm a subsequent, unrelated event still dispatches normally
-  afterward (the override doesn't wedge the event loop); confirm an
-  exception with no enclosing `WidgetFrame` in its receiver's ancestry
-  is still caught (doesn't crash the process) even though no indicator
-  lights up anywhere.
+- **`kind: "python"` real build-failure capture**: a real, on-disk
+  `widget.py` whose `build()` raises, loaded via a real `PythonWidgetHost`
+  and placed via `_place_widget` — confirm the frame is already showing
+  `[ERROR]` immediately after placement (the pre-existing-state check in
+  `_bind_error_indicator`, not a live signal); confirm `PythonWidgetHost
+  .build_error` holds the traceback text. A second widget whose `build()`
+  succeeds confirms no false positive. A hot-reload from a failing
+  `build()` to a succeeding one (`broker.widget_changed.emit(...)` then
+  a real `_rebuild()`) confirms `build_error_changed` fires `(False, "")`
+  live and clears the indicator.
 - Full `tests/verify/` regression suite.

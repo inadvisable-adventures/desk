@@ -5086,7 +5086,7 @@ ebf641d. COMPLETED: SVG Editor pending polygon/polyline drawing fixes: show a "C
    so it's not perfectly on top of the original, and select it --
    ready to drag into position via the existing handle-drag path.
 
-d4d6c71. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-widget-error-visibility
+d4d6c71. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-widget-error-visibility
    -2026-07-21-0053.md`): no widget kind currently surfaces "this
    widget instance hit an error" anywhere in the UI -- a `kind:
    "python"` widget's top-level exception and an HTML/browser-kind
@@ -5115,6 +5115,73 @@ d4d6c71. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-widget-error-visibility
    loaded," no message capture) would still close most of the actual
    gap described above.
    [planned: widget-error-indicator.md]
+
+   Implemented per plan, with one significant scope revision found
+   during implementation. A new `[ERROR]` titlebar button
+   (`_ErrorIndicatorButton`, high-contrast red, unlike every other
+   chrome button) mirrors the existing `[STALE]` indicator exactly:
+   `_TitleBar`/`WidgetFrame.set_error(has_error, message)`,
+   `canvas.py`'s `_hit_test_chrome`/`widget_error_clicked` signal, and
+   `DeskWindow._on_widget_error_clicked`/`_confirm_widget_error_dismissed`
+   (a QMessageBox showing the error text, clearing the indicator on
+   dismissal). Wired for real for `kind: "html"` widgets: `ChromiumWidget`
+   gets a new `error_state_changed(bool, str)` signal fed by
+   `_LoggingWebEnginePage`'s existing `javaScriptConsoleMessage` override
+   (confirmed directly: this callback fires for an uncaught JS
+   exception/unhandled promise rejection *and* an explicit
+   `console.error()` call, both at `ErrorMessageLevel` -- not just the
+   literal `console.error` case), and clears on `reload()` (a new
+   override covering both existing reload call sites for free).
+
+   The user's first choice for `kind: "python"` widgets was full runtime
+   coverage (any exception anywhere in a widget's own code, not just a
+   build failure) via a new `QApplication.notify()` override attributing
+   an exception to its enclosing `WidgetFrame`. Built it, then
+   confirmed directly -- before writing any verification suite around
+   it -- that it doesn't work: a widget whose `event()` override raises
+   when sent a real `QEvent` via `app.sendEvent(...)` aborted the whole
+   process (`SIGABRT`); the outer `notify()` override's own `except`
+   block never ran. Root cause: PyQt6 intercepts an exception escaping a
+   Python slot/virtual-method reimplementation *at the point it escapes
+   that specific callback* (calling `sys.excepthook`, then aborting) --
+   it never propagates normally back up the call stack to an outer
+   `notify()`'s try/except at all, since the C++ frames in between can't
+   safely unwind through a Python exception. This is already documented,
+   independently, in this repo's own `LEARNINGS.md` (`810a5d6` entry):
+   "a single global backstop now exists (`desk.crash_handler`, ...
+   which does *not* prevent the crash itself, only records it), but each
+   hazard still has to be found and hardened at its own call site."
+   Presented this finding to the user directly (with the reproduction);
+   per their decision, re-scoped `kind: "python"` coverage to
+   `build()`-time failures only -- already caught per-instance by
+   `PythonWidgetHost._rebuild`'s own try/except, just not previously
+   surfaced anywhere but the log. Deleted the non-working
+   `app_notify.py`/`DeskApplication` entirely rather than leaving dead
+   code behind. `PythonWidgetHost` gained the same
+   `build_error_changed(bool, str)` shape as `ChromiumWidget`, plus a
+   `self.build_error: str` attribute so `DeskWindow._bind_error_indicator`
+   can detect an already-failed initial build (which happens
+   synchronously inside `PythonWidgetHost.__init__`, before any
+   `WidgetFrame`/binding exists yet) the same way
+   `_bind_external_indicator` already handles that shape for `set_file`.
+
+   Verified directly: new `tests/verify/verify_widget_error_indicator.py`
+   (22 checks) -- titlebar button visibility/click-dispatch/dialog
+   plumbing; a real `ChromiumWidget` loading real inline HTML via a
+   `data:` URL, confirming both an explicit `console.error()` call and a
+   genuinely uncaught JS exception (no explicit `console.error` at all)
+   are captured, and that `reload()` clears the indicator; a real
+   on-disk `widget.py` whose `build()` raises, loaded through a real
+   `PythonWidgetHost`, confirming the indicator is already showing
+   immediately after placement, a working widget never shows one, and a
+   live hot-reload from a failing to a successful build clears it.
+   Fixed 6 pre-existing verify scripts broken by `_place_widget`'s new
+   unconditional `_bind_error_indicator` call (each had a `_FakeWindow`-
+   style double missing the new method, an `AttributeError` on every
+   `_place_widget` call) by adding the same
+   `_FakeWindow._bind_error_indicator = DeskWindow._bind_error_indicator`
+   binding already used for its sibling `_bind_*` methods. Full
+   regression suite: 76 scripts (one new), 0 failures.
 
 3b1ef3d. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-color-picker-mini-component
    -library-2026-07-22-1811.md`): `DefineWidget`/browser-kind widgets

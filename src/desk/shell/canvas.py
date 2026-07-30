@@ -18,6 +18,7 @@ from desk.shell.widget_frame import (
     WidgetFrame,
     _BringToFrontButton,
     _CloseButton,
+    _ErrorIndicatorButton,
     _EyeButton,
     _LockButton,
     _ResizeHandle,
@@ -94,6 +95,7 @@ class WorkspaceView(QGraphicsView):
     paste_requested = pyqtSignal(QPointF)  # scene pos of the click that opened the menu
     tempui_promote_requested = pyqtSignal(WidgetFrame)  # TODO 91b3f42
     widget_stale_clicked = pyqtSignal(WidgetFrame)  # TODO 3e2c4f2
+    widget_error_clicked = pyqtSignal(WidgetFrame)  # TODO d4d6c71
     popup_closed = pyqtSignal(WidgetFrame)  # TODO 359684f: a popup's close (X) button
 
     def __init__(self, parent=None) -> None:
@@ -511,6 +513,8 @@ class WorkspaceView(QGraphicsView):
                     self.tempui_promote_requested.emit(frame)
                 elif kind == "stale":
                     self.widget_stale_clicked.emit(frame)
+                elif kind == "error":
+                    self.widget_error_clicked.emit(frame)
                 elif kind in ("eye", "greeked"):
                     self.zoom_to_widget(frame)
             event.accept()
@@ -595,6 +599,7 @@ class WorkspaceView(QGraphicsView):
                 _UnlockButton,
                 _TempuiPromoteButton,
                 _StaleIndicatorButton,
+                _ErrorIndicatorButton,
                 _EyeButton,
                 _TitleBar,
                 _ResizeHandle,
@@ -616,6 +621,8 @@ class WorkspaceView(QGraphicsView):
             return frame, "tempui_promote"
         if isinstance(child, _StaleIndicatorButton):
             return frame, "stale"
+        if isinstance(child, _ErrorIndicatorButton):
+            return frame, "error"
         if isinstance(child, _EyeButton):
             return frame, "eye"
         if isinstance(child, _TitleBar):

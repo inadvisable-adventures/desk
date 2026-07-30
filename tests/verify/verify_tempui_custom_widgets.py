@@ -546,6 +546,7 @@ _FakeWindowWithView._place_widget = DeskWindow._place_widget
 _FakeWindowWithView._bind_claude_widget = DeskWindow._bind_claude_widget
 _FakeWindowWithView._bind_external_indicator = DeskWindow._bind_external_indicator
 _FakeWindowWithView._bind_event_mediator = DeskWindow._bind_event_mediator
+_FakeWindowWithView._bind_error_indicator = DeskWindow._bind_error_indicator
 
 
 def test_place_widget_shows_tempui_button_only_for_custom_widgets():
