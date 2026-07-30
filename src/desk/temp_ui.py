@@ -157,7 +157,14 @@ SHARED_COMPONENTS_DIRNAME = "shared-components"
 # TODO ad20867: bumped 23 -> 24 -- desk.fs.writeFile now creates any
 # missing parent directories before writing (previously silently
 # rejected a write to a not-yet-existing directory).
-TEMPUI_DOC_VERSION = 24
+#
+# TODO d4368bd: bumped 24 -> 25 for a new shared-components/ entry,
+# document-editor-base -- a base class for a title-to-path, auto-load/
+# auto-save file-backed document editor. "Reusable UI components"'s own
+# text also updated to note that whether a component recommends
+# importing it as a separate file vs. copying its source directly
+# depends on the component (see that section's own explanation).
+TEMPUI_DOC_VERSION = 25
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -585,14 +592,20 @@ before.
 
 `.desk_temp/shared-components/` holds a small library of ready-made,
 dependency-free UI components for exactly this kind of real-source
-authoring — check here before building a non-trivial UI control (a
-color picker, say) from scratch. Refreshed automatically alongside the
-rest of `.desk_temp`, same as `build_widget.py` above — never a stale
-one-time copy. Each component lives in its own subdirectory with its
-own `README.md` explaining what it does and how to use it. It's
-perfectly fine to either `import` a component's file directly, or
-copy+paste+modify its two files into a widget's own source — both are
-intended, accepted ways to use them, not just a fallback.
+authoring — check here before building something non-trivial from
+scratch, whether that's a UI control (a color picker) or a whole
+widget's file lifecycle (a title-to-path, auto-load/auto-save document
+editor). Refreshed automatically alongside the rest of `.desk_temp`,
+same as `build_widget.py` above — never a stale one-time copy. Each
+component lives in its own subdirectory with its own `README.md`
+explaining what it does, how to use it, and whether that specific
+component recommends copying its source directly into your own widget
+file versus keeping it as a separate one (this project's own
+`build_widget.py` concatenates a widget's compiled `.js` files in
+plain alphabetical order, not dependency order — safe for a
+self-contained control with no cross-file dependency, but a real
+hazard for a base class a widget extends, whose own file needs to be
+concatenated *before* the subclass's).
 
 ## Invoking a defined widget
 
@@ -923,6 +936,16 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 25
+- New `shared-components/document-editor-base` entry: a base class
+  (`DocumentEditorBase<Doc>`) for a title-to-path, auto-load/auto-save
+  file-backed document editor -- see its own `README.md`. Unlike
+  `hsv-color-picker`, this one specifically recommends copying its
+  source directly into your own widget file rather than keeping it as
+  a separate one (a real class-inheritance load-order hazard with this
+  project's own `build_widget.py` -- see the "Reusable UI components"
+  section above).
 
 ## Version 24
 - `desk.fs.writeFile` now creates any missing parent directories before

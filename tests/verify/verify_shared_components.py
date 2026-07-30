@@ -150,9 +150,17 @@ def test_doc_version_and_new_features_entry():
     from desk.temp_ui import _CUSTOM_WIDGETS_DOC
 
     check("custom-widgets doc has a Reusable UI components section", "Reusable UI components" in _CUSTOM_WIDGETS_DOC)
+    # TODO d4368bd: the section's own wording was revised once a second
+    # component (document-editor-base) showed that "import vs.
+    # copy+paste+modify" isn't a blanket "either is fine" -- it depends
+    # on the component (a real class-inheritance load-order hazard in
+    # this project's own build_widget.py, safe for a self-contained
+    # control like hsv-color-picker but not for a base class). Checking
+    # for the substance of that (each component's own README says which
+    # applies) rather than the old, now-inaccurate literal phrasing.
     check(
-        "custom-widgets doc says both import and copy+paste+modify are fine",
-        "import" in _CUSTOM_WIDGETS_DOC and "copy+paste+modify" in _CUSTOM_WIDGETS_DOC,
+        "custom-widgets doc explains component READMEs say which usage mode applies",
+        "recommends copying its source directly" in _CUSTOM_WIDGETS_DOC,
     )
 
 

@@ -5414,7 +5414,7 @@ ad20867. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-editor-widget-base-
    scoped to writes only; doc version/changelog bump checks. Full
    regression suite: 77 scripts, 0 failures.
 
-d4368bd. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-editor-widget-base-types
+d4368bd. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-editor-widget-base-types
    -2026-07-30-1021.md`): the same feedback as TODO `ad20867` above,
    the larger half -- a lesson recorded in `LEARNINGS.md` about the
    missing-directory bug didn't prevent a fourth widget from
@@ -5430,3 +5430,74 @@ d4368bd. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-editor-widget-base-types
    titlebar `[ERROR]` indicator for surfacing a rejected save/load
    instead of failing silently.
    [planned: shared-document-editor-base.md]
+
+   Implemented per plan. First read the real, already-shipped source
+   this generalizes (`../necro-4x/custom_widget_src/domain-analysis/
+   domain-analysis.ts`, 827 lines, in full) rather than architecting
+   from the feedback's own prose alone -- confirmed the real pattern is
+   simpler than the plan's own initial assumption: every widget this
+   was extracted from saves immediately after each discrete edit
+   action (add a tag, add a row, ...), not on a debounce timer, so
+   `save()` needs no debounce machinery at all.
+
+   New `shared-components/document-editor-base/` (`document-editor
+   -base.ts` + `README.md`): `DocumentEditorBase<Doc>`, an abstract
+   class a widget's own custom element extends, owning path derivation
+   (`<directory>/<kebab-title>.<extension>`), create-vs-load (never
+   silently clobbering an existing file), restoring the last-open
+   document via `desk.self.getLocalStorage`, and `save()` (calling
+   `desk.fs.writeFile` -- which TODO `ad20867` already makes safe
+   against the missing-directory bug unconditionally). Confirmed
+   directly, empirically, two real constraints while building this
+   (both now documented prominently in the component's own README):
+   (1) a custom element's constructor must take zero arguments (the
+   browser always calls `new YourElement()` bare, even during upgrade)
+   -- configuration goes through abstract getters/methods
+   (`directory`/`extension`/`emptyDoc`/...), not constructor params, and
+   real initialization happens in `connectedCallback`, not the
+   constructor; (2) `export`ing the class breaks `interface Window {
+   desk?: ... }`'s merge with the real global `Window` type (any
+   `import`/`export` makes TypeScript treat the whole file as a module
+   with its own declaration space) -- confirmed by reproducing the
+   exact type error, then removing `export` entirely, matching every
+   real widget this was extracted from (none use `export`/`import`
+   either). Also discovered and documented a third, more consequential
+   hazard: `.desk_temp/build_widget.py` concatenates a widget's
+   compiled `.js` files in plain alphabetical filename order (`sorted
+   (out_dir.rglob("*.js"))`), not dependency order -- reproduced
+   directly (a real `tsc` compile + concatenation + `node` run) that a
+   subclass whose filename sorts alphabetically before the base
+   class's throws `ReferenceError: Cannot access 'DocumentEditorBase'
+   before initialization`. Since this is a real hazard specific to
+   *this* component (a base class meant for JS-level `extends`) and not
+   `hsv-color-picker` (a self-contained control with no cross-file
+   dependency), the README recommends copying the base class's source
+   directly into a widget's own single `.ts` file as the *safe*
+   default, not just an equally-fine alternative -- and
+   `_CUSTOM_WIDGETS_DOC`'s "Reusable UI components" section wording was
+   revised accordingly (it previously claimed import-vs-copy+paste
+   were unconditionally interchangeable for any component, no longer
+   accurate now that a second, differently-shaped component exists).
+   `TEMPUI_DOC_VERSION` bumped 24 -> 25 with a matching
+   `_NEW_FEATURES_DOC` entry.
+
+   Verified directly: new
+   `tests/verify/verify_shared_document_editor_base.py` (15 checks) --
+   a real subclass (`TestNotesElement`) compiled together with the real
+   `document-editor-base.ts` via `tsc --strict`, assembled into a real
+   `kind:"html"` widget directory, served by a real running Local Web
+   Server, driven via a real `ChromiumWidget` and real Bridge API calls
+   (not mocked) through the full lifecycle: creating a document whose
+   target directory genuinely doesn't exist yet (the precise bug this
+   whole feedback is about, confirmed fixed end-to-end, not just at the
+   HTTP-route level TODO `ad20867` already covers); editing auto-saves
+   for real; attempting to create over an already-existing document is
+   refused rather than silently clobbering it; a fresh instance
+   loading the same title gets the real saved content back; a fresh
+   instance sharing the same instance id auto-restores the last-open
+   document without an explicit Load click. Caught and fixed one
+   test-only regression in `verify_shared_components.py` along the way:
+   its own doc-content check asserted the *old*, now-inaccurate literal
+   phrasing ("import and copy+paste+modify are fine" unconditionally) --
+   fixed to check for the substance of the revised wording instead. Full
+   regression suite: 78 scripts (one new), 0 failures.

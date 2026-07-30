@@ -1,4 +1,4 @@
-# Plan: TODO d4368bd — shared "auto-load/auto-save document editor" widget base type
+# Plan: TODO d4368bd (COMPLETED) — shared "auto-load/auto-save document editor" widget base type
 
 From `../FEEDBACK/FEEDBACK-DESK-editor-widget-base-types-2026-07-30-1021.md`:
 the missing-directory `writeFile` bug (see TODO `ad20867`, which fixes

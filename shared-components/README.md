@@ -6,11 +6,12 @@ whenever a widget needs something more involved than a bare
 `<input>`, and it's not worth re-deriving from scratch.
 
 One subdirectory per component. Each has its own `README.md`
-explaining what it does and how to use it, plus its own source (a
-custom element `.ts` and a `template.html` fragment) — no shared
-build step, no npm, no runtime dependency between components or on
-anything else. This matters here specifically because a
-`DefineWidget`/browser-kind widget can never depend on anything at
+explaining what it does and how to use it, plus its own source — a
+ready-to-use custom element (a `.ts` file and a `template.html`
+fragment), or a base class to extend (see e.g. `document-editor-base/`)
+— no shared build step, no npm, no runtime dependency between
+components or on anything else. This matters here specifically because
+a `DefineWidget`/browser-kind widget can never depend on anything at
 runtime beyond what's inlined into its own HTML (see
 `tempui-custom-widgets.md`'s "Authoring from real source") — the value
 of this directory is a canonical, already-debugged starting point, not
@@ -27,3 +28,6 @@ local edits there will be silently overwritten.
 
 - [`hsv-color-picker/`](hsv-color-picker/README.md) — an HSV color
   wheel + brightness bar + hex field.
+- [`document-editor-base/`](document-editor-base/README.md) — a base
+  class for a title-to-path, auto-load/auto-save file-backed document
+  editor.
