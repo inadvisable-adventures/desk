@@ -1,4 +1,4 @@
-# Plan: TODO 70789ee — SVG Editor shape actions context menu (duplicate + delete)
+# Plan: TODO 70789ee (COMPLETED) — SVG Editor shape actions context menu (duplicate + delete)
 
 From `../FEEDBACK/FEEDBACK-DESK-svg-editor-duplicate-shape-button-2026-07-22-1819.md`,
 revised per direct user instruction: instead of a second floating corner

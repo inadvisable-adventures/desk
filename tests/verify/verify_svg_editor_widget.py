@@ -8,7 +8,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
 
-from PyQt6.QtCore import QPointF  # noqa: E402
+from PyQt6.QtCore import QPoint, QPointF  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 app = QApplication.instance() or QApplication([])
@@ -798,6 +798,136 @@ def test_switching_tools_or_selection_clears_point_selection():
 
 
 test_switching_tools_or_selection_clears_point_selection()
+
+
+# ---------- TODO 70789ee: shape actions context menu (duplicate + delete) ----------
+
+
+def test_shape_actions_menu_shows_both_buttons_with_icon_and_tooltip():
+    widget = mod.SvgEditorWidget()
+    widget.resize(400, 400)
+    widget.show()
+    check("menu hidden with nothing selected", not widget._shape_actions_menu.isVisible())
+
+    widget._create_single_click_object("rect", QPointF(100, 100))
+    check("menu shows once a shape is selected (Shapes tool is the default)", widget._shape_actions_menu.isVisible())
+    check("duplicate button is a child of the menu frame", widget._shape_duplicate_button.parent() is widget._shape_actions_menu)
+    check("delete button is a child of the menu frame", widget._shape_delete_button.parent() is widget._shape_actions_menu)
+    check("duplicate button glyph is the requested one", widget._shape_duplicate_button.text() == "⧉")
+    check("duplicate button has hover text", widget._shape_duplicate_button.toolTip() == "Duplicate")
+    check("delete button glyph is a trash can, not the old ✕", widget._shape_delete_button.text() == "🗑")
+    check("delete button has hover text", widget._shape_delete_button.toolTip() == "Delete")
+
+    widget._scene.clearSelection()
+    check("menu hides once nothing is selected", not widget._shape_actions_menu.isVisible())
+    widget.deleteLater()
+
+
+test_shape_actions_menu_shows_both_buttons_with_icon_and_tooltip()
+
+
+def test_duplicate_selected_object_clones_it_with_an_offset():
+    widget = mod.SvgEditorWidget()
+    widget.resize(400, 400)
+    widget.show()
+    widget._create_single_click_object("rect", QPointF(100, 100))
+    original = widget._objects[0]
+    original_pos = original.item.scenePos()
+    original_attrib = dict(original.element.attrib)
+
+    widget._duplicate_selected_object()
+    check("a new object was created", len(widget._objects) == 2)
+    clone = widget._objects[-1]
+    check("the clone has the same tag as the original", clone.element.tag == original.element.tag)
+    check("the original is untouched", original.item.scenePos() == original_pos and dict(original.element.attrib) == original_attrib)
+    check("the clone is offset from the original (not perfectly on top of it)", clone.item.scenePos() != original_pos)
+    check("the clone is now the selected object", widget._selected_object is clone)
+    widget.deleteLater()
+
+
+test_duplicate_selected_object_clones_it_with_an_offset()
+
+
+def test_shape_actions_menu_tier_a_used_when_there_is_room_above():
+    widget = mod.SvgEditorWidget()
+    widget.resize(400, 400)
+    widget.show()
+    widget._create_single_click_object("rect", QPointF(200, 200))
+    widget._view.resetTransform()
+    rect = widget._selected_object.item.sceneBoundingRect()
+    widget._view.centerOn(rect.center())
+    widget._refresh_shape_actions_menu()
+
+    menu = widget._shape_actions_menu
+    top_center = widget._view.mapFromScene(QPointF(rect.center().x(), rect.top()))
+    # Not menu.geometry().bottom() == top_center.y() -- QRect.bottom()
+    # is top() + height() - 1 (Qt's inclusive-rect convention), off by
+    # one from the plain top-left-y + height arithmetic
+    # _refresh_shape_actions_menu itself actually uses.
+    check(
+        "with room on every side, the menu's bottom-center lands on the shape's top-center (tier a)",
+        menu.pos().y() + menu.height() == top_center.y(),
+    )
+    widget.deleteLater()
+
+
+test_shape_actions_menu_tier_a_used_when_there_is_room_above()
+
+
+def test_shape_actions_menu_falls_back_through_tiers_when_it_would_go_offscreen():
+    # Qt's own view-scrolling arithmetic (centerOn/mapFromScene) isn't
+    # practical to hand-compute exact pixel positions for -- these two
+    # scenarios instead control _refresh_shape_actions_menu's own three
+    # mapFromScene calls directly (order: top-center, bottom-center,
+    # center -- matching the method's own call order), which still
+    # exercises the method's real fallback decision logic, just without
+    # needing to fight real QGraphicsView scroll-position quantization
+    # to construct the input geometry.
+    widget = mod.SvgEditorWidget()
+    widget.resize(400, 400)
+    widget.show()
+    widget._create_single_click_object("rect", QPointF(200, 200))
+    menu = widget._shape_actions_menu
+    menu.adjustSize()
+    view_rect = widget._view.rect()
+
+    def make_fake_map(top_center_y, bottom_center_y):
+        # _refresh_shape_actions_menu calls self._view.mapFromScene
+        # exactly 3 times, in this order: top-center, bottom-center,
+        # center -- return controlled positions for the first two,
+        # matching each scenario, and the shape's real center for the
+        # third (tier c's own anchor).
+        calls = []
+
+        def fake_map(_point):
+            calls.append(_point)
+            index = len(calls) - 1
+            if index == 0:
+                return QPoint(view_rect.center().x(), top_center_y)
+            if index == 1:
+                return QPoint(view_rect.center().x(), bottom_center_y)
+            return view_rect.center()
+
+        return fake_map
+
+    widget._view.mapFromScene = make_fake_map(top_center_y=5, bottom_center_y=view_rect.center().y())
+    widget._refresh_shape_actions_menu()
+    check(
+        "tier (b) chosen when tier (a) would place the menu above the view's top edge",
+        menu.pos().y() == view_rect.center().y(),
+    )
+
+    widget._view.mapFromScene = make_fake_map(top_center_y=5, bottom_center_y=view_rect.height() - 5)
+    widget._refresh_shape_actions_menu()
+    expected = QPoint(view_rect.center().x() - menu.width() // 2, view_rect.center().y() - menu.height() // 2)
+    check(
+        "tier (c) (menu centered on the shape) chosen when neither (a) nor (b) fits",
+        menu.pos() == expected,
+    )
+    widget.deleteLater()
+
+
+test_shape_actions_menu_falls_back_through_tiers_when_it_would_go_offscreen()
 
 
 # ---------- file_type_registry wiring ----------

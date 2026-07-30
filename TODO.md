@@ -5068,7 +5068,7 @@ ebf641d. COMPLETED: SVG Editor pending polygon/polyline drawing fixes: show a "C
    never deletable; switching tools or the object selection correctly
    clears the selected point and hides/shows the right button. Full
    regression suite: 75 scripts, 0 failures.
-70789ee. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-duplicate-shape-button
+70789ee. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-svg-editor-duplicate-shape-button
    -2026-07-22-1819.md`): the SVG Editor's Shapes tool has a hovering
    delete button on a selected shape (`_shape_delete_button`, TODO
    `1fb365e`) but no way to duplicate one -- today, cloning a shape
@@ -5097,6 +5097,50 @@ ebf641d. COMPLETED: SVG Editor pending polygon/polyline drawing fixes: show a "C
    3. Icons: "⧉" for Duplicate, a trash-can glyph for Delete (replacing
       the existing "✕").
    [planned: svg-editor-shape-actions-menu.md]
+
+   Implemented per plan. Replaced the old standalone corner-anchored
+   `_shape_delete_button` with `self._shape_actions_menu`, a plain
+   floating `QFrame` (not a real `QMenu`/`Qt.WindowType.Popup` --
+   documented why in the plan: a Popup auto-closes on losing focus/an
+   outside click, which would fight this panel's own "stays up and
+   tracks the shape for as long as it's selected" requirement, and
+   clamps to the desktop screen rather than this widget's own view)
+   holding both `_shape_duplicate_button` ("⧉", tooltip "Duplicate")
+   and `_shape_delete_button` (now "🗑" instead of "✕", tooltip
+   "Delete", same red-tinted style). `_refresh_shape_delete_button`
+   became `_refresh_shape_actions_menu`, computing three candidate
+   positions from the selected shape's `sceneBoundingRect()` mapped
+   through `self._view.mapFromScene` -- (a) menu bottom-center at the
+   shape's top-center, (b) menu top-center at the shape's bottom
+   -center, (c) menu center at the shape's own center -- trying each in
+   order against `self._view.rect()` (this widget's own view bounds,
+   matching how every other floating button here is already
+   positioned), using (c) unconditionally if neither (a) nor (b) fits.
+   `_duplicate_selected_object` reuses the existing `_add_object`
+   directly (which already does the flag-setting/scene-insertion/
+   root-append/selection the feedback's own sketch reimplemented
+   inline) rather than duplicating its body -- `copy.deepcopy` the
+   selected object's element, rebuild via the element's own class's
+   `from_element`, nudge by `(12, 12)`, hand off to `_add_object`.
+
+   Verified directly: extended `tests/verify/verify_svg_editor_widget.py`
+   (17 new checks, 134 total now) -- the menu shows/hides with the
+   right glyphs and tooltips on each button; duplicating clones the
+   right tag/attributes with an offset, leaves the original untouched,
+   and selects the clone; tier (a) confirmed against a real
+   `QGraphicsView` (`centerOn` + `mapFromScene`, not hand-computed
+   pixel math); tiers (b)/(c) confirmed by controlling
+   `_refresh_shape_actions_menu`'s own three `mapFromScene` calls
+   directly (real `QGraphicsView` scroll-position arithmetic turned out
+   impractical to hand-predict precisely enough for a deterministic
+   test, so these two exercise the method's real fallback-decision
+   logic against controlled inputs instead). Caught and fixed one test
+   bug along the way: `QRect.bottom()` is `top() + height() - 1` (Qt's
+   inclusive-rect convention), not `top() + height()` -- the tier (a)
+   implementation itself was already correct, the test's first
+   assertion just compared against the wrong quantity; fixed by
+   comparing `menu.pos().y() + menu.height()` instead. Full regression
+   suite: 77 scripts, 0 failures.
 
 d4d6c71. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-widget-error-visibility
    -2026-07-21-0053.md`): no widget kind currently surfaces "this

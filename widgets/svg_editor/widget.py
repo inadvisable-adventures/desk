@@ -12,13 +12,14 @@ anything unrecognized (comments, <defs>, an unsupported <path> -- see
 PathObject) is simply never touched, so it round-trips verbatim on save
 with no separate bookkeeping needed. See plans/svg-editor-widget.md."""
 
+import copy
 import logging
 import math
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QPointF, QRectF, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QPoint, QPointF, QRect, QRectF, QTimer, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen, QPolygonF
 from PyQt6.QtWidgets import (
     QButtonGroup,
@@ -867,7 +868,7 @@ class _EditorView(QGraphicsView):
         # this view (not scene items), so they need manual
         # repositioning whenever the view's own size changes.
         self._editor._reposition_complete_button()
-        self._editor._refresh_shape_delete_button()
+        self._editor._refresh_shape_actions_menu()
         self._editor._refresh_point_delete_button()
 
 
@@ -928,24 +929,47 @@ class SvgEditorWidget(QWidget):
         self._complete_button.clicked.connect(self._finish_pending)
         self._complete_button.hide()
 
-        # TODO 1fb365e: same floating-widget-over-the-view shape as
-        # self._complete_button above -- a small "delete" affordance
-        # hovering near a selected shape (Shapes tool) / a selected
-        # point (Points tool), each shown/positioned by its own
-        # _refresh_*_delete_button, both called from the same places
+        # TODO 1fb365e/70789ee: same floating-widget-over-the-view shape
+        # as self._complete_button above -- a small delete affordance
+        # hovering near a selected point (Points tool), shown/positioned
+        # by _refresh_point_delete_button, called from the same places
         # _refresh_handles already is (selection change, tool switch,
         # every drag step).
         delete_button_style = "QPushButton { color: #c0392b; font-weight: bold; }"
-        self._shape_delete_button = QPushButton("✕", self._view)
-        self._shape_delete_button.setFixedSize(20, 20)
-        self._shape_delete_button.setStyleSheet(delete_button_style)
-        self._shape_delete_button.clicked.connect(self._delete_selected_object)
-        self._shape_delete_button.hide()
         self._point_delete_button = QPushButton("✕", self._view)
         self._point_delete_button.setFixedSize(20, 20)
         self._point_delete_button.setStyleSheet(delete_button_style)
         self._point_delete_button.clicked.connect(self._delete_selected_point)
         self._point_delete_button.hide()
+
+        # TODO 70789ee: a context-menu-style panel hovering near a
+        # selected shape (Shapes tool) -- not a real QMenu/Qt.WindowType
+        # .Popup (see WidgetSpawnMenu, this app's one other menu-like
+        # popup): a Popup window auto-closes on losing focus/an outside
+        # click, which would fight this panel's own "stays up and keeps
+        # tracking the shape for as long as it's selected" requirement,
+        # and it clamps to the desktop screen rather than this widget's
+        # own view -- both wrong here. A plain floating QFrame child of
+        # self._view instead, same shape as self._complete_button/
+        # self._point_delete_button above, refreshed from the same
+        # _refresh_handles call sites.
+        self._shape_actions_menu = QFrame(self._view)
+        self._shape_actions_menu.setFrameShape(QFrame.Shape.StyledPanel)
+        shape_actions_layout = QHBoxLayout(self._shape_actions_menu)
+        shape_actions_layout.setContentsMargins(4, 4, 4, 4)
+        shape_actions_layout.setSpacing(4)
+        self._shape_duplicate_button = QPushButton("⧉")
+        self._shape_duplicate_button.setFixedSize(24, 24)
+        self._shape_duplicate_button.setToolTip("Duplicate")
+        self._shape_duplicate_button.clicked.connect(self._duplicate_selected_object)
+        shape_actions_layout.addWidget(self._shape_duplicate_button)
+        self._shape_delete_button = QPushButton("🗑")
+        self._shape_delete_button.setFixedSize(24, 24)
+        self._shape_delete_button.setStyleSheet(delete_button_style)
+        self._shape_delete_button.setToolTip("Delete")
+        self._shape_delete_button.clicked.connect(self._delete_selected_object)
+        shape_actions_layout.addWidget(self._shape_delete_button)
+        self._shape_actions_menu.hide()
 
         self._label = QLabel()
         self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
@@ -1124,10 +1148,10 @@ class SvgEditorWidget(QWidget):
             elif self.current_tool == "points":
                 for index, point in enumerate(self._selected_object.point_positions()):
                     self._add_handle(point, index)
-        # TODO 1fb365e: both delete affordances track selection/tool/
+        # TODO 1fb365e/70789ee: both affordances track selection/tool/
         # drag state the same way the handles above just did, so they
         # refresh from every place _refresh_handles already is.
-        self._refresh_shape_delete_button()
+        self._refresh_shape_actions_menu()
         self._refresh_point_delete_button()
 
     def _add_handle(self, scene_pos: QPointF, index: int) -> None:
@@ -1154,18 +1178,42 @@ class SvgEditorWidget(QWidget):
     def _end_handle_drag(self) -> None:
         self._dragging_handle_index = None
 
-    def _refresh_shape_delete_button(self) -> None:
+    def _refresh_shape_actions_menu(self) -> None:
+        menu = self._shape_actions_menu
         if self.current_tool != "shapes" or self._selected_object is None:
-            self._shape_delete_button.hide()
+            menu.hide()
             return
         rect = self._selected_object.item.sceneBoundingRect()
-        view_pos = self._view.mapFromScene(rect.topRight())
-        self._shape_delete_button.move(
-            int(view_pos.x()) - self._shape_delete_button.width() // 2,
-            int(view_pos.y()) - self._shape_delete_button.height() // 2,
-        )
-        self._shape_delete_button.raise_()
-        self._shape_delete_button.show()
+        menu.adjustSize()
+        size = menu.size()
+        view_bounds = self._view.rect()
+
+        top_center = self._view.mapFromScene(QPointF(rect.center().x(), rect.top()))
+        bottom_center = self._view.mapFromScene(QPointF(rect.center().x(), rect.bottom()))
+        center = self._view.mapFromScene(rect.center())
+
+        # TODO 70789ee: three-tier fallback, in priority order -- (a)
+        # menu bottom-center at the shape's top-center, (b) menu
+        # top-center at the shape's bottom-center, (c) menu center at
+        # the shape's own center (the unconditional last resort, no
+        # further fallback beyond it). Checked against this view's own
+        # bounds (self._view.rect(), matching how every other floating
+        # button here is already positioned relative to self._view, not
+        # self._view.viewport()) -- not the desktop screen.
+        candidates = [
+            QPoint(int(top_center.x()) - size.width() // 2, int(top_center.y()) - size.height()),
+            QPoint(int(bottom_center.x()) - size.width() // 2, int(bottom_center.y())),
+            QPoint(int(center.x()) - size.width() // 2, int(center.y()) - size.height() // 2),
+        ]
+        chosen = candidates[-1]
+        for candidate in candidates:
+            if view_bounds.contains(QRect(candidate, size)):
+                chosen = candidate
+                break
+
+        menu.move(chosen)
+        menu.raise_()
+        menu.show()
 
     def _refresh_point_delete_button(self) -> None:
         obj = self._selected_object
@@ -1197,6 +1245,24 @@ class SvgEditorWidget(QWidget):
         self._scene.clearSelection()
         self._refresh_handles()
         self._refresh_property_panel()
+
+    def _duplicate_selected_object(self) -> None:
+        obj = self._selected_object
+        if obj is None:
+            return
+        cloned_element = copy.deepcopy(obj.element)
+        cls = TAG_TO_CLASS[_local_tag(cloned_element.tag)]
+        new_obj = cls.from_element(cloned_element)
+        # A small fixed offset so the duplicate isn't perfectly on top
+        # of the original -- discoverable at a glance, and immediately
+        # draggable into its real position via the same handle-drag
+        # path every other move already goes through.
+        new_obj.item.moveBy(12, 12)
+        # _add_object already does the append-to-root/objects, flag-
+        # setting, scene insertion, and selection this needs -- no
+        # separate self._root.append(cloned_element) here, _add_object
+        # does that itself.
+        self._add_object(new_obj)
 
     def _delete_selected_point(self) -> None:
         obj = self._selected_object
@@ -1448,7 +1514,7 @@ class SvgEditorWidget(QWidget):
         # directly (cheaper than a full _refresh_handles(), and
         # correct either way since both would just hide with no
         # selected object).
-        self._shape_delete_button.hide()
+        self._shape_actions_menu.hide()
         self._point_delete_button.hide()
         for element in list(self._root):
             cls = TAG_TO_CLASS.get(_local_tag(element.tag))
