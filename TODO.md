@@ -5526,3 +5526,12 @@ d4368bd. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-editor-widget-base-
    real correctness hazard for *any* future multi-file widget or
    shared-component combination involving cross-file class
    inheritance, not just this one.
+
+   Once this is actually fixed: clean up
+   `shared-components/document-editor-base/README.md`'s own hazard
+   warning (the "Recommended: copy `document-editor-base.ts`'s
+   contents directly..." section, and the matching note in
+   `_CUSTOM_WIDGETS_DOC`'s "Reusable UI components" section in
+   `src/desk/temp_ui.py`) -- both describe a workaround for this exact
+   bug, and would be stale/misleading once `build_widget.py` no longer
+   has the ordering hazard they're warning about.
