@@ -1,0 +1,119 @@
+<template id="hsv-color-picker-template">
+  <style>
+    :host {
+      display: inline-block;
+      font: 13px/1.4 sans-serif;
+      color: #cbd5e1;
+    }
+    .picker {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .wheel-and-brightness {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+    }
+    .wheel {
+      position: relative;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      flex: none;
+      cursor: crosshair;
+      touch-action: none;
+    }
+    .wheel-hue {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: conic-gradient(from 0deg, red, yellow, lime, cyan, blue, magenta, red);
+    }
+    .wheel-sat-overlay {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: radial-gradient(circle, #fff 0%, rgba(255, 255, 255, 0) 100%);
+    }
+    .wheel-cursor {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      margin-left: -6px;
+      margin-top: -6px;
+      border-radius: 50%;
+      border: 2px solid #fff;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+      pointer-events: none;
+    }
+    .brightness-slider {
+      position: relative;
+      width: 22px;
+      height: 120px;
+      flex: none;
+      border-radius: 4px;
+      outline: 1px solid #3a4454;
+      cursor: pointer;
+      touch-action: none;
+    }
+    .brightness-track {
+      position: absolute;
+      inset: 0;
+      border-radius: 4px;
+    }
+    .brightness-handle {
+      position: absolute;
+      left: -2px;
+      right: -2px;
+      height: 6px;
+      margin-top: -3px;
+      border: 2px solid #fff;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+      border-radius: 2px;
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+    .hex-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .hex-row label {
+      user-select: none;
+      color: #8fa2bd;
+    }
+    #hex-input {
+      flex: 1;
+      min-width: 0;
+      box-sizing: border-box;
+      border: 1px solid #3a4454;
+      border-radius: 4px;
+      background: #1e2530;
+      color: inherit;
+      font: inherit;
+      padding: 4px 6px;
+    }
+    #hex-input:focus {
+      outline: 2px solid #3a4454;
+      outline-offset: -2px;
+    }
+  </style>
+  <div class="picker">
+    <div class="wheel-and-brightness">
+      <div class="wheel" id="wheel">
+        <div class="wheel-hue"></div>
+        <div class="wheel-sat-overlay"></div>
+        <div class="wheel-cursor" id="wheel-cursor"></div>
+      </div>
+      <div class="brightness-slider" id="brightness-slider">
+        <div class="brightness-track" id="brightness-track"></div>
+        <div class="brightness-handle" id="brightness-handle"></div>
+      </div>
+    </div>
+    <div class="hex-row">
+      <label for="hex-input">Hex</label>
+      <input type="text" id="hex-input" value="#888888" spellcheck="false" />
+    </div>
+  </div>
+</template>

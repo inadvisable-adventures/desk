@@ -5183,7 +5183,7 @@ d4d6c71. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-widget-error-visibi
    binding already used for its sibling `_bind_*` methods. Full
    regression suite: 76 scripts (one new), 0 failures.
 
-3b1ef3d. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-color-picker-mini-component
+3b1ef3d. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-color-picker-mini-component
    -library-2026-07-22-1811.md`): `DefineWidget`/browser-kind widgets
    are self-contained HTML with no module system and (per this
    project's own CLAUDE.md) a hard "avoid adding dependencies, prefer
@@ -5215,3 +5215,64 @@ d4d6c71. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-widget-error-visibi
    reference tree in this repo), starting with the HSV color-wheel +
    brightness-bar picker described above.
    [planned: shared-components-library.md]
+
+   Implemented per plan and per direct user instructions (store real
+   files in `./shared-components/`, mirror into `.desk_temp/` on every
+   Desk open, one `README.md` per component, note it in the tempui
+   docs). Read the real, already-shipped implementation in the peer
+   `../necro-4x/` project (`custom_widget_src/terrain-color-initializer/
+   terrain-color-initializer.ts`) rather than re-deriving the design
+   from the feedback's prose. Extracted and generalized the
+   color-picker-specific parts (HSV/RGB/hex math, the wheel/brightness
+   -bar DOM+CSS, `bindDrag`'s pointer-capture try/catch) into a
+   standalone `shared-components/hsv-color-picker/` (`hsv-color
+   -picker.ts` + `template.html` + `README.md`), dropping everything
+   terrain-specific (TSV parsing, SVG recoloring, `desk.fs`/
+   `getLocalStorage` calls, prev/next navigation). Added a real public
+   API the original never needed (it was a whole widget, not a reusable
+   control): a `value` get/setter (hex string) and a `colorchange`
+   `CustomEvent` fired only from genuine user interaction (wheel/
+   brightness drag, hex typing) -- not from a programmatic `.value =`
+   set, matching a native `<input>`'s own convention.
+
+   `src/desk/temp_ui.py` gained `SHARED_COMPONENTS_DIRNAME`,
+   `_repo_shared_components_dir()` (resolves this repo's own
+   `shared-components/` relative to `temp_ui.py`'s own `__file__`,
+   confirmed directly this correctly finds the real checked-out repo
+   regardless of which project's directory is currently open in Desk),
+   and `sync_shared_components(temp_dir)` (a full mirror -- removes the
+   destination first, so a component removed from the source doesn't
+   linger as a stale copy -- rather than an embedded string constant
+   the way `.desk_temp/build_widget.py` is, since these are real
+   multi-file component sources that don't scale the same way).
+   `TempUiManager.provision` calls it unconditionally on every Desk
+   open/switch, alongside the existing `write_tempui_docs`/
+   `ensure_docs_current` doc-refresh branch. `_CUSTOM_WIDGETS_DOC`
+   gained a new "Reusable UI components" section (between "Authoring
+   from real source" and "Invoking a defined widget") stating plainly
+   that importing a component directly or copying+pasting+modifying it
+   are both intended, accepted uses -- not a fallback. `TEMPUI_DOC_VERSION`
+   bumped 22 -> 23 with a matching `_NEW_FEATURES_DOC` entry, per
+   `development-process.md`'s "Keep the tempui changelog docs current"
+   rule.
+
+   Verified directly: new `tests/verify/verify_shared_components.py`
+   (26 checks) -- `sync_shared_components` copies the real component
+   files byte-for-byte, is a genuine full mirror (a simulated stale
+   leftover component is gone after a second sync, not left behind by
+   an additive merge), and is a clean no-op when the source directory
+   doesn't exist; a real `TempUiManager.provision` call against a
+   scratch directory actually produces `.desk_temp/shared-components/
+   hsv-color-picker/hsv-color-picker.ts` on disk; doc version/new
+   -features/custom-widgets-doc content checks. Most importantly, a
+   real, non-mocked end-to-end check of the extracted component itself:
+   compiled `hsv-color-picker.ts` with a real `tsc --strict` (mirroring
+   `necro-4x`'s own tsconfig), assembled a throwaway page pairing the
+   compiled JS with `template.html`'s own `<template>` block, loaded it
+   in a real `QWebEngineView`, and confirmed a synthetic
+   `PointerEvent`-driven wheel drag (no real active pointer for the
+   browser to capture, exactly the edge case the `bindDrag` try/catch
+   exists for) correctly changes `.value` and fires exactly one
+   `colorchange` event, and that a subsequent programmatic `.value =`
+   set updates the value without firing a second event. Full regression
+   suite: 77 scripts (one new), 0 failures.

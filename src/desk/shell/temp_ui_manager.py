@@ -12,6 +12,7 @@ from desk.temp_ui import (
     ensure_docs_current,
     ensure_gitignore_entry,
     is_temp_ui_filename,
+    sync_shared_components,
     write_tempui_docs,
 )
 from desk_services.file_watcher import WatchHandle, get_service
@@ -139,6 +140,11 @@ class TempUiManager(QObject):
             # split-out file -- isn't a stale/missing copy from before
             # some later improvement.
             ensure_docs_current(temp_dir)
+
+        # TODO 3b1ef3d: always re-mirrored, not gated by "already
+        # exists" like the doc branch above -- every open/switch gets
+        # the current shared-components/ library.
+        sync_shared_components(temp_dir)
 
         self._start_watching(temp_dir)
         return temp_dir

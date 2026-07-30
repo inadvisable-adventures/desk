@@ -1,4 +1,5 @@
 import re
+import shutil
 import uuid
 from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
@@ -23,6 +24,18 @@ GITIGNORE_COMMENT = "# Desk-specific"
 # matching the promoted definition's own move into the .desk file).
 CUSTOM_WIDGET_SRC_DIRNAME = "widgets"
 PROMOTED_WIDGET_SRC_DIRNAME = "desk_widgets"
+
+# TODO 3b1ef3d: shared-components/ (this repo's own root, checked into
+# git -- see its own README.md) is the source of truth for a small
+# library of reusable, dependency-free UI mini-components for
+# DefineWidget/browser-kind widget authors. Mirrored into every
+# project's own .desk_temp/shared-components/ on every Desk open/switch
+# (sync_shared_components below) -- real multi-file component sources
+# (.ts + template.html + README.md per component), so embedding them as
+# Python string constants the way SPLIT_DOC_CONTENT/_BUILD_WIDGET_SCRIPT
+# do doesn't scale the way it does for one script; a real directory copy
+# instead.
+SHARED_COMPONENTS_DIRNAME = "shared-components"
 
 # desk-temporary-ui.md's *static* main content (DOC_TEMPLATE below) is
 # only ever written once, the first time a directory's .desk_temp is
@@ -135,7 +148,12 @@ PROMOTED_WIDGET_SRC_DIRNAME = "desk_widgets"
 # emits as `Capability<TAB>name` lines (previously silently ignored,
 # forcing an easy-to-forget hand-edit of the generated tempui file
 # after every build).
-TEMPUI_DOC_VERSION = 22
+#
+# TODO 3b1ef3d: bumped 22 -> 23 for a new "Reusable UI components"
+# section in _CUSTOM_WIDGETS_DOC -- .desk_temp/shared-components/, a
+# small library of ready-made UI mini-components refreshed alongside
+# the rest of this doc set (see sync_shared_components).
+TEMPUI_DOC_VERSION = 23
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -559,6 +577,19 @@ build process changes: re-run `python3 .desk_temp/build_widget.py
 desk_widgets/<name>` from there for any further edits, exactly as
 before.
 
+## Reusable UI components
+
+`.desk_temp/shared-components/` holds a small library of ready-made,
+dependency-free UI components for exactly this kind of real-source
+authoring — check here before building a non-trivial UI control (a
+color picker, say) from scratch. Refreshed automatically alongside the
+rest of `.desk_temp`, same as `build_widget.py` above — never a stale
+one-time copy. Each component lives in its own subdirectory with its
+own `README.md` explaining what it does and how to use it. It's
+perfectly fine to either `import` a component's file directly, or
+copy+paste+modify its two files into a widget's own source — both are
+intended, accepted ways to use them, not just a fallback.
+
 ## Invoking a defined widget
 
 A separate tempui file whose **entire first line is just the
@@ -885,6 +916,14 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 23
+- New "Reusable UI components" section: `.desk_temp/shared-components/`
+  holds a small library of ready-made, dependency-free UI components
+  for "Authoring from real source" (starting with `hsv-color-picker`),
+  refreshed automatically alongside the rest of this doc set. Import a
+  component's file directly, or copy+paste+modify it into a widget's
+  own source -- both are intended, accepted ways to use them.
 
 ## Version 22
 - "Authoring from real source"'s `widget.json` now supports an
@@ -1263,6 +1302,36 @@ def ensure_docs_current(temp_dir: Path) -> None:
     write_tempui_docs(temp_dir)
     if custom_section is not None:
         doc_path.write_text(doc_path.read_text().rstrip("\n") + "\n\n" + custom_section + "\n")
+
+
+def _repo_shared_components_dir() -> Path:
+    """This installed `desk` package's own shared-components/ directory
+    (TODO 3b1ef3d) -- resolved relative to this very file, not the
+    current working directory, since Desk is always run from its own
+    checked-out repo (editable-installed) regardless of which project's
+    directory is currently open. Confirmed directly: `Path(__file__)
+    .resolve()` for this module already resolves to this repo's real
+    `src/desk/temp_ui.py`, not a separate site-packages copy."""
+    return Path(__file__).resolve().parents[2] / SHARED_COMPONENTS_DIRNAME
+
+
+def sync_shared_components(temp_dir: Path) -> None:
+    """Mirrors this repo's own shared-components/ into
+    `temp_dir/shared-components`, always fresh (TODO 3b1ef3d) -- called
+    on every TempUiManager.provision, unconditionally (unlike
+    write_tempui_docs/ensure_docs_current's branch above, there's no
+    "only if missing/stale" check here: a full copy is cheap, and this
+    guarantees `.desk_temp/shared-components/` is never a stale mirror,
+    e.g. after a component here was removed). A no-op if this checkout
+    has no shared-components/ of its own (an unusual non-source
+    install) -- nothing to copy."""
+    source = _repo_shared_components_dir()
+    if not source.is_dir():
+        return
+    destination = temp_dir / SHARED_COMPONENTS_DIRNAME
+    if destination.exists():
+        shutil.rmtree(destination)
+    shutil.copytree(source, destination)
 
 
 @dataclass

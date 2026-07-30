@@ -1,4 +1,4 @@
-# Plan: TODO 3b1ef3d — seed a reusable UI mini-component library, starting with an HSV color picker
+# Plan: TODO 3b1ef3d (COMPLETED) — seed a reusable UI mini-component library, starting with an HSV color picker
 
 From `../FEEDBACK/FEEDBACK-DESK-color-picker-mini-component-library-2026-07-22-1811.md`:
 `DefineWidget`/browser-kind widgets are self-contained HTML with no
