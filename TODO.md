@@ -5332,3 +5332,20 @@ d4d6c71. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-widget-error-visibi
    `colorchange` event, and that a subsequent programmatic `.value =`
    set updates the value without firing a second event. Full regression
    suite: 77 scripts (one new), 0 failures.
+
+217f3ce. SVG Editor shape actions context menu (TODO `70789ee`): add two more
+   buttons, "Move Forward" and "Move Backward" (one-step z-order
+   swaps with the next/previous sibling), alongside the existing
+   Duplicate/Delete pair in `self._shape_actions_menu`. Today, a
+   shape's paint order is implicit and singular: document order in
+   `self._root`'s children == `self._objects` list order == the
+   order each item was added to `self._scene` (`_add_object`) --
+   nothing here sets an explicit `QGraphicsItem.zValue()` on a real
+   drawn shape (only the non-exported guide rect/hex-preview mask do,
+   at fixed -1000/2000, to always stay behind/in-front of real
+   content). Moving a shape needs to reorder it in all three places
+   consistently (`self._root`'s child order, `self._objects`, and the
+   scene's own paint order -- likely via `QGraphicsItem.stackBefore`/
+   `stackAfter`, Qt's own API for reordering within a shared parent's
+   insertion order, rather than inventing an explicit z-value scheme).
+   Each button icon + hover text, same convention as Duplicate/Delete.
