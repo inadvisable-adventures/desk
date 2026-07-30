@@ -5376,3 +5376,36 @@ d4d6c71. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-widget-error-visibi
    front and back; the buttons themselves confirmed wired to the real
    `self._selected_object`, not just the underlying method in
    isolation. Full regression suite: 77 scripts, 0 failures.
+
+ad20867. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-editor-widget-base-types
+   -2026-07-30-1021.md`): `desk.fs.writeFile` (the Bridge API route,
+   `src/desk/server/app.py`'s `fs_write_file`) has no auto-mkdir --
+   a write to a directory that doesn't exist yet silently rejects with
+   no visible error. This exact bug has now shipped in four separate
+   downstream widgets in one project (Terrain Types Editor, Token Types
+   Editor, Terrain Color Initializer, Domain Analysis), each having
+   independently hand-rolled its own file lifecycle from scratch.
+   Suggested fix (the small, high-leverage half of the feedback --
+   closes the bug unconditionally, with no dependency on any widget
+   adopting anything new): `resolved.parent.mkdir(parents=True,
+   exist_ok=True)` before the write, inside the existing
+   `try`/`except OSError` block. `fs_read_file` is intentionally
+   untouched (a genuinely missing file to read is a real error case).
+   [planned: bridge-fs-writefile-auto-mkdir.md]
+
+d4368bd. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-editor-widget-base-types
+   -2026-07-30-1021.md`): the same feedback as TODO `ad20867` above,
+   the larger half -- a lesson recorded in `LEARNINGS.md` about the
+   missing-directory bug didn't prevent a fourth widget from
+   re-hitting it, because there was nothing to *reach for* except
+   writing the file lifecycle (title-to-path derivation, load-if
+   -exists, create-if-not, save-on-edit) from scratch again. Suggested
+   fix: a shared "auto-load/auto-save document editor" widget base
+   type (a real TypeScript base class a widget's own custom element
+   extends, not just a lower-level file-handle API) -- offered as a new
+   `shared-components/` entry (TODO `3b1ef3d`'s library), mirrored into
+   `.desk_temp/shared-components/` automatically the same way
+   `hsv-color-picker` already is. Ties back to TODO `d4d6c71`'s
+   titlebar `[ERROR]` indicator for surfacing a rejected save/load
+   instead of failing silently.
+   [planned: shared-document-editor-base.md]
