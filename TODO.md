@@ -5096,6 +5096,7 @@ ebf641d. COMPLETED: SVG Editor pending polygon/polyline drawing fixes: show a "C
       (tooltip).
    3. Icons: "⧉" for Duplicate, a trash-can glyph for Delete (replacing
       the existing "✕").
+   [planned: svg-editor-shape-actions-menu.md]
 
 d4d6c71. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-widget-error-visibility
    -2026-07-21-0053.md`): no widget kind currently surfaces "this
