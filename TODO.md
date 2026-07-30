@@ -5074,17 +5074,28 @@ ebf641d. COMPLETED: SVG Editor pending polygon/polyline drawing fixes: show a "C
    `1fb365e`) but no way to duplicate one -- today, cloning a shape
    (e.g. laying out several evenly-spaced copies of the same stripe)
    requires hand-editing the saved `.svg`'s XML outside the tool
-   entirely. Add a second floating button, `_shape_duplicate_button`,
-   next to the existing delete button (same construction/visibility
-   triggers -- `current_tool == "shapes"` and a selection, refreshed
-   from the same `_refresh_handles` call sites -- just a different
-   corner so the two don't overlap), wired to a new
-   `_duplicate_selected_object`: `copy.deepcopy` the selected object's
-   `ET.Element`, append it to `self._root`, rebuild an `SvgObject` via
-   the element's own class's existing `from_element` classmethod
-   (already used for file loading), nudge it by a small fixed offset
-   so it's not perfectly on top of the original, and select it --
-   ready to drag into position via the existing handle-drag path.
+   entirely. `_duplicate_selected_object`: `copy.deepcopy` the selected
+   object's `ET.Element`, append it to `self._root`, rebuild an
+   `SvgObject` via the element's own class's existing `from_element`
+   classmethod (already used for file loading), nudge it by a small
+   fixed offset so it's not perfectly on top of the original, and
+   select it -- ready to drag into position via the existing
+   handle-drag path.
+
+   REVISED SCOPE, per direct user instruction: rather than a second
+   floating corner button (`_shape_duplicate_button`) alongside the
+   existing corner-anchored `_shape_delete_button`, replace both with a
+   single context menu shown near a selected shape (Shapes tool),
+   containing a Duplicate and a Delete action:
+   1. Positioning, in priority order, each tried only if the previous
+      would place the menu (any part of it) outside the view: (a) the
+      menu's bottom-center at the selected shape's top-center; (b) the
+      menu's top-center at the shape's bottom-center; (c) the menu's
+      center at the shape's own center.
+   2. Every button in the menu has both an icon and hover text
+      (tooltip).
+   3. Icons: "⧉" for Duplicate, a trash-can glyph for Delete (replacing
+      the existing "✕").
 
 d4d6c71. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-widget-error-visibility
    -2026-07-21-0053.md`): no widget kind currently surfaces "this
