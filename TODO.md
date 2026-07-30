@@ -5535,3 +5535,42 @@ d4368bd. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-editor-widget-base-
    `src/desk/temp_ui.py`) -- both describe a workaround for this exact
    bug, and would be stale/misleading once `build_widget.py` no longer
    has the ordering hazard they're warning about.
+
+7c7b676. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-tempui-convention-drift
+   -notification-2026-07-30-1120.md`): `ensure_docs_current`
+   (`src/desk/temp_ui.py`) already computes whether a project's tempui
+   doc set is stale (its embedded version differs from
+   `TEMPUI_DOC_VERSION`) and rewrites it in place -- the comparison
+   result is thrown away, so nothing ever prompts an agent to open
+   `tempui-breaking-changes.md`, even though it documents every one of
+   these changes, each tagged with the version that introduced it.
+   Concrete cost cited: three separate tempui authoring/build breaking
+   changes hit a downstream project "without noticing until asked to
+   check."
+   Suggested fix: have `ensure_docs_current` report the previous
+   version (when it genuinely differed, not just a missing split
+   file), and have `TempUiManager.provision` drop a same-directory
+   `Scratch` tempui note ("docs refreshed from vN to vM, see
+   tempui-breaking-changes.md") using the exact mechanism Desk already
+   has for a fire-and-forget note to the user -- no new capability
+   needed, just not discarding a comparison already made.
+   [planned: tempui-doc-upgrade-notification.md]
+
+a820354. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-tempui-convention-drift
+   -notification-2026-07-30-1120.md`): the same feedback's smaller,
+   related gap -- `_relocate_promoted_widget_source`
+   (`src/desk/shell/window.py`) treats a missing source directory at
+   the *current* convention's expected path as a silent no-op
+   (correct for a hand-authored, inline-only widget that never had
+   one) -- indistinguishable from a widget whose source genuinely
+   exists, just at an older convention's location, which gets the
+   exact same silent no-op today, leaving the person promoting it to
+   notice on their own that nothing moved (as this project's own
+   `LifeforceHeart`/`LifeforceControl` widgets required).
+   Suggested fix: a low-severity `logger.info` (mirroring the
+   `logger.warning` the function already emits for its sibling
+   edge case, a pre-existing destination) when no source directory is
+   found -- free to ignore in the common case, a concrete breadcrumb
+   for the uncommon one. Not proposing this become a warning/error --
+   the common case really is "nothing to move."
+   [planned: relocate-widget-source-log-no-source.md]
