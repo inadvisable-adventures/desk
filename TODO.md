@@ -5214,3 +5214,4 @@ d4d6c71. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-widget-error-visibi
    alongside `tempui-custom-widgets.md`, or a `shared-components/`
    reference tree in this repo), starting with the HSV color-wheel +
    brightness-bar picker described above.
+   [planned: shared-components-library.md]
