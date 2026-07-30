@@ -1,4 +1,4 @@
-# Plan: TODO ad20867 — `desk.fs.writeFile` auto-creates missing parent directories
+# Plan: TODO ad20867 (COMPLETED) — `desk.fs.writeFile` auto-creates missing parent directories
 
 From `../FEEDBACK/FEEDBACK-DESK-editor-widget-base-types-2026-07-30-1021.md`:
 the identical bug — an unguarded `desk.fs.writeFile` to a directory that

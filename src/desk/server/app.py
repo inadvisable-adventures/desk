@@ -279,6 +279,14 @@ def create_app(
     ):
         resolved = await _resolve_fs_path(body.path)
         try:
+            # TODO ad20867: writeFile has no separate "create the
+            # directory first" step -- a write to a not-yet-existing
+            # directory used to just reject, silently, with no visible
+            # error (this exact shape shipped in four separate
+            # downstream widgets). exist_ok=True makes this safe to run
+            # unconditionally: never touches an already-existing
+            # directory.
+            resolved.parent.mkdir(parents=True, exist_ok=True)
             resolved.write_text(body.contents)
         except OSError as e:
             raise HTTPException(400, str(e)) from e

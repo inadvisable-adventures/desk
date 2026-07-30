@@ -124,6 +124,89 @@ def test_fs_relative_path_resolves_against_desk_directory():
             handle.stop()
 
 
+def test_fs_writefile_creates_missing_parent_directories():
+    # TODO ad20867: the exact failure shape that shipped in four
+    # separate downstream widgets -- a write to a directory that
+    # doesn't exist yet, previously rejected silently.
+    with tempfile.TemporaryDirectory() as d:
+        widgets_dir = Path(d) / "widgets"
+        widgets_dir.mkdir()
+        desk_dir = Path(d) / "my-project"
+        desk_dir.mkdir()
+        handle = start_server(widgets_dir=widgets_dir)
+        try:
+            handle.gui_bridge.attach(_FakeGuiWindow(desk_dir))
+            base = f"http://{handle.host}:{handle.port}"
+
+            def run_requests():
+                write_result = _request(
+                    f"{base}/api/bridge/fs/writeFile", handle.token, "SomeWidget",
+                    method="POST",
+                    body={"path": "a/b/c/deep.txt", "contents": "deep"},
+                )
+                assert write_result == {"ok": True}, write_result
+
+            _run_with_pumped_event_loop(run_requests)
+            on_disk = desk_dir / "a" / "b" / "c" / "deep.txt"
+            check("writeFile created every missing intermediate directory", on_disk.is_file())
+            check("the file contents landed correctly", on_disk.read_text() == "deep")
+        finally:
+            handle.stop()
+
+
+def test_fs_writefile_to_an_existing_directory_is_unaffected():
+    with tempfile.TemporaryDirectory() as d:
+        widgets_dir = Path(d) / "widgets"
+        widgets_dir.mkdir()
+        desk_dir = Path(d) / "my-project"
+        desk_dir.mkdir()
+        (desk_dir / "existing.txt").write_text("sibling")
+        handle = start_server(widgets_dir=widgets_dir)
+        try:
+            handle.gui_bridge.attach(_FakeGuiWindow(desk_dir))
+            base = f"http://{handle.host}:{handle.port}"
+
+            def run_requests():
+                write_result = _request(
+                    f"{base}/api/bridge/fs/writeFile", handle.token, "SomeWidget",
+                    method="POST", body={"path": "new.txt", "contents": "new"},
+                )
+                assert write_result == {"ok": True}, write_result
+
+            _run_with_pumped_event_loop(run_requests)
+            check("a sibling file already in the (already-existing) directory is untouched", (desk_dir / "existing.txt").read_text() == "sibling")
+            check("the new file was written correctly", (desk_dir / "new.txt").read_text() == "new")
+        finally:
+            handle.stop()
+
+
+def test_fs_readfile_on_a_missing_file_still_errors():
+    with tempfile.TemporaryDirectory() as d:
+        widgets_dir = Path(d) / "widgets"
+        widgets_dir.mkdir()
+        desk_dir = Path(d) / "my-project"
+        desk_dir.mkdir()
+        handle = start_server(widgets_dir=widgets_dir)
+        try:
+            handle.gui_bridge.attach(_FakeGuiWindow(desk_dir))
+            base = f"http://{handle.host}:{handle.port}"
+            result = {}
+
+            def run_requests():
+                try:
+                    _request(f"{base}/api/bridge/fs/readFile?path=nope/nothing.txt", handle.token, "SomeWidget")
+                except RuntimeError as e:
+                    result["error"] = str(e)
+
+            _run_with_pumped_event_loop(run_requests)
+            check(
+                "readFile on a genuinely missing file still errors (readFile itself is untouched)",
+                result.get("error", "").startswith("HTTP 400"),
+            )
+        finally:
+            handle.stop()
+
+
 def test_fs_absolute_path_used_as_is():
     with tempfile.TemporaryDirectory() as d:
         widgets_dir = Path(d) / "widgets"
@@ -172,14 +255,23 @@ def test_get_manifest_includes_directory():
 
 
 def test_doc_content():
-    check("TEMPUI_DOC_VERSION bumped to at least 13", TEMPUI_DOC_VERSION >= 13)
+    check("TEMPUI_DOC_VERSION bumped to at least 24", TEMPUI_DOC_VERSION >= 24)
     doc = SPLIT_DOC_CONTENT[CUSTOM_WIDGETS_DOC_FILENAME]
     check("getManifest bullet mentions directory field", "`directory`" in doc)
     check("events callout appears before fs bullet", doc.index("reach for `desk.events.*`\nfirst") < doc.index("desk.fs.readFile"))
     check("fs bullet documents relative-path resolution", "resolves against the current Desk's own directory" in doc)
+    check("fs bullet documents writeFile's auto-mkdir behavior", "creates any missing parent directories" in doc)
+
+    from desk.temp_ui import NEW_FEATURES_DOC_FILENAME
+
+    new_features_doc = SPLIT_DOC_CONTENT[NEW_FEATURES_DOC_FILENAME]
+    check("new-features doc has a Version 24 entry for writeFile's auto-mkdir", "Version 24" in new_features_doc and "mkdir" in new_features_doc)
 
 
 test_fs_relative_path_resolves_against_desk_directory()
+test_fs_writefile_creates_missing_parent_directories()
+test_fs_writefile_to_an_existing_directory_is_unaffected()
+test_fs_readfile_on_a_missing_file_still_errors()
 test_fs_absolute_path_used_as_is()
 test_get_manifest_includes_directory()
 test_doc_content()

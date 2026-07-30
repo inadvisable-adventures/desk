@@ -153,7 +153,11 @@ SHARED_COMPONENTS_DIRNAME = "shared-components"
 # section in _CUSTOM_WIDGETS_DOC -- .desk_temp/shared-components/, a
 # small library of ready-made UI mini-components refreshed alongside
 # the rest of this doc set (see sync_shared_components).
-TEMPUI_DOC_VERSION = 23
+#
+# TODO ad20867: bumped 23 -> 24 -- desk.fs.writeFile now creates any
+# missing parent directories before writing (previously silently
+# rejected a write to a not-yet-existing directory).
+TEMPUI_DOC_VERSION = 24
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -687,8 +691,11 @@ built for genuine cross-widget signaling:
   (capability `fs`) — read/write an arbitrary file on disk. A relative
   `path` resolves against the current Desk's own directory (not any
   particular process's working directory); an absolute path is used as
-  -is. This is same-directory file I/O, not a way to signal another
-  widget — see the `events` callout above if that's what you're after.
+  -is. `writeFile` creates any missing parent directories first (like
+  `mkdir -p`) — a widget author never needs to separately ensure a
+  target directory exists before writing into it. This is
+  same-directory file I/O, not a way to signal another widget — see the
+  `events` callout above if that's what you're after.
 - `desk.widgets.list()` / `.open(widgetId, opts)` / `.close(instanceId)`
   (capability `widgets`) — inspect/manage placed widget instances.
 - `desk.introspect.snapshot(targetInstanceId)` (capability
@@ -916,6 +923,11 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 24
+- `desk.fs.writeFile` now creates any missing parent directories before
+  writing (like `mkdir -p`) — a write to a not-yet-existing directory
+  previously rejected silently, with no visible error.
 
 ## Version 23
 - New "Reusable UI components" section: `.desk_temp/shared-components/`

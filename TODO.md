@@ -5377,7 +5377,7 @@ d4d6c71. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-widget-error-visibi
    `self._selected_object`, not just the underlying method in
    isolation. Full regression suite: 77 scripts, 0 failures.
 
-ad20867. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-editor-widget-base-types
+ad20867. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-editor-widget-base-types
    -2026-07-30-1021.md`): `desk.fs.writeFile` (the Bridge API route,
    `src/desk/server/app.py`'s `fs_write_file`) has no auto-mkdir --
    a write to a directory that doesn't exist yet silently rejects with
@@ -5392,6 +5392,27 @@ ad20867. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-editor-widget-base-types
    `try`/`except OSError` block. `fs_read_file` is intentionally
    untouched (a genuinely missing file to read is a real error case).
    [planned: bridge-fs-writefile-auto-mkdir.md]
+
+   Implemented per plan: `resolved.parent.mkdir(parents=True,
+   exist_ok=True)` added to `fs_write_file`, right before the write,
+   inside the existing `try`/`except OSError` block. `TEMPUI_DOC_VERSION`
+   bumped 23 -> 24; `_CUSTOM_WIDGETS_DOC`'s `fs` bullet and a new
+   `_NEW_FEATURES_DOC` "## Version 24" entry both mention the new
+   auto-mkdir behavior. `fs_read_file` untouched.
+
+   Verified directly: extended
+   `tests/verify/verify_fs_path_resolution_and_events_doc.py` (10 new
+   checks, 16 total now) -- a real HTTP `writeFile` call, against a
+   real running server, to a path several directory levels deep with
+   none of them existing yet, actually succeeds and the file is
+   readable afterward with the right contents (the precise failure
+   shape all four cited widgets hit, reproduced and confirmed fixed,
+   not just inferred from reading the diff); a write to an
+   already-existing directory leaves a sibling file untouched (no
+   regression to the ordinary case); `readFile` on a genuinely missing
+   file still returns the existing 400 error, confirming the fix is
+   scoped to writes only; doc version/changelog bump checks. Full
+   regression suite: 77 scripts, 0 failures.
 
 d4368bd. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-editor-widget-base-types
    -2026-07-30-1021.md`): the same feedback as TODO `ad20867` above,
