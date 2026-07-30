@@ -930,6 +930,121 @@ def test_shape_actions_menu_falls_back_through_tiers_when_it_would_go_offscreen(
 test_shape_actions_menu_falls_back_through_tiers_when_it_would_go_offscreen()
 
 
+# ---------- TODO 217f3ce: Move Forward / Move Backward (z-order) ----------
+
+
+def test_shape_actions_menu_has_move_forward_and_backward_buttons():
+    widget = mod.SvgEditorWidget()
+    widget._create_single_click_object("rect", QPointF(100, 100))
+    check("forward button glyph", widget._shape_forward_button.text() == "▲")
+    check("forward button tooltip", widget._shape_forward_button.toolTip() == "Move Forward")
+    check("backward button glyph", widget._shape_backward_button.text() == "▼")
+    check("backward button tooltip", widget._shape_backward_button.toolTip() == "Move Backward")
+    layout = widget._shape_actions_menu.layout()
+    order = [layout.itemAt(i).widget() for i in range(layout.count())]
+    check(
+        "button order: Duplicate, Move Forward, Move Backward, Delete",
+        order == [
+            widget._shape_duplicate_button,
+            widget._shape_forward_button,
+            widget._shape_backward_button,
+            widget._shape_delete_button,
+        ],
+    )
+    widget.deleteLater()
+
+
+test_shape_actions_menu_has_move_forward_and_backward_buttons()
+
+
+def test_move_selected_object_forward_and_backward_reorders_everything():
+    widget = mod.SvgEditorWidget()
+    widget._create_single_click_object("rect", QPointF(50, 50))
+    widget._create_single_click_object("circle", QPointF(100, 100))
+    widget._create_single_click_object("ellipse", QPointF(150, 150))
+    rect_obj, circle_obj, ellipse_obj = widget._objects
+    original_objects = list(widget._objects)
+    original_root_children = list(widget._root)
+
+    def stacking_order():
+        # QGraphicsScene.items() returns items in descending stacking
+        # order (topmost first) -- Qt's own documented behavior,
+        # confirmed directly. Filtered down to just these three
+        # objects' own items (the scene also has the bounds guide
+        # rect, etc.).
+        item_to_name = {rect_obj.item: "rect", circle_obj.item: "circle", ellipse_obj.item: "ellipse"}
+        return [item_to_name[it] for it in widget._scene.items() if it in item_to_name]
+
+    check(
+        "initial stacking order (topmost first) matches insertion order",
+        stacking_order() == ["ellipse", "circle", "rect"],
+    )
+
+    widget._selected_object = circle_obj
+    widget._move_selected_object(1)
+    check("self._objects updated: circle swapped forward past ellipse", widget._objects == [rect_obj, ellipse_obj, circle_obj])
+    check(
+        "self._root's children order updated to match",
+        list(widget._root) == [rect_obj.element, ellipse_obj.element, circle_obj.element],
+    )
+    check("circle now paints above ellipse (real scene stacking order)", stacking_order() == ["circle", "ellipse", "rect"])
+
+    widget._move_selected_object(-1)
+    check("moving backward restores the original self._objects order", widget._objects == original_objects)
+    check("self._root's children order also restored", list(widget._root) == original_root_children)
+    check("stacking order restored too", stacking_order() == ["ellipse", "circle", "rect"])
+    widget.deleteLater()
+
+
+test_move_selected_object_forward_and_backward_reorders_everything()
+
+
+def test_move_selected_object_noop_at_the_front_or_back():
+    widget = mod.SvgEditorWidget()
+    widget._create_single_click_object("rect", QPointF(50, 50))
+    widget._create_single_click_object("circle", QPointF(100, 100))
+    rect_obj, circle_obj = widget._objects
+    original_objects = list(widget._objects)
+    original_root_children = list(widget._root)
+
+    widget._selected_object = circle_obj  # already frontmost (highest index)
+    widget._move_selected_object(1)
+    check(
+        "moving the frontmost object forward is a no-op",
+        widget._objects == original_objects and list(widget._root) == original_root_children,
+    )
+
+    widget._selected_object = rect_obj  # already backmost (index 0)
+    widget._move_selected_object(-1)
+    check(
+        "moving the backmost object backward is a no-op",
+        widget._objects == original_objects and list(widget._root) == original_root_children,
+    )
+    widget.deleteLater()
+
+
+test_move_selected_object_noop_at_the_front_or_back()
+
+
+def test_move_buttons_are_wired_to_the_real_selected_object():
+    widget = mod.SvgEditorWidget()
+    widget._create_single_click_object("rect", QPointF(50, 50))
+    widget._create_single_click_object("circle", QPointF(100, 100))
+    rect_obj, circle_obj = widget._objects
+    widget._scene.clearSelection()
+    rect_obj.item.setSelected(True)
+
+    widget._shape_forward_button.click()
+    check("clicking Move Forward actually reorders the real selected object", widget._objects == [circle_obj, rect_obj])
+
+    widget._shape_backward_button.click()
+    check("clicking Move Backward reorders it back", widget._objects == [rect_obj, circle_obj])
+    widget.deleteLater()
+
+
+test_move_buttons_are_wired_to_the_real_selected_object()
+
+
 # ---------- file_type_registry wiring ----------
 
 from desk.file_type_registry import BUILTIN_EDIT_WIDGET_BY_SUFFIX, find_edit_handler  # noqa: E402

@@ -963,6 +963,19 @@ class SvgEditorWidget(QWidget):
         self._shape_duplicate_button.setToolTip("Duplicate")
         self._shape_duplicate_button.clicked.connect(self._duplicate_selected_object)
         shape_actions_layout.addWidget(self._shape_duplicate_button)
+        # TODO 217f3ce: one-step z-order swaps with the adjacent
+        # sibling in self._objects's own order -- see
+        # _move_selected_object.
+        self._shape_forward_button = QPushButton("▲")
+        self._shape_forward_button.setFixedSize(24, 24)
+        self._shape_forward_button.setToolTip("Move Forward")
+        self._shape_forward_button.clicked.connect(lambda: self._move_selected_object(1))
+        shape_actions_layout.addWidget(self._shape_forward_button)
+        self._shape_backward_button = QPushButton("▼")
+        self._shape_backward_button.setFixedSize(24, 24)
+        self._shape_backward_button.setToolTip("Move Backward")
+        self._shape_backward_button.clicked.connect(lambda: self._move_selected_object(-1))
+        shape_actions_layout.addWidget(self._shape_backward_button)
         self._shape_delete_button = QPushButton("🗑")
         self._shape_delete_button.setFixedSize(24, 24)
         self._shape_delete_button.setStyleSheet(delete_button_style)
@@ -1263,6 +1276,48 @@ class SvgEditorWidget(QWidget):
         # separate self._root.append(cloned_element) here, _add_object
         # does that itself.
         self._add_object(new_obj)
+
+    def _move_selected_object(self, direction: int) -> None:
+        """TODO 217f3ce: a one-step z-order swap with the adjacent
+        sibling in self._objects's own order -- direction=1 (forward,
+        toward the front/top of the stack) or -1 (backward). No-op
+        (silently) if already at the front/back. Reorders all three
+        places that together define paint order today (see this
+        widget's own module-level notes on why none of these use an
+        explicit QGraphicsItem.zValue()): self._root's children (real
+        document/save order), self._objects (this widget's own
+        bookkeeping), and the scene's own insertion-order-based
+        stacking (via QGraphicsItem.stackBefore -- confirmed directly
+        that items with equal z-value paint in insertion order,
+        last-added on top, and stackBefore reorders within that list)."""
+        obj = self._selected_object
+        if obj is None:
+            return
+        index = self._objects.index(obj)
+        new_index = index + direction
+        if not (0 <= new_index < len(self._objects)):
+            return
+        other = self._objects[new_index]
+
+        # Swap the two elements' own actual positions in self._root's
+        # children -- found independently (not assumed adjacent there),
+        # since an untouched/unrecognized element (a comment, an
+        # unsupported <path>) could sit between them in the raw XML
+        # even though they're adjacent in self._objects.
+        root_children = list(self._root)
+        obj_root_index = root_children.index(obj.element)
+        other_root_index = root_children.index(other.element)
+        self._root[obj_root_index], self._root[other_root_index] = (
+            self._root[other_root_index],
+            self._root[obj_root_index],
+        )
+
+        self._objects[index], self._objects[new_index] = self._objects[new_index], self._objects[index]
+
+        if direction > 0:
+            other.item.stackBefore(obj.item)
+        else:
+            obj.item.stackBefore(other.item)
 
     def _delete_selected_point(self) -> None:
         obj = self._selected_object

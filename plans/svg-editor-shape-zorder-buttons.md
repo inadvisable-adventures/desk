@@ -1,4 +1,4 @@
-# Plan: TODO 217f3ce — SVG Editor shape actions menu: Move Forward / Move Backward (z-order)
+# Plan: TODO 217f3ce (COMPLETED) — SVG Editor shape actions menu: Move Forward / Move Backward (z-order)
 
 Adds two more buttons to `self._shape_actions_menu` (TODO `70789ee`):
 "Move Forward" (▲, tooltip "Move Forward") and "Move Backward" (▼,

@@ -5333,7 +5333,7 @@ d4d6c71. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-widget-error-visibi
    set updates the value without firing a second event. Full regression
    suite: 77 scripts (one new), 0 failures.
 
-217f3ce. SVG Editor shape actions context menu (TODO `70789ee`): add two more
+217f3ce. COMPLETED: SVG Editor shape actions context menu (TODO `70789ee`): add two more
    buttons, "Move Forward" and "Move Backward" (one-step z-order
    swaps with the next/previous sibling), alongside the existing
    Duplicate/Delete pair in `self._shape_actions_menu`. Today, a
@@ -5350,3 +5350,29 @@ d4d6c71. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-widget-error-visibi
    insertion order, rather than inventing an explicit z-value scheme).
    Each button icon + hover text, same convention as Duplicate/Delete.
    [planned: svg-editor-shape-zorder-buttons.md]
+
+   Implemented per plan. `_move_selected_object(direction)` (+1
+   forward, -1 backward): no-op if already at the front/back;
+   otherwise swaps the selected object with the adjacent sibling in
+   `self._objects` in all three places that together define paint
+   order -- `self._root`'s children (each element's own *actual*
+   position there, found independently rather than assumed adjacent,
+   since an untouched/unrecognized element could sit between them in
+   the raw XML), `self._objects` itself, and the scene's own stacking
+   via `QGraphicsItem.stackBefore` (confirmed directly, with a real
+   `QGraphicsScene`/three real items/real `.items()` calls, that items
+   with equal z-value paint in insertion order, last-added on top, and
+   `stackBefore` reorders within that list). Two new buttons, "▲"/"Move
+   Forward" and "▼"/"Move Backward", added to `self._shape_actions_menu`
+   between Duplicate and Delete.
+
+   Verified directly: extended `tests/verify/verify_svg_editor_widget.py`
+   (16 new checks, 150 total now) -- button glyphs/tooltips/layout
+   order; a real three-object scene where moving the middle object
+   forward/backward correctly reorders `self._objects`, `self._root`'s
+   children, and the *actual* scene stacking order (via real
+   `QGraphicsScene.items()`, not just the two Python-side lists), and
+   moving back restores everything exactly; no-op confirmed at both the
+   front and back; the buttons themselves confirmed wired to the real
+   `self._selected_object`, not just the underlying method in
+   isolation. Full regression suite: 77 scripts, 0 failures.
