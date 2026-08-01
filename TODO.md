@@ -6040,13 +6040,11 @@ a596dbf. COMPLETED: Introduce a new "Claude (Desk)" widget (`widgets/claude_desk
    regression suite passes.
 
 fe7d8f2. Add voice input capabilities to the new "Claude (Desk)" widget
-   (TODO `a596dbf`, itself not yet implemented -- only planned so far)
-   so a prompt can be dictated into it the same way the standalone
-   Voice Input widget (TODO `b32fb81`) already supports, using
-   `desk.speech.transcribe` (TODO `1cd0ca2`), rather than only ever
-   typing into its prompt input box. Not planned or implemented yet --
-   depends on TODO `a596dbf` landing first (there's no "Claude (Desk)"
-   widget/prompt input box to add this to until then).
+   (TODO `a596dbf`, now implemented) so a prompt can be dictated into
+   it the same way the standalone Voice Input widget (TODO `b32fb81`)
+   already supports, using `desk.speech.transcribe` (TODO `1cd0ca2`),
+   rather than only ever typing into its prompt input box.
+   [planned: claude-desk-voice-input.md]
 8a5ea2b. research: is it possible to do something closer to live transcription by breaking the audio into smaller chunks?
 
 e1f6391. Add the ability to queue messages in the Claude (Desk) widget
