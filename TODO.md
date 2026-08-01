@@ -5632,7 +5632,7 @@ f9d2dc7. COMPLETED: From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
    success. New `tests/verify/verify_whisper_model_download_script.py`,
    24 checks, 0 failures.
 
-1cd0ca2. From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
+1cd0ca2. COMPLETED: From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
    voice input" item: a `src/desk/speech.py` module wrapping
    `mlx-whisper` (`mlx-whisper` added as a real new dependency in
    `pyproject.toml` -- unavoidable, there is no bespoke way to run a
@@ -5646,6 +5646,37 @@ f9d2dc7. COMPLETED: From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
    TODO `f9d2dc7` for the model actually being fetchable; no UI yet
    (see TODO `b32fb81`).
    [planned: whisper-transcription-module.md]
+
+   Implemented per plan, with one change from the plan's own sketch:
+   `transcribe()` does not call `mlx_whisper.transcribe(str(audio_path),
+   ...)` -- doing so was tried directly first and found to
+   unconditionally require the `ffmpeg` CLI (not installed, no package
+   manager available to install it in this environment), which would
+   have made a system-level, non-pip binary a hard requirement for
+   every user of this feature. Since this module's only caller
+   controls its own audio format completely, `transcribe()` instead
+   decodes the (required) 16 kHz mono 16-bit PCM WAV directly via the
+   stdlib `wave` module into a normalized `float32` NumPy array and
+   passes that to `mlx_whisper.transcribe()`, whose signature already
+   accepts a raw array -- `ffmpeg` is never invoked. Recorded in
+   `LEARNINGS.md`. Availability is checked via `huggingface_hub
+   .try_to_load_from_cache()` against both files
+   `mlx_whisper.load_models.load_model` actually reads
+   (`config.json`, `weights.safetensors`), not just "the repo appears
+   in the cache scan" (which can be true of a partially-downloaded
+   repo mid-transfer) -- confirmed directly while `f9d2dc7`'s own
+   `large-v3-turbo` download was still in progress.
+
+   Verified directly, no mocking: real macOS `say`-synthesized speech
+   ("The quick brown fox...") transcribes back to matching text through
+   the real, fully-downloaded `large-v3-turbo` model; a WAV in the
+   wrong format (stereo/44.1kHz) raises `ValueError` instead of
+   silently mis-transcribing; pointing at a genuinely uncached repo id
+   raises `TranscriptionUnavailableError` with a message naming both
+   the download script and the setup doc; `MODEL_REPO` confirmed to
+   match `scripts/download_whisper_model.py`'s own `MODEL_REPOS
+   ["large-v3-turbo"]` entry. New
+   `tests/verify/verify_speech_transcription.py`, 5 checks, 0 failures.
 
 b32fb81. From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
    voice input" item: a new self-contained "Voice Input" widget

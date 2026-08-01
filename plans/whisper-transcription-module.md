@@ -1,4 +1,4 @@
-# Plan: TODO 1cd0ca2 — local speech-to-text transcription module (mlx-whisper)
+# Plan: TODO 1cd0ca2 — local speech-to-text transcription module (mlx-whisper) (COMPLETED)
 
 From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for voice
 input" item. Builds the actual transcription engine on top of TODO

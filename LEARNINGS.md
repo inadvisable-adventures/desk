@@ -909,3 +909,31 @@ closer than the one causing trouble) cascades correctly to every
 descendant, present *and* future, and reliably wins for the specific
 CSS properties it declares. See
 `src/desk/shell/widget_frame.py`'s `CONTENT_ZOOM_SAFE_STYLESHEET`.
+
+## `mlx_whisper.transcribe(path, ...)` silently requires the `ffmpeg` CLI, even for a plain WAV file
+
+Passing a file path string to `mlx_whisper.transcribe()` (or calling
+`mlx_whisper.audio.load_audio()` directly) unconditionally shells out
+to the `ffmpeg` CLI binary to decode it -- confirmed directly: on a
+machine with no `ffmpeg` installed and no package manager (Homebrew)
+available to install one, transcribing an ordinary 16 kHz mono 16-bit
+PCM WAV file raised `FileNotFoundError: ffmpeg`, not some
+format-specific error. This holds for every input format, not just
+exotic ones -- there's no "WAV doesn't need ffmpeg" fast path.
+
+Nothing about `mlx-whisper`'s own installed dependencies (`pyproject.toml`
+doesn't list it as a dependency of `mlx-whisper` itself) surfaces this
+requirement ahead of time; it only appears at the first real
+transcription call.
+
+If the caller already controls the audio format end-to-end (as
+`src/desk/speech.py`'s only caller, the Voice Input widget, does --
+it records via `QAudioSource` at exactly 16 kHz mono 16-bit PCM), skip
+`mlx_whisper`'s path-based loader entirely: decode the WAV directly
+with the stdlib `wave` module into a normalized float32 NumPy array,
+and pass that array to `mlx_whisper.transcribe()` instead of a path
+string -- `transcribe()`'s own signature already accepts
+`Union[str, numpy.ndarray, mlx.core.array]`, and only the `str` branch
+touches `ffmpeg`. This avoids adding a new system-level (non-pip)
+binary dependency for a case that doesn't actually need one. See
+`src/desk/speech.py`'s `_read_wav_as_float32`.
