@@ -1,0 +1,210 @@
+"""ClaudeSession (TODO a596dbf): a background-thread wrapper around
+claude_agent_sdk.ClaudeSDKClient, translating its async message/
+permission-request stream into Qt-safe signals for the Claude (Desk)
+widget (widgets/claude_desk/widget.py). See
+plans/claude-widget-agent-sdk-integration.md.
+
+Shared-logic module in desk. proper (not under widgets/) for the same
+reason desk.terminal_widget exists -- widget directories can't import
+each other directly. Only used by the new widget; the original PTY
+-based Claude widget (widgets/claude/widget.py) is untouched.
+
+Threading model: one dedicated background thread per ClaudeSession,
+running its own asyncio event loop for the lifetime of the session --
+the same background-thread-plus-signal-relay shape this codebase
+already uses for other blocking/async work (widgets/git_status/
+widget.py, widgets/voice_input/widget.py), rather than merging asyncio
+into the Qt event loop (which would need a dependency like `qasync` for
+a benefit not needed here -- each session is already independent).
+send_prompt()/respond_to_permission() are handed to that loop via
+asyncio.run_coroutine_threadsafe()/call_soon_threadsafe(); the
+can_use_tool callback (itself invoked on the asyncio thread by the SDK)
+blocks on an asyncio.Future until the Qt-side approval decision arrives
+back through that same bridge.
+"""
+import asyncio
+import threading
+import uuid
+from pathlib import Path
+
+import claude_agent_sdk as sdk
+from PyQt6.QtCore import QObject, pyqtSignal
+
+
+class ClaudeSession(QObject):
+    """One Claude Agent SDK session. Signals are emitted from the
+    session's own background thread; PyQt6 auto-queues delivery onto
+    whichever thread each connected slot's receiver lives on (the same
+    guarantee widgets/git_status/widget.py's _Relay already relies
+    on), so callers never need to marshal these themselves."""
+
+    assistant_text = pyqtSignal(str)
+    tool_use = pyqtSignal(str, str, dict)  # tool_use_id, name, input
+    tool_result = pyqtSignal(str, object, bool)  # tool_use_id, content, is_error
+    permission_request = pyqtSignal(str, str, dict)  # request_id, tool_name, input
+    turn_complete = pyqtSignal(dict)  # see _handle_message's ResultMessage branch
+    session_error = pyqtSignal(str)
+    session_ended = pyqtSignal()
+    # Emitted once connect() succeeds, before any initial_prompt turn (if
+    # any) is sent. A resumed session with no initial_prompt never fires
+    # turn_complete/session_error at all otherwise -- found via real
+    # verification (tests/verify/verify_claude_desk_widget.py), not
+    # assumed: without this, the widget's prompt input would stay
+    # disabled forever after a resume with nothing queued to send.
+    connected = pyqtSignal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._thread: threading.Thread | None = None
+        self._client: sdk.ClaudeSDKClient | None = None
+        # Only ever read/written from _loop's own thread (created inside
+        # _can_use_tool, resolved inside respond_to_permission's
+        # call_soon_threadsafe callback) -- no lock needed.
+        self._pending_permissions: dict[str, asyncio.Future] = {}
+
+    def start(
+        self,
+        session_id: str,
+        resume: bool,
+        model: str | None,
+        permission_mode: str,
+        cwd: Path | None,
+        initial_prompt: str = "",
+    ) -> None:
+        """Starts the background thread/event loop and connects. On a
+        fresh (non-resume) session, session_id is assigned up front (so
+        a later reload can resume it, mirroring the existing widget's
+        --session-id/--resume split, TODO 1d7331b) and initial_prompt
+        (if non-empty) is sent as the first turn; on resume,
+        initial_prompt is ignored -- same convention as
+        ClaudeWidget.start_session."""
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(target=self._run_loop, daemon=True)
+        self._thread.start()
+        asyncio.run_coroutine_threadsafe(
+            self._connect_and_maybe_prompt(session_id, resume, model, permission_mode, cwd, initial_prompt),
+            self._loop,
+        )
+
+    def _run_loop(self) -> None:
+        assert self._loop is not None
+        asyncio.set_event_loop(self._loop)
+        self._loop.run_forever()
+        self._loop.close()
+
+    async def _connect_and_maybe_prompt(
+        self,
+        session_id: str,
+        resume: bool,
+        model: str | None,
+        permission_mode: str,
+        cwd: Path | None,
+        initial_prompt: str,
+    ) -> None:
+        options = sdk.ClaudeAgentOptions(
+            session_id=None if resume else session_id,
+            resume=session_id if resume else None,
+            model=model,
+            permission_mode=permission_mode,
+            cwd=str(cwd) if cwd is not None else None,
+            can_use_tool=self._can_use_tool,
+        )
+        try:
+            self._client = sdk.ClaudeSDKClient(options)
+            await self._client.connect()
+        except Exception as exc:  # noqa: BLE001 -- surfaced to the user, not swallowed
+            self.session_error.emit(str(exc))
+            return
+        self.connected.emit()
+        if initial_prompt:
+            await self._query_and_stream(initial_prompt)
+
+    def send_prompt(self, text: str) -> None:
+        if self._loop is None or self._client is None:
+            return
+        asyncio.run_coroutine_threadsafe(self._query_and_stream(text), self._loop)
+
+    async def _query_and_stream(self, text: str) -> None:
+        assert self._client is not None
+        try:
+            await self._client.query(text)
+            async for message in self._client.receive_response():
+                self._handle_message(message)
+        except Exception as exc:  # noqa: BLE001
+            self.session_error.emit(str(exc))
+
+    def _handle_message(self, message: object) -> None:
+        if isinstance(message, sdk.AssistantMessage):
+            for block in message.content:
+                if isinstance(block, sdk.TextBlock):
+                    self.assistant_text.emit(block.text)
+                elif isinstance(block, sdk.ToolUseBlock):
+                    self.tool_use.emit(block.id, block.name, block.input)
+                elif isinstance(block, sdk.ToolResultBlock):
+                    self.tool_result.emit(block.tool_use_id, block.content, bool(block.is_error))
+        elif isinstance(message, sdk.ResultMessage):
+            self.turn_complete.emit(
+                {
+                    "is_error": message.is_error,
+                    "result": message.result,
+                    "total_cost_usd": message.total_cost_usd,
+                    "duration_ms": message.duration_ms,
+                    "num_turns": message.num_turns,
+                }
+            )
+
+    async def _can_use_tool(self, tool_name: str, tool_input: dict, context: object) -> object:
+        """The SDK's own tool-approval hook (claude_agent_sdk
+        .ClaudeAgentOptions.can_use_tool) -- confirmed directly (a real
+        session, not assumed from docs) that this fires for genuinely
+        gated actions (e.g. Write, or a file-creating Bash command) and
+        is NOT invoked for actions the CLI's own built-in heuristics
+        already auto-approve (e.g. a plain read-only `echo`), same as
+        real interactive `claude` usage."""
+        request_id = uuid.uuid4().hex
+        assert self._loop is not None
+        future = self._loop.create_future()
+        self._pending_permissions[request_id] = future
+        self.permission_request.emit(request_id, tool_name, tool_input)
+        allow, message = await future
+        del self._pending_permissions[request_id]
+        if allow:
+            return sdk.PermissionResultAllow(behavior="allow", updated_input=None, updated_permissions=None)
+        return sdk.PermissionResultDeny(behavior="deny", message=message, interrupt=False)
+
+    def respond_to_permission(self, request_id: str, allow: bool, message: str = "") -> None:
+        """Called from the Qt/GUI thread once the widget's own approval
+        UI resolves a pending permission_request. Resolves the
+        asyncio.Future _can_use_tool is awaiting, via
+        call_soon_threadsafe since this runs on a different thread than
+        the one that owns _loop."""
+        if self._loop is None:
+            return
+
+        def _resolve() -> None:
+            future = self._pending_permissions.get(request_id)
+            if future is not None and not future.done():
+                future.set_result((allow, message))
+
+        self._loop.call_soon_threadsafe(_resolve)
+
+    def stop(self) -> None:
+        """Disconnects the client and stops the background loop/thread,
+        without blocking the calling (GUI) thread -- teardown runs
+        entirely on _loop's own thread; session_ended is emitted from
+        there once done (PyQt6 auto-queues it back to the GUI thread,
+        same as every other signal here)."""
+        if self._loop is None:
+            return
+
+        async def _disconnect_and_stop() -> None:
+            if self._client is not None:
+                try:
+                    await self._client.disconnect()
+                except Exception:  # noqa: BLE001 -- best-effort teardown
+                    pass
+            self.session_ended.emit()
+            self._loop.stop()
+
+        asyncio.run_coroutine_threadsafe(_disconnect_and_stop(), self._loop)

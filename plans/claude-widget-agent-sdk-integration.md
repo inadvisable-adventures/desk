@@ -1,4 +1,4 @@
-# New "Claude (Desk)" widget: Python Agent SDK, alongside the existing Claude widget
+# New "Claude (Desk)" widget: Python Agent SDK, alongside the existing Claude widget (COMPLETED)
 
 TODO `a596dbf`.
 
@@ -249,5 +249,12 @@ avoidable:
 
 ## Status
 
-Not started. This plan captures the design; implementation is the next
-TODO `a596dbf` work item in listed order.
+Completed. See TODO `a596dbf`'s own completion narrative in `TODO.md`
+for what shipped, the two real deviations found during verification
+(a `connected` signal `ClaudeSession` needed that this plan didn't
+anticipate, and `permission_mode="default"` instead of `"auto"`), and
+the manual, in-app check noted below was not additionally performed
+beyond the automated `tests/verify/verify_claude_desk_widget.py`
+coverage (which already drives a real widget instance end to end
+against real sessions) -- spawning both widgets side by side in a
+running Desk app was not separately done in this pass.

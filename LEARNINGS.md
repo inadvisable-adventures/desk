@@ -974,3 +974,33 @@ confirming the required files are already cached (so skipping the
 network is actually safe). Confirmed this drops the same
 artificially-unreachable-network case from ~77s to ~1.5s. See
 `src/desk/speech.py`'s `_force_hub_offline`.
+
+## `QWidget.isVisible()` is unconditionally `False` for any descendant of a top-level widget that was never `show()`n
+
+`isVisible()` reflects whether a widget would actually be visible *on
+screen* -- which requires every ancestor up to and including the
+top-level window to be shown. A widget built and tested via
+`build()`/`QApplication(...)` without ever calling `.show()` on
+anything (the norm for this project's offscreen, `QT_QPA_PLATFORM=
+offscreen` widget tests) has no visible top-level ancestor at all, so
+every descendant's `isVisible()` returns `False` -- even immediately
+after an explicit `child.setVisible(True)` call on that exact widget.
+Confirmed directly: a `QLabel` parented to a never-shown top-level
+`QWidget` still reports `isVisible() == False` after
+`label.setVisible(True)`.
+
+Caught while writing `tests/verify/verify_claude_desk_widget.py`: a
+`wait_until(lambda: widget._permission_label.isVisible())` check timed
+out (even at 90 seconds) despite the underlying feature working
+correctly the whole time -- confirmed by the very next real assertion
+in the same test (clicking the Allow button resolved a real pending
+permission and the file got created). The check itself, not the
+product code, was broken.
+
+Use `child.isVisibleTo(ancestor)` instead, which reports the explicit
+visibility flag relative to a given ancestor rather than actual
+on-screen visibility -- or check the widget's own underlying state
+directly (e.g. a plain Python list/flag the widget already tracks)
+rather than a Qt visibility query, when a test never calls `.show()`
+on anything (which most of this project's own widget tests correctly
+don't, to stay fast and headless).

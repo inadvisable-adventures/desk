@@ -71,6 +71,11 @@ LIGHTNING_ROUND_WIDGET_ID = "lightning_round"
 MARKDOWN_WIDGET_ID = "markdown"
 SCRATCH_WIDGET_ID = "scratch"
 CLAUDE_WIDGET_ID = "claude"
+# TODO a596dbf: a separate, independently-spawnable widget kind built on
+# the Python Claude Agent SDK instead of PTY/pyte -- see
+# plans/claude-widget-agent-sdk-integration.md. Does not replace
+# CLAUDE_WIDGET_ID above; both can be placed on the same Desk.
+CLAUDE_DESK_WIDGET_ID = "claude_desk"
 QUESTIONS_WIDGET_ID = "questions"
 IMAGE_VIEWER_WIDGET_ID = "image_viewer"
 EDITOR_WIDGET_ID = "editor"
@@ -386,13 +391,14 @@ class DeskWindow(QMainWindow):
         restore: bool = False,
         claude_extra_instructions: str = "",
     ) -> WidgetFrame:
-        if widget_id == CLAUDE_WIDGET_ID and instance_id is None:
-            # A claude widget's instance_id doubles as its claude
-            # --session-id, which must be a valid UUID -- so a fresh
-            # placement needs a full uuid4, not the default 8-hex-char
-            # instance_id. A restore passes its saved (already-uuid)
-            # instance_id through. See plans/claude-widget-session
-            # -resume.md.
+        if widget_id in (CLAUDE_WIDGET_ID, CLAUDE_DESK_WIDGET_ID) and instance_id is None:
+            # A claude/claude_desk widget's instance_id doubles as its
+            # own session id (claude's --session-id, or the SDK's
+            # session_id/resume for claude_desk -- TODO a596dbf), which
+            # must be a valid UUID -- so a fresh placement needs a full
+            # uuid4, not the default 8-hex-char instance_id. A restore
+            # passes its saved (already-uuid) instance_id through. See
+            # plans/claude-widget-session-resume.md.
             instance_id = str(uuid.uuid4())
         if widget.kind == "python":
             host = PythonWidgetHost(widget_id, widget.path, widget.entry, self._broker)
@@ -422,6 +428,10 @@ class DeskWindow(QMainWindow):
         frame = proxy.widget()
         if widget_id == CLAUDE_WIDGET_ID:
             self._bind_claude_widget(
+                frame, resume=restore, extra_instructions=claude_extra_instructions
+            )
+        elif widget_id == CLAUDE_DESK_WIDGET_ID:
+            self._bind_claude_desk_widget(
                 frame, resume=restore, extra_instructions=claude_extra_instructions
             )
         self._bind_external_indicator(frame)
@@ -530,6 +540,24 @@ class DeskWindow(QMainWindow):
                     0, lambda: self.close_widget_by_instance_id(iid)
                 )
             )
+
+    def _bind_claude_desk_widget(
+        self, frame: WidgetFrame, resume: bool, extra_instructions: str = ""
+    ) -> None:
+        """TODO a596dbf: the same start_session(instance_id, resume,
+        extra_instructions) shape as _bind_claude_widget above, so this
+        widget kind and the original one are symmetric from
+        DeskWindow's perspective -- duck-typed the same way, for the
+        same reason. No process_exited wiring here (unlike the original
+        widget): there is no PTY/exec'd process to watch for exit --
+        the Claude (Desk) widget's own ClaudeSession lives and dies
+        with the widget itself (see widgets/claude_desk/widget.py's
+        QObject.destroyed handling), not the reverse."""
+        if not isinstance(frame.content, PythonWidgetHost):
+            return
+        content = frame.content.current
+        if content is not None and hasattr(content, "start_session"):
+            content.start_session(frame.instance_id, resume=resume, extra_instructions=extra_instructions)
 
     def _place_discuss_claude_widget(
         self,

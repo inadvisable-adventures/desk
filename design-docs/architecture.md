@@ -671,6 +671,42 @@ Desk Bridge API.
     button re-runs discovery on demand -- no file-watching, transforms
     aren't edited anywhere near as often as `TODO.md`. See
     `plans/transform-manager-widget.md`.
+30. **Claude (Desk) Widget** (`widgets/claude_desk/`, TODO `a596dbf`) — a
+    second, independently-spawnable `kind: "python"` widget for talking to
+    Claude, built on the Python Claude Agent SDK (`claude-agent-sdk`,
+    `ClaudeSDKClient`) instead of the PTY/`pyte` mechanism the original
+    Claude Widget (#12 above) uses. **Additive, not a replacement** — the
+    original widget is untouched and remains independently spawnable; both
+    can be placed on the same Desk. Where the PTY-based widget renders
+    `claude`'s own interactive-terminal output byte-for-byte with no
+    structure, this widget gets a real status label, a scrollable history
+    view, a prompt input box, and its own tool-approval UI — driven by
+    typed messages (`AssistantMessage`/`ToolUseBlock`/`ToolResultBlock`/
+    `ResultMessage`) instead of screen-scraped ANSI. `desk.claude_session
+    .ClaudeSession` (a `QObject`, shared-logic module in `desk.` proper for
+    the same "widget directories can't import each other" reason
+    `desk.terminal_widget` exists) owns a dedicated background thread
+    running its own asyncio event loop for the session's whole lifetime —
+    the same background-thread-plus-`pyqtSignal`-relay shape this codebase
+    already uses elsewhere (Git Status Widget, Voice Input Widget) rather
+    than merging asyncio into the Qt event loop. Tool-call approval uses
+    `ClaudeAgentOptions.can_use_tool` — confirmed directly (not assumed)
+    that it fires for genuinely gated actions (e.g. `Write`, or a
+    file-creating `Bash` call) and is not invoked for actions the CLI's
+    own built-in heuristics already auto-approve (e.g. a plain read-only
+    `echo`), matching real interactive `claude` behavior; the callback
+    blocks on an `asyncio.Future` until the widget's own Allow/Deny UI
+    resolves it, bridged across threads via
+    `asyncio.loop.call_soon_threadsafe`. **Session persistence/resume**
+    mirrors the original widget exactly (TODO `1d7331b`'s pattern, reused
+    rather than reinvented): the widget's Desk `instance_id` doubles as the
+    SDK session id, passed to `ClaudeAgentOptions(session_id=...)` fresh or
+    `ClaudeAgentOptions(resume=...)` on restore, issued by
+    `DeskWindow._bind_claude_desk_widget` post-build, symmetric with
+    `_bind_claude_widget`. tempui's `DiscussParkingLotItem` flow (and the
+    Questions widget's Discuss button) still target only the original
+    widget — not redesigned as part of this item. See
+    `plans/claude-widget-agent-sdk-integration.md`.
 
 ### Widget Model
 

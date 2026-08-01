@@ -17,6 +17,7 @@ dependencies = [
     "pyte",
     "PyQt6-QScintilla",
     "mlx-whisper",
+    "claude-agent-sdk",
 ]
 
 [project.scripts]

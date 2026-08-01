@@ -5757,7 +5757,7 @@ b32fb81. COMPLETED: From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
    `plans/voice-input-widget.md` as a real runtime consideration, still
    open.
 
-a596dbf. Introduce a new "Claude (Desk)" widget (`widgets/claude_desk/`)
+a596dbf. COMPLETED: Introduce a new "Claude (Desk)" widget (`widgets/claude_desk/`)
    that talks to the Python Claude Agent SDK (`claude-agent-sdk`,
    `ClaudeSDKClient`) instead of the PTY/`pyte` terminal-emulation
    mechanism the existing Claude widget (`widgets/claude/widget.py`)
@@ -5781,6 +5781,83 @@ a596dbf. Introduce a new "Claude (Desk)" widget (`widgets/claude_desk/`)
    rather than relying on `claude`'s own prompt text rendered as ANSI.
    The plain Console widget (`widgets/console/`) is also unaffected.
    [planned: claude-widget-agent-sdk-integration.md]
+
+   Implemented per plan: `claude-agent-sdk` added to `pyproject.toml`;
+   `src/desk/claude_session.py`'s `ClaudeSession` (a `QObject`) owns a
+   dedicated background thread running its own asyncio event loop for
+   a session's whole lifetime, translating `ClaudeSDKClient`'s message
+   stream and `can_use_tool` permission callback into `pyqtSignal`s --
+   same background-thread-plus-relay shape as `widgets/git_status/
+   widget.py`/`widgets/voice_input/widget.py`, per the plan's own
+   framing. `widgets/claude_desk/widget.py`'s `ClaudeDeskWidget`
+   composes a status label, model selector, scrollable read-only
+   history, prompt input, and an Allow/Deny approval row; exposes the
+   same `start_session(session_id, resume, extra_instructions)` shape
+   the original widget uses. `DeskWindow` gained `CLAUDE_DESK_WIDGET_ID`
+   and `_bind_claude_desk_widget`, wired at exactly the two call sites
+   that needed it (fresh-instance-id assignment, post-`add_widget` bind
+   dispatch) -- tempui's `DiscussParkingLotItem` flow and the Questions
+   widget's Discuss button deliberately still target only the original
+   widget, per the plan's own explicit scope boundary. New "Claude
+   (Desk) Widget" entry (#30) added to `design-docs/architecture.md`,
+   alongside the existing entry.
+
+   Two real findings from empirical verification, each changing the
+   implementation from the plan's own sketch (neither was assumed):
+   - A resumed session with nothing queued to send never fires
+     `turn_complete`/`session_error` at all (there's no turn) -- without
+     a signal for "connected, even with nothing sent," the prompt box
+     would stay disabled forever after a restored widget reconnects.
+     Added `ClaudeSession.connected`, wired only for the resume-with-no
+     -prompt case (not the fresh-launch case, where re-enabling input
+     between "connected" and "the bootstrap turn actually completing"
+     would let a user send a second message while the first is still in
+     flight).
+   - `can_use_tool` is invoked reliably under `permission_mode="default"`
+     (confirmed across many real sessions, including a bootstrap-prompt
+     -then-Write sequence matching this widget's own real usage) but
+     fires *inconsistently* for the identical kind of request under
+     `"auto"` -- confirmed directly, not assumed, after the automated
+     widget-level test intermittently failed to observe a permission
+     request that should have fired. `"auto"` appears to use a looser,
+     non-deterministic heuristic that sometimes skips the gate entirely
+     (matching its apparent purpose: fewer prompts, at the cost of
+     consistency) -- neither a bug in this widget's own code nor in the
+     SDK, just a real behavioral property of that mode worth knowing.
+     Deviated from the plan's suggested `"auto"` parity default
+     (matching TODO `2dca4c8`'s original widget) to `"default"` instead,
+     since this widget's entire point is a real, meaningful approval
+     UI -- a mode where that UI doesn't reliably trigger undermines the
+     feature it exists to provide. Both findings recorded in
+     `LEARNINGS.md`, alongside a third, narrower one hit while writing
+     the verify script itself: `QWidget.isVisible()` is unconditionally
+     `False` for any descendant of a never-`.show()`n top-level widget
+     (this project's own offscreen widget tests never call `.show()`),
+     regardless of an explicit `setVisible(True)` -- use
+     `child.isVisibleTo(ancestor)` instead.
+
+   Verified directly, real Claude Agent SDK sessions throughout (no
+   mocking, real API calls against `claude-haiku-4-5-20251001`): a
+   fresh `ClaudeSession` assigns the given session id and completes a
+   real turn end to end; a second `ClaudeSession` resuming that same id
+   recalls context from the first (proving reconnection, not a fresh
+   session); a `Write` tool call is denied via `respond_to_permission
+   (allow=False)` with the file confirmed never created, then a second,
+   separately-approved request lets the file be created; the actual
+   widget (not just `ClaudeSession` directly) accumulates history
+   entries in chronological order across a multi-turn conversation
+   including a real tool call resolved through its own Allow button;
+   `_bind_claude_desk_widget` duck-types on `start_session` exactly like
+   `_bind_claude_widget`. New
+   `tests/verify/verify_claude_desk_widget.py`, 25 checks, 0 failures.
+   Full `tests/verify/` regression suite unaffected (the original Claude
+   widget's own coverage untouched, since `widgets/claude/` was never
+   modified).
+   Not done (explicitly out of scope per the plan): wiring tempui's
+   Claude-spawning flows to offer this widget as an option; a
+   model/permission-mode switcher beyond the model combo box already
+   included (the plan left "immediately vs. fast-follow" as an open
+   judgment call -- a combo box shipped now, a mode switcher did not).
 
 76949eb. Expose per-word transcription confidence from `desk.speech
    .transcribe` (TODO `1cd0ca2`) and surface it in the Voice Input
