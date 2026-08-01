@@ -32,25 +32,18 @@ title at all), this isn't the right fit — reach for `desk.fs.*` directly.
 
 ## How to use it
 
-**Recommended: copy `document-editor-base.ts`'s contents directly into
-the top of your own widget's `.ts` file**, rather than keeping it as a
-separate file in your own project's source tree. This isn't just the
-"copy+paste+modify" option for its own sake — it's the *safe* option
-here specifically: this project's own widget build script
-(`build_widget.py`) concatenates every compiled `.js` file in a
-widget's own build output in plain alphabetical filename order, not
-dependency order. Since a subclass's `class Foo extends
-DocumentEditorBase` needs the base class already defined by the time
-that line runs (confirmed directly: it isn't, and throws
-`ReferenceError: Cannot access 'DocumentEditorBase' before
-initialization`, if the compiled output happens to concatenate in the
-wrong order), keeping this as a genuinely separate file only works if
-your own widget's `.ts` filename is verified to sort alphabetically
-*after* `document-editor-base` — easy to get wrong, and silently, since
-nothing catches it until the widget actually runs. Pasting the class
-directly into your own single `.ts` file sidesteps this entirely (one
-file, unambiguous order) and is the only version of "use this" that's
-foolproof by construction.
+Either import `document-editor-base.ts` as a separate file, or
+copy+paste+modify its contents directly into your own widget's `.ts`
+file — both are fine. If you keep it as a separate file, add it as a
+`tsconfig.json` `"files"` entry **ahead of** your own widget's file
+(see "Authoring from real source" in `tempui-custom-widgets.md`):
+`build_widget.py` concatenates a multi-file widget's compiled `.js`
+output in that declared order rather than an alphabetical directory
+sort, so `class Foo extends DocumentEditorBase` has the base class
+already defined by the time that line runs. (Before this, an
+alphabetically-earlier subclass filename would throw `ReferenceError:
+Cannot access 'DocumentEditorBase' before initialization` at
+runtime — fixed at the source, not a concern anymore.)
 
 Then:
 

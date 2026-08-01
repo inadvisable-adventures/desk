@@ -83,10 +83,18 @@ def test_doc_mentions_the_new_component():
     # The "Reusable UI components" section describes components
     # generically (it didn't name "hsv-color-picker" literally either)
     # -- but it does explain the copy-vs-import distinction this
-    # component's own README relies on.
+    # component's own README relies on. TODO 3fc5331: build_widget.py's
+    # concatenation-order hazard (the reason this section used to single
+    # out "copy the source in" as the *safe* choice for a base class) is
+    # fixed now -- the doc's own wording moved on to explaining the
+    # tsconfig.json "files" array as the real mechanism for declaring
+    # load order, rather than warning readers away from importing a
+    # base class as a separate file at all. Whitespace-normalized
+    # (collapses this doc's own line-wrapping) before matching.
+    normalized_doc = " ".join(_CUSTOM_WIDGETS_DOC.split())
     check(
-        "custom-widgets doc explains the copy-source-in vs. separate-file distinction",
-        "concatenates a widget's compiled" in _CUSTOM_WIDGETS_DOC,
+        "custom-widgets doc explains the copy-vs-separate-file distinction via the files array",
+        "import its file directly" in normalized_doc and '"files"' in normalized_doc and "ahead of" in normalized_doc,
     )
     new_features_doc = SPLIT_DOC_CONTENT[NEW_FEATURES_DOC_FILENAME]
     check("new-features doc has a Version 25 entry for document-editor-base", "Version 25" in new_features_doc and "document-editor-base" in new_features_doc)

@@ -1,4 +1,4 @@
-# Fix `build_widget.py` concatenation order (TODO `3fc5331`)
+# Fix `build_widget.py` concatenation order (TODO `3fc5331`) (COMPLETED)
 
 ## Summary
 

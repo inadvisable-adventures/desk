@@ -164,7 +164,7 @@ SHARED_COMPONENTS_DIRNAME = "shared-components"
 # text also updated to note that whether a component recommends
 # importing it as a separate file vs. copying its source directly
 # depends on the component (see that section's own explanation).
-TEMPUI_DOC_VERSION = 25
+TEMPUI_DOC_VERSION = 26
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -562,7 +562,16 @@ not-yet-promoted widget's source too. Four files:
   comment `/* BUILD:COMPILED_JS */`, and the `<name-tag></name-tag>`
   element instantiation.
 - `tsconfig.json` — whatever strictness the project wants; must set
-  `compilerOptions.outDir`.
+  `compilerOptions.outDir`. For a widget split across more than one
+  `.ts` file (e.g. a shared base class alongside the widget's own
+  subclass), also set a top-level `"files"` array listing them in
+  the order they must be concatenated in — base classes before the
+  subclasses that `extends` them. These files compile as global
+  scripts (no `import`/`export`), so load order matters exactly like
+  script tags on a page; `build_widget.py` respects this array when
+  present instead of an alphabetical directory sort, which cannot be
+  relied on to put a base class first. A `tsconfig.json` with no
+  `"files"` key (the common, single-file case) is unaffected.
 - `widget.json` — `{"keyword", "label", "width", "height"}`, exactly the
   fields a `DefineWidget`/`Size` line above needs, plus an optional
   `"capabilities": [...]` (a list of the same coarse, resource-level
@@ -598,14 +607,12 @@ widget's file lifecycle (a title-to-path, auto-load/auto-save document
 editor). Refreshed automatically alongside the rest of `.desk_temp`,
 same as `build_widget.py` above — never a stale one-time copy. Each
 component lives in its own subdirectory with its own `README.md`
-explaining what it does, how to use it, and whether that specific
-component recommends copying its source directly into your own widget
-file versus keeping it as a separate one (this project's own
-`build_widget.py` concatenates a widget's compiled `.js` files in
-plain alphabetical order, not dependency order — safe for a
-self-contained control with no cross-file dependency, but a real
-hazard for a base class a widget extends, whose own file needs to be
-concatenated *before* the subclass's).
+explaining what it does and how to use it — either import its file
+directly, or copy+paste+modify it into your own widget file, whichever
+suits the component. Importing a base class a widget's own file
+`extends` needs its own `tsconfig.json` `"files"` entry ahead of the
+widget's own file (see "Authoring from real source" above) so
+`build_widget.py` concatenates it first.
 
 ## Invoking a defined widget
 
@@ -937,6 +944,18 @@ own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
 
+## Version 26
+- `.desk_temp/build_widget.py` now concatenates a multi-file widget's
+  compiled `.js` output in the order `tsconfig.json`'s own top-level
+  `"files"` array lists them (base classes before subclasses), instead
+  of plain alphabetical filename order -- previously, a subclass whose
+  filename happened to sort before its base class's threw
+  `ReferenceError: Cannot access '<Base>' before initialization` at
+  runtime. Add a `"files"` array (in author-declared order) to opt in;
+  a `tsconfig.json` with no `"files"` key is unaffected (unchanged,
+  alphabetical-order behavior, correct for the common single-file
+  widget). See "Authoring from real source" above.
+
 ## Version 25
 - New `shared-components/document-editor-base` entry: a base class
   (`DocumentEditorBase<Doc>`) for a title-to-path, auto-load/auto-save
@@ -1141,18 +1160,34 @@ def _read_manifest(widget_dir: Path) -> dict:
     return manifest
 
 
-def _read_out_dir(widget_dir: Path) -> Path:
+def _read_tsconfig(widget_dir: Path) -> dict:
     tsconfig_path = widget_dir / "tsconfig.json"
     if not tsconfig_path.is_file():
         raise BuildError(f"{tsconfig_path} not found")
     try:
-        tsconfig = json.loads(tsconfig_path.read_text())
+        return json.loads(tsconfig_path.read_text())
     except json.JSONDecodeError as e:
         raise BuildError(f"{tsconfig_path} is not valid JSON: {e}") from e
+
+
+def _read_out_dir(widget_dir: Path, tsconfig: dict) -> Path:
     out_dir = tsconfig.get("compilerOptions", {}).get("outDir")
     if not out_dir:
-        raise BuildError(f"{tsconfig_path} must set compilerOptions.outDir")
+        raise BuildError(f"{widget_dir / 'tsconfig.json'} must set compilerOptions.outDir")
     return widget_dir / out_dir
+
+
+def _read_ordered_stems(tsconfig: dict) -> list | None:
+    """The basename stems (filename without .ts) of tsconfig.json's own
+    top-level "files" array, in the order the widget author declared --
+    base classes before subclasses, for a widget split across multiple
+    .ts files (TODO 3fc5331). None if "files" isn't present (the common,
+    single-file-widget case), meaning the caller keeps its existing,
+    order-agnostic behavior unchanged."""
+    files = tsconfig.get("files")
+    if not files:
+        return None
+    return [Path(entry).stem for entry in files]
 
 
 def _compile_typescript(widget_dir: Path) -> None:
@@ -1170,13 +1205,43 @@ def _compile_typescript(widget_dir: Path) -> None:
         raise BuildError(f"tsc failed:\\n{result.stdout}{result.stderr}")
 
 
-def _concatenate_compiled_js(out_dir: Path) -> str:
+def _concatenate_compiled_js(out_dir: Path, ordered_stems: list | None) -> str:
     if not out_dir.is_dir():
         raise BuildError(f"tsc reported success but {out_dir} doesn't exist")
+    # sorted() here is only a deterministic starting point for the
+    # ordered_stems reorder below -- not the final order once
+    # ordered_stems is given (TODO 3fc5331: plain alphabetical order
+    # doesn't respect cross-file class inheritance).
     js_files = sorted(out_dir.rglob("*.js"))
     if not js_files:
         raise BuildError(f"no .js files found under {out_dir} after compiling")
-    return "".join(path.read_text() for path in js_files)
+    if ordered_stems is None:
+        return "".join(path.read_text() for path in js_files)
+
+    by_stem = {}
+    for path in js_files:
+        if path.stem in by_stem:
+            raise BuildError(
+                f"multiple compiled files named {path.stem}.js under {out_dir} "
+                f"({by_stem[path.stem]}, {path}) -- tsconfig.json's \\"files\\" list "
+                f"can't disambiguate same-named files in different directories"
+            )
+        by_stem[path.stem] = path
+
+    missing = [stem for stem in ordered_stems if stem not in by_stem]
+    if missing:
+        raise BuildError(
+            f"tsconfig.json's \\"files\\" list names {missing[0]}.ts, but no "
+            f"matching {missing[0]}.js was found under {out_dir} after compiling"
+        )
+    unlisted = [stem for stem in by_stem if stem not in ordered_stems]
+    if unlisted:
+        raise BuildError(
+            f"{out_dir} contains {unlisted[0]}.js, which isn't listed in "
+            f"tsconfig.json's \\"files\\" -- add it there so its position in the "
+            f"compile order is explicit"
+        )
+    return "".join(by_stem[stem].read_text() for stem in ordered_stems)
 
 
 def _substitute_marker(widget_dir: Path, compiled_js: str) -> str:
@@ -1195,9 +1260,11 @@ def _chunk(text: str, size: int) -> list[str]:
 
 def build_widget(widget_dir: Path) -> str:
     manifest = _read_manifest(widget_dir)
-    out_dir = _read_out_dir(widget_dir)
+    tsconfig = _read_tsconfig(widget_dir)
+    out_dir = _read_out_dir(widget_dir, tsconfig)
+    ordered_stems = _read_ordered_stems(tsconfig)
     _compile_typescript(widget_dir)
-    compiled_js = _concatenate_compiled_js(out_dir)
+    compiled_js = _concatenate_compiled_js(out_dir, ordered_stems)
     html = _substitute_marker(widget_dir, compiled_js)
     html_b64 = base64.b64encode(html.encode("utf-8")).decode("ascii")
 

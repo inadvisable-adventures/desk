@@ -150,17 +150,21 @@ def test_doc_version_and_new_features_entry():
     from desk.temp_ui import _CUSTOM_WIDGETS_DOC
 
     check("custom-widgets doc has a Reusable UI components section", "Reusable UI components" in _CUSTOM_WIDGETS_DOC)
-    # TODO d4368bd: the section's own wording was revised once a second
-    # component (document-editor-base) showed that "import vs.
-    # copy+paste+modify" isn't a blanket "either is fine" -- it depends
-    # on the component (a real class-inheritance load-order hazard in
-    # this project's own build_widget.py, safe for a self-contained
-    # control like hsv-color-picker but not for a base class). Checking
-    # for the substance of that (each component's own README says which
-    # applies) rather than the old, now-inaccurate literal phrasing.
+    # TODO 3fc5331: the section's own wording was revised again once
+    # build_widget.py's concatenation-order hazard (TODO d4368bd's own
+    # reason to recommend copy-paste-only for a base class) was fixed
+    # via tsconfig.json's own "files" array -- import vs.
+    # copy+paste+modify is unconditionally fine again, for every
+    # component, as long as a base class gets a "files" entry ahead of
+    # its subclass's.
+    # Whitespace-normalized (collapses this doc's own line-wrapping)
+    # before substring matching -- the real wrapped prose breaks a
+    # naive multi-word substring check at whichever point it happens to
+    # wrap, which isn't what this check cares about.
+    normalized_doc = " ".join(_CUSTOM_WIDGETS_DOC.split())
     check(
-        "custom-widgets doc explains component READMEs say which usage mode applies",
-        "recommends copying its source directly" in _CUSTOM_WIDGETS_DOC,
+        "custom-widgets doc explains both import and copy+paste+modify are fine, with the files array for load order",
+        "import its file directly" in normalized_doc and '"files"' in normalized_doc and "ahead of" in normalized_doc,
     )
 
 
