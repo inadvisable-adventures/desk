@@ -5804,3 +5804,4 @@ fe7d8f2. Add voice input capabilities to the new "Claude (Desk)" widget
    typing into its prompt input box. Not planned or implemented yet --
    depends on TODO `a596dbf` landing first (there's no "Claude (Desk)"
    widget/prompt input box to add this to until then).
+8a5ea2b. research: is it possible to do something closer to live transcription by breaking the audio into smaller chunks?
