@@ -7,6 +7,7 @@ TranscriptionUnavailableError below) and PARKINGLOT.md's original
 model at all: Claude's API has no audio input endpoint, so any voice
 pipeline needs its own local transcription step.
 """
+import contextlib
 import wave
 from pathlib import Path
 
@@ -69,6 +70,47 @@ def _read_wav_as_float32(audio_path: Path) -> np.ndarray:
     return np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
 
 
+@contextlib.contextmanager
+def _force_hub_offline():
+    """mlx_whisper.transcribe() calls mlx_whisper.load_models.load_model(),
+    which calls huggingface_hub.snapshot_download() on *every* call
+    (memoized in-process by mlx_whisper's own ModelHolder, so only the
+    first transcribe() per process actually hits this) -- and
+    snapshot_download() contacts the Hub to resolve "main" to a commit
+    hash even when every file it needs is already cached locally.
+
+    Confirmed directly this is not just an extra log line: with the
+    Hub genuinely unreachable (a black-holed connection, not a
+    same-host "connection refused") rather than merely absent, that
+    revision-resolution call blocks for the full request timeout --
+    measured at ~77 seconds -- before falling back to the local cache.
+    Since transcribe() only reaches this point after _model_is_cached()
+    already confirmed the required files are on disk, there is nothing
+    for a real network call to accomplish here.
+
+    Setting the HF_HUB_OFFLINE *environment variable* at this point
+    does not work, confirmed directly: huggingface_hub.constants
+    .HF_HUB_OFFLINE is computed once, from os.environ, at the moment
+    that module is first imported (which already happened by the time
+    this function runs) -- every later read goes through
+    constants.is_offline_mode(), which just returns that frozen
+    module-level bool, not a live os.environ lookup. The env var must
+    be patched directly on the module object instead; confirmed this
+    way the same artificially-unreachable-network case above drops
+    from ~77 seconds to ~1.5. Scoped via save/restore around just this
+    call, not process-wide, so it never affects
+    scripts/download_whisper_model.py (which deliberately does want
+    the network) if the two ever ran in the same process."""
+    from huggingface_hub import constants
+
+    previous = constants.HF_HUB_OFFLINE
+    constants.HF_HUB_OFFLINE = True
+    try:
+        yield
+    finally:
+        constants.HF_HUB_OFFLINE = previous
+
+
 def transcribe(audio_path: Path) -> str:
     """Transcribe a 16 kHz mono 16-bit PCM WAV file to text using
     MODEL_REPO."""
@@ -82,5 +124,6 @@ def transcribe(audio_path: Path) -> str:
     import mlx_whisper
 
     samples = _read_wav_as_float32(audio_path)
-    result = mlx_whisper.transcribe(samples, path_or_hf_repo=MODEL_REPO)
+    with _force_hub_offline():
+        result = mlx_whisper.transcribe(samples, path_or_hf_repo=MODEL_REPO)
     return result["text"].strip()

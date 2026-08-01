@@ -5678,6 +5678,33 @@ f9d2dc7. COMPLETED: From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
    ["large-v3-turbo"]` entry. New
    `tests/verify/verify_speech_transcription.py`, 5 checks, 0 failures.
 
+   Addendum, found after the above landed (user noticed a real Hub
+   request in the console logs on first use and asked about it -- this
+   was not caught by the original verification pass): every
+   `mlx_whisper.transcribe()` call -- not just the first download --
+   routes through `huggingface_hub.snapshot_download()`, which contacts
+   the Hub to resolve `"main"` even when the model is fully cached
+   locally (`mlx_whisper`'s own in-process `ModelHolder` memoizes the
+   loaded model, so only the *first* transcription per running process
+   actually triggers this -- easy to miss in quick manual testing).
+   Confirmed directly this is a real cost, not just a log line: with
+   the Hub genuinely unreachable (a black-holed address, not a
+   same-host connection refusal) rather than merely absent, that one
+   call blocked for ~77 seconds before falling back to the local cache
+   -- a serious regression for a feature pitched as local/offline.
+   Setting the `HF_HUB_OFFLINE` environment variable does not fix this
+   (confirmed: `huggingface_hub.constants.HF_HUB_OFFLINE` is frozen at
+   that module's own import time, before this code ever runs); fixed
+   by patching `huggingface_hub.constants.HF_HUB_OFFLINE` directly for
+   the duration of the call, only after `_model_is_cached()` has
+   already confirmed the files are on disk (`speech.py`'s
+   `_force_hub_offline`). Recorded in `LEARNINGS.md`. Verified
+   directly: the same artificially-unreachable-network reproduction
+   drops from ~77s to ~2-5s; a real transcription with the model
+   cached now logs zero HTTP requests (previously logged one).
+   `tests/verify/verify_speech_transcription.py` gained three more
+   checks (8 total), all passing.
+
 b32fb81. COMPLETED: From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
    voice input" item: a new self-contained "Voice Input" widget
    (`widgets/voice_input/`, `kind: "python"`) -- record/stop button,

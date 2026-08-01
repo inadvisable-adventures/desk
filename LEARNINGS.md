@@ -937,3 +937,40 @@ string -- `transcribe()`'s own signature already accepts
 touches `ffmpeg`. This avoids adding a new system-level (non-pip)
 binary dependency for a case that doesn't actually need one. See
 `src/desk/speech.py`'s `_read_wav_as_float32`.
+
+## `mlx_whisper.transcribe()` contacts the Hub over the network even when the model is fully cached locally -- and can hang for a long time if the network is unreachable rather than merely absent
+
+Every call to `mlx_whisper.transcribe()` routes through
+`mlx_whisper.load_models.load_model()`, which calls
+`huggingface_hub.snapshot_download(repo_id=...)` -- and
+`snapshot_download()` contacts the Hub to resolve `"main"` to a commit
+hash and verify the cached files match, *even when every required file
+is already present in the local cache*. (`mlx_whisper`'s own
+`ModelHolder` class memoizes the loaded model in-process, so in a
+long-running app this network round trip only happens on the *first*
+transcription per process -- easy to miss during quick manual testing
+where the surprising cost only shows up once.)
+
+If the Hub actively refuses the connection (e.g. nothing listening on
+the port), the failure is fast and `snapshot_download()` falls back to
+the local cache transparently. But confirmed directly with a
+genuinely unreachable (black-holed, non-responding) address -- the
+realistic "no network" case, not "server said no" -- the same call
+blocked for **~77 seconds** before giving up and falling back to the
+local cache. For a feature explicitly pitched as local/offline
+(`src/desk/speech.py`, the Voice Input widget), that's a real, severe
+regression from the expected experience, not a cosmetic log line.
+
+Setting the `HF_HUB_OFFLINE` *environment variable* at this point does
+**not** fix it: `huggingface_hub.constants.HF_HUB_OFFLINE` is computed
+once, from `os.environ`, at the moment that module is first imported
+-- which has already happened by the time any of this code runs.
+Every later check (`constants.is_offline_mode()`) just returns that
+frozen module-level bool; it never re-reads `os.environ`. The fix is
+to patch the module attribute directly --
+`huggingface_hub.constants.HF_HUB_OFFLINE = True` -- for the duration
+of the call (save/restore the previous value), *after* independently
+confirming the required files are already cached (so skipping the
+network is actually safe). Confirmed this drops the same
+artificially-unreachable-network case from ~77s to ~1.5s. See
+`src/desk/speech.py`'s `_force_hub_offline`.
