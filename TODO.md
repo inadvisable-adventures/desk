@@ -5959,6 +5959,35 @@ e9eddba. Add a permission-mode selector to the Claude (Desk) widget
    `_place_discuss_claude_widget`'s existing shape (adapted for the new
    widget kind) or needs its own placement helper.
 
+0529501. An API for widgets to invoke Claude with access scoped to
+   only the files that widget itself has access to, rather than a full
+   unrestricted session. Motivating example: the peer `necro-4x`
+   project's domain-analysis widget has a prompt text field meant to
+   be handed to `claude` (via the CLI) for file processing of the
+   widget's current file -- indirect and awkward (getting the prompt
+   text out to the CLI by hand) compared to just having a file picker
+   in the widget itself that hands the chosen file(s) to Claude
+   directly. Generalizing past that one widget: any widget that already
+   knows which specific file(s) it's allowed to touch could offer a
+   similar "send this to Claude" affordance without needing to hand out
+   broader filesystem access than the widget itself has.
+   Builds on TODO `a596dbf`'s `desk.claude_session.ClaudeSession` (the
+   Python Agent SDK wrapper) -- `ClaudeAgentOptions` already has
+   `add_dirs`/`cwd`/`sandbox` (`SandboxSettings`) fields that look like
+   the right building blocks for constraining a session to a specific
+   file or directory set, but none of that's been exercised for a
+   *restricted* (as opposed to full-project-cwd) session yet; needs
+   real investigation into whether `add_dirs`/`sandbox` alone are
+   sufficient to actually enforce single-file/limited-file scoping (not
+   just "the model was told to only touch this," but something Desk
+   can trust), or whether `can_use_tool` also needs real per-invocation
+   path-checking logic layered on top. Not designed at all yet -- open
+   questions include what the actual widget-facing API shape should be
+   (a new `desk.` module other widgets import, matching
+   `desk.terminal_widget`/`desk.claude_session`'s own precedent?), and
+   whether it reuses `ClaudeDeskWidget`'s own UI or is meant to run
+   headless/inline within the calling widget instead.
+
 ed5c62f. De-prioritized (moved to the end of the queue on request --
    priority is physical position in this file, per
    shared_development_process.md's Item IDs section). Add
