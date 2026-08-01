@@ -5781,3 +5781,17 @@ a596dbf. Introduce a new "Claude (Desk)" widget (`widgets/claude_desk/`)
    rather than relying on `claude`'s own prompt text rendered as ANSI.
    The plain Console widget (`widgets/console/`) is also unaffected.
    [planned: claude-widget-agent-sdk-integration.md]
+
+76949eb. Expose per-word transcription confidence from `desk.speech
+   .transcribe` (TODO `1cd0ca2`) and surface it in the Voice Input
+   widget (TODO `b32fb81`). Surfaced by the user noticing a real
+   misrecognition ("are we going to hit the thing" transcribed as
+   "...hit the button") and asking whether `mlx-whisper` exposes any
+   confidence signal. Confirmed directly (`mlx_whisper/transcribe.py`,
+   `timing.py`): every segment already carries `avg_logprob`/
+   `no_speech_prob`/`compression_ratio`, and passing
+   `word_timestamps=True` additionally attaches a `"words"` list per
+   segment, each with a real per-word `probability` -- exactly the
+   "confidence for individual words" the user asked about, currently
+   discarded since `transcribe()` returns only `result["text"]`.
+   [planned: speech-word-confidence.md]
