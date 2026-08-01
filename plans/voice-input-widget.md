@@ -1,4 +1,4 @@
-# Plan: TODO b32fb81 — Voice Input widget
+# Plan: TODO b32fb81 — Voice Input widget (COMPLETED)
 
 From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for voice
 input" item — the actual user-facing surface, built on TODO

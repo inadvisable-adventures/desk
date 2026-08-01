@@ -5678,7 +5678,7 @@ f9d2dc7. COMPLETED: From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
    ["large-v3-turbo"]` entry. New
    `tests/verify/verify_speech_transcription.py`, 5 checks, 0 failures.
 
-b32fb81. From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
+b32fb81. COMPLETED: From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
    voice input" item: a new self-contained "Voice Input" widget
    (`widgets/voice_input/`, `kind: "python"`) -- record/stop button,
    status label, editable transcription result, copy-to-clipboard --
@@ -5693,3 +5693,38 @@ b32fb81. From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
    one-capability-per-widget pattern; wiring dictation into other
    widgets is a separable future follow-up, not part of this item.
    [planned: voice-input-widget.md]
+
+   Implemented per plan, following `widgets/git_status/widget.py`'s
+   established background-thread-plus-`QObject`-relay pattern for the
+   transcription call (`_transcribe_in_background` runs on a
+   `threading.Thread`, reports back via a `pyqtSignal`). Captures
+   16 kHz mono 16-bit PCM directly (Whisper's own native rate, and the
+   exact format TODO `1cd0ca2`'s `transcribe()` requires -- no
+   resampling step needed); records into memory and writes one WAV file
+   on Stop via the stdlib `wave` module, deleted again once
+   transcription finishes (success or failure). `_stop_recording` is
+   split from a new `_process_captured_audio` specifically so tests can
+   drive the write-WAV -> background-transcribe -> UI-update pipeline
+   with known injected audio, independent of whatever a real
+   microphone happens to pick up during an automated run. An
+   unavailable model or any other transcription failure surfaces as a
+   real, visibly-styled (red) status message rather than failing
+   silently.
+
+   Verified directly against real hardware and the real, already
+   -downloaded model, no mocking: a real `QAudioSource` against this
+   machine's real default microphone (`MacBook Pro Microphone`)
+   actually captures non-zero PCM bytes; real macOS `say`-synthesized
+   speech injected in place of live microphone input transcribes
+   correctly into the text edit end-to-end through the real background
+   thread and Qt signal; the Copy button places the result on the real
+   system clipboard; the temporary WAV file is confirmed deleted after
+   completion; an uncached model repo surfaces as a real visible error
+   naming the download script. New
+   `tests/verify/verify_voice_input_widget.py`, 21 checks, 0 failures.
+   Not verified: behavior when the macOS microphone-permission (TCC)
+   prompt is actually denied -- this machine already had microphone
+   access granted for this process before this TODO's work began, so
+   the denied-permission path was never actually exercised; flagged in
+   `plans/voice-input-widget.md` as a real runtime consideration, still
+   open.
