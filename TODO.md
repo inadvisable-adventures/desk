@@ -5795,3 +5795,12 @@ a596dbf. Introduce a new "Claude (Desk)" widget (`widgets/claude_desk/`)
    "confidence for individual words" the user asked about, currently
    discarded since `transcribe()` returns only `result["text"]`.
    [planned: speech-word-confidence.md]
+
+fe7d8f2. Add voice input capabilities to the new "Claude (Desk)" widget
+   (TODO `a596dbf`, itself not yet implemented -- only planned so far)
+   so a prompt can be dictated into it the same way the standalone
+   Voice Input widget (TODO `b32fb81`) already supports, using
+   `desk.speech.transcribe` (TODO `1cd0ca2`), rather than only ever
+   typing into its prompt input box. Not planned or implemented yet --
+   depends on TODO `a596dbf` landing first (there's no "Claude (Desk)"
+   widget/prompt input box to add this to until then).
