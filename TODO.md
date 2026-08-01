@@ -5923,3 +5923,53 @@ a4c3dec. Add an on-hover control in the Claude (Desk) widget's history
    `_prompt_input` while typing. Depends on TODO `78d6207`
    distinguishing user lines from the rest of the history to know
    which lines are reloadable.
+
+e9eddba. Add a permission-mode selector to the Claude (Desk) widget
+   (`widgets/claude_desk/widget.py`). TODO `a596dbf` hardcoded
+   `PERMISSION_MODE = "default"` (a deliberate deviation from the
+   plan's suggested `"auto"` parity default with the original Claude
+   widget, TODO `2dca4c8` -- found during verification that `"auto"`
+   gates tool calls inconsistently, while `"default"` gates reliably,
+   and this widget's whole point is a real, meaningful approval UI).
+   Making that a real, visible, user-changeable control (alongside the
+   existing model combo box) rather than a fixed constant lets someone
+   trade consistency for fewer prompts if they want to, the same
+   tradeoff `claude`'s own `--permission-mode` flag already exposes on
+   the CLI. Needs a decision on when the mode can change (only before
+   `start_session`, or live mid-session via `ClaudeSDKClient
+   .set_permission_mode`, which the SDK already exposes) -- not
+   designed yet.
+
+ed5c62f. Add folding/collapsing to the Claude (Desk) widget's history
+   view (`widgets/claude_desk/widget.py`'s `_history`) for tool
+   invocations. Right now `_on_tool_use`/`_on_tool_result` append a
+   `[tool] Name(args)`/`[tool result] ...` line unconditionally, with
+   no way to hide it -- a session with several tool calls (each
+   potentially carrying a large `input`/`content` payload, e.g. a
+   `Write`'s full file contents or a long `Bash` command's stdout)
+   makes the transcript hard to scan for the actual conversation.
+   Needs a real collapsed/expanded UI affordance (not just truncating
+   text) -- `QPlainTextEdit` has no native per-block fold/collapse
+   support, so this likely means switching the history view to
+   something richer (a `QTreeWidget`-style structured view, or
+   `QTextEdit` with clickable custom text objects) rather than staying
+   on today's single flat plain-text log; not designed yet.
+
+93364f9. Add a "talk to Claude about this widget" button to the widget
+   frame chrome (`src/desk/shell/widget_frame.py`'s small
+   indicator-button family -- `_TempuiPromoteButton`/
+   `_StaleIndicatorButton`/`_ErrorIndicatorButton` are the existing
+   precedent), dispatched centrally through `canvas.py`'s
+   `_hit_test_chrome`/mouse handling the same way those are. Clicking
+   it launches a new "Claude (Desk)" widget (TODO `a596dbf`) with a
+   fresh session whose initial prompt references the specific clicked
+   widget instance (its widget kind/id, instance_id, and current
+   title) and hints at how to find that widget kind's own source on
+   disk (its `widgets/<id>/` directory -- `widget.py`/`widget.json` for
+   `kind: "python"`, `index.html`/compiled sources for `kind: "html"`)
+   so Claude can go read the real implementation rather than guessing.
+   Not designed yet -- open questions include exactly what gets
+   included in the launch prompt, whether this button appears on every
+   widget or only certain kinds, and whether it should reuse
+   `_place_discuss_claude_widget`'s existing shape (adapted for the new
+   widget kind) or needs its own placement helper.

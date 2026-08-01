@@ -786,6 +786,20 @@ This file captures thoughts and TODO items that arise during work on other thing
   SDK-backed widget; this is the separate, larger follow-on idea it
   unlocks.
 
+  Additional thought, also stemming from TODO `a596dbf`'s own
+  `can_use_tool` work: today's permission gating is coarse -- a whole
+  tool (`Write`, `Bash`, ...) is either gated or not, per the chosen
+  `permission_mode`. Might be worth getting more specific: per-action
+  (e.g. specific git subcommands/flags, not "Bash" as a monolith) and
+  per-location (e.g. writes inside the current Desk directory treated
+  differently than writes elsewhere) rules, rather than one blanket
+  mode covering every tool call a session makes. Not explored at all
+  yet -- would need to look at what `ClaudeAgentOptions.allowed_tools`/
+  `disallowed_tools`'s own rule syntax already supports (TODO `a596dbf`
+  found some of this piecemeal -- e.g. `Bash(ls:*)`-style specifiers --
+  while investigating `can_use_tool`'s shadowing behavior) versus what
+  would need real custom logic inside `can_use_tool` itself.
+
 - **Research offline text-to-speech (TTS) options**
 
   The reverse direction of the already-shipped local speech-to-text
