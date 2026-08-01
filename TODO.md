@@ -5940,21 +5940,6 @@ e9eddba. Add a permission-mode selector to the Claude (Desk) widget
    .set_permission_mode`, which the SDK already exposes) -- not
    designed yet.
 
-ed5c62f. Add folding/collapsing to the Claude (Desk) widget's history
-   view (`widgets/claude_desk/widget.py`'s `_history`) for tool
-   invocations. Right now `_on_tool_use`/`_on_tool_result` append a
-   `[tool] Name(args)`/`[tool result] ...` line unconditionally, with
-   no way to hide it -- a session with several tool calls (each
-   potentially carrying a large `input`/`content` payload, e.g. a
-   `Write`'s full file contents or a long `Bash` command's stdout)
-   makes the transcript hard to scan for the actual conversation.
-   Needs a real collapsed/expanded UI affordance (not just truncating
-   text) -- `QPlainTextEdit` has no native per-block fold/collapse
-   support, so this likely means switching the history view to
-   something richer (a `QTreeWidget`-style structured view, or
-   `QTextEdit` with clickable custom text objects) rather than staying
-   on today's single flat plain-text log; not designed yet.
-
 93364f9. Add a "talk to Claude about this widget" button to the widget
    frame chrome (`src/desk/shell/widget_frame.py`'s small
    indicator-button family -- `_TempuiPromoteButton`/
@@ -5973,3 +5958,21 @@ ed5c62f. Add folding/collapsing to the Claude (Desk) widget's history
    widget or only certain kinds, and whether it should reuse
    `_place_discuss_claude_widget`'s existing shape (adapted for the new
    widget kind) or needs its own placement helper.
+
+ed5c62f. De-prioritized (moved to the end of the queue on request --
+   priority is physical position in this file, per
+   shared_development_process.md's Item IDs section). Add
+   folding/collapsing to the Claude (Desk) widget's history view
+   (`widgets/claude_desk/widget.py`'s `_history`) for tool invocations.
+   Right now `_on_tool_use`/`_on_tool_result` append a `[tool]
+   Name(args)`/`[tool result] ...` line unconditionally, with no way to
+   hide it -- a session with several tool calls (each potentially
+   carrying a large `input`/`content` payload, e.g. a `Write`'s full
+   file contents or a long `Bash` command's stdout) makes the
+   transcript hard to scan for the actual conversation. Needs a real
+   collapsed/expanded UI affordance (not just truncating text) --
+   `QPlainTextEdit` has no native per-block fold/collapse support, so
+   this likely means switching the history view to something richer
+   (a `QTreeWidget`-style structured view, or `QTextEdit` with
+   clickable custom text objects) rather than staying on today's
+   single flat plain-text log; not designed yet.
