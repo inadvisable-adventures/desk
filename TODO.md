@@ -5535,6 +5535,7 @@ d4368bd. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-editor-widget-base-
    `src/desk/temp_ui.py`) -- both describe a workaround for this exact
    bug, and would be stale/misleading once `build_widget.py` no longer
    has the ordering hazard they're warning about.
+   [planned: build-widget-compile-order.md]
 
 7c7b676. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-tempui-convention-drift
    -notification-2026-07-30-1120.md`): `ensure_docs_current`
