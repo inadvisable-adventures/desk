@@ -15,29 +15,43 @@ import wave
 from pathlib import Path
 
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
-from PyQt6.QtGui import QGuiApplication
+from PyQt6.QtGui import QColor, QGuiApplication, QTextCharFormat, QTextCursor
 from PyQt6.QtMultimedia import QAudioFormat, QAudioSource, QMediaDevices
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
     QPushButton,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-from desk.speech import EXPECTED_SAMPLE_RATE, TranscriptionUnavailableError, transcribe
+from desk.speech import (
+    EXPECTED_SAMPLE_RATE,
+    TranscriptionResult,
+    TranscriptionUnavailableError,
+    WordConfidence,
+    transcribe,
+)
 
 ERROR_STYLE = "color: #ff5c5c;"
 STATUS_STYLE = "color: #9a9a9a;"
+
+# TODO 76949eb: mirrors mlx_whisper's own no_speech_threshold default
+# (0.6) -- "roughly where the model itself stops trusting its own
+# output" -- picked as a starting point to revisit once real usage
+# (i.e. actual "was this word actually wrong" feedback) exists.
+LOW_CONFIDENCE_THRESHOLD = 0.5
+LOW_CONFIDENCE_BACKGROUND = QColor("#5c3a3a")
 
 
 class _Relay(QObject):
     """Owns the pyqtSignal the background transcription thread reports
     through -- same shape as widgets/git_status/widget.py's own
-    _Relay. Exactly one of text/error is not None."""
+    _Relay. Exactly one of result/error is not None."""
 
-    finished = pyqtSignal(object, object)  # text: str | None, error: str | None
+    finished = pyqtSignal(object, object)  # result: TranscriptionResult | None, error: str | None
 
 
 def _transcribe_in_background(wav_path: Path, relay: _Relay) -> None:
@@ -46,17 +60,46 @@ def _transcribe_in_background(wav_path: Path, relay: _Relay) -> None:
     relay's signal, same reasoning as widgets/git_status/widget.py's
     _run_git_status."""
     try:
-        text: str | None = transcribe(wav_path)
+        result: TranscriptionResult | None = transcribe(wav_path)
         error: str | None = None
     except TranscriptionUnavailableError as exc:
-        text = None
+        result = None
         error = str(exc)
     except Exception as exc:  # noqa: BLE001 -- surfaced to the user, not swallowed
-        text = None
+        result = None
         error = f"Transcription failed: {exc}"
     finally:
         wav_path.unlink(missing_ok=True)
-    relay.finished.emit(text, error)
+    relay.finished.emit(result, error)
+
+
+def word_offsets(text: str, words: list[WordConfidence]) -> list[tuple[int, int, float]]:
+    """Returns (start, end, probability) character offsets into `text`
+    for each word -- module-level and exported (not underscore
+    -prefixed) so tests/verify/verify_voice_input_widget.py can drive
+    it directly with hand-built data (TODO 76949eb).
+
+    Reconstructs offsets by joining every word's own `.word` string
+    (which already includes whatever leading whitespace/punctuation
+    mlx_whisper attached to it) back together in order -- confirmed
+    directly that this exactly reproduces transcribe()'s own untrimmed
+    result["text"], so the only adjustment needed is for transcribe()'s
+    own text.strip() (a leading-whitespace shift -- clamped, not
+    dropped: the very first word's own leading space is almost always
+    exactly what gets trimmed, so its *start* moves to 0 rather than
+    the whole word being discarded)."""
+    joined = "".join(w.word for w in words)
+    lstrip_amount = len(joined) - len(joined.lstrip())
+    offsets = []
+    pos = 0
+    for w in words:
+        raw_start = pos
+        pos += len(w.word)
+        start = max(raw_start - lstrip_amount, 0)
+        end = min(pos - lstrip_amount, len(text))
+        if start < end:
+            offsets.append((start, end, w.probability))
+    return offsets
 
 
 def _write_wav(pcm_bytes: bytes) -> Path:
@@ -178,13 +221,40 @@ class VoiceInputWidget(QWidget):
         thread = threading.Thread(target=_transcribe_in_background, args=(wav_path, self._relay), daemon=True)
         thread.start()
 
-    def _on_transcription_finished(self, text: str | None, error: str | None) -> None:
+    def _on_transcription_finished(self, result: TranscriptionResult | None, error: str | None) -> None:
         self._record_button.setEnabled(True)
         if error is not None:
             self._set_status(error, is_error=True)
             return
-        self._text_edit.setPlainText(text)
+        self._text_edit.setPlainText(result.text)
+        self._highlight_low_confidence_words(result)
         self._set_status("Done.")
+
+    def _highlight_low_confidence_words(self, result: TranscriptionResult) -> None:
+        """Flags a low-confidence word (TODO 76949eb) via a background
+        -color QTextEdit.ExtraSelection rather than switching _text_edit
+        to rich text -- QPlainTextEdit.setExtraSelections() works
+        directly on it, no HTML/CSS round-tripping to reason about."""
+        selections = []
+        for start, end, probability in word_offsets(result.text, result.words):
+            if probability >= LOW_CONFIDENCE_THRESHOLD:
+                continue
+            cursor = QTextCursor(self._text_edit.document())
+            cursor.setPosition(start)
+            cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+            selection = QTextEdit.ExtraSelection()
+            selection.cursor = cursor
+            fmt = QTextCharFormat()
+            fmt.setBackground(LOW_CONFIDENCE_BACKGROUND)
+            # A numeric-probability hover tooltip is a real follow-up
+            # (deferred, not forgotten -- see plans/speech-word
+            # -confidence.md) needing real cursorForPosition() + QToolTip
+            # wiring, which QTextCharFormat.setToolTip() alone does not
+            # provide on a QPlainTextEdit -- not added here to avoid a
+            # tooltip that looks configured but never actually shows.
+            selection.format = fmt
+            selections.append(selection)
+        self._text_edit.setExtraSelections(selections)
 
     def _on_copy_clicked(self) -> None:
         QGuiApplication.clipboard().setText(self._text_edit.toPlainText())

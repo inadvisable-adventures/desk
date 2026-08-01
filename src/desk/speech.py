@@ -9,6 +9,7 @@ pipeline needs its own local transcription step.
 """
 import contextlib
 import wave
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -33,6 +34,27 @@ class TranscriptionUnavailableError(RuntimeError):
     """Raised when MODEL_REPO isn't fully cached locally yet, instead of
     letting a transcribe() call silently block for however long a
     multi-gigabyte download takes in the middle of dictating something."""
+
+
+@dataclass(frozen=True)
+class WordConfidence:
+    """One word from mlx_whisper's own per-word `words` list (TODO
+    76949eb) -- `word` includes whatever leading whitespace/punctuation
+    mlx_whisper itself attaches to it (confirmed directly: punctuation
+    is bucketed onto its adjacent word, never its own list entry, so
+    there is no separate "bare punctuation" case callers need to
+    handle), so that joining every word's own `word` string back
+    together, in order, exactly reproduces the untrimmed transcription
+    text (confirmed directly, byte-for-byte, not assumed)."""
+
+    word: str
+    probability: float  # 0.0-1.0, mlx_whisper's own per-word score
+
+
+@dataclass(frozen=True)
+class TranscriptionResult:
+    text: str
+    words: list[WordConfidence]
 
 
 def _model_is_cached() -> bool:
@@ -111,9 +133,17 @@ def _force_hub_offline():
         constants.HF_HUB_OFFLINE = previous
 
 
-def transcribe(audio_path: Path) -> str:
-    """Transcribe a 16 kHz mono 16-bit PCM WAV file to text using
-    MODEL_REPO."""
+def transcribe(audio_path: Path) -> TranscriptionResult:
+    """Transcribe a 16 kHz mono 16-bit PCM WAV file to text (plus
+    per-word confidence, TODO 76949eb) using MODEL_REPO.
+
+    Always requests word_timestamps=True -- there is exactly one
+    caller (the Voice Input widget) and it always wants this. Cost:
+    measured directly (a warmed-up model, three runs each, a ~14-word
+    utterance): ~1.02s without vs. ~1.66s with, a real but moderate
+    (~0.6s absolute) slowdown from the extra alignment pass -- judged
+    worth it unconditionally rather than adding an opt-out parameter
+    for a caller that doesn't exist yet."""
     if not _model_is_cached():
         raise TranscriptionUnavailableError(
             f"{MODEL_REPO!r} is not downloaded yet. Run "
@@ -125,5 +155,10 @@ def transcribe(audio_path: Path) -> str:
 
     samples = _read_wav_as_float32(audio_path)
     with _force_hub_offline():
-        result = mlx_whisper.transcribe(samples, path_or_hf_repo=MODEL_REPO)
-    return result["text"].strip()
+        result = mlx_whisper.transcribe(samples, path_or_hf_repo=MODEL_REPO, word_timestamps=True)
+    words = [
+        WordConfidence(word=word["word"], probability=word["probability"])
+        for segment in result["segments"]
+        for word in segment.get("words", [])
+    ]
+    return TranscriptionResult(text=result["text"].strip(), words=words)

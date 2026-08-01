@@ -55,12 +55,34 @@ def test_transcribes_real_synthesized_speech():
     with tempfile.TemporaryDirectory() as tmp:
         wav_path = Path(tmp) / "sample.wav"
         _synthesize_wav("The quick brown fox jumps over the lazy dog", wav_path)
-        text = speech.transcribe(wav_path)
-        normalized = text.lower().strip().rstrip(".")
+        result = speech.transcribe(wav_path)
+        normalized = result.text.lower().strip().rstrip(".")
         check(
             "real synthesized speech transcribes back to (close to) the original text",
             "quick brown fox" in normalized and "lazy dog" in normalized,
         )
+
+
+def test_transcribe_returns_per_word_confidence():
+    """TODO 76949eb: transcribe() returns TranscriptionResult(text,
+    words), not a plain str -- real, non-mocked check that .words is
+    populated with plausible per-word probabilities, and that joining
+    every word's own .word string back together reproduces .text
+    exactly (the assumption widgets/voice_input/widget.py's own
+    word_offsets relies on for highlighting -- confirmed directly here,
+    not just assumed)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        wav_path = Path(tmp) / "sample.wav"
+        _synthesize_wav("Are we going to hit the thing or not", wav_path)
+        result = speech.transcribe(wav_path)
+        check("transcribe() returns a TranscriptionResult", isinstance(result, speech.TranscriptionResult))
+        check("result.words is non-empty for real speech", len(result.words) > 0)
+        check(
+            "every word has a real probability in [0.0, 1.0]",
+            all(isinstance(w, speech.WordConfidence) and 0.0 <= w.probability <= 1.0 for w in result.words),
+        )
+        joined = "".join(w.word for w in result.words)
+        check("joining every word's own .word string reproduces the untrimmed text", joined.strip() == result.text)
 
 
 def test_rejects_wrong_format_wav():
@@ -149,8 +171,8 @@ def test_transcribe_does_not_hang_when_the_hub_is_genuinely_unreachable():
         "sys.path.insert(0, 'src'); "
         "from desk import speech; "
         "start = time.time(); "
-        "text = speech.transcribe(sys.argv[1]); "
-        "print(f'{time.time() - start:.2f} {text}')"
+        "result = speech.transcribe(sys.argv[1]); "
+        "print(f'{time.time() - start:.2f} {result.text}')"
     )
     with tempfile.TemporaryDirectory() as tmp:
         wav_path = Path(tmp) / "sample.wav"
@@ -179,6 +201,7 @@ def test_transcribe_does_not_hang_when_the_hub_is_genuinely_unreachable():
 
 test_model_repo_matches_the_download_scripts_own_mapping()
 test_transcribes_real_synthesized_speech()
+test_transcribe_returns_per_word_confidence()
 test_rejects_wrong_format_wav()
 test_unavailable_model_raises_clear_error()
 test_transcribe_makes_no_network_calls_once_cached()

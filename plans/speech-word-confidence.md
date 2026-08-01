@@ -1,4 +1,4 @@
-# Expose per-word transcription confidence (TODO `76949eb`)
+# Expose per-word transcription confidence (TODO `76949eb`) (COMPLETED)
 
 ## Summary
 

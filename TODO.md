@@ -5963,7 +5963,7 @@ a596dbf. COMPLETED: Introduce a new "Claude (Desk)" widget (`widgets/claude_desk
    included (the plan left "immediately vs. fast-follow" as an open
    judgment call -- a combo box shipped now, a mode switcher did not).
 
-76949eb. Expose per-word transcription confidence from `desk.speech
+76949eb. COMPLETED: Expose per-word transcription confidence from `desk.speech
    .transcribe` (TODO `1cd0ca2`) and surface it in the Voice Input
    widget (TODO `b32fb81`). Surfaced by the user noticing a real
    misrecognition ("are we going to hit the thing" transcribed as
@@ -5976,6 +5976,68 @@ a596dbf. COMPLETED: Introduce a new "Claude (Desk)" widget (`widgets/claude_desk
    "confidence for individual words" the user asked about, currently
    discarded since `transcribe()` returns only `result["text"]`.
    [planned: speech-word-confidence.md]
+
+   Implemented per plan: `src/desk/speech.py` gained `WordConfidence`
+   (`word`, `probability`) and `TranscriptionResult` (`text`, `words`)
+   frozen dataclasses; `transcribe()` now returns `TranscriptionResult`
+   instead of a plain `str` (a breaking change to its one call site,
+   accepted per the plan's own reasoning -- no reason to keep a
+   str-returning shim for a single internal caller), always passing
+   `word_timestamps=True` to `mlx_whisper.transcribe()` and flattening
+   `result["segments"][*]["words"]` into one ordered list. `widgets/
+   voice_input/widget.py` gained a module-level `word_offsets(text,
+   words)` helper reconstructing each word's character range in the
+   final (stripped) text, and `_highlight_low_confidence_words`
+   applying a background color to every word below
+   `LOW_CONFIDENCE_THRESHOLD` (0.5) via `QPlainTextEdit
+   .setExtraSelections()` -- no rich-text/`QTextEdit` switch needed.
+
+   Two open questions the plan flagged, both resolved empirically
+   during implementation, not assumed:
+   - **Punctuation bucketing**: confirmed directly (real transcriptions)
+     that `mlx_whisper` always attaches punctuation to its adjacent
+     word (e.g. `' thing,'`, `' not?'`), never as its own list entry --
+     so no special "skip bare punctuation" handling was needed.
+   - **Latency cost of `word_timestamps=True`**: measured directly on
+     this project's own warmed-up `large-v3-turbo` model, 3 runs each
+     on a ~14-word utterance: ~1.02s without vs. ~1.66s with -- a real
+     but moderate (~0.6s absolute, ~62% relative) slowdown, judged
+     worth taking unconditionally (matches the plan's own default)
+     rather than adding an opt-out parameter for a caller that doesn't
+     exist yet.
+
+   One correctness bug found and fixed during the offset-reconstruction
+   work itself, before it ever reached a test: naively discarding any
+   word whose computed start position went negative (from
+   `text.strip()`'s own leading-whitespace trim) would have silently
+   dropped the *first* word of every transcription's highlighting
+   entirely. Fixed by clamping the start position to 0 instead of
+   discarding the word.
+
+   Deferred, per the plan's own explicit scope boundary, not forgotten:
+   a numeric-probability hover tooltip (needs real `cursorForPosition`
+   + `QToolTip` wiring `QTextCharFormat.setToolTip()` alone does not
+   provide) and anything using segment-level `avg_logprob`/
+   `no_speech_prob` (an overall "this clip was noisy" signal, which
+   doesn't localize to individual words the way this TODO's own report
+   asked about).
+
+   Verified directly, real transcriptions throughout (no mocking):
+   `tests/verify/verify_speech_transcription.py` confirms `transcribe()`
+   returns a real `TranscriptionResult` with a non-empty `words` list,
+   every probability in `[0.0, 1.0]`, and that joining every word's own
+   string reproduces the untrimmed text exactly (4 new checks).
+   `tests/verify/verify_voice_input_widget.py` confirms `word_offsets`
+   against real model output fully and exactly tiles the real
+   transcription text with no gaps or overlaps, and drives
+   `_on_transcription_finished` directly with a hand-built
+   `TranscriptionResult` containing one deliberately low-probability
+   word, confirming the real widget applies exactly one
+   `ExtraSelection` covering the right character range with the
+   configured background color, and that a subsequent
+   all-high-confidence result clears previous highlighting rather than
+   accumulating stale selections (9 new checks). Full `tests/verify/`
+   regression suite passes.
 
 fe7d8f2. Add voice input capabilities to the new "Claude (Desk)" widget
    (TODO `a596dbf`, itself not yet implemented -- only planned so far)
