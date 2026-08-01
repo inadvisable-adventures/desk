@@ -5587,7 +5587,7 @@ d4368bd. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-editor-widget-base-
    -key fallback returns `None` unchanged. Full `tests/verify/`
    regression suite (83 scripts, two now-fixed) passes, 0 failures.
 
-7c7b676. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-tempui-convention-drift
+7c7b676. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-tempui-convention-drift
    -notification-2026-07-30-1120.md`): `ensure_docs_current`
    (`src/desk/temp_ui.py`) already computes whether a project's tempui
    doc set is stale (its embedded version differs from
@@ -5606,6 +5606,39 @@ d4368bd. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-editor-widget-base-
    has for a fire-and-forget note to the user -- no new capability
    needed, just not discarding a comparison already made.
    [planned: tempui-doc-upgrade-notification.md]
+
+   Implemented per plan: `ensure_docs_current` (`src/desk/temp_ui.py`)
+   now returns `(rewrote, previous_version)` -- `previous_version` only
+   set when the doc set's embedded version was real, parseable, and
+   actually differed from `TEMPUI_DOC_VERSION` (not for a mere missing
+   -split-file repair or a brand-new/unversioned doc, neither of which
+   is "a convention changed"). `TempUiManager.provision`
+   (`src/desk/shell/temp_ui_manager.py`) writes a same-directory
+   `Scratch` tempui note when `previous_version is not None`, naming
+   both the old and new version and pointing at
+   `tempui-breaking-changes.md` -- written directly and reported via
+   `_relay.added.emit` + `_known_files`, not left for the watcher to
+   discover on its own, per the plan's own explicit rejection of that
+   approach (a real timing race: `_start_watching`'s underlying
+   observer isn't guaranteed to already be watching the instant it
+   returns). `_start_watching` runs first, since it clears
+   `_known_files`.
+
+   Verified directly, no mocking: new `tests/verify/
+   verify_tempui_doc_upgrade_notification.py` (23 checks) --
+   `ensure_docs_current`'s new return value tested directly against
+   all three cases (brand-new, current-but-missing-a-split-file,
+   genuinely stale); a real pre-existing `.desk_temp` with a real old
+   version number gets its main doc actually rewritten to the current
+   version *and* emits exactly one `file_added` for a real Scratch
+   -shaped note mentioning both versions and `tempui-breaking-
+   changes.md`, which a real `_FakeWindow` (the same real-`_place_
+   widget` shape `verify_discuss_parking_lot_item.py` already
+   established) actually turns into a placed Scratch widget with the
+   right label and body -- not just "the signal fired." A brand-new
+   `.desk_temp` and a current-but-missing-split-file repair each
+   produce zero notifications, confirmed via the same real `provision`
+   call. Full `tests/verify/` regression suite (84 scripts) passes.
 
 a820354. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-tempui-convention-drift
    -notification-2026-07-30-1120.md`): the same feedback's smaller,

@@ -1,4 +1,4 @@
-# Plan: TODO 7c7b676 — notify when the tempui doc set silently upgrades
+# Plan: TODO 7c7b676 — notify when the tempui doc set silently upgrades (COMPLETED)
 
 From `../FEEDBACK/FEEDBACK-DESK-tempui-convention-drift-notification
 -2026-07-30-1120.md`: `ensure_docs_current` (`src/desk/temp_ui.py:1300`)

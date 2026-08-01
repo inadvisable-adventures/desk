@@ -1364,7 +1364,7 @@ def write_tempui_docs(temp_dir: Path) -> None:
         (temp_dir / filename).write_text(content)
 
 
-def ensure_docs_current(temp_dir: Path) -> None:
+def ensure_docs_current(temp_dir: Path) -> tuple[bool, int | None]:
     """Refreshes the *whole* tempui doc set in place if stale (TODO
     e57ce5f, generalizing TODO f7b1611 once the docs split across
     multiple files) -- called before opening a Desk (see
@@ -1387,15 +1387,30 @@ def ensure_docs_current(temp_dir: Path) -> None:
     preserve; it's just fully rewritten, which is safe even in
     isolation since DeskWindow._sync_tempui_doc runs immediately
     afterward in the real startup/Desk-switch flow and inserts a fresh
-    section regardless."""
+    section regardless.
+
+    Returns (rewrote, previous_version) (TODO 7c7b676): rewrote is True
+    whenever write_tempui_docs actually ran. previous_version is the
+    doc set's own embedded version *before* this call, but only when
+    it's a real, parseable version that actually differs from
+    TEMPUI_DOC_VERSION -- None otherwise (nothing rewrote, the version
+    already matched but a split file was merely missing, or the doc
+    predates version-tracking entirely and has no version to report) --
+    none of those are "a convention changed" in the sense
+    TempUiManager.provision's own caller cares about, just "the file
+    set was topped up/repaired." Lets the caller distinguish a real
+    convention upgrade worth telling the user about from routine
+    repair, without re-deriving the same comparison twice."""
     doc_path = temp_dir / DOC_FILENAME
     if not doc_path.is_file():
-        return
+        return False, None
     text = doc_path.read_text()
-    version_current = parse_doc_version(text) == TEMPUI_DOC_VERSION
+    doc_version = parse_doc_version(text)
+    version_current = doc_version == TEMPUI_DOC_VERSION
     all_split_docs_present = all((temp_dir / filename).is_file() for filename in SPLIT_DOC_CONTENT)
     if version_current and all_split_docs_present:
-        return
+        return False, None
+    previous_version = doc_version if not version_current else None
     custom_section = None
     if CUSTOM_WIDGETS_SECTION_START in text and CUSTOM_WIDGETS_SECTION_END in text:
         start = text.index(CUSTOM_WIDGETS_SECTION_START)
@@ -1404,6 +1419,7 @@ def ensure_docs_current(temp_dir: Path) -> None:
     write_tempui_docs(temp_dir)
     if custom_section is not None:
         doc_path.write_text(doc_path.read_text().rstrip("\n") + "\n\n" + custom_section + "\n")
+    return True, previous_version
 
 
 def _repo_shared_components_dir() -> Path:

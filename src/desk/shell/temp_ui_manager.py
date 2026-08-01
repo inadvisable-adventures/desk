@@ -1,4 +1,5 @@
 import threading
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from desk.git_utils import find_git_root
 from desk.temp_ui import (
     DOC_FILENAME,
     TEMP_UI_DIRNAME,
+    TEMPUI_DOC_VERSION,
     ensure_docs_current,
     ensure_gitignore_entry,
     is_temp_ui_filename,
@@ -134,20 +136,54 @@ class TempUiManager(QObject):
             # TODO e57ce5f: writes the main doc plus every split-out
             # tempui-*.md doc it references, fresh.
             write_tempui_docs(temp_dir)
+            previous_version = None
         else:
             # TODO f7b1611/e57ce5f: before opening a Desk, make sure
             # the already-existing doc set's main content -- and every
             # split-out file -- isn't a stale/missing copy from before
             # some later improvement.
-            ensure_docs_current(temp_dir)
+            _, previous_version = ensure_docs_current(temp_dir)
 
         # TODO 3b1ef3d: always re-mirrored, not gated by "already
         # exists" like the doc branch above -- every open/switch gets
         # the current shared-components/ library.
         sync_shared_components(temp_dir)
 
+        # Must run before _notify_docs_upgraded below (TODO 7c7b676):
+        # _start_watching clears self._known_files, which that method
+        # adds its own note's filename to.
         self._start_watching(temp_dir)
+
+        if previous_version is not None:
+            self._notify_docs_upgraded(temp_dir, previous_version)
+
         return temp_dir
+
+    def _notify_docs_upgraded(self, temp_dir: Path, previous_version: int) -> None:
+        """A same-directory Scratch note (TODO 7c7b676) when
+        ensure_docs_current found the doc set's embedded version
+        genuinely differed from TEMPUI_DOC_VERSION -- not for a mere
+        repair (a missing split file with an already-current version)
+        or a brand-new .desk_temp, neither of which is "a convention
+        changed" in the sense worth surfacing. Written directly and
+        reported via the same file_added path a watcher-observed file
+        would take (_relay.added.emit + recording the filename in
+        _known_files), rather than relying on the watcher to notice
+        this write itself: _start_watching's underlying
+        get_service().watch(...) isn't guaranteed to already be
+        observing the instant it returns, so a file written immediately
+        after isn't guaranteed to be seen (the same class of concern
+        TODO 578cb6b's migration had to reason about for real)."""
+        note_path = temp_dir / str(uuid.uuid4())
+        note_path.write_text(
+            "Scratch Desk's tempui conventions changed\n"
+            f"This project's tempui docs were just refreshed from version "
+            f"{previous_version} to {TEMPUI_DOC_VERSION}. See "
+            "tempui-breaking-changes.md for what changed in between -- some "
+            "of it may affect widgets already built in this project.\n"
+        )
+        self._known_files.add(note_path.name)
+        self._relay.added.emit(note_path)
 
     def record_own_write(self, path: Path, text: str) -> None:
         """Wired into current_context.set_temp_ui_write_recorder so the
