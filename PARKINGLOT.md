@@ -800,3 +800,30 @@ This file captures thoughts and TODO items that arise during work on other thing
   purely as "the natural counterpart to what we already have," not in
   response to a specific need. Purely a research item: figure out real
   options and their tradeoffs before this becomes a planned TODO.
+
+- **Investigate ways for Claude to keep working on TODO items in the
+  cloud while the user is offline**
+
+  Today's `claude`/"Claude (Desk)" widgets (TODO `a596dbf`) run a
+  session tied to this machine being on and Desk running -- nothing
+  keeps `TODO.md` items moving forward once the user closes their
+  laptop. Worth investigating what's actually available here: Claude
+  Code's own remote/cloud execution surfaces (scheduled/cron agents,
+  remote-triggered runs, cloud sandboxes -- whatever this environment
+  already exposes elsewhere, e.g. this session's own `CronCreate`/
+  `RemoteTrigger`/`Workflow` tooling, is a natural starting point to
+  check for applicability rather than assuming something new needs to
+  be built) versus something bespoke to this project.
+
+  Not designed at all yet -- open questions include how a cloud run
+  would get write access to this repo (a git remote/branch/PR flow
+  instead of local working-tree edits?), how it'd pick which `TODO.md`
+  item(s) to work on unattended and know when to stop rather than
+  barrel through the whole file, how it interacts with this project's
+  own plan-before-implement / verify-before-complete process when
+  there's no one present to unblock a `PENDING` item's open question,
+  and how the user would review/approve what happened while they were
+  away rather than trusting it blindly. Purely a research item for
+  now -- figure out what's realistically available and what the
+  actual shape of the risk/tradeoffs is before this becomes a planned
+  TODO.
