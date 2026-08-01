@@ -5882,3 +5882,44 @@ fe7d8f2. Add voice input capabilities to the new "Claude (Desk)" widget
    depends on TODO `a596dbf` landing first (there's no "Claude (Desk)"
    widget/prompt input box to add this to until then).
 8a5ea2b. research: is it possible to do something closer to live transcription by breaking the audio into smaller chunks?
+
+e1f6391. Add the ability to queue messages in the Claude (Desk) widget
+   (`widgets/claude_desk/widget.py`'s `ClaudeDeskWidget`) instead of
+   only offering a Send button that goes dead while a turn is in
+   flight -- `_set_busy(True)` currently disables both `_prompt_input`
+   and `_send_button` from `_on_send_clicked` until
+   `_on_turn_complete`/`_on_session_error` fires, so anything typed
+   while Claude is working has nowhere to go. Let the user submit
+   while busy and have it queued (sent automatically, in order, once
+   idle again), plus UX in the widget showing what's currently queued
+   so it doesn't feel like the message vanished.
+
+8df6797. Make the Claude (Desk) widget's prompt input
+   (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
+   single-line `QLineEdit`) a multi-line box that wraps text instead,
+   so a long prompt wraps visually rather than scrolling off-screen
+   horizontally. Needs a way to distinguish "insert a newline" from
+   "send" once `returnPressed` (a `QLineEdit`-only signal) is no
+   longer available -- e.g. Enter to send, Shift+Enter for a newline.
+
+78d6207. Visually differentiate user-entered prompts from Claude's own
+   responses in the Claude (Desk) widget's history
+   (`widgets/claude_desk/widget.py`'s `_history`), without breaking
+   copy/paste out of it. Right now `_append_history` just appends
+   plain text -- a "> " prefix for what the user typed
+   (`_on_send_clicked`, `start_session`), unprefixed text for
+   everything else (`_on_assistant_text`, tool use/result, permission,
+   error) -- all in one uniformly-styled `QPlainTextEdit`, making it
+   hard to visually scan who said what. Whatever styling is used
+   (color, weight, indentation, ...) must preserve today's plain-text
+   selection/copy behavior exactly -- no stray markup and no altered
+   whitespace when copying a message or a whole transcript.
+
+a4c3dec. Add an on-hover control in the Claude (Desk) widget's history
+   (`widgets/claude_desk/widget.py`'s `_history`) that reloads a
+   previous user-entered prompt back into `_prompt_input` (e.g. to
+   edit and resend it), without breaking normal text
+   selection/copy-paste -- neither out of `_history` itself nor out of
+   `_prompt_input` while typing. Depends on TODO `78d6207`
+   distinguishing user lines from the rest of the history to know
+   which lines are reloadable.
