@@ -11,7 +11,9 @@ from PyQt6.QtWidgets import (
 
 from desk.claude_session import ClaudeSession
 from desk.shell import current_context
+from desk.speech import TranscriptionResult
 from desk.temp_ui import DOC_FILENAME, TEMP_UI_DIRNAME
+from desk.voice_capture import MicRecorder
 
 # Duplicated from widgets/claude/widget.py rather than imported --
 # widget directories can't import each other (see
@@ -107,6 +109,16 @@ class ClaudeDeskWidget(QWidget):
 
         self._pending_permissions: list[tuple[str, str, dict]] = []
 
+        # TODO fe7d8f2: mic capture + transcription itself is shared
+        # with widgets/voice_input/widget.py via desk.voice_capture
+        # (widget directories can't import each other) -- this widget
+        # only owns the button/status presentation on top of it.
+        self._mic_recorder = MicRecorder(self)
+        self._mic_recorder.recording_started.connect(self._on_mic_recording_started)
+        self._mic_recorder.recording_stopped.connect(self._on_mic_recording_stopped)
+        self._mic_recorder.transcription_finished.connect(self._on_mic_transcription_finished)
+        self._mic_recorder.error.connect(self._on_mic_error)
+
         self._status_label = QLabel("Idle.")
 
         self._model_combo = QComboBox()
@@ -122,6 +134,9 @@ class ClaudeDeskWidget(QWidget):
         self._prompt_input.returnPressed.connect(self._on_send_clicked)
         self._send_button = QPushButton("Send")
         self._send_button.clicked.connect(self._on_send_clicked)
+        self._mic_button = QPushButton("●")
+        self._mic_button.setToolTip("Record")
+        self._mic_button.clicked.connect(self._on_mic_clicked)
 
         self._permission_label = QLabel()
         self._permission_label.setWordWrap(True)
@@ -141,6 +156,7 @@ class ClaudeDeskWidget(QWidget):
         top_row.addWidget(self._model_combo)
 
         prompt_row = QHBoxLayout()
+        prompt_row.addWidget(self._mic_button)
         prompt_row.addWidget(self._prompt_input, stretch=1)
         prompt_row.addWidget(self._send_button)
 
@@ -185,6 +201,7 @@ class ClaudeDeskWidget(QWidget):
     def _set_busy(self, busy: bool) -> None:
         self._prompt_input.setEnabled(not busy)
         self._send_button.setEnabled(not busy)
+        self._mic_button.setEnabled(not busy)
         if busy:
             self._status_label.setText("Working...")
 
@@ -200,6 +217,50 @@ class ClaudeDeskWidget(QWidget):
         self._prompt_input.clear()
         self._set_busy(True)
         self._session.send_prompt(text)
+
+    def _on_mic_clicked(self) -> None:
+        if self._mic_recorder.is_recording():
+            self._mic_recorder.stop()
+        else:
+            self._mic_recorder.start()
+
+    def _on_mic_recording_started(self) -> None:
+        self._mic_button.setText("■")
+        self._mic_button.setToolTip("Stop")
+        self._prompt_input.setEnabled(False)
+        self._send_button.setEnabled(False)
+        self._status_label.setText("Recording...")
+
+    def _on_mic_recording_stopped(self) -> None:
+        self._mic_button.setText("●")
+        self._mic_button.setToolTip("Record")
+        self._mic_button.setEnabled(False)
+        self._status_label.setText("Transcribing...")
+
+    def _on_mic_error(self, message: str) -> None:
+        # Covers both "couldn't start" (mic_button never left its
+        # Record state) and "stopped but nothing came out of it"
+        # (recording_stopped already disabled mic_button, so it also
+        # needs re-enabling here) -- distinguishing which happened
+        # isn't necessary since both leave every control back at its
+        # normal idle-and-enabled state.
+        self._mic_button.setEnabled(True)
+        self._prompt_input.setEnabled(True)
+        self._send_button.setEnabled(True)
+        self._status_label.setText(f"Error: {message}")
+
+    def _on_mic_transcription_finished(self, result: TranscriptionResult | None, error: str | None) -> None:
+        self._mic_button.setEnabled(True)
+        self._prompt_input.setEnabled(True)
+        self._send_button.setEnabled(True)
+        if error is not None:
+            self._status_label.setText(f"Error: {error}")
+            return
+        # Set, not sent: the user reviews/edits a dictated prompt the
+        # same way they would review anything they typed -- nothing
+        # goes to Claude until they hit Send/Enter themselves.
+        self._prompt_input.setText(result.text)
+        self._status_label.setText("Idle.")
 
     def _on_assistant_text(self, text: str) -> None:
         self._append_history(text)

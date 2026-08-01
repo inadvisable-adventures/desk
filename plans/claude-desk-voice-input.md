@@ -1,4 +1,4 @@
-# Voice input for the Claude (Desk) widget (TODO `fe7d8f2`)
+# Voice input for the Claude (Desk) widget (TODO `fe7d8f2`) (COMPLETED)
 
 ## Summary
 

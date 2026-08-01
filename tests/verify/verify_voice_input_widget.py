@@ -13,6 +13,7 @@ from PyQt6.QtGui import QGuiApplication  # noqa: E402
 from PyQt6.QtWidgets import QApplication, QLabel, QPlainTextEdit, QPushButton  # noqa: E402
 
 import desk.speech as speech  # noqa: E402
+import desk.voice_capture as voice_capture  # noqa: E402
 
 app = QApplication(sys.argv)
 
@@ -104,20 +105,22 @@ def test_record_toggle_starts_and_stops_real_capture():
     widget._on_record_clicked()
     check("clicking record switches the button to Stop", widget._record_button.text() == "■ Stop")
     check("status reflects recording", "Recording" in widget._status_label.text())
-    check("a real QAudioSource was actually started", widget._audio_source is not None)
+    check("a real QAudioSource was actually started", widget._mic_recorder._audio_source is not None)
+    check("is_recording() reflects the real capture in progress", widget._mic_recorder.is_recording() is True)
 
     pump(0.5)  # let the real microphone actually deliver some data
 
-    # Stop via the internal helper directly (not the click handler) so
-    # this test controls exactly what "audio" was captured, independent
-    # of whatever the real microphone happened to pick up -- the real
-    # QAudioSource/QIODevice wiring itself was already exercised above.
-    widget._audio_source.stop()
-    widget._audio_source = None
-    widget._audio_io = None
-    widget._captured_chunks = [synthesize_pcm("Testing one two three")]
+    # Stop via the recorder's internal helper directly (not the click
+    # handler) so this test controls exactly what "audio" was
+    # captured, independent of whatever the real microphone happened
+    # to pick up -- the real QAudioSource/QIODevice wiring itself was
+    # already exercised above.
+    widget._mic_recorder._audio_source.stop()
+    widget._mic_recorder._audio_source = None
+    widget._mic_recorder._audio_io = None
+    widget._mic_recorder._captured_chunks = [synthesize_pcm("Testing one two three")]
     widget._record_button.setText("● Record")
-    widget._process_captured_audio()
+    widget._mic_recorder._process_captured_audio()
 
     ok = wait_until(lambda: widget._status_label.text() in ("Done.",) or "error" in widget._status_label.text().lower() or widget._status_label.styleSheet() == voice_input_mod.ERROR_STYLE)
     check("transcription completed (success or error) within the timeout", ok)
@@ -132,23 +135,23 @@ def test_record_toggle_starts_and_stops_real_capture():
 
 def test_wav_file_is_deleted_after_transcription():
     written_paths = []
-    original_write_wav = voice_input_mod._write_wav
+    original_write_wav = voice_capture._write_wav
 
     def spying_write_wav(pcm_bytes):
         path = original_write_wav(pcm_bytes)
         written_paths.append(path)
         return path
 
-    voice_input_mod._write_wav = spying_write_wav
+    voice_capture._write_wav = spying_write_wav
     try:
         widget = voice_input_mod.build()
         widget._on_record_clicked()
-        widget._audio_source.stop()
-        widget._audio_source = None
-        widget._audio_io = None
-        widget._captured_chunks = [synthesize_pcm("Cleanup check")]
+        widget._mic_recorder._audio_source.stop()
+        widget._mic_recorder._audio_source = None
+        widget._mic_recorder._audio_io = None
+        widget._mic_recorder._captured_chunks = [synthesize_pcm("Cleanup check")]
         widget._record_button.setText("● Record")
-        widget._process_captured_audio()
+        widget._mic_recorder._process_captured_audio()
 
         ok = wait_until(lambda: len(written_paths) == 1 and widget._status_label.text() == "Done.")
         check("transcription completed for the cleanup test", ok)
@@ -156,7 +159,7 @@ def test_wav_file_is_deleted_after_transcription():
         check("the temporary WAV file is deleted once transcription finishes", written_paths and not written_paths[0].exists())
         widget.deleteLater()
     finally:
-        voice_input_mod._write_wav = original_write_wav
+        voice_capture._write_wav = original_write_wav
 
 
 def test_word_offsets_reconstructs_real_transcription_offsets():
@@ -242,12 +245,12 @@ def test_unavailable_model_surfaces_as_a_visible_error():
     try:
         widget = voice_input_mod.build()
         widget._on_record_clicked()
-        widget._audio_source.stop()
-        widget._audio_source = None
-        widget._audio_io = None
-        widget._captured_chunks = [synthesize_pcm("Should not transcribe")]
+        widget._mic_recorder._audio_source.stop()
+        widget._mic_recorder._audio_source = None
+        widget._mic_recorder._audio_io = None
+        widget._mic_recorder._captured_chunks = [synthesize_pcm("Should not transcribe")]
         widget._record_button.setText("● Record")
-        widget._process_captured_audio()
+        widget._mic_recorder._process_captured_audio()
 
         ok = wait_until(lambda: widget._status_label.styleSheet() == voice_input_mod.ERROR_STYLE)
         check("an unavailable model surfaces a real, visible error status", ok)

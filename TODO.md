@@ -6039,12 +6039,67 @@ a596dbf. COMPLETED: Introduce a new "Claude (Desk)" widget (`widgets/claude_desk
    accumulating stale selections (9 new checks). Full `tests/verify/`
    regression suite passes.
 
-fe7d8f2. Add voice input capabilities to the new "Claude (Desk)" widget
+fe7d8f2. COMPLETED: Add voice input capabilities to the new "Claude (Desk)" widget
    (TODO `a596dbf`, now implemented) so a prompt can be dictated into
    it the same way the standalone Voice Input widget (TODO `b32fb81`)
    already supports, using `desk.speech.transcribe` (TODO `1cd0ca2`),
    rather than only ever typing into its prompt input box.
    [planned: claude-desk-voice-input.md]
+
+   Implemented per plan: extracted the mic-capture-and-transcribe
+   pipeline out of `widgets/voice_input/widget.py` into a new shared
+   `src/desk/voice_capture.py` (`MicRecorder` -- owns `QAudioSource`
+   lifecycle, WAV writing, background-thread transcription via
+   `desk.speech.transcribe`, reporting through `pyqtSignal`s only, no
+   UI) -- needed by a second widget now, matching the existing
+   `desk.terminal_widget`/`desk.claude_session` "shared widget logic
+   lives in `desk.` proper" precedent rather than pasting a second,
+   independently-drifting copy of the capture logic.
+   `widgets/voice_input/widget.py` refactored to build a `MicRecorder`
+   instead of owning `QAudioSource` directly -- a pure extraction, its
+   own UI/highlighting/copy behavior unchanged, confirmed by its
+   existing verify coverage passing basically as-is (31 checks).
+   `widgets/claude_desk/widget.py` gained a `_mic_button` ("●"/"■",
+   mirroring the standalone widget's own convention) in its prompt
+   row; on stop, the transcribed text is set into `_prompt_input` --
+   **not** auto-sent, matching how a typed prompt already works, so a
+   misrecognition (TODO `76949eb` already found real ones happen) can
+   be reviewed/edited before it goes to Claude.
+
+   One real bug found and fixed during the *test's own* development,
+   not the product code: an early draft of the new widget-level test
+   called `MicRecorder._process_captured_audio()` directly (bypassing
+   `stop()`) to inject known synthesized audio, which skips the
+   `recording_stopped` signal entirely and left the mic button stuck
+   showing "■" (Stop) forever -- confirmed directly, not assumed.
+   Real production code is unaffected (`_on_mic_clicked` always calls
+   the real `stop()`, never `_process_captured_audio()` directly), but
+   the test itself needed fixing to inject known audio *before*
+   calling the real `stop()` instead, matching the pattern already
+   established in `verify_voice_capture.py`'s own
+   `_start_then_inject_known_audio` helper.
+
+   Verified directly, real audio pipelines throughout (no mocking):
+   new `tests/verify/verify_voice_capture.py` (16 checks) exercises
+   `MicRecorder` directly -- real mic capture, real synthesized-speech
+   transcription end to end, real WAV cleanup, a real "no audio
+   captured" error path -- with zero use of `unittest.mock` anywhere
+   (a real, already-started `QAudioSource` stands in wherever a
+   not-yet-real one would otherwise be needed, per this project's own
+   verification philosophy). `tests/verify/verify_voice_input_widget
+   .py` re-confirms the refactored widget is behavior-preserving (31
+   checks, all passing). `tests/verify/verify_claude_desk_widget.py`
+   gained a real mic-button click -> injected synthesized speech ->
+   `_prompt_input` populated check, confirming the text is *not*
+   auto-sent (directly observable: `_session.send_prompt` was
+   monkeypatched to record calls, and none occurred). Full
+   `tests/verify/` regression suite passes.
+   Not done (explicitly out of scope per the plan): low-confidence
+   -word highlighting in the Claude (Desk) prompt box (`QLineEdit` has
+   no `QTextEdit.ExtraSelection`-equivalent mechanism) -- flagged as a
+   natural follow-up once TODO `8df6797`'s multi-line prompt input
+   (already being considered for an unrelated reason) lands, since
+   that already means reconsidering `_prompt_input`'s widget type.
 8a5ea2b. research: is it possible to do something closer to live transcription by breaking the audio into smaller chunks?
 
 e1f6391. Add the ability to queue messages in the Claude (Desk) widget
