@@ -5574,3 +5574,51 @@ a820354. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-tempui-convention-drift
    for the uncommon one. Not proposing this become a warning/error --
    the common case really is "nothing to move."
    [planned: relocate-widget-source-log-no-source.md]
+
+f9d2dc7. From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
+   voice input" item: a script (`scripts/download_whisper_model.py`)
+   that fetches the chosen Whisper model (`large-v3-turbo`, per the
+   parking lot note's own stated decision) via `mlx-whisper`/Hugging
+   Face Hub, printing the resolved local cache path so it's obvious
+   the model lands outside this repo's working tree (the Hugging Face
+   cache directory, not tracked by git, structurally the same
+   guarantee as any other tool's package cache) -- plus
+   `design-docs/whisper-model-setup.md` documenting the normal path,
+   a manual backup path (`huggingface-cli download` against a mirror,
+   or converting an original OpenAI checkpoint via
+   `mlx_whisper.convert`) for when the script's usual source is
+   unreachable, and an explicit note that downloaded models are never
+   committed to the repo. Infrastructure only -- no transcription code
+   (see TODO `1cd0ca2`) or UI (see TODO `b32fb81`) yet.
+   [planned: whisper-model-download-and-setup-docs.md]
+
+1cd0ca2. From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
+   voice input" item: a `src/desk/speech.py` module wrapping
+   `mlx-whisper` (`mlx-whisper` added as a real new dependency in
+   `pyproject.toml` -- unavoidable, there is no bespoke way to run a
+   Whisper model, per `design-docs/architecture.md`'s own framing of
+   CLAUDE.md's dependency guidance as being about *unnecessary*
+   dependencies) with a single `transcribe(audio_path) -> str`
+   function, raising a clear `TranscriptionUnavailableError` (pointing
+   at TODO `f9d2dc7`'s download script and doc) if the model isn't
+   cached yet, rather than silently blocking on an unannounced
+   multi-minute download during a real dictation attempt. Depends on
+   TODO `f9d2dc7` for the model actually being fetchable; no UI yet
+   (see TODO `b32fb81`).
+   [planned: whisper-transcription-module.md]
+
+b32fb81. From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
+   voice input" item: a new self-contained "Voice Input" widget
+   (`widgets/voice_input/`, `kind: "python"`) -- record/stop button,
+   status label, editable transcription result, copy-to-clipboard --
+   using `QtMultimedia`'s `QAudioSource` for microphone capture (no new
+   dependency; already ships with this project's installed PyQt6) and
+   TODO `1cd0ca2`'s `desk.speech.transcribe` for the actual
+   transcription, run on a background thread so the Qt event loop
+   stays responsive. Depends on TODO `1cd0ca2` (and transitively TODO
+   `f9d2dc7`). Deliberately scoped as one new, independent widget
+   rather than wiring a dictation affordance into every existing
+   text-entry surface -- matches this project's existing
+   one-capability-per-widget pattern; wiring dictation into other
+   widgets is a separable future follow-up, not part of this item.
+   [planned: voice-input-widget.md]

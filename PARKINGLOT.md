@@ -45,33 +45,6 @@ This file captures thoughts and TODO items that arise during work on other thing
   once these are answered. When ready to act on this, move it back to
   `TODO.md` with the answers.
 
-- **Local speech-to-text (Whisper) for voice input**
-
-  > **Note (still deciding):** I am still thinking about which way I want to proceed, but currently I am thinking of going with `large-v3-turbo` as recommended. We should also be sure to include a download script and back-up download instructions for the model.
-
-  Investigated adding voice transcription. Anthropic does not offer a hosted speech-to-text API or transcription feature usable with a Claude subscription — Claude's API has no audio input endpoint, so any voice pipeline needs a separate transcription step whose output text is then passed to Claude.
-
-  Two local (non-Anthropic) options on macOS:
-  - **macOS `Speech` framework** (`SFSpeechRecognizer`), reachable from Python via `pyobjc-framework-Speech`. Native, no extra download, supports on-device and server-assisted recognition, but the Python binding is awkward (Objective-C-first API), requires user authorization prompts, server-assisted mode has usage throttling, and arbitrary audio files often need format conversion first.
-  - **Local Whisper** (OpenAI, MIT-licensed, free including commercial use, no API costs — only local compute). Recommended over the Speech framework for a normal Python-native interface. On Apple Silicon, `mlx-whisper` (uses Apple's MLX framework) or `whisper.cpp` are the fastest runners; `mlx-whisper` in particular is well-suited to M-series chips.
-
-  Whisper model sizes:
-
-  | Model | Parameters | Disk size (~) | Notes |
-  |---|---|---|---|
-  | `tiny` | 39M | ~75 MB | Fastest, least accurate |
-  | `base` | 74M | ~145 MB | Good for quick drafts |
-  | `small` | 244M | ~485 MB | Solid balance |
-  | `medium` | 769M | ~1.5 GB | Noticeably better accuracy |
-  | `large` (v1/v2/v3) | 1550M | ~2.9–3 GB | Best accuracy, slowest |
-  | `large-v3-turbo` | ~809M | ~1.6 GB | Most of `large`'s accuracy at roughly `medium`'s speed |
-
-  Each size except `large`/`turbo` also has an English-only variant (`tiny.en`, etc.) that's slightly more accurate for English-only use. Quantized builds (4-bit/8-bit, via `mlx-whisper`/`whisper.cpp`) shrink memory footprint and speed further below the listed disk sizes.
-
-  Follow-ups to handle when this is picked up:
-  - Add a script to download the chosen model (currently leaning `large-v3-turbo`).
-  - Document back-up/manual download instructions in case the script's source is unreachable.
-
 - **Hot reload (`PythonWidgetHost._rebuild`) doesn't fully preserve a widget's own state**
 
   Two known consequences of `PythonWidgetHost._rebuild` (fired when a
