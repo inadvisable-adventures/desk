@@ -1,4 +1,5 @@
 import base64
+import logging
 import os
 import sys
 import tempfile
@@ -47,6 +48,34 @@ def check(name, condition):
     else:
         failed += 1
         print(f"FAIL: {name}")
+
+
+class _CapturingHandler(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+
+class _WindowLogCapture:
+    """A real logging.Handler attached to desk.shell.window's own
+    logger for the duration of a `with` block (TODO a820354) -- no
+    existing precedent for capturing log output in this repo's own
+    tests/verify/ scripts, so this is the direct approach: attach,
+    yield the handler's records list, detach."""
+    def __enter__(self):
+        self._logger = logging.getLogger("desk.shell.window")
+        self._previous_level = self._logger.level
+        self._handler = _CapturingHandler()
+        self._logger.addHandler(self._handler)
+        self._logger.setLevel(logging.INFO)
+        return self._handler.records
+
+    def __exit__(self, *exc_info):
+        self._logger.removeHandler(self._handler)
+        self._logger.setLevel(self._previous_level)
 
 
 SAMPLE_HTML_B64 = base64.b64encode(b"<html><body>Hi</body></html>").decode()
@@ -147,7 +176,7 @@ def test_source_directory_moved_on_promotion():
         check("promotion still recorded in .desk file", any(cw.keyword == "KanbanBoard" for cw in win.current_desk.custom_widgets))
 
 
-def test_no_source_directory_is_a_silent_noop():
+def test_no_source_directory_is_a_noop_with_an_info_log():
     with tempfile.TemporaryDirectory() as d:
         directory = Path(d)
         win = _FakeWindow(directory)
@@ -155,11 +184,22 @@ def test_no_source_directory_is_a_silent_noop():
         tempui_path = directory / TEMP_UI_DIRNAME / "some-uuid"
         tempui_path.write_text("DefineWidget\tKanbanBoard\tKanban Board\n")
 
-        _promote(win, "KanbanBoard", tempui_path)
+        with _WindowLogCapture() as records:
+            _promote(win, "KanbanBoard", tempui_path)
 
         destination_dir = directory / PROMOTED_WIDGET_SRC_DIRNAME / "KanbanBoard"
         check("no source dir to move: no destination created", not destination_dir.exists())
         check("promotion still succeeded", any(cw.keyword == "KanbanBoard" for cw in win.current_desk.custom_widgets))
+
+        # TODO a820354: a real breadcrumb (INFO, not silence, not a
+        # warning) naming the widget and the path checked.
+        info_records = [r for r in records if r.levelno == logging.INFO]
+        check("exactly one INFO record logged for the no-source-directory case", len(info_records) == 1)
+        if info_records:
+            message = info_records[0].getMessage()
+            check("the INFO message names the widget keyword", "KanbanBoard" in message)
+            check("the INFO message names the path checked", str(directory / TEMP_UI_DIRNAME / CUSTOM_WIDGET_SRC_DIRNAME / "KanbanBoard") in message)
+        check("no WARNING-or-above record logged for this case (still not treated as surprising)", not any(r.levelno >= logging.WARNING for r in records))
 
 
 def test_preexisting_destination_is_not_clobbered():
@@ -179,10 +219,18 @@ def test_preexisting_destination_is_not_clobbered():
         tempui_path = directory / TEMP_UI_DIRNAME / "some-uuid"
         tempui_path.write_text("DefineWidget\tKanbanBoard\tKanban Board\n")
 
-        _promote(win, "KanbanBoard", tempui_path)
+        with _WindowLogCapture() as records:
+            _promote(win, "KanbanBoard", tempui_path)
 
         check("source dir left in place, not clobbered", source_dir.is_dir())
         check("pre-existing destination content untouched", (destination_dir / "marker.txt").read_text() == "pre-existing, unrelated content")
+
+        # Regression check (TODO a820354 touched the sibling no-source
+        # branch, not this one): the existing pre-existing-destination
+        # WARNING is unchanged, and this case does not also log the new
+        # INFO message (the source directory *was* found here).
+        check("still logs at WARNING for a pre-existing destination", any(r.levelno == logging.WARNING for r in records))
+        check("does not log the no-source-directory INFO message for this case", not any(r.levelno == logging.INFO for r in records))
         check("promotion (the .desk file part) still succeeded despite the move being skipped", any(cw.keyword == "KanbanBoard" for cw in win.current_desk.custom_widgets))
 
 
@@ -204,7 +252,7 @@ def test_build_widget_script_docstring_updated():
 
 
 test_source_directory_moved_on_promotion()
-test_no_source_directory_is_a_silent_noop()
+test_no_source_directory_is_a_noop_with_an_info_log()
 test_preexisting_destination_is_not_clobbered()
 test_doc_content()
 test_build_widget_script_docstring_updated()

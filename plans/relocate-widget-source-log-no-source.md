@@ -1,4 +1,4 @@
-# Plan: TODO a820354 — log when promoted-widget source relocation finds no source to move
+# Plan: TODO a820354 — log when promoted-widget source relocation finds no source to move (COMPLETED)
 
 From `../FEEDBACK/FEEDBACK-DESK-tempui-convention-drift-notification
 -2026-07-30-1120.md`'s smaller, related gap:

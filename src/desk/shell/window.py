@@ -2083,14 +2083,31 @@ class DeskWindow(QMainWindow):
         <keyword>/ project subdirectory, matching the promoted
         definition's own move into the .desk file. Not every custom
         widget has a source directory to move (a hand-authored, inline
-        -only one never did) -- a missing source directory is a silent
-        no-op, not an error. A pre-existing destination is left alone
+        -only one never did) -- a missing source directory is a no-op,
+        not an error (logged at INFO, not raised or warned -- TODO
+        a820354). A pre-existing destination is left alone
         (logged, not raised): the .desk file promotion above has
         already succeeded by this point, and a problem with this
         secondary bookkeeping step shouldn't make the whole promotion
         look like it failed."""
         source_dir = self.current_desk.directory / TEMP_UI_DIRNAME / CUSTOM_WIDGET_SRC_DIRNAME / keyword
         if not source_dir.is_dir():
+            # TODO a820354: quiet-by-default (logger.info, not
+            # .warning) -- the common case really is "nothing to
+            # move," and warning-by-default would be noisy for every
+            # widget doing nothing wrong. Still a real breadcrumb for
+            # the uncommon case: a widget whose source genuinely exists,
+            # just at an older convention's path (this project's own
+            # pre-version-14 custom_widget_src/<name>/), gets this exact
+            # same silent no-op today with nothing to distinguish it.
+            logger.info(
+                "No authoring source directory found for promoted widget %r at %s "
+                "-- nothing to relocate (expected for a hand-authored, inline-only "
+                "widget; if this widget's source exists at an older convention's "
+                "location, it won't be found here)",
+                keyword,
+                source_dir,
+            )
             return
         destination_dir = self.current_desk.directory / PROMOTED_WIDGET_SRC_DIRNAME / keyword
         if destination_dir.exists():

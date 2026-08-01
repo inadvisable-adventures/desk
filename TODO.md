@@ -5640,7 +5640,7 @@ d4368bd. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-editor-widget-base-
    produce zero notifications, confirmed via the same real `provision`
    call. Full `tests/verify/` regression suite (84 scripts) passes.
 
-a820354. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-tempui-convention-drift
+a820354. COMPLETED: New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-tempui-convention-drift
    -notification-2026-07-30-1120.md`): the same feedback's smaller,
    related gap -- `_relocate_promoted_widget_source`
    (`src/desk/shell/window.py`) treats a missing source directory at
@@ -5658,6 +5658,27 @@ a820354. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-tempui-convention-drift
    for the uncommon one. Not proposing this become a warning/error --
    the common case really is "nothing to move."
    [planned: relocate-widget-source-log-no-source.md]
+
+   Implemented per plan: a one-line `logger.info` added to
+   `_relocate_promoted_widget_source`'s existing no-source-directory
+   early return, naming the widget keyword and the exact path checked
+   -- `logger.info`, not `.warning`, matching the plan's own explicit
+   "quiet-by-default" framing (the common case really is "nothing to
+   move"; the sibling pre-existing-destination case stays a `.warning`
+   since that one is always at least mildly surprising). Docstring
+   updated to match ("a silent no-op" -> "a no-op ... logged at INFO").
+
+   Verified directly: `tests/verify/verify_relocate_promoted_widget_
+   source.py` extended with a real `logging.Handler` attached to
+   `desk.shell.window`'s own logger for the duration of each promotion
+   call (no prior precedent for log-output capture in this repo's own
+   `tests/verify/`, so this is the direct approach) -- confirms exactly
+   one `INFO` record naming both the widget keyword and the checked
+   path for the no-source case, and confirms the sibling pre-existing
+   -destination case still logs at `WARNING` (unchanged) and does *not*
+   also log the new `INFO` message. The relocation itself remains a
+   true no-op in both cases (already covered by this file's existing
+   checks, unaffected). Full `tests/verify/` regression suite passes.
 
 f9d2dc7. COMPLETED: From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
    voice input" item: a script (`scripts/download_whisper_model.py`)
