@@ -751,3 +751,37 @@ This file captures thoughts and TODO items that arise during work on other thing
   confusing/misleading in exactly that context (looks like the canvas
   is pannable via scroll right when TODO `78bfa41` deliberately made it
   not be, over a widget).
+
+- **Two-directional tempui: let Desk call *into* a running Claude
+  session, not just watch for files it writes out**
+
+  Surfaced during the research behind TODO `a596dbf` (a new "Claude
+  (Desk)" widget talking to the Python Agent SDK, alongside -- not
+  replacing -- the existing PTY/`pyte`-based Claude widget). Today's
+  tempui protocol (`src/desk/temp_ui.py`) is one-way only: Claude,
+  running inside a Claude widget, writes a plain-text file into
+  `.desk_temp/`, and Desk's file watcher (`TempUiManager`) notices and
+  surfaces it. There's no equivalent channel the other direction --
+  Desk (or a widget, or the user clicking something) can't currently
+  hand structured input back into a *specific running* Claude session
+  except by typing into its PTY, which the new widget won't have.
+
+  Once a Claude session is reachable via the SDK directly (TODO
+  `a596dbf`'s new widget), Desk has in-process, programmatic control of
+  that session for the first time -- meaning a real two-way channel
+  becomes possible: e.g. a custom MCP tool or a hook that lets Claude
+  *receive* a structured message from Desk mid-session (a button click,
+  another widget's event, a user answer to an `AskUserQuestion`-style
+  prompt routed through Desk's own UI instead of the terminal), rather
+  than Claude only ever being the one to initiate via a dropped file.
+
+  Not designed at all yet -- open questions include what the wire
+  format/API should look like (a Desk-authored MCP server exposed to
+  the session? a hook? something reusing the existing mediated-events
+  pub/sub in `src/desk/event_mediator.py`?), how it'd interact with
+  tempui's existing file-based DSL (replace it, or coexist?), and
+  whether it's scoped to the new "Claude (Desk)" widget alone or
+  something other widget kinds could also address. Explicitly out of
+  scope for TODO `a596dbf` itself -- that item only introduces the new
+  SDK-backed widget; this is the separate, larger follow-on idea it
+  unlocks.

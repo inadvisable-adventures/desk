@@ -5755,3 +5755,28 @@ b32fb81. COMPLETED: From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
    the denied-permission path was never actually exercised; flagged in
    `plans/voice-input-widget.md` as a real runtime consideration, still
    open.
+
+a596dbf. Introduce a new "Claude (Desk)" widget (`widgets/claude_desk/`)
+   that talks to the Python Claude Agent SDK (`claude-agent-sdk`,
+   `ClaudeSDKClient`) instead of the PTY/`pyte` terminal-emulation
+   mechanism the existing Claude widget (`widgets/claude/widget.py`)
+   uses, so Desk can provide its own status UI, prompt input box, and
+   scrollable history view instead of rendering `claude`'s interactive
+   -terminal output through pyte and typing commands into its PTY. The
+   existing Claude widget is left in place, unchanged, as a separate
+   widget kind -- this adds a new option alongside it rather than
+   replacing it. Surfaced while researching how to more tightly
+   integrate Claude Code into Desk without losing what the CLI
+   currently provides (permission modes/manual-vs-auto, model
+   selection, session resume, file-access sandboxing). Confirmed
+   directly against current Claude Code docs that all of these are
+   equally available through the Python Agent SDK (`ClaudeAgentOptions
+   .permission_mode`/`.model`/`.resume`), that sandboxing and protected
+   -path checks are enforced independently of permission mode (so the
+   existing widget's hardcoded `--permission-mode auto`, TODO
+   `2dca4c8`, isn't weakening file-access safety today), and that the
+   SDK additionally exposes a `can_use_tool` callback -- the correct
+   mechanism for Desk to show its own manual-mode approval dialog,
+   rather than relying on `claude`'s own prompt text rendered as ANSI.
+   The plain Console widget (`widgets/console/`) is also unaffected.
+   [planned: claude-widget-agent-sdk-integration.md]
