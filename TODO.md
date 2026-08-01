@@ -5575,7 +5575,7 @@ a820354. New FEEDBACK (`../FEEDBACK/FEEDBACK-DESK-tempui-convention-drift
    the common case really is "nothing to move."
    [planned: relocate-widget-source-log-no-source.md]
 
-f9d2dc7. From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
+f9d2dc7. COMPLETED: From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
    voice input" item: a script (`scripts/download_whisper_model.py`)
    that fetches the chosen Whisper model (`large-v3-turbo`, per the
    parking lot note's own stated decision) via `mlx-whisper`/Hugging
@@ -5591,6 +5591,46 @@ f9d2dc7. From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
    committed to the repo. Infrastructure only -- no transcription code
    (see TODO `1cd0ca2`) or UI (see TODO `b32fb81`) yet.
    [planned: whisper-model-download-and-setup-docs.md]
+
+   Implemented per plan. `MODEL_REPOS` in `scripts/
+   download_whisper_model.py` maps each parking-lot-table size to a
+   real Hugging Face repo id -- individually confirmed via
+   `HfApi().model_info(...)` rather than assumed, since the
+   `mlx-community` org does not use one uniform naming scheme across
+   sizes (e.g. bare `whisper-base`/`whisper-small` don't exist, only
+   `-mlx-fp32`/`-8bit`/etc. suffixed variants). The script downloads
+   (or confirms already-cached), loads the weights once through
+   `mlx_whisper.load_models.load_model` as a real usability check, and
+   prints the resolved cache path and size; an unreachable Hub or an
+   unknown size produce the script's own clear message, not a raw
+   traceback. `design-docs/whisper-model-setup.md` covers the normal
+   path, the manual `huggingface-cli download`/`mlx_whisper.convert`
+   backup paths, and states plainly that models are never part of this
+   repo (the Hugging Face cache is structurally outside the working
+   tree; a `/whisper-*/` `.gitignore` entry added as a belt-and
+   -suspenders backstop, and the manual-download doc example points
+   `--local-dir` at `~/` instead of the repo). `mlx-whisper` added to
+   `pyproject.toml`'s dependencies (used by this script; also the one
+   TODO `1cd0ca2` needs).
+
+   Found along the way, surprising enough to record in `LEARNINGS.md`:
+   `mlx_whisper.transcribe()`/`audio.load_audio()` unconditionally
+   shells out to the `ffmpeg` CLI to decode *any* input file, including
+   a plain WAV, with no fallback -- worked around in TODO `1cd0ca2`'s
+   own module by decoding WAV directly via the stdlib `wave` module and
+   passing a NumPy sample array instead of a path, since the Voice
+   Input widget (TODO `b32fb81`) already fully controls the audio
+   format it records in.
+
+   Verified directly, real network calls throughout (no mocking): all
+   ten `MODEL_REPOS` entries resolve to real Hub repos; an unknown size
+   and an unreachable Hub (a bogus `HF_ENDPOINT`) each produce the
+   documented clear error, not a traceback; the Hugging Face cache
+   directory and every cached repo's path are confirmed outside this
+   repo's working tree; a full real run of the default
+   (`large-v3-turbo`, ~1.5 GB) actually downloads, loads, and reports
+   success. New `tests/verify/verify_whisper_model_download_script.py`,
+   24 checks, 0 failures.
 
 1cd0ca2. From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for
    voice input" item: a `src/desk/speech.py` module wrapping

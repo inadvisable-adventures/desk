@@ -16,6 +16,7 @@ dependencies = [
     "websockets",
     "pyte",
     "PyQt6-QScintilla",
+    "mlx-whisper",
 ]
 
 [project.scripts]

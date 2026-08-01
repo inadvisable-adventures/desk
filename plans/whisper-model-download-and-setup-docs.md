@@ -1,4 +1,4 @@
-# Plan: TODO f9d2dc7 — Whisper model download script and setup documentation
+# Plan: TODO f9d2dc7 — Whisper model download script and setup documentation (COMPLETED)
 
 From `PARKINGLOT.md`'s "Local speech-to-text (Whisper) for voice input"
 item: before any code depends on a Whisper model being present, this

@@ -25,3 +25,9 @@
 # per-directory runtime traffic, not project source, same as the Desk
 # state files above.
 MEDIATED-EVENT-LOG.tsv
+
+# Whisper models (see design-docs/whisper-model-setup.md, TODO
+# f9d2dc7) are never meant to live in this repo -- they're cached
+# under the Hugging Face Hub cache instead. This is a defensive
+# backstop only, in case a manual download ever lands here by mistake.
+/whisper-*/
