@@ -6100,7 +6100,42 @@ fe7d8f2. COMPLETED: Add voice input capabilities to the new "Claude (Desk)" widg
    natural follow-up once TODO `8df6797`'s multi-line prompt input
    (already being considered for an unrelated reason) lands, since
    that already means reconsidering `_prompt_input`'s widget type.
-8a5ea2b. research: is it possible to do something closer to live transcription by breaking the audio into smaller chunks?
+8a5ea2b. COMPLETED: research: is it possible to do something closer to live transcription by breaking the audio into smaller chunks?
+
+   Investigated directly -- read `mlx_whisper`'s real `transcribe()`
+   source (it already processes audio in an internal 30-second
+   sliding-window loop, but has no incremental/streaming input hook at
+   all: every call re-mel-spectrograms and redecodes its whole input
+   array from scratch) and ran a real experiment: transcribed
+   successively longer prefixes (1s, 2s, ..., full clip) of the same
+   real synthesized ~5.6s sentence against this project's own
+   already-warmed default model.
+
+   Findings, both confirmed directly, not assumed: (1) per-call
+   latency stayed roughly constant (~1.0-1.1s) regardless of prefix
+   length while under Whisper's 30-second window, meaning a naive
+   "re-transcribe the growing buffer every ~1s" loop is roughly
+   sustainable in real time for a short dictation -- but would not
+   stay sustainable for a long recording, since per-call cost grows
+   again past 30s of buffered audio; (2) partial results genuinely
+   flicker -- the trailing word(s) of an in-progress utterance were
+   repeatedly wrong/truncated ("fog" for "fox", "the lace" for "the
+   lazy dog") until enough audio arrived to disambiguate, stabilizing
+   only once the buffer contained the whole utterance. A real
+   implementation would need a genuine "interim vs. final" visual
+   distinction in the text widget, not just swapping in new text on a
+   timer, or it would read as broken rather than live.
+
+   Full findings, including what a real implementation would require
+   from `desk.speech`/`desk.voice_capture` (a materially different API
+   shape than today's record-fully-then-transcribe-once flow), written
+   up in `investigations/live_transcription_chunking.md`. Not filed as
+   a ready-to-implement follow-up TODO -- the real UX design question
+   (how to show flickering interim results without it looking broken)
+   and the unbounded compute-growth cost for longer recordings are
+   both genuinely unresolved, matching how `PARKINGLOT.md`'s own
+   "research offline TTS options" item was left as pure research
+   without forcing a premature follow-up.
 
 e1f6391. Add the ability to queue messages in the Claude (Desk) widget
    (`widgets/claude_desk/widget.py`'s `ClaudeDeskWidget`) instead of
