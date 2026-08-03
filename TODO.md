@@ -6147,6 +6147,7 @@ e1f6391. Add the ability to queue messages in the Claude (Desk) widget
    while busy and have it queued (sent automatically, in order, once
    idle again), plus UX in the widget showing what's currently queued
    so it doesn't feel like the message vanished.
+   [planned: claude-desk-message-queue.md]
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
