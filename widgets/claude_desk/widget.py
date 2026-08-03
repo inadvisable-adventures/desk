@@ -109,6 +109,12 @@ class ClaudeDeskWidget(QWidget):
 
         self._pending_permissions: list[tuple[str, str, dict]] = []
 
+        # TODO e1f6391: a message submitted while a turn is in flight
+        # queues instead of the prompt box simply going dead -- see
+        # _set_busy/_on_send_clicked/_finish_busy_period.
+        self._busy = False
+        self._message_queue: list[str] = []
+
         # TODO fe7d8f2: mic capture + transcription itself is shared
         # with widgets/voice_input/widget.py via desk.voice_capture
         # (widget directories can't import each other) -- this widget
@@ -120,6 +126,9 @@ class ClaudeDeskWidget(QWidget):
         self._mic_recorder.error.connect(self._on_mic_error)
 
         self._status_label = QLabel("Idle.")
+
+        self._queue_label = QLabel()
+        self._queue_label.setVisible(False)
 
         self._model_combo = QComboBox()
         for label, _value in MODEL_CHOICES:
@@ -153,6 +162,7 @@ class ClaudeDeskWidget(QWidget):
 
         top_row = QHBoxLayout()
         top_row.addWidget(self._status_label, stretch=1)
+        top_row.addWidget(self._queue_label)
         top_row.addWidget(self._model_combo)
 
         prompt_row = QHBoxLayout()
@@ -185,23 +195,32 @@ class ClaudeDeskWidget(QWidget):
             self._append_history(f"> {initial_prompt}")
         else:
             # Resuming with nothing queued to send: connect() alone
-            # never fires turn_complete/session_error (there's no turn),
-            # so without this the prompt box would stay disabled
-            # forever. Not wired for the fresh-launch case above: there,
-            # connected fires *before* the bootstrap turn actually
-            # completes, and re-enabling input that early would let a
-            # user send a second message while the first is still in
+            # never fires turn_complete/session_error (there's no
+            # turn) -- without this, _busy would stay True forever, so
+            # anything typed during "Connecting..." would queue and
+            # then never get drained. _finish_busy_period (TODO
+            # e1f6391) is the same drain-the-queue-or-go-idle logic
+            # _on_turn_complete uses below. Not wired for the
+            # fresh-launch case above: there, connected fires *before*
+            # the bootstrap turn actually completes, and this would
+            # fire prematurely while that first turn is still in
             # flight.
-            self._session.connected.connect(lambda: self._set_busy(False))
+            self._session.connected.connect(lambda: self._finish_busy_period("Idle."))
         self._session.start(session_id, resume, model, PERMISSION_MODE, cwd, initial_prompt)
 
     def _append_history(self, text: str) -> None:
         self._history.appendPlainText(text)
 
     def _set_busy(self, busy: bool) -> None:
-        self._prompt_input.setEnabled(not busy)
-        self._send_button.setEnabled(not busy)
+        self._busy = busy
+        # _prompt_input/_send_button deliberately stay enabled while
+        # busy (TODO e1f6391) -- self._busy, not Qt's own isEnabled(),
+        # is what _on_send_clicked checks to decide send-now vs. queue.
+        # _mic_button still goes dark while busy -- dictating a *new*
+        # message while a turn is in flight is unchanged, out of scope
+        # here.
         self._mic_button.setEnabled(not busy)
+        self._send_button.setText("Queue" if busy else "Send")
         if busy:
             self._status_label.setText("Working...")
 
@@ -209,14 +228,41 @@ class ClaudeDeskWidget(QWidget):
         for widget in self._permission_widgets:
             widget.setVisible(visible)
 
+    def _update_queue_label(self) -> None:
+        if not self._message_queue:
+            self._queue_label.setVisible(False)
+            return
+        self._queue_label.setText(f"Queued: {len(self._message_queue)}")
+        self._queue_label.setToolTip("\n".join(self._message_queue))
+        self._queue_label.setVisible(True)
+
+    def _send_now(self, text: str) -> None:
+        self._append_history(f"> {text}")
+        self._set_busy(True)
+        self._session.send_prompt(text)
+
+    def _finish_busy_period(self, idle_status: str) -> None:
+        """Shared by _on_turn_complete and start_session's
+        resume-with-nothing-to-send path (TODO e1f6391): drains the
+        next queued message instead of going idle, if there is one."""
+        self._set_busy(False)
+        if self._message_queue:
+            self._send_now(self._message_queue.pop(0))
+            self._update_queue_label()
+        else:
+            self._status_label.setText(idle_status)
+
     def _on_send_clicked(self) -> None:
         text = self._prompt_input.text().strip()
         if not text:
             return
-        self._append_history(f"> {text}")
         self._prompt_input.clear()
-        self._set_busy(True)
-        self._session.send_prompt(text)
+        if self._busy:
+            self._message_queue.append(text)
+            self._append_history(f"[queued] {text}")
+            self._update_queue_label()
+        else:
+            self._send_now(text)
 
     def _on_mic_clicked(self) -> None:
         if self._mic_recorder.is_recording():
@@ -293,10 +339,15 @@ class ClaudeDeskWidget(QWidget):
         self._show_next_permission()
 
     def _on_turn_complete(self, summary: dict) -> None:
-        self._set_busy(False)
-        self._status_label.setText("Error." if summary.get("is_error") else "Idle.")
+        self._finish_busy_period("Error." if summary.get("is_error") else "Idle.")
 
     def _on_session_error(self, message: str) -> None:
+        # Deliberately does not drain the queue (TODO e1f6391): a
+        # session error may mean the session itself is in a bad state,
+        # and firing the next queued message right after risks
+        # compounding the confusion. Anything still queued stays
+        # visible via _queue_label, frozen until the user does
+        # something themselves -- no auto-retry for this first pass.
         self._set_busy(False)
         self._status_label.setText(f"Error: {message}")
         self._append_history(f"[error] {message}")

@@ -274,10 +274,14 @@ def test_widget_history_and_permission_ui():
         try:
             widget = module.build()
             widget.start_session(str(uuid.uuid4()), resume=False, extra_instructions="")
-            check("prompt input starts disabled while the session connects/first turn runs", not widget._prompt_input.isEnabled())
+            # TODO e1f6391: _prompt_input/_send_button deliberately
+            # stay enabled even while busy now (so a submission queues
+            # instead of having nowhere to go) -- widget._busy is the
+            # real busy signal to check, not Qt's own isEnabled().
+            check("widget is busy while the session connects/first turn runs", widget._busy is True)
 
-            ok = wait_until(lambda: widget._prompt_input.isEnabled(), timeout=90.0)
-            check("prompt input re-enables once the first turn completes", ok)
+            ok = wait_until(lambda: not widget._busy, timeout=90.0)
+            check("widget goes idle once the first turn completes", ok)
             check("history contains the bootstrap prompt's own opening text", "running inside of Desk" in widget._history.toPlainText())
 
             widget._prompt_input.setText("Use the Write tool to create a file named widget-probe.txt containing hi.")
@@ -296,7 +300,7 @@ def test_widget_history_and_permission_ui():
             check("the permission label names the Write tool", "Write" in widget._permission_label.text())
 
             widget._allow_button.click()
-            ok = wait_until(lambda: widget._prompt_input.isEnabled(), timeout=90.0)
+            ok = wait_until(lambda: not widget._busy, timeout=90.0)
             check("turn completes after approving through the widget's own Allow button", ok)
             check("the created file actually exists", (Path(tmp) / "widget-probe.txt").is_file())
 
@@ -308,6 +312,58 @@ def test_widget_history_and_permission_ui():
                 "history entries appear in chronological order (bootstrap prompt, tool use, permission decision)",
                 -1 < first_prompt_index < tool_use_index < permission_index,
             )
+        finally:
+            module.current_context.get_current_desk_directory = original_cwd_getter
+            widget._session.stop()
+            widget.deleteLater()
+
+
+def test_message_queue_sends_in_order_once_idle():
+    """TODO e1f6391: real, non-mocked -- a message sent while a real
+    turn is in flight queues instead of dispatching immediately, shows
+    up in the UI (queue label, "[queued]" history line, Send button
+    relabeled to "Queue"), and a second queued message stays behind the
+    first. Once each turn actually completes for real, the next queued
+    message is dispatched automatically, in order -- confirmed via two
+    real, separate turns completing, not simulated."""
+    module = load_widget_module()
+    with tempfile.TemporaryDirectory() as tmp:
+        original_cwd_getter = module.current_context.get_current_desk_directory
+        module.current_context.get_current_desk_directory = lambda: Path(tmp)
+        try:
+            widget = module.build()
+            sent_prompts = []
+            original_send_prompt = widget._session.send_prompt
+            widget._session.send_prompt = lambda text: (sent_prompts.append(text), original_send_prompt(text))[-1]
+
+            widget.start_session(str(uuid.uuid4()), resume=False, extra_instructions="")
+            check("widget starts busy (bootstrap turn in flight)", widget._busy is True)
+
+            widget._prompt_input.setText("Reply with exactly the word: first")
+            widget._on_send_clicked()
+            check("a message sent while busy does not dispatch immediately", sent_prompts == [])
+            check("Send button relabels to Queue while busy", widget._send_button.text() == "Queue")
+            check("the queue label becomes visible", widget._queue_label.isVisibleTo(widget))
+            check("the queue label reports one queued message", widget._queue_label.text() == "Queued: 1")
+            check("history records the queued submission", "[queued] Reply with exactly the word: first" in widget._history.toPlainText())
+
+            widget._prompt_input.setText("Reply with exactly the word: second")
+            widget._on_send_clicked()
+            check("a second message queues behind the first, not sent yet", sent_prompts == [])
+            check("the queue label now reports two queued messages", widget._queue_label.text() == "Queued: 2")
+
+            ok = wait_until(lambda: sent_prompts == ["Reply with exactly the word: first"], timeout=90.0)
+            check("the first queued message is dispatched once the bootstrap turn completes", ok)
+            check("the second message is still queued, not sent yet", widget._queue_label.text() == "Queued: 1")
+            check("widget is busy again for the first queued message's own turn", widget._busy is True)
+
+            ok = wait_until(lambda: sent_prompts == ["Reply with exactly the word: first", "Reply with exactly the word: second"], timeout=90.0)
+            check("the second queued message is dispatched once its own turn completes, in order", ok)
+
+            ok = wait_until(lambda: not widget._busy, timeout=90.0)
+            check("widget returns to idle once the last queued message's turn completes", ok)
+            check("the queue label hides once the queue is empty", not widget._queue_label.isVisibleTo(widget))
+            check("Send button reverts to Send once idle", widget._send_button.text() == "Send")
         finally:
             module.current_context.get_current_desk_directory = original_cwd_getter
             widget._session.stop()
@@ -365,6 +421,7 @@ test_mic_button_dictates_into_the_prompt_box_without_sending()
 test_session_fresh_start_and_resume()
 test_tool_permission_gate()
 test_widget_history_and_permission_ui()
+test_message_queue_sends_in_order_once_idle()
 test_window_wiring()
 
 print(f"\n{passed} passed, {failed} failed")

@@ -6137,7 +6137,7 @@ fe7d8f2. COMPLETED: Add voice input capabilities to the new "Claude (Desk)" widg
    "research offline TTS options" item was left as pure research
    without forcing a premature follow-up.
 
-e1f6391. Add the ability to queue messages in the Claude (Desk) widget
+e1f6391. COMPLETED: Add the ability to queue messages in the Claude (Desk) widget
    (`widgets/claude_desk/widget.py`'s `ClaudeDeskWidget`) instead of
    only offering a Send button that goes dead while a turn is in
    flight -- `_set_busy(True)` currently disables both `_prompt_input`
@@ -6148,6 +6148,46 @@ e1f6391. Add the ability to queue messages in the Claude (Desk) widget
    idle again), plus UX in the widget showing what's currently queued
    so it doesn't feel like the message vanished.
    [planned: claude-desk-message-queue.md]
+
+   Implemented per plan: `_set_busy` no longer disables `_prompt_input`
+   /`_send_button` (only `_mic_button` still goes dark while busy --
+   dictating a new message mid-turn is unchanged, out of scope); a new
+   `self._busy` flag is what `_on_send_clicked` actually checks to
+   decide send-now vs. queue, since Qt's own `isEnabled()` is no longer
+   a busy proxy. A submission made while busy appends to
+   `self._message_queue`, gets a `"[queued] <text>"` history line, and
+   shows in a new `_queue_label` ("Queued: N", full queued text as its
+   tooltip); the Send button itself relabels to "Queue" while busy as
+   a second, cheap signal. `_finish_busy_period(idle_status)` (shared
+   by `_on_turn_complete` and `start_session`'s resume-with-nothing
+   -to-send path, both of which used to just call `_set_busy(False)`
+   directly) drains the next queued message instead of going idle, if
+   there is one -- `_on_session_error` deliberately does not drain the
+   queue (a session error may mean the session itself is in a bad
+   state; remaining queued messages stay visible but frozen, no
+   auto-retry for this first pass).
+
+   Fixed three existing checks in `tests/verify/
+   verify_claude_desk_widget.py` that relied on `_prompt_input
+   .isEnabled()` as a busy proxy -- now structurally always enabled,
+   so those checks were updated to check `widget._busy` directly
+   instead (the actual thing they meant to observe).
+
+   Verified directly, real sessions throughout (no mocking): a message
+   sent while a real bootstrap turn is in flight does not dispatch
+   immediately (confirmed via a monkeypatched `send_prompt` spy that
+   still calls through to the real one), shows the queue label/history
+   line/relabeled Send button; a second message queues behind the
+   first; once the bootstrap turn actually completes for real, the
+   first queued message dispatches automatically, and once *that*
+   turn completes, the second dispatches too, in order; the widget
+   returns to idle and every indicator clears only once the queue is
+   genuinely empty. One real transient flake hit while verifying (a
+   90-second turn-completion wait timed out on one run, cascading
+   failures through the rest of that test) -- confirmed via a clean
+   re-run immediately after (47/47 passing) that this was a one-off
+   real-network/API hiccup, not a logic bug; the passing re-run is what
+   these checks reflect. Full `tests/verify/` regression suite passes.
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a

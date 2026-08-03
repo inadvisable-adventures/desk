@@ -1,4 +1,4 @@
-# Queue messages in the Claude (Desk) widget (TODO `e1f6391`)
+# Queue messages in the Claude (Desk) widget (TODO `e1f6391`) (COMPLETED)
 
 ## Summary
 
