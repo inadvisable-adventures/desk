@@ -6424,3 +6424,59 @@ b2ab79f. PENDING: Figure out how to properly integrate regression tests that
    this needs a real decision, not just leaving it disabled forever --
    see `QUESTIONS.md` for the open questions.
    [planned: hardware-dependent-regression-tests.md]
+
+9bc522b. PENDING: Figure out how to properly integrate regression tests that
+   make real Claude API calls -- specifically, several `tests/verify/`
+   scripts start a real `ClaudeSession` (`desk.claude_session`, the
+   Claude Agent SDK wrapper) or place a real `ClaudeWidget` (which
+   execs the actual `claude` CLI in a PTY) as part of their coverage
+   (`disabled_verify_claude_desk_widget_claude_api.py`,
+   `disabled_verify_discuss_parking_lot_item_claude_api.py`,
+   `disabled_verify_questions_discuss_button_claude_api.py` -- see
+   their own top-of-file comments). Running these automatically as
+   part of every regression sweep makes real network calls to the live
+   Claude API, incurs real API cost/quota, and depends on the live
+   model's actual behavior -- not wanted for a routine sweep, so
+   extracted/disabled (the standard `disabled_` prefix convention) for
+   now. Still worth being able to run this kind of coverage
+   occasionally by hand rather than losing it outright, so this needs
+   a real decision, not just leaving it disabled forever -- see
+   `QUESTIONS.md` for the open questions.
+   [planned: live-claude-api-regression-tests.md]
+
+0d91c74. PENDING: Figure out how to properly integrate regression tests that
+   make real network calls to Hugging Face Hub -- specifically, two
+   tests in `tests/verify/verify_whisper_model_download_script.py`
+   (a real repo-existence check via `HfApi`, and a real run of the
+   download script itself, which unlike `desk.speech.transcribe()`
+   does not force offline mode) reach out to the live Hub over the
+   network. Running these automatically as part of every regression
+   sweep depends on live internet access, which isn't wanted for a
+   routine sweep -- extracted/disabled (the standard `disabled_`
+   prefix convention) to
+   `disabled_verify_whisper_model_download_script_network.py` for now
+   (see its own top-of-file comment); the rest of that file's coverage
+   (CLI error handling, a deliberately-unreachable-Hub resilience
+   check, local cache-location checks, doc-content checks) needs no
+   real network and keeps running normally. Still worth being able to
+   run this kind of coverage occasionally by hand rather than losing
+   it outright, so this needs a real decision, not just leaving it
+   disabled forever -- see `QUESTIONS.md` for the open questions.
+   [planned: live-network-model-download-regression-tests.md]
+
+b6abde2. PENDING: Figure out how to properly integrate regression tests that
+   use the real system clipboard -- specifically, every test in
+   `tests/verify/verify_paste.py` reads/writes the actual system
+   clipboard (`QApplication.clipboard()`), and two of them call
+   `clipboard.clear()`, which destroys whatever the user actually had
+   copied at the time the regression sweep ran. Disabled outright (the
+   standard `disabled_` prefix convention, whole file since every test
+   touches the clipboard) for now --
+   `disabled_verify_paste.py`. Still worth being able to run this kind
+   of coverage occasionally by hand rather than losing it outright, so
+   this needs a real decision (a save-and-restore-the-real-clipboard
+   wrapper around each test looks like the simplest fix, but needs
+   confirming, not assuming, that it round-trips every MIME flavor
+   these tests set losslessly), not just leaving it disabled forever
+   -- see `QUESTIONS.md` for the open questions.
+   [planned: system-clipboard-regression-tests.md]

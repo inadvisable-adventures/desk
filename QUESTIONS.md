@@ -144,3 +144,77 @@ prefix) as an immediate fix, but that's a real coverage gap long-term
   it's *possible* to include in an occasional full run without editing
   file names back and forth each time?
 
+## TODO `9bc522b`: how should regression tests that make real Claude API calls actually be integrated?
+
+See `plans/live-claude-api-regression-tests.md`. Several
+`tests/verify/` scripts start a real Claude session (`ClaudeSession`
+via the Claude Agent SDK, or a real `claude` CLI process via
+`ClaudeWidget`) as part of their coverage -- real network calls, real
+API cost/quota, real dependence on live model behavior. Disabled
+(`disabled_` prefix, extracted from three files) for now -- same
+underlying tension as TODO `b2ab79f`. Likely shares an answer with
+that item and with TODO `0d91c74` below (all three are "valuable real
+-behavior coverage that has a real-world cost/side-effect a routine
+sweep shouldn't incur") -- consider answering all three together
+rather than in isolation.
+
+- Same naming/signaling question as TODO `b2ab79f`: is `disabled_`
+  the right convention for "opt-in, run occasionally," or does this
+  deserve its own convention (and if it's shared with `b2ab79f`/
+  `0d91c74`, should all three be unified under one scheme rather than
+  three separately-invented ones)?
+- Is there a lightweight way to mock the Claude Agent SDK/CLI layer
+  for most of this coverage (e.g. a fake transport that returns
+  scripted `ResultMessage`/tool-call sequences) while keeping one
+  small, occasional, real-API smoke test? This is more involved than
+  TODO `b2ab79f`'s hardware seam -- the SDK's own message/event shapes
+  would need faithful faking, not just one audio-source class.
+  `CLAUDE.md` says avoid new dependencies -- worth checking whether
+  the SDK itself already exposes a testing/mock transport before
+  building one from scratch.
+- Real Claude API calls cost actual money (unlike the mic/network
+  categories) -- does that argue for a stricter default (never run
+  automatically, ever, even in an "occasional full sweep" mode) than
+  the other two disabled categories get?
+
+## TODO `0d91c74`: how should regression tests that make real Hugging Face Hub network calls actually be integrated?
+
+See `plans/live-network-model-download-regression-tests.md`. Two
+tests in `tests/verify/verify_whisper_model_download_script.py` reach
+out to the live Hugging Face Hub over the network. Disabled (`disabled_`
+prefix) for now. Smaller in scope than TODO `9bc522b`/TODO `b2ab79f`
+(one file, two tests) -- may not need its own separate answer if a
+shared "occasionally run these by hand" mechanism gets built for the
+other two categories.
+
+- Does this one actually need a mock, or is "run occasionally by hand,
+  document that it needs internet access" sufficient given its small
+  size (versus the mic/Claude-API categories, which have real
+  side-effects or cost that argue more strongly for a real mechanism)?
+- Should `test_repo_ids_are_real` be reduced in scope (e.g. only check
+  the *default* model's repo id, not every configured size) to shrink
+  how much real network dependency this test needs, independent of
+  whichever integration answer is chosen?
+
+## TODO `b6abde2`: how should regression tests that use the real system clipboard actually be integrated?
+
+See `plans/system-clipboard-regression-tests.md`. Every test in
+`tests/verify/verify_paste.py` touches the real system clipboard, and
+two calls `clipboard.clear()` -- destroying whatever the user actually
+had copied. Disabled outright for now (whole file). Unlike the other
+three categories above, this isn't about cost/network/hardware
+side-effects -- it's specifically about not clobbering real user
+state during an automated sweep, which suggests a different, simpler
+fix than "run occasionally by hand."
+
+- Would a save-the-real-clipboard's-contents-before/restore-after
+  wrapper (applied automatically around this file, or any future test
+  that touches the clipboard) let this run in every normal sweep
+  again, with no real downside? If so, does Qt's clipboard API
+  actually round-trip every MIME flavor these tests set (plain text,
+  `text/markdown`, an image) losslessly -- confirmed directly, not
+  assumed -- before relying on it?
+- If a save/restore wrapper works, should it become a standing
+  convention for any future test that touches the clipboard, or is
+  `verify_paste.py` a one-off?
+

@@ -1,3 +1,16 @@
+# DISABLED (TODO b6abde2): every test in this file reads/writes the
+# real system clipboard (QApplication.clipboard()) -- worse than just
+# a side effect, test_menu_hides_paste_item_when_clipboard_empty and
+# test_empty_clipboard_is_noop call clipboard.clear(), which destroys
+# whatever the user actually had copied at the time the regression
+# sweep ran. Left disabled until TODO b6abde2 decides how coverage
+# like this should actually be integrated (run occasionally by hand,
+# mock the clipboard layer, save/restore the real clipboard's contents
+# around each test, or some combination) rather than always running as
+# part of the normal sweep. Still a real, working, non-mocked test --
+# run it directly (`.venv/bin/python3
+# tests/verify/disabled_verify_paste.py`) when you want this coverage
+# (be aware it will clobber your current clipboard contents).
 import os
 import sys
 import tempfile
