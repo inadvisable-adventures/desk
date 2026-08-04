@@ -6480,3 +6480,16 @@ b6abde2. PENDING: Figure out how to properly integrate regression tests that
    these tests set losslessly), not just leaving it disabled forever
    -- see `QUESTIONS.md` for the open questions.
    [planned: system-clipboard-regression-tests.md]
+
+feff1ec. Review and discuss all of the new FEEDBACK items (feedback
+   submitted via the Feedback widget, `DESK_FEEDBACK-*.md` files) with
+   the user before acting on any of them. Not designed/scoped yet --
+   this item is just the reminder to have that discussion.
+
+f165b8c. Investigate options for running Desk jobs on cloud VMs, given
+   that Desk uses `claude` and many VM providers have blanket
+   no-running-AI policies. Not designed/scoped yet.
+
+e6ea1db. Investigate approaches to running Desk in a way that better
+   isolates it -- e.g. not giving it full access to absolute paths or
+   system calls, etc. Not designed/scoped yet.
