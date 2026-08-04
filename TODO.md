@@ -6226,6 +6226,7 @@ e4662a5. COMPLETED: Make the pan/zoom control (`src/desk/shell/zoom_control.py`'
    focuses it, so typing goes directly into the new Scratch without an
    extra click. Prioritized alongside TODO `e4662a5`, ahead of the
    Claude (Desk) widget refinements below.
+   [planned: new-scratch-hover-button.md]
 
 496d685. Double-clicking on empty canvas (outside any placed widget,
    and outside the pinned hovering UI -- the Desk picker, zoom control,
