@@ -99,6 +99,7 @@ class WorkspaceView(QGraphicsView):
     widget_error_clicked = pyqtSignal(WidgetFrame)  # TODO d4d6c71
     popup_closed = pyqtSignal(WidgetFrame)  # TODO 359684f: a popup's close (X) button
     new_scratch_requested = pyqtSignal()  # TODO 945b086: the lower-left hover button clicked
+    empty_canvas_double_clicked = pyqtSignal(QPointF)  # TODO 496d685: scene pos of the double-click
 
     def __init__(self, parent=None) -> None:
         super().__init__(QGraphicsScene(parent), parent)
@@ -562,6 +563,33 @@ class WorkspaceView(QGraphicsView):
             event.accept()
             return
         super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        """TODO 496d685: a left double-click on truly empty canvas (not
+        chrome, not any placed widget's own content -- the same
+        _hit_test_chrome/_frame_at gate every other canvas-level
+        interaction already uses, TODO 3846190/TODO 78bfa41) requests a
+        new, focused Scratch widget at that point. Anything else
+        (double-click on chrome, on a frame's content, any non-left
+        button) falls through to Qt's default handling unchanged --
+        e.g. the Scratch widget's own title label double-click-to-edit
+        (widgets/scratch/widget.py) still works, since that lands on a
+        frame and is forwarded via super(). No explicit check for the
+        pinned HUD widgets (Desk picker, zoom control, new-Scratch
+        button) is needed: they're real, opaque QWidget children of
+        the viewport sitting on top of the graphics scene, so a
+        double-click physically inside one of them is delivered
+        directly to that widget by Qt, never to this handler at all."""
+        if (
+            event.button() == Qt.MouseButton.LeftButton
+            and self._hit_test_chrome(event.position()) is None
+            and self._frame_at(event.position()) is None
+        ):
+            scene_pos = self.mapToScene(event.position().toPoint())
+            event.accept()
+            self.empty_canvas_double_clicked.emit(scene_pos)
+            return
+        super().mouseDoubleClickEvent(event)
 
     def _on_scene_focus_item_changed(self, new_item, old_item, _reason) -> None:
         """TODO 397770c: whenever scene-level focus moves, mark whichever

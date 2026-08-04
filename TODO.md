@@ -6249,7 +6249,7 @@ e4662a5. COMPLETED: Make the pan/zoom control (`src/desk/shell/zoom_control.py`'
    established `_FakeWindow`-with-real-`_place_widget` recipe). Full
    `tests/verify/` regression suite passes (87 scripts).
 
-496d685. Double-clicking on empty canvas (outside any placed widget,
+496d685. COMPLETED: Double-clicking on empty canvas (outside any placed widget,
    and outside the pinned hovering UI -- the Desk picker, zoom control,
    temp-UI notifications, and the new lower-left Scratch button from
    TODO `945b086`) should add a new Scratch widget at that point and
@@ -6258,6 +6258,43 @@ e4662a5. COMPLETED: Make the pan/zoom control (`src/desk/shell/zoom_control.py`'
    `945b086` -- do that one first. Prioritized alongside TODO `e4662a5`/
    TODO `945b086`, ahead of the Claude (Desk) widget refinements below.
    [planned: double-click-empty-canvas-scratch.md]
+
+   New `WorkspaceView.mouseDoubleClickEvent` (previously no override
+   existed at all) gates on the same `_hit_test_chrome`/`_frame_at`
+   pair every other canvas-level interaction already uses -- truly
+   empty canvas emits `empty_canvas_double_clicked(scene_pos)`,
+   anything else (chrome, a frame's own content, a non-left button)
+   falls through to `super()` unchanged. `DeskWindow
+   ._on_empty_canvas_double_clicked` calls the shared
+   `_open_focused_scratch` helper from TODO `945b086` with the
+   double-click's scene position as the new widget's top-left corner.
+   No explicit check needed for the pinned HUD widgets (Desk picker,
+   zoom control, new-Scratch button) -- confirmed directly, not just
+   asserted, that a real click at their position is delivered straight
+   to that widget by Qt, never reaching this handler.
+
+   Found during verification: a hand-built `QMouseEvent` handed
+   directly to `view.mouseDoubleClickEvent(...)` (the existing
+   `verify_lock_widgets.py` press/release pattern) never actually
+   reaches a `QGraphicsProxyWidget`-embedded widget's own
+   `mouseDoubleClickEvent` -- the Scratch title label's inline-edit
+   trigger silently never fired with that approach. Switched the new
+   verify script to `QTest.mouseDClick(view.viewport(), ...)`, which
+   goes through Qt's real event-delivery pipeline instead of calling
+   the override directly, and that reaches it correctly. New
+   `tests/verify/verify_double_click_empty_canvas_scratch.py` (12
+   checks). Full `tests/verify/` regression suite passes except two
+   pre-existing, unrelated failures observed in this run
+   (`verify_speech_transcription.py`'s Hub-unreachable timing check,
+   `verify_voice_capture.py`'s real-microphone-capture check) -- both
+   in files this item never touches; the first re-ran clean in
+   isolation (a load-induced timing flake), the second reproduced
+   consistently in isolation too and looks like a real mic
+   hardware/permission issue on this machine rather than test drift
+   per `development-process.md`'s "don't disable for mere
+   inconvenience, only for drift" guidance -- flagged to the user
+   rather than acted on unilaterally, since it's unrelated to this
+   item's scope.
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a

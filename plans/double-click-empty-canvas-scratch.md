@@ -1,4 +1,4 @@
-# Double-click empty canvas to create a focused Scratch (TODO `496d685`)
+# Double-click empty canvas to create a focused Scratch (TODO `496d685`) (COMPLETED)
 
 ## Summary
 
@@ -100,8 +100,15 @@ start landing right where the double-click was.
 
 New script `tests/verify/verify_double_click_empty_canvas_scratch.py`,
 real `WorkspaceView` + `_FakeWindow` (same recipe as TODO `945b086`'s
-plan), no mocking, real `QMouseEvent`s (matching
-`verify_lock_widgets.py`'s existing real-`QMouseEvent` pattern):
+plan), no mocking. Found during implementation: a hand-built
+`QMouseEvent` handed directly to `view.mouseDoubleClickEvent(...)`
+(the pattern `verify_lock_widgets.py` uses for press/release) never
+reaches a `QGraphicsProxyWidget`-embedded widget's own
+`mouseDoubleClickEvent` -- confirmed directly (the Scratch title
+label's inline-edit trigger never fired). `QTest.mouseDClick(view.
+viewport(), ...)`, which goes through Qt's real event-delivery
+pipeline instead of calling the override directly, does reach it
+correctly -- used for every double-click in this script's coverage:
 - Double-clicking truly empty canvas places a new Scratch widget frame
   at (approximately) the click's scene position, with its body
   focused.
@@ -110,9 +117,13 @@ plan), no mocking, real `QMouseEvent`s (matching
 - Double-clicking the Scratch widget's own title label still enters
   its inline-rename edit mode unchanged (regression check for the
   `super()`-forwarding path).
-- Double-clicking on top of the lower-left new-Scratch HUD button
-  (TODO `945b086`) does not create a *second* extra Scratch from the
-  canvas-level handler (only the button's own single-click behavior
-  fires) — confirms the "no explicit exclusion needed" design
-  decision above empirically, not just by assertion.
+- The lower-left new-Scratch HUD button (TODO `945b086`) genuinely
+  shadows the canvas for a real click at its position -- confirmed via
+  `viewport().childAt(...)` resolving to the button itself (the same
+  routing `describe_widget_at_global_pos` already relies on for this
+  trio of HUD widgets), then a real `QTest.mouseDClick` delivered
+  directly to the button confirming its own click behavior still fires
+  and no Scratch gets created from the canvas-level handler — confirms
+  the "no explicit exclusion needed" design decision above
+  empirically, not just by assertion.
 - Full `tests/verify/` regression suite.

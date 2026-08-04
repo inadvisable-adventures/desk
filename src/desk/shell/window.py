@@ -196,6 +196,7 @@ class DeskWindow(QMainWindow):
         self.view.files_dropped.connect(self._on_files_dropped)
         self.view.paste_requested.connect(self._on_paste_requested)
         self.view.new_scratch_requested.connect(self._on_new_scratch_requested)
+        self.view.empty_canvas_double_clicked.connect(self._on_empty_canvas_double_clicked)
         self.view.tempui_promote_requested.connect(self._on_tempui_promote_requested)
         self.view.widget_stale_clicked.connect(self._on_widget_stale_clicked)
         self.view.widget_error_clicked.connect(self._on_widget_error_clicked)
@@ -2150,6 +2151,9 @@ class DeskWindow(QMainWindow):
 
     def _on_new_scratch_requested(self) -> None:
         self._open_focused_scratch()
+
+    def _on_empty_canvas_double_clicked(self, scene_pos: QPointF) -> None:
+        self._open_focused_scratch((scene_pos.x(), scene_pos.y()))
 
     def _on_widget_close_requested(self, frame: WidgetFrame) -> None:
         self.close_widget(frame)
