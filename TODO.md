@@ -6197,6 +6197,7 @@ e4662a5. Make the pan/zoom control (`src/desk/shell/zoom_control.py`'s
    SCALE_EPSILON)`). Prioritized ahead of the Claude (Desk) widget
    refinements below -- basic canvas UX, unrelated to and independent of
    that work.
+   [planned: always-visible-pan-zoom-control.md]
 
 945b086. Add an always-visible button hovering in the Workspace
    Canvas's lower-left corner (matching the always-visible
