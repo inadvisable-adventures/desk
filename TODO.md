@@ -6257,6 +6257,7 @@ e4662a5. COMPLETED: Make the pan/zoom control (`src/desk/shell/zoom_control.py`'
    double-click was. Likely shares placement/focus plumbing with TODO
    `945b086` -- do that one first. Prioritized alongside TODO `e4662a5`/
    TODO `945b086`, ahead of the Claude (Desk) widget refinements below.
+   [planned: double-click-empty-canvas-scratch.md]
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
