@@ -115,3 +115,32 @@ downside of the new widget that might argue for deliberately keeping
 this call site on the old one (e.g. slower on large files); found
 none.)
 
+## TODO `b2ab79f`: how should hardware-dependent regression tests (real microphone capture) actually be integrated?
+
+See `plans/hardware-dependent-regression-tests.md`. Several
+`tests/verify/` scripts start a real `QAudioSource` against the actual
+default microphone (`desk.voice_capture.MicRecorder`) as part of their
+coverage, which was audibly/visibly activating the system mic every
+time the full regression sweep ran. Disabled for now (`disabled_`
+prefix) as an immediate fix, but that's a real coverage gap long-term
+-- this kind of test has caught real bugs before (e.g. TODO `fe7d8f2`).
+
+- Should these just be run occasionally by hand (e.g. before a release,
+  or when touching `desk/voice_capture.py`/`desk/speech.py`/either
+  voice-using widget specifically), and if so, is a `disabled_` prefix
+  the right signal for "run me manually sometimes," or does that read
+  too much like "broken, ignore"? Would a different naming convention
+  (e.g. a `hardware_` prefix, or a separate `tests/verify/hardware/`
+  subdirectory) communicate "opt-in, not broken" better than reusing
+  the failure-oriented `disabled_` convention for a different reason?
+- Is it worth adding a mockable seam to `desk/voice_capture.py` (e.g.
+  an injectable audio-source factory) so most of this coverage could
+  run without the real hardware, keeping only a small, occasional,
+  explicitly-hardware-touching smoke test? `CLAUDE.md` says avoid new
+  dependencies, but this wouldn't need one -- just a seam in code this
+  project already owns.
+- If real-hardware coverage is kept at all, should it require some
+  explicit opt-in (an env var, a CLI flag to a future test runner) so
+  it's *possible* to include in an occasional full run without editing
+  file names back and forth each time?
+

@@ -1,3 +1,10 @@
+# Note: the mic-button test (starts a real MicRecorder capture -- a
+# real QAudioSource against the actual default microphone) was split
+# out to tests/verify/disabled_verify_claude_desk_widget_mic.py and
+# disabled there (TODO b2ab79f) -- it was audibly/visibly activating
+# the system mic during routine regression sweeps. Every test
+# remaining here never touches the microphone and keeps running
+# normally.
 import importlib.util
 import json
 import os
@@ -64,67 +71,6 @@ def load_widget_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def synthesize_pcm(text):
-    """Real macOS text-to-speech -> raw 16kHz mono 16-bit PCM samples,
-    same fixture approach as tests/verify/verify_voice_input_widget
-    .py's own synthesize_pcm (TODO fe7d8f2)."""
-    import subprocess
-    import wave
-
-    with tempfile.TemporaryDirectory() as tmp:
-        wav_path = Path(tmp) / "sample.wav"
-        subprocess.run(
-            ["say", "-o", str(wav_path), "--file-format=WAVE", "--data-format=LEI16@16000", text],
-            check=True,
-        )
-        with wave.open(str(wav_path), "rb") as wf:
-            return wf.readframes(wf.getnframes())
-
-
-def test_mic_button_dictates_into_the_prompt_box_without_sending():
-    """TODO fe7d8f2: a real mic-button click starts a real MicRecorder
-    (desk.voice_capture, shared with widgets/voice_input/widget.py),
-    then injected known synthesized speech (real audio pipeline, same
-    technique tests/verify/verify_voice_input_widget.py already uses)
-    is transcribed and lands in _prompt_input -- confirmed *not*
-    auto-sent (no real Claude session involved in this check at all,
-    so send_prompt firing would be directly observable, not just
-    theoretically possible)."""
-    module = load_widget_module()
-    widget = module.build()
-    sent = []
-    widget._session.send_prompt = lambda text: sent.append(text)
-
-    widget._on_mic_clicked()
-    check("mic button switches to Stop", widget._mic_button.text() == "■")
-    check("prompt input disabled while recording", not widget._prompt_input.isEnabled())
-    check("a real MicRecorder actually started capturing", widget._mic_recorder.is_recording())
-
-    pump(0.5)  # let the real microphone actually deliver some data
-
-    # Override the *content* of what got captured with known,
-    # real synthesized speech, then let stop() do its own real
-    # teardown (stops the real QAudioSource, emits recording_stopped
-    # for real) -- same technique
-    # tests/verify/verify_voice_capture.py's own
-    # _start_then_inject_known_audio uses. Calling
-    # _process_captured_audio() directly instead would skip
-    # recording_stopped entirely, silently leaving the mic button
-    # stuck in its Stop state -- confirmed directly, a real bug this
-    # test caught in its own first draft, not a hypothetical.
-    widget._mic_recorder._captured_chunks = [synthesize_pcm("Testing dictation into Claude Desk")]
-    widget._mic_recorder.stop()
-
-    ok = wait_until(lambda: widget._prompt_input.isEnabled())
-    check("controls re-enable once transcription finishes", ok)
-    check("the dictated text landed in the prompt box", "dictation" in widget._prompt_input.text().lower())
-    check("mic button reverts to Record", widget._mic_button.text() == "●")
-    check("nothing was sent to the session -- the user still has to hit Send", sent == [])
-
-    widget._session.stop()
-    widget.deleteLater()
 
 
 def test_widget_json_is_well_formed():
@@ -417,7 +363,6 @@ def test_window_wiring():
 
 
 test_widget_json_is_well_formed()
-test_mic_button_dictates_into_the_prompt_box_without_sending()
 test_session_fresh_start_and_resume()
 test_tool_permission_gate()
 test_widget_history_and_permission_ui()

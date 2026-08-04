@@ -1,3 +1,16 @@
+# DISABLED (TODO b2ab79f): every test in this file starts a real
+# MicRecorder capture (a real QAudioSource against the actual default
+# microphone), which was audibly/visibly activating the system mic
+# during routine regression sweeps -- not a failure, not drift, just
+# an unwanted side effect of running this file automatically. Left
+# disabled until TODO b2ab79f decides how hardware-using regression
+# coverage like this should actually be integrated (run occasionally
+# by hand, mock the QAudioSource/QIODevice layer, or some combination)
+# rather than always running as part of the normal sweep. Still a
+# real, working, non-mocked test of desk.voice_capture.MicRecorder --
+# run it directly (`.venv/bin/python3
+# tests/verify/disabled_verify_voice_capture.py`) when you want that
+# coverage.
 import os
 import subprocess
 import sys

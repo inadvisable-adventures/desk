@@ -6407,3 +6407,20 @@ ed5c62f. De-prioritized (moved to the end of the queue on request --
    (a `QTreeWidget`-style structured view, or `QTextEdit` with
    clickable custom text objects) rather than staying on today's
    single flat plain-text log; not designed yet.
+
+b2ab79f. PENDING: Figure out how to properly integrate regression tests that
+   use real system hardware -- specifically, several `tests/verify/`
+   scripts start a real `MicRecorder` capture
+   (`src/desk/voice_capture.py`, a real `QAudioSource` against the
+   actual default microphone) as part of their coverage
+   (`disabled_verify_voice_capture.py`,
+   `disabled_verify_voice_input_widget_mic.py`,
+   `disabled_verify_claude_desk_widget_mic.py` -- see their own
+   top-of-file comments). Running these automatically as part of every
+   regression sweep was audibly/visibly activating the system mic each
+   time, which isn't wanted -- disabled (the standard `disabled_`
+   prefix convention) for now. Still worth being able to run this kind
+   of coverage occasionally by hand rather than losing it outright, so
+   this needs a real decision, not just leaving it disabled forever --
+   see `QUESTIONS.md` for the open questions.
+   [planned: hardware-dependent-regression-tests.md]
