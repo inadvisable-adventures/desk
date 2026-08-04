@@ -6189,6 +6189,33 @@ e1f6391. COMPLETED: Add the ability to queue messages in the Claude (Desk) widge
    real-network/API hiccup, not a logic bug; the passing re-run is what
    these checks reflect. Full `tests/verify/` regression suite passes.
 
+e4662a5. Make the pan/zoom control (`src/desk/shell/zoom_control.py`'s
+   `ZoomControl`, a HUD floating over the Workspace Canvas's lower-right
+   corner) always visible, instead of only appearing when the canvas is
+   at non-unity zoom (`WorkspaceView._on_scale_changed`'s current
+   `self.zoom_control.setVisible(abs(self._scale - 1.0) >
+   SCALE_EPSILON)`). Prioritized ahead of the Claude (Desk) widget
+   refinements below -- basic canvas UX, unrelated to and independent of
+   that work.
+
+945b086. Add an always-visible button hovering in the Workspace
+   Canvas's lower-left corner (matching the always-visible
+   `DeskPicker`/`ZoomControl` pinned-HUD pattern in
+   `src/desk/shell/canvas.py`) that adds a new Scratch widget
+   (`SCRATCH_WIDGET_ID`) in the middle of the current viewport and
+   focuses it, so typing goes directly into the new Scratch without an
+   extra click. Prioritized alongside TODO `e4662a5`, ahead of the
+   Claude (Desk) widget refinements below.
+
+496d685. Double-clicking on empty canvas (outside any placed widget,
+   and outside the pinned hovering UI -- the Desk picker, zoom control,
+   temp-UI notifications, and the new lower-left Scratch button from
+   TODO `945b086`) should add a new Scratch widget at that point and
+   focus it, so typed characters land directly starting where the
+   double-click was. Likely shares placement/focus plumbing with TODO
+   `945b086` -- do that one first. Prioritized alongside TODO `e4662a5`/
+   TODO `945b086`, ahead of the Claude (Desk) widget refinements below.
+
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
    single-line `QLineEdit`) a multi-line box that wraps text instead,
