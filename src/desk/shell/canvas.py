@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
 )
 
 from desk.shell.desk_picker import DeskPicker
+from desk.shell.new_scratch_button import NewScratchButton
 from desk.shell.qt_utils import deferred
 from desk.shell.temp_ui_notifications import TempUiNotificationStack
 from desk.shell.widget_frame import (
@@ -49,6 +50,7 @@ POPUP_Z_BASE = 1_000_000.0
 ZOOM_CONTROL_MARGIN = 12
 DESK_PICKER_MARGIN = 12
 TEMP_UI_NOTIFICATIONS_MARGIN = 12
+NEW_SCRATCH_BUTTON_MARGIN = 12
 
 # Chrome buttons handled as an ordinary click (press-then-release-on
 # -the-same-button), not a drag -- see _hit_test_chrome/mousePressEvent/
@@ -96,6 +98,7 @@ class WorkspaceView(QGraphicsView):
     widget_stale_clicked = pyqtSignal(WidgetFrame)  # TODO 3e2c4f2
     widget_error_clicked = pyqtSignal(WidgetFrame)  # TODO d4d6c71
     popup_closed = pyqtSignal(WidgetFrame)  # TODO 359684f: a popup's close (X) button
+    new_scratch_requested = pyqtSignal()  # TODO 945b086: the lower-left hover button clicked
 
     def __init__(self, parent=None) -> None:
         super().__init__(QGraphicsScene(parent), parent)
@@ -155,6 +158,10 @@ class WorkspaceView(QGraphicsView):
 
         self.temp_ui_notifications = TempUiNotificationStack(self.viewport())
         self._position_temp_ui_notifications()
+
+        self.new_scratch_button = NewScratchButton(self.viewport())
+        self.new_scratch_button.clicked.connect(self.new_scratch_requested)
+        self._position_new_scratch_button()
 
     def add_widget(
         self,
@@ -326,6 +333,7 @@ class WorkspaceView(QGraphicsView):
         self._position_zoom_control()
         self._position_desk_picker()
         self._position_temp_ui_notifications()
+        self._position_new_scratch_button()
 
     def scrollContentsBy(self, dx: int, dy: int) -> None:
         """Panning (and, less obviously, zoom operations that re-center the
@@ -359,6 +367,22 @@ class WorkspaceView(QGraphicsView):
             self._position_zoom_control()
         if hasattr(self, "temp_ui_notifications"):
             self._position_temp_ui_notifications()
+        if hasattr(self, "new_scratch_button"):
+            self._position_new_scratch_button()
+
+    def _position_new_scratch_button(self) -> None:
+        """Same reasoning/shape as _position_desk_picker (bottom-left
+        anchor instead of top-left) -- also needs the scrollContentsBy
+        treatment above, same as every other pinned viewport-child HUD
+        widget (TODO 82d66c0)."""
+
+        def _apply() -> None:
+            hint = self.new_scratch_button.sizeHint()
+            y = self.viewport().height() - hint.height() - NEW_SCRATCH_BUTTON_MARGIN
+            self.new_scratch_button.move(NEW_SCRATCH_BUTTON_MARGIN, max(0, y))
+            self.new_scratch_button.resize(hint)
+
+        QTimer.singleShot(0, _apply)
 
     def _position_desk_picker(self) -> None:
         """Reasserts the Desk picker's fixed top-left position -- a

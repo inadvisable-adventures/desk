@@ -195,6 +195,7 @@ class DeskWindow(QMainWindow):
         self.view.widget_close_requested.connect(self._on_widget_close_requested)
         self.view.files_dropped.connect(self._on_files_dropped)
         self.view.paste_requested.connect(self._on_paste_requested)
+        self.view.new_scratch_requested.connect(self._on_new_scratch_requested)
         self.view.tempui_promote_requested.connect(self._on_tempui_promote_requested)
         self.view.widget_stale_clicked.connect(self._on_widget_stale_clicked)
         self.view.widget_error_clicked.connect(self._on_widget_error_clicked)
@@ -2132,6 +2133,23 @@ class DeskWindow(QMainWindow):
         if widget is None:
             return
         self._place_widget(widget_id, widget, (scene_pos.x(), scene_pos.y()), widget.default_size)
+
+    def _open_focused_scratch(self, pos: tuple[float, float] | None = None) -> None:
+        """Places a new Scratch widget -- centered in the current
+        viewport if pos is None, otherwise with its top-left corner at
+        pos -- and immediately focuses its body, so typed characters go
+        straight into it. Shared by the always-visible lower-left
+        Scratch button (TODO 945b086) and double-clicking empty canvas
+        (TODO 496d685)."""
+        if pos is None:
+            content = self.open_widget_content_centered(SCRATCH_WIDGET_ID)
+        else:
+            content = self.open_widget_content(SCRATCH_WIDGET_ID, pos=pos)
+        if content is not None:
+            content.body.setFocus(Qt.FocusReason.MouseFocusReason)
+
+    def _on_new_scratch_requested(self) -> None:
+        self._open_focused_scratch()
 
     def _on_widget_close_requested(self, frame: WidgetFrame) -> None:
         self.close_widget(frame)

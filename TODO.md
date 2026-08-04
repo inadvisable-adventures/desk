@@ -6218,7 +6218,7 @@ e4662a5. COMPLETED: Make the pan/zoom control (`src/desk/shell/zoom_control.py`'
    `tests/verify/verify_zoom_control_always_visible.py` (3 checks).
    Full `tests/verify/` regression suite passes (86 scripts).
 
-945b086. Add an always-visible button hovering in the Workspace
+945b086. COMPLETED: Add an always-visible button hovering in the Workspace
    Canvas's lower-left corner (matching the always-visible
    `DeskPicker`/`ZoomControl` pinned-HUD pattern in
    `src/desk/shell/canvas.py`) that adds a new Scratch widget
@@ -6227,6 +6227,27 @@ e4662a5. COMPLETED: Make the pan/zoom control (`src/desk/shell/zoom_control.py`'
    extra click. Prioritized alongside TODO `e4662a5`, ahead of the
    Claude (Desk) widget refinements below.
    [planned: new-scratch-hover-button.md]
+
+   New `src/desk/shell/new_scratch_button.py` (`NewScratchButton`, a
+   plain `QLabel` child of the viewport matching `DeskPicker`'s
+   `_ClickableLabel` shape) constructed and always shown in
+   `WorkspaceView.__init__` alongside the other three pinned HUD
+   widgets, positioned bottom-left via the same deferred
+   `singleShot(0)` pattern the others use (reasserted from
+   `resizeEvent`/`scrollContentsBy`). New `DeskWindow
+   ._open_focused_scratch(pos=None)` -- centered when `pos` is `None`,
+   otherwise placed with that top-left corner -- calls
+   `content.body.setFocus(Qt.FocusReason.MouseFocusReason)` on the
+   result, confirmed via `QGraphicsScene.focusItem()` actually
+   reflecting the new widget's proxy (not just trusting the
+   `setFocus()` call). Written to take an optional `pos` from the
+   start so TODO `496d685` (double-click empty canvas) can reuse it
+   directly. `QLabel`'s default focus policy (`NoFocus`) meant this
+   button needed no fix for the same focus-stealing issue TODO
+   `e4662a5` hit with `ZoomControl`'s buttons/slider. New
+   `tests/verify/verify_new_scratch_button.py` (6 checks, using the
+   established `_FakeWindow`-with-real-`_place_widget` recipe). Full
+   `tests/verify/` regression suite passes (87 scripts).
 
 496d685. Double-clicking on empty canvas (outside any placed widget,
    and outside the pinned hovering UI -- the Desk picker, zoom control,

@@ -1,4 +1,4 @@
-# Always-visible lower-left "new Scratch" hover button (TODO `945b086`)
+# Always-visible lower-left "new Scratch" hover button (TODO `945b086`) (COMPLETED)
 
 ## Summary
 
