@@ -6189,7 +6189,7 @@ e1f6391. COMPLETED: Add the ability to queue messages in the Claude (Desk) widge
    real-network/API hiccup, not a logic bug; the passing re-run is what
    these checks reflect. Full `tests/verify/` regression suite passes.
 
-e4662a5. Make the pan/zoom control (`src/desk/shell/zoom_control.py`'s
+e4662a5. COMPLETED: Make the pan/zoom control (`src/desk/shell/zoom_control.py`'s
    `ZoomControl`, a HUD floating over the Workspace Canvas's lower-right
    corner) always visible, instead of only appearing when the canvas is
    at non-unity zoom (`WorkspaceView._on_scale_changed`'s current
@@ -6198,6 +6198,25 @@ e4662a5. Make the pan/zoom control (`src/desk/shell/zoom_control.py`'s
    refinements below -- basic canvas UX, unrelated to and independent of
    that work.
    [planned: always-visible-pan-zoom-control.md]
+
+   Removed the `.hide()`/conditional `setVisible(...)` entirely (and
+   the now-unused `SCALE_EPSILON` constant) -- `ZoomControl` is now
+   constructed and shown the same always-on way `DeskPicker` already
+   is. Found a real regression along the way (not anticipated by the
+   plan): making it always visible let its "Fit"/"100%" `QPushButton`s
+   and its `QSlider` -- all keyboard-focusable by default -- steal
+   real application focus the moment `view.show()` ran (Qt's automatic
+   "focus the first focusable widget" behavior), which broke
+   `WorkspaceView`'s own scene-focus tracking for every widget's
+   content afterward. Confirmed directly (`app.focusWidget()` was the
+   `QPushButton`, not the canvas) and caught immediately by the
+   existing `verify_widget_focus.py`/`verify_trap_widget_tab_focus.py`
+   regression coverage before it ever reached a commit. Fixed by
+   giving those three inner controls `Qt.FocusPolicy.NoFocus` --
+   this HUD is mouse-only by design already, so it never needed
+   keyboard focus in the first place. New
+   `tests/verify/verify_zoom_control_always_visible.py` (3 checks).
+   Full `tests/verify/` regression suite passes (86 scripts).
 
 945b086. Add an always-visible button hovering in the Workspace
    Canvas's lower-left corner (matching the always-visible

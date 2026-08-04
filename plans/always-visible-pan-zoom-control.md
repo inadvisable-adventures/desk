@@ -1,4 +1,4 @@
-# Make the pan/zoom control always visible (TODO `e4662a5`)
+# Make the pan/zoom control always visible (TODO `e4662a5`) (COMPLETED)
 
 ## Summary
 
@@ -65,6 +65,25 @@ pattern (`src/desk/shell/canvas.py`), which never hide.
   one, so there's no real tradeoff surface. The one minor UX
   consideration (a small always-on HUD in the corner at 100% zoom,
   where it wasn't visible before) is exactly what was requested.
+
+## Found during implementation
+
+Making `ZoomControl` always visible surfaced a real regression, caught
+by the existing `verify_widget_focus.py`/`verify_trap_widget_tab_focus.py`
+regression coverage (not anticipated by this plan): `ZoomControl`'s
+"Fit"/"100%" `QPushButton`s and its `QSlider` are keyboard-focusable by
+default (`Qt.FocusPolicy.StrongFocus`), and while the control was
+hidden this never mattered -- a hidden widget can't hold focus. Once
+always visible, `view.show()`'s automatic "give focus to the first
+focusable widget" behavior handed real application focus to the "Fit"
+button instead of the canvas, which broke
+`WorkspaceView._on_scene_focus_item_changed`'s tracking for every
+subsequent `setFocus()` call on embedded widget content (confirmed
+directly: `app.focusWidget()` was the `QPushButton`, not the
+`WorkspaceView`, right after `.show()`). Fixed by giving the three
+inner controls `Qt.FocusPolicy.NoFocus` in `zoom_control.py` -- this
+HUD is mouse-only by design already (same spirit as `DeskPicker`'s
+`NoTextInteraction` labels), so it never needs to hold keyboard focus.
 
 ## Verification
 

@@ -49,7 +49,6 @@ POPUP_Z_BASE = 1_000_000.0
 ZOOM_CONTROL_MARGIN = 12
 DESK_PICKER_MARGIN = 12
 TEMP_UI_NOTIFICATIONS_MARGIN = 12
-SCALE_EPSILON = 1e-6
 
 # Chrome buttons handled as an ordinary click (press-then-release-on
 # -the-same-button), not a drag -- see _hit_test_chrome/mousePressEvent/
@@ -149,7 +148,6 @@ class WorkspaceView(QGraphicsView):
         self.zoom_control.fit_requested.connect(self.zoom_to_fit)
         self.zoom_control.reset_requested.connect(self.reset_zoom)
         self.zoom_control.zoom_changed.connect(self._apply_zoom_centered)
-        self.zoom_control.hide()
         self._position_zoom_control()
 
         self.desk_picker = DeskPicker(self.viewport())
@@ -402,12 +400,13 @@ class WorkspaceView(QGraphicsView):
 
     def _position_zoom_control(self) -> None:
         """Deferred via singleShot(0), same reasoning and same confirmed
-        bug as _position_desk_picker: the control starts hidden and only
-        becomes visible later (the first time zoom leaves 1.0x), so its
-        first real visible position isn't confirmed correct until that
-        moment -- confirmed directly that it's stale then without this
-        deferral, for the identical reason the Desk picker was. See
-        plans/fix-zoom-control-positioning.md."""
+        bug as _position_desk_picker: a recurring internal Qt layout
+        pass (plausibly QGraphicsView's own scrollbar/viewport geometry
+        recalculation) silently displaces this manually-positioned,
+        non-layout-managed child widget on every resize, including the
+        first one at initial .show() -- confirmed directly that it's
+        stale without this deferral, for the identical reason the Desk
+        picker was. See plans/fix-zoom-control-positioning.md."""
 
         def _apply() -> None:
             hint = self.zoom_control.sizeHint()
@@ -896,4 +895,3 @@ class WorkspaceView(QGraphicsView):
         for frame in self._popup_frames:
             frame.set_view_scale(self._scale)
         self.zoom_control.set_zoom(self._scale)
-        self.zoom_control.setVisible(abs(self._scale - 1.0) > SCALE_EPSILON)
