@@ -164,7 +164,17 @@ SHARED_COMPONENTS_DIRNAME = "shared-components"
 # text also updated to note that whether a component recommends
 # importing it as a separate file vs. copying its source directly
 # depends on the component (see that section's own explanation).
-TEMPUI_DOC_VERSION = 26
+#
+# TODO e42469e: bumped 26 -> 27 -- "The Desk Bridge API" section's
+# claim that no browser storage persists a kind:"html" widget's page
+# across a reload/Desk restart was true when written but went stale
+# once TODO a5f66cc gave each widget instance its own persistent
+# QWebEngineProfile; corrected to state that real per-instance storage
+# does persist now, while still recommending getLocalStorage/
+# setLocalStorage (its data lives in the portable .desk file, unlike
+# the newer per-instance storage, which is .desk_temp-scoped and
+# deleted with the widget instance).
+TEMPUI_DOC_VERSION = 27
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -656,13 +666,19 @@ A `DefineWidget` widget's HTML document runs inside a real embedded
 browser page with one extra thing every other web page doesn't have:
 `window.desk`, a small JS client automatically injected before your
 own code runs. It's how your widget talks back to Desk itself —
-notably, **it's the only way to persist your widget's own state
-across a Desk reload** (there is no other storage available — no
-`localStorage`/`IndexedDB`/cookies persist a Chromium widget's page
-across a reload the way you might expect from an ordinary browser tab,
-and even if they did, they wouldn't survive the *page* itself
-reloading on every Desk restart the way `window.desk.self
-.getLocalStorage()` is specifically designed to).
+notably, **it's the recommended way to persist your widget's own
+state across a Desk reload**: `window.desk.self.getLocalStorage()`
+/`.setLocalStorage()`'s data lives inside the project's own `.desk`
+file, so it travels with the project (copy/share the `.desk` file and
+your widget's saved state comes with it). Each instance's page *does*
+also get its own real, persistent browser storage now (cookies,
+`localStorage`, `IndexedDB` — a separate profile per widget instance,
+under `.desk_temp/`), so it's no longer true that nothing else
+persists — but that storage is tied to this specific project checkout
+(not portable the way the `.desk` file is) and is deleted outright the
+moment the widget instance is permanently removed from the canvas.
+Prefer `getLocalStorage`/`setLocalStorage` for anything you actually
+want to keep.
 
 All calls are `async` (they return a `Promise`):
 
@@ -943,6 +959,22 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 27
+- "The Desk Bridge API" section's storage guidance corrected:
+  previously stated flatly that no browser storage (cookies,
+  `localStorage`, `IndexedDB`) persists a `kind: "html"` widget's page
+  across a reload or a Desk restart, and that
+  `getLocalStorage`/`setLocalStorage` was the *only* way to persist
+  state. That's no longer accurate -- each widget instance now gets
+  its own real, persistent browser profile, so that storage does
+  survive a reload/restart for as long as the instance stays placed.
+  `getLocalStorage`/`setLocalStorage` is still the *recommended*
+  mechanism, though: its data lives in the project's own `.desk` file
+  (portable -- travels if the file is copied/shared), unlike the
+  per-instance profile storage, which is tied to this specific
+  project checkout and is deleted outright the moment the widget
+  instance is permanently removed.
 
 ## Version 26
 - `.desk_temp/build_widget.py` now concatenates a multi-file widget's

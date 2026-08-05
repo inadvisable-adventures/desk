@@ -1,4 +1,4 @@
-# Fix stale storage-persistence claim in the tempui doc set (TODO `e42469e`)
+# Fix stale storage-persistence claim in the tempui doc set (TODO `e42469e`) (COMPLETED)
 
 ## Summary
 

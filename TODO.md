@@ -6668,7 +6668,7 @@ a5f66cc. COMPLETED: Fix `kind: "html"` widgets' sub-resource requests (`<script
    item touched given the non-deterministic nature of the crash it
    fixed.
 
-e42469e. Fix a now-stale claim in the tempui doc set (`src/desk/temp_ui.py`'s
+e42469e. COMPLETED: Fix a now-stale claim in the tempui doc set (`src/desk/temp_ui.py`'s
    `_CUSTOM_WIDGETS_DOC`, materialized as `tempui-custom-widgets.md` --
    the docs shown to Claude/agent instances working *inside*
    Desk-managed projects, not Desk's own internal `design-docs/`).
@@ -6698,3 +6698,28 @@ e42469e. Fix a now-stale claim in the tempui doc set (`src/desk/temp_ui.py`'s
    the summary above yet -- the actual replacement wording, and the
    version-bump/changelog-entry mechanics, are TODO for the plan.
    [planned: tempui-doc-storage-claim-fix.md]
+
+   Rewrote `_CUSTOM_WIDGETS_DOC`'s "The Desk Bridge API" storage
+   paragraph: `getLocalStorage`/`setLocalStorage` is still framed as
+   the *recommended* mechanism (its data lives in the portable `.desk`
+   file), while now correctly stating that each widget instance's page
+   also gets real, persistent browser storage (cookies/`localStorage`/
+   `IndexedDB`, per TODO `a5f66cc`'s per-instance `QWebEngineProfile`)
+   -- explicitly noting that storage is `.desk_temp`-scoped and deleted
+   with the widget instance, unlike the portable, recommended path.
+   Bumped `TEMPUI_DOC_VERSION` 26 -> 27 with a matching comment block
+   and a new `## Version 27` entry in `_NEW_FEATURES_DOC`. Deliberately
+   did *not* add documentation about the auth-cookie mechanism itself
+   -- confirmed the only widget-authoring path available to an
+   in-project agent (`DefineWidget`) is always single-inlined-file and
+   never hits the bug that cookie fixes, so nothing about it is
+   actionable from inside this doc set until the still-parked
+   `PARKINGLOT.md` "reconsider single-inlined-file requirement"
+   follow-up lands. New
+   `tests/verify/verify_tempui_storage_claim_fix.py` (15 checks: the
+   version bump, the stale claim's removal, `getLocalStorage` still
+   recommended with correct reasoning, the new storage correctly
+   scoped/caveated, the new-features entry, and
+   `ensure_docs_current`'s stale-doc rewrite path still working
+   correctly against the new version). Full `tests/verify/`
+   regression suite passes (89 scripts, 0 failures).
