@@ -1,4 +1,4 @@
-# Add pypdf as an optional dependency (TODO `742ba0a`)
+# Add pypdf as an optional dependency (TODO `742ba0a`) (COMPLETED)
 
 ## Summary
 

@@ -20,6 +20,19 @@ dependencies = [
     "claude-agent-sdk",
 ]
 
+# Optional extras, each for a narrow, format-specific capability a
+# kind:"python" transform might need. These are here (rather than left
+# to whichever project's transform actually imports them) only because
+# transforms run in-process (desk_services/transforms/service.py) --
+# a project-level dependency isn't possible for them. Each entry here
+# is provisional against PARKINGLOT.md's parked "file/stream format
+# DSL" direction (a declarative, format-agnostic alternative) -- that
+# direction isn't near-term (it needs "DSL" formalized as a general
+# concept first), so treat these as long-lived, not imminently
+# temporary, but still worth removing if that direction ever lands.
+[project.optional-dependencies]
+pdf = ["pypdf"]
+
 [project.scripts]
 desk = "desk.app:main"
 

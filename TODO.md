@@ -6494,7 +6494,7 @@ e6ea1db. Investigate approaches to running Desk in a way that better
    isolates it -- e.g. not giving it full access to absolute paths or
    system calls, etc. Not designed/scoped yet.
 
-742ba0a. Add pypdf as an optional Desk dependency (a `desk[pdf]`
+742ba0a. COMPLETED: Add pypdf as an optional Desk dependency (a `desk[pdf]`
    extra), explicitly framed as a provisional stopgap for PDF
    structural parsing (e.g. outline/bookmark extraction) needed by
    `kind: "python"` transforms, which run in-process
@@ -6514,3 +6514,19 @@ e6ea1db. Investigate approaches to running Desk in a way that better
    more general alternative that was discussed and deliberately not
    pursued now.
    [planned: pypdf-optional-dependency.md]
+
+   Added `[project.optional-dependencies]` to `pyproject.toml`
+   (`pdf = ["pypdf"]`), with a comment above it explaining the
+   provisional framing and pointing at the parked DSL direction. No
+   other code changes -- there is no PDF-handling transform or widget
+   in this repo itself; the actual consumer is a different project
+   authoring its own transform. Installed via `.venv/bin/pip install
+   -e ".[pdf]"` and confirmed `pypdf` (6.14.2) imports and exposes
+   `PdfReader.get_destination_page_number`, the outline-resolution API
+   the motivating use case needs. New
+   `tests/verify/verify_pypdf_optional_dependency.py` (6 checks: the
+   extra is declared correctly, `pypdf` is not in the base
+   always-installed dependency list, and the real import/API checks
+   above). Full `tests/verify/` regression suite passes (87 scripts).
+   The subprocess-isolated-dependencies alternative is recorded
+   separately in `PARKINGLOT.md`.
