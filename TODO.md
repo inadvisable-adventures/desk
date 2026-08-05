@@ -6593,3 +6593,4 @@ a5f66cc. Fix `kind: "html"` widgets' sub-resource requests (`<script
      framing, worth calling out explicitly wherever `.desk_temp/`'s
      general disposability is documented, not left to look like an
      oversight.
+   [planned: kind-html-auth-token-and-profile-isolation.md]
