@@ -6530,3 +6530,66 @@ e6ea1db. Investigate approaches to running Desk in a way that better
    above). Full `tests/verify/` regression suite passes (87 scripts).
    The subprocess-isolated-dependencies alternative is recorded
    separately in `PARKINGLOT.md`.
+
+a5f66cc. Fix `kind: "html"` widgets' sub-resource requests (`<script
+   src>`, `<link href>`, CSS `url(...)`, `<img src>`, etc.) losing the
+   per-launch auth token, which silently 401s and aborts the
+   module/resource graph with no console output -- the root cause
+   found investigating `widgets/hex_flower`'s blank page (TODO
+   `4ab5875`, `DESK_FEEDBACK-2026-07-13T012144.md`) and independently
+   cited by `../FEEDBACK/FEEDBACK-DESK-widget-extraction-communication-gaps-2026-08-03-1634.md`
+   as the top blocker for splitting any multi-component app into
+   widgets. Moved out of its `PARKINGLOT.md` cluster (via TODO
+   `feff1ec`'s review, see `investigations/feedback_review.md`) now
+   that it has an agreed design -- the remaining items in that cluster
+   (visible failure signal, reconsidering `DefineWidget`'s
+   single-inlined-file requirement, a known-good template, doc
+   coverage of what does/doesn't work yet, debugging guidance) stay
+   parked as follow-ups sequenced after this lands.
+
+   Decided in discussion with the user:
+   - **Fix**: a same-origin cookie carrying the token, set on the
+     widget's main-page response (which already carries the token as
+     a query param) -- additive to the existing query-param/
+     `X-Desk-Token`-header checks in `TokenAuthMiddleware`
+     (`src/desk/server/app.py`), not replacing them.
+   - **Folded in: per-instance `QWebEngineProfile` isolation.**
+     `ChromiumWidget` (`src/desk/shell/chromium_widget.py`) currently
+     uses Qt's shared default profile for every `kind: "html"` widget
+     instance -- confirmed no `QWebEngineProfile` is constructed
+     anywhere in the codebase today. Since cookies aren't port-scoped
+     (RFC 6265 scopes by host+path, not port) and Desk's per-launch
+     port changes but its host doesn't, a cookie on the shared default
+     profile would end up shared across every widget instance on the
+     origin and would persist indefinitely in Qt's on-disk persistent
+     cookie jar across separate Desk launches. Giving each
+     `ChromiumWidget` instance its own persistent profile under
+     `.desk_temp/chromium-profiles/<instance_id>/` (`instance_id` is
+     already the stable, restart-surviving identity
+     `desk.self.getLocalStorage` relies on) scopes the token cookie
+     -- and all other browser storage/cache -- to just that instance,
+     and extends `architecture.md`'s existing "each `kind: "html"`
+     widget is its own isolated renderer process" claim down to the
+     storage layer too, rather than leaving that claim undermined by a
+     profile every instance actually shares today.
+   - **`widgets/browser/widget.py`'s `BrowserWidget` is unaffected.**
+     It's a structurally separate `kind: "python"` widget that owns
+     its own plain `QWebEngineView()` directly, not built on
+     `ChromiumWidget` -- confirmed directly, not assumed. It keeps
+     using Qt's default profile (real persisted logins/cookies for
+     actual web browsing) exactly as today.
+   - **Cleanup**: closing a widget instance for good
+     (`DeskWindow.close_widget`) should delete its profile directory;
+     switching Desks (`WorkspaceView.clear_widgets`) must not -- a
+     widget merely removed from the canvas temporarily (not
+     permanently closed) needs its profile intact for when that Desk
+     reopens.
+   - Note for whoever picks this up: `.desk_temp/`'s established
+     convention elsewhere in this doc set is "fully disposable,
+     regenerable on demand" -- real per-widget browser storage
+     (cookies/localStorage a widget's own JS or an external service
+     might set) is not regenerable the same way, so
+     `.desk_temp/chromium-profiles/` is a deliberate exception to that
+     framing, worth calling out explicitly wherever `.desk_temp/`'s
+     general disposability is documented, not left to look like an
+     oversight.

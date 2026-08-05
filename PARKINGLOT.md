@@ -396,26 +396,11 @@ This file captures thoughts and TODO items that arise during work on other thing
 
   A cluster of related findings/suggestions from
   `DESK_FEEDBACK-2026-07-13T012144.md` (TODO `4ab5875`, investigating
-  `widgets/hex_flower`'s blank page):
+  `widgets/hex_flower`'s blank page). The root-cause fix itself (a
+  same-origin cookie, plus documenting the token requirement) is now
+  TODO `a5f66cc` -- moved out of this list; the remaining items below
+  are follow-ups sequenced after that fix lands:
 
-  - **Root cause: relative-path sub-resource requests lose the auth
-    token.** A widget's main page is loaded with the per-launch token
-    as a query parameter, but a plain relative-path browser reference
-    (`<script src>`, `<link href>`, CSS `url(...)`, `<img src>`) does
-    not carry that query string forward, and a native resource tag
-    can't attach a custom header either -- so every such sub-resource
-    request arrives at `TokenAuthMiddleware` with no credential and
-    gets `401`'d, silently aborting the module/resource graph with no
-    console output. This affects any `kind: "html"` widget built as an
-    ordinary multi-file web project; only tempui `DefineWidget`
-    widgets avoid it today, as a side effect of being forced into one
-    inlined HTML file (TODO `91b3f42`), not because anyone
-    intentionally avoided the bug. Suggested fix: a same-origin cookie
-    set when a widget's main page is served, alongside (not replacing)
-    the existing query-param/`X-Desk-Token`-header checks -- cookies
-    are the one credential mechanism a browser attaches automatically
-    to every same-origin request, including plain `<script src>`/
-    `<link href>` loads. Not designed/implemented yet.
   - **Reconsider `DefineWidget`'s single-inlined-file requirement,
     once the above is fixed.** Inlining everything into one
     base64-encoded HTML document is convenient for an agent to author
@@ -440,15 +425,6 @@ This file captures thoughts and TODO items that arise during work on other thing
     building something like `hex_flower` a template to diff against,
     rather than discovering gaps like the one above the hard way after
     already doing a real port of an existing project.
-  - **Document the auth-token requirement for a widget's own asset
-    requests.** `design-docs/architecture.md`'s description of `kind:
-    "html"` widgets doesn't mention the auth token at all. It should
-    state plainly that every request the browser makes for a widget's
-    own page -- not just the top-level navigation -- must carry the
-    per-launch token, and that ordinary relative-path resource
-    references do not carry the token forward and will be rejected, so
-    a widget with more than one file won't load until the underlying
-    gap above is fixed.
   - **No single doc lays out what does/doesn't work yet** for a `kind:
     "html"` widget built from scratch (as opposed to a tempui
     `DefineWidget` single-file widget) -- e.g. "single self-contained
