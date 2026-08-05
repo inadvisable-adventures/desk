@@ -6493,3 +6493,24 @@ f165b8c. Investigate options for running Desk jobs on cloud VMs, given
 e6ea1db. Investigate approaches to running Desk in a way that better
    isolates it -- e.g. not giving it full access to absolute paths or
    system calls, etc. Not designed/scoped yet.
+
+742ba0a. Add pypdf as an optional Desk dependency (a `desk[pdf]`
+   extra), explicitly framed as a provisional stopgap for PDF
+   structural parsing (e.g. outline/bookmark extraction) needed by
+   `kind: "python"` transforms, which run in-process
+   (`desk_services/transforms/service.py`'s `_load_transform_module`/
+   `_run_python`) and so cannot bring their own project-level
+   dependencies -- the dependency has to live in Desk's own
+   `pyproject.toml` or nowhere. From
+   `../FEEDBACK/FEEDBACK-DESK-pypdf-optional-dependency-as-stopgap-2026-08-04-1535.md`
+   (via TODO `feff1ec`'s review). Decided in discussion with the user:
+   add it now as an optional extra (not a hard dependency), labeled as
+   provisional against `PARKINGLOT.md`'s
+   parked "file/stream format DSL" direction -- though that direction
+   is itself gated behind formalizing "DSL" as a general concept
+   first, so in practice this should be expected to stick around for a
+   while, not treated as imminently temporary. See also the parking
+   -lot entry for subprocess-isolated transform dependencies -- the
+   more general alternative that was discussed and deliberately not
+   pursued now.
+   [planned: pypdf-optional-dependency.md]
