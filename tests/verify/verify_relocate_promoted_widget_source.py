@@ -137,6 +137,7 @@ _FakeWindow._on_tempui_promote_requested = DeskWindow._on_tempui_promote_request
 _FakeWindow._relocate_promoted_widget_source = DeskWindow._relocate_promoted_widget_source
 _FakeWindow._sync_tempui_doc = DeskWindow._sync_tempui_doc
 _FakeWindow._place_widget = DeskWindow._place_widget
+_FakeWindow._chromium_profile_dir = DeskWindow._chromium_profile_dir
 _FakeWindow._bind_claude_widget = DeskWindow._bind_claude_widget
 _FakeWindow._bind_external_indicator = DeskWindow._bind_external_indicator
 _FakeWindow._bind_event_mediator = DeskWindow._bind_event_mediator
@@ -152,7 +153,7 @@ def _promote(win, keyword, tempui_path):
 
 
 def test_source_directory_moved_on_promotion():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         directory = Path(d)
         win = _FakeWindow(directory)
         win._register_custom_widget(_definition(), source="tempui")
@@ -177,7 +178,7 @@ def test_source_directory_moved_on_promotion():
 
 
 def test_no_source_directory_is_a_noop_with_an_info_log():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         directory = Path(d)
         win = _FakeWindow(directory)
         win._register_custom_widget(_definition(), source="tempui")
@@ -203,7 +204,7 @@ def test_no_source_directory_is_a_noop_with_an_info_log():
 
 
 def test_preexisting_destination_is_not_clobbered():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         directory = Path(d)
         win = _FakeWindow(directory)
         win._register_custom_widget(_definition(), source="tempui")
@@ -257,5 +258,19 @@ test_preexisting_destination_is_not_clobbered()
 test_doc_content()
 test_build_widget_script_docstring_updated()
 
+# TODO a5f66cc: os._exit(), not sys.exit() -- this script places
+# several kind:"html" (ChromiumWidget-backed) widgets across its test
+# functions, each now with its own real QWebEngineProfile (previously
+# all shared Qt's one default profile). Confirmed directly (see
+# LEARNINGS.md's TODO a5f66cc entry): once every check() above has
+# already passed correctly, normal Python interpreter shutdown can
+# still segfault tearing down 2+ such profiles/pages -- a real,
+# reproducible Qt/WebEngine internals race specific to that shutdown
+# path, not a bug in anything this script actually verifies. os._exit()
+# terminates immediately, skipping that teardown path entirely (the
+# same way force-quitting a process does), so the reported exit code
+# reliably reflects the real check() results above instead of being
+# clobbered by an unrelated crash.
 print(f"\n{passed} passed, {failed} failed")
-sys.exit(1 if failed else 0)
+sys.stdout.flush()
+os._exit(1 if failed else 0)

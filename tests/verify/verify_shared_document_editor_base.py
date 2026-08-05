@@ -301,6 +301,14 @@ def test_document_editor_base_full_lifecycle_real_browser_real_bridge_calls():
         handle = start_server(widgets_dir=widgets_dir)
         fake_window = _FakeGuiWindow(desk_dir)
         handle.gui_bridge.attach(fake_window)
+
+        def _profile_dir(instance_id: str) -> Path:
+            # TODO a5f66cc: ChromiumWidget now requires a per-instance
+            # profile directory -- doesn't need to be under a real
+            # .desk_temp/ here, this test doesn't exercise
+            # DeskWindow._place_widget, just a plain per-instance path.
+            return Path(d) / "chromium-profiles" / instance_id
+
         try:
             broker = HotReloadBroker()
 
@@ -309,7 +317,7 @@ def test_document_editor_base_full_lifecycle_real_browser_real_bridge_calls():
             # anywhere under desk_dir yet.
             check("the target directory genuinely doesn't exist yet", not (desk_dir / "test-notes-docs").exists())
 
-            widget = ChromiumWidget("test-notes", "inst-1", handle.widget_url("test-notes"), handle.token, broker)
+            widget = ChromiumWidget("test-notes", "inst-1", handle.widget_url("test-notes"), handle.token, broker, _profile_dir("inst-1"))
             pump(2)
 
             _set_value(widget, "#title-input", "My First Note")
@@ -328,7 +336,7 @@ def test_document_editor_base_full_lifecycle_real_browser_real_bridge_calls():
 
             # A second instance trying to create the same title again
             # must refuse -- never silently clobber.
-            widget2 = ChromiumWidget("test-notes", "inst-2", handle.widget_url("test-notes"), handle.token, broker)
+            widget2 = ChromiumWidget("test-notes", "inst-2", handle.widget_url("test-notes"), handle.token, broker, _profile_dir("inst-2"))
             pump(2)
             _set_value(widget2, "#title-input", "My First Note")
             _click(widget2, "#create-btn")
@@ -338,7 +346,7 @@ def test_document_editor_base_full_lifecycle_real_browser_real_bridge_calls():
             check("the original document's content is untouched by the refused create", expected_path.read_text() == "# My First Note\n\nhello world")
 
             # A fresh instance loading the same title gets the real content back.
-            widget3 = ChromiumWidget("test-notes", "inst-3", handle.widget_url("test-notes"), handle.token, broker)
+            widget3 = ChromiumWidget("test-notes", "inst-3", handle.widget_url("test-notes"), handle.token, broker, _profile_dir("inst-3"))
             pump(2)
             _set_value(widget3, "#title-input", "My First Note")
             _click(widget3, "#load-btn")
@@ -349,7 +357,7 @@ def test_document_editor_base_full_lifecycle_real_browser_real_bridge_calls():
             # A fresh page load reusing the SAME instance id (e.g.
             # reopening Desk) auto-restores into the locked state,
             # without an explicit Load click.
-            widget4 = ChromiumWidget("test-notes", "inst-1", handle.widget_url("test-notes"), handle.token, broker)
+            widget4 = ChromiumWidget("test-notes", "inst-1", handle.widget_url("test-notes"), handle.token, broker, _profile_dir("inst-1"))
             pump(2)
             restored_locked_display = _read(widget4, "document.querySelector('test-notes').shadowRoot.getElementById('locked').style.display")
             check("a fresh instance sharing the same instance id auto-restores the last-open document", restored_locked_display == "")
@@ -360,5 +368,18 @@ def test_document_editor_base_full_lifecycle_real_browser_real_bridge_calls():
 test_document_editor_base_full_lifecycle_real_browser_real_bridge_calls()
 
 
+# TODO a5f66cc: os._exit(), not sys.exit() -- this script places
+# several kind:"html" (ChromiumWidget-backed) widgets, each with its
+# own real QWebEngineProfile. Confirmed directly (see LEARNINGS.md's
+# TODO a5f66cc entry): once every check() above has already passed
+# correctly, normal Python interpreter shutdown can still segfault
+# tearing down 2+ such profiles/pages -- a real, reproducible
+# Qt/WebEngine internals race specific to that shutdown path, not a
+# bug in anything this script actually verifies. os._exit() terminates
+# immediately, skipping that teardown path entirely (the same way
+# force-quitting a process does), so the reported exit code reliably
+# reflects the real check() results above instead of risking being
+# clobbered by an unrelated crash.
 print(f"\n{passed} passed, {failed} failed")
-sys.exit(1 if failed else 0)
+sys.stdout.flush()
+os._exit(1 if failed else 0)

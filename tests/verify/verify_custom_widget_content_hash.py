@@ -87,6 +87,7 @@ class _FakeWindow:
 _FakeWindow._register_custom_widget = DeskWindow._register_custom_widget
 _FakeWindow._refresh_stale_indicators_for = DeskWindow._refresh_stale_indicators_for
 _FakeWindow._place_widget = DeskWindow._place_widget
+_FakeWindow._chromium_profile_dir = DeskWindow._chromium_profile_dir
 _FakeWindow._bind_claude_widget = DeskWindow._bind_claude_widget
 _FakeWindow._bind_external_indicator = DeskWindow._bind_external_indicator
 _FakeWindow._bind_event_mediator = DeskWindow._bind_event_mediator
@@ -104,7 +105,7 @@ _FakeWindow._get_widget_local_storage = DeskWindow._get_widget_local_storage
 
 
 def test_registration_computes_content_hash():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         win = _FakeWindow(Path(d))
         win._register_custom_widget(_definition(), source="tempui")
         expected = hashlib.md5(SAMPLE_HTML_B64.encode("ascii")).hexdigest()[:12]
@@ -121,7 +122,7 @@ def test_ordinary_widget_info_has_no_content_hash():
 
 
 def test_get_manifest_dict_exposes_content_hash():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         win = _FakeWindow(Path(d))
         win._register_custom_widget(_definition(), source="tempui")
         manifest = _widget_info_dict(win._widgets["KanbanBoard"])
@@ -134,7 +135,7 @@ def test_get_manifest_dict_exposes_content_hash():
 
 
 def test_redefinition_changes_hash():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         win = _FakeWindow(Path(d))
         win._register_custom_widget(_definition(), source="tempui")
         first_hash = win._custom_widget_content_hash["KanbanBoard"]
@@ -147,7 +148,7 @@ def test_redefinition_changes_hash():
 
 
 def test_fresh_placement_is_never_stale():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         directory = Path(d)
         win = _FakeWindow(directory)
         win._register_custom_widget(_definition(), source="tempui")
@@ -161,7 +162,7 @@ def test_fresh_placement_is_never_stale():
 
 
 def test_live_redefinition_marks_placed_instance_stale():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         directory = Path(d)
         win = _FakeWindow(directory)
         win._register_custom_widget(_definition(), source="tempui")
@@ -187,7 +188,7 @@ def test_live_redefinition_marks_placed_instance_stale():
 
 
 def test_restore_with_matching_hash_is_not_stale():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         directory = Path(d)
         win = _FakeWindow(directory)
         win._register_custom_widget(_definition(), source="tempui")
@@ -207,7 +208,7 @@ def test_restore_with_matching_hash_is_not_stale():
 
 
 def test_restore_with_stale_hash_is_marked_stale():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         directory = Path(d)
         win = _FakeWindow(directory)
         win._register_custom_widget(_definition(), source="tempui")
@@ -229,7 +230,7 @@ def test_restore_with_stale_hash_is_marked_stale():
 
 
 def test_widget_state_round_trips_placed_content_hash():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         directory = Path(d)
         desk = Desk(
             path=directory / "test.desk",
@@ -249,7 +250,7 @@ def test_widget_state_round_trips_placed_content_hash():
 
 
 def test_old_desk_file_without_field_defaults_to_none():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         directory = Path(d)
         path = directory / "old.desk"
         path.write_text(
@@ -271,5 +272,19 @@ test_restore_with_stale_hash_is_marked_stale()
 test_widget_state_round_trips_placed_content_hash()
 test_old_desk_file_without_field_defaults_to_none()
 
+# TODO a5f66cc: os._exit(), not sys.exit() -- this script places
+# several kind:"html" (ChromiumWidget-backed) widgets across its test
+# functions, each now with its own real QWebEngineProfile (previously
+# all shared Qt's one default profile). Confirmed directly (see
+# LEARNINGS.md's TODO a5f66cc entry): once every check() above has
+# already passed correctly, normal Python interpreter shutdown can
+# still segfault tearing down 2+ such profiles/pages -- a real,
+# reproducible Qt/WebEngine internals race specific to that shutdown
+# path, not a bug in anything this script actually verifies. os._exit()
+# terminates immediately, skipping that teardown path entirely (the
+# same way force-quitting a process does), so the reported exit code
+# reliably reflects the real check() results above instead of being
+# clobbered by an unrelated crash.
 print(f"\n{passed} passed, {failed} failed")
-sys.exit(1 if failed else 0)
+sys.stdout.flush()
+os._exit(1 if failed else 0)

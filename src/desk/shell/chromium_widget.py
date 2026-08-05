@@ -1,9 +1,11 @@
 import logging
 from collections import deque
 from dataclasses import dataclass
+from pathlib import Path
 
+from PyQt6 import sip
 from PyQt6.QtCore import QUrl, pyqtSignal
-from PyQt6.QtWebEngineCore import QWebEngineScript, QWebEnginePage
+from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEngineScript, QWebEnginePage
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 from desk.hotreload import HotReloadBroker
@@ -48,8 +50,8 @@ class _LoggingWebEnginePage(QWebEnginePage):
     # listener injected into the page itself.
     error_logged = pyqtSignal(str)
 
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
+    def __init__(self, profile: QWebEngineProfile, parent=None) -> None:
+        super().__init__(profile, parent)
         self.console_log: deque[ConsoleLogEntry] = deque(maxlen=CONSOLE_LOG_MAX_ENTRIES)
 
     def javaScriptConsoleMessage(self, level, message, line_number, source_id) -> None:
@@ -74,7 +76,22 @@ class ChromiumWidget(QWebEngineView):
 
     Also injects the Desk Bridge API's client library (window.desk.*) --
     see plans/desk-bridge-api.md -- before any of the page's own scripts
-    run, so it's always available."""
+    run, so it's always available.
+
+    TODO a5f66cc: uses its own persistent QWebEngineProfile (storage
+    under profile_dir), not Qt's shared default profile -- every
+    kind:"html" widget instance previously shared one profile/cookie
+    jar, which would have made the per-launch auth-token cookie
+    (below) leak across every widget instance on the origin (cookies
+    are scoped by host+path, not port -- RFC 6265 -- and every
+    kind:"html" widget already shares one origin). Per-instance
+    profiles also extend this class's own "isolation from each other"
+    claim (see architecture.md) down to storage/cookies/cache, not
+    just the renderer process. Not shared with widgets/browser
+    /widget.py's BrowserWidget, which is a separate class using its
+    own plain QWebEngineView with Qt's default profile -- real,
+    persisted browsing (logins, cookies) is exactly what that widget
+    wants, unaffected by this."""
 
     # TODO d4d6c71: one signal covering both directions -- (True, message)
     # when the page logs an error, (False, "") on reload (a fresh page
@@ -92,13 +109,63 @@ class ChromiumWidget(QWebEngineView):
         url: str,
         token: str,
         broker: HotReloadBroker,
+        profile_dir: Path,
         parent=None,
     ) -> None:
         super().__init__(parent)
         self.widget_id = widget_id
         self.instance_id = instance_id
 
-        self._logging_page = _LoggingWebEnginePage(self)
+        # A named (non-off-the-record) profile persists to disk, but
+        # only under the path setPersistentStoragePath/setCachePath
+        # explicitly point at below -- otherwise Qt derives one from
+        # the storage name under the OS's own app-data directory,
+        # which wouldn't travel with the project.
+        #
+        # Deliberately NOT parented to self (Qt's usual "child gets
+        # destroyed with its parent" mechanism would apply here too,
+        # but with no ordering guarantee relative to _logging_page --
+        # also a child of self): confirmed directly, a real segfault,
+        # that QWebEngineProfile must outlive every QWebEnginePage
+        # using it, and Qt's own QObject child-destruction order
+        # between two siblings isn't something to rely on for that.
+        # self.destroyed only fires once ~QObject() has already torn
+        # down every child (including _logging_page), so deferring the
+        # profile's own deleteLater() to that signal -- via a closure
+        # holding the only strong reference, not self._profile, since
+        # self's own attributes may already be gone by then -- is what
+        # actually guarantees the required ordering.
+        # Without the destroyed-signal deferral above, real teardown
+        # (construct, navigate, then delete) segfaulted -- confirmed
+        # directly, this fixes that. A separate QtWebEngine console
+        # warning ("Release of profile requested but WebEnginePage
+        # still not deleted") can still print during teardown in a
+        # headless test harness specifically -- that one turned out to
+        # be a different issue (a synthetic processEvents() pump loop
+        # not draining DeferredDelete events, not this class's own
+        # destruction ordering; see LEARNINGS.md's TODO a5f66cc entry
+        # and tests/verify/verify_kind_html_auth_token_and_profile
+        # _isolation.py's own pump() helper) -- fixed at the test-harness
+        # level, not by anything here.
+        profile = QWebEngineProfile(f"widget-{instance_id}")
+        profile.setPersistentStoragePath(str(profile_dir / "storage"))
+        profile.setCachePath(str(profile_dir / "cache"))
+        self._profile = profile
+        # sip.isdeleted() guard: confirmed directly (a real, if
+        # infrequent, RuntimeError -- "wrapped C/C++ object of type
+        # QWebEngineProfile has been deleted" -- escaping this lambda
+        # otherwise) that the underlying C++ profile can already be
+        # gone by the time this fires, e.g. during interpreter
+        # shutdown, when Python's own module/global teardown can
+        # release the last reference to `profile` out from under this
+        # closure in an order Qt's own object-tree destruction doesn't
+        # control. An uncaught exception escaping a Qt-signal-invoked
+        # slot can crash the whole process, not just raise (see
+        # LEARNINGS.md) -- guarded here instead of relying on this
+        # never happening.
+        self.destroyed.connect(lambda: None if sip.isdeleted(profile) else profile.deleteLater())
+
+        self._logging_page = _LoggingWebEnginePage(profile, self)
         self.setPage(self._logging_page)
         self._logging_page.error_logged.connect(self._on_console_error)
 

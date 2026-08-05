@@ -810,6 +810,62 @@ explicit drain in the test harness itself, not just `processEvents()`,
 or it will report a false negative that looks exactly like a real bug
 in the code under test.
 
+TODO `a5f66cc`: for a `QWebEngineView`/`ChromiumWidget` specifically,
+the consequence of skipping this drain can be worse than a false
+negative -- confirmed directly, a real segfault at process exit (not a
+Python exception, so it also clobbers the script's own intended
+`sys.exit()` code), reproducible with a plain, unmodified
+`QWebEngineView()` on the default profile alone (nothing
+project-specific required): construct one `QWebEngineProfile`-backed
+view, `deleteLater()` it, pump with plain `processEvents()` only, then
+construct/tear down a second `QWebEngineView` before the script ends.
+Draining `DeferredDelete` in the pump loop (as above) fixed this
+*specific, minimal* repro reliably.
+
+It did not, however, generalize: a real verify script placing several
+`kind: "html"` widgets across multiple test functions (each getting
+its own real, distinct `QWebEngineProfile` -- previously all shared
+Qt's one default profile) kept segfaulting intermittently at
+interpreter exit even with `DeferredDelete` properly drained, and even
+with each widget's own containing view explicitly `deleteLater()`'d
+(via a real `app.exec()`/`quit()` cycle, not just `processEvents()`)
+before the next one was created. Confirmed directly that a **real**
+`app.exec()` event loop -- run all the way to a genuine `app.quit()`,
+the way Desk itself always runs until the user quits -- does not
+exhibit this crash at all, with any number of profiles; it is specific
+to a script that never enters a real event loop and instead relies on
+`processEvents()` polling, then lets the interpreter's own shutdown
+sequence race against Qt/Chromium's internal per-profile teardown
+(non-deterministically -- the same script could pass cleanly several
+runs in a row, then segfault). **The actual running Desk application
+is not at risk here**; only test harnesses using the polling pattern
+are.
+
+Since every check/assertion in every affected script had already
+passed correctly before the segfault (the crash is purely a
+teardown-order artifact, not a sign of a real bug in the code under
+test), the fix that reliably worked across every affected script:
+`os._exit(1 if failed else 0)` instead of `sys.exit(...)` as the very
+last line (after flushing stdout), skipping Python's own interpreter
+teardown entirely -- the same way force-quitting a process does. This
+is the correct fix for *this* problem specifically (a script that has
+already finished all its real work and just needs to report a
+reliable exit code) -- it would be the wrong fix for a script that
+still had meaningful cleanup of its own to do.
+
+A related, separate, real bug this surfaced: `ChromiumWidget`'s own
+`destroyed`-signal-deferred profile cleanup
+(`self.destroyed.connect(lambda: profile.deleteLater())`) could itself
+raise `RuntimeError: wrapped C/C++ object of type QWebEngineProfile
+has been deleted` if the underlying C++ profile was already gone by
+the time the lambda fired (observed during exactly this kind of
+interpreter-shutdown-race window) -- an uncaught exception escaping a
+Qt-signal-invoked slot, the same crash-risk shape as the "uncaught
+exception in a slot" entry elsewhere in this file. Fixed with an
+explicit `PyQt6.sip.isdeleted(profile)` guard before calling
+`deleteLater()` on it, rather than assuming the object is always still
+alive when the signal fires.
+
 ## A `QGraphicsProxyWidget`-embedded widget can silently grow itself back to fit its layout's minimum size, on a *later* event-loop turn — `QLayout::SetNoConstraint` alone doesn't stop it
 
 TODO `33d3e8d`: `WidgetFrame`'s chrome is counter-scaled (see

@@ -1,4 +1,4 @@
-# Fix kind:"html" widgets losing the auth token on sub-resource requests, with per-instance Chromium profile isolation (TODO `a5f66cc`)
+# Fix kind:"html" widgets losing the auth token on sub-resource requests, with per-instance Chromium profile isolation (TODO `a5f66cc`) (COMPLETED)
 
 ## Summary
 

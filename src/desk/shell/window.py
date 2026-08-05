@@ -423,6 +423,7 @@ class DeskWindow(QMainWindow):
                 self._handle.widget_url(widget_id),
                 self._handle.token,
                 self._broker,
+                self._chromium_profile_dir(instance_id),
             )
             proxy = self.view.add_widget(
                 chromium_widget, title=widget.name, pos=pos, size=size, instance_id=instance_id
@@ -456,6 +457,19 @@ class DeskWindow(QMainWindow):
                 frame.placed_content_hash = current_hash
                 frame.set_stale(False)
         return frame
+
+    def _chromium_profile_dir(self, instance_id: str) -> Path:
+        """TODO a5f66cc: where a kind:"html" widget instance's own
+        persistent QWebEngineProfile (cookies -- including the
+        per-launch auth-token cookie TokenAuthMiddleware now sets --
+        cache, localStorage) lives, keyed by instance_id the same way
+        desk.self.getLocalStorage already is. Deliberately NOT subject
+        to .desk_temp/'s usual "fully disposable, regenerate on
+        demand" convention (see close_widget's own cleanup, and
+        design-docs/architecture.md) -- real browser storage a widget
+        or an external service sets here isn't regenerable the way
+        e.g. compiled JS output is."""
+        return self.current_desk.directory / TEMP_UI_DIRNAME / "chromium-profiles" / instance_id
 
     def _bind_external_indicator(self, frame: WidgetFrame) -> None:
         """Wires a freshly-placed widget's "[EXTERNAL]" titlebar marker
@@ -1280,9 +1294,34 @@ class DeskWindow(QMainWindow):
         )
         if not confirm():
             return
+        instance_id = frame.instance_id
         self.view.remove_widget(frame)
-        self._event_mediator.unsubscribe_all(frame.instance_id)
+        self._event_mediator.unsubscribe_all(instance_id)
         self.save_current_desk()
+        # TODO a5f66cc: a permanent removal (unlike a Desk-switch,
+        # WorkspaceView.clear_widgets, which must leave this alone --
+        # the widget may come back) is the one point this instance's
+        # profile directory is genuinely done for good.
+        self._schedule_chromium_profile_cleanup(instance_id)
+
+    def _schedule_chromium_profile_cleanup(self, instance_id: str) -> None:
+        """TODO a5f66cc: deletes instance_id's Chromium profile
+        directory (if it ever had one -- a kind:"python" widget never
+        does), for a widget instance being permanently removed. A
+        no-op if there's nothing there. Deferred via
+        QTimer.singleShot(0, ...) rather than deleted synchronously --
+        called from close_widget right after
+        WorkspaceView.remove_widget, which already scheduled
+        frame.deleteLater(); this lets that deferred teardown finish
+        first, the same "let Qt's own deferred teardown finish first"
+        caution this codebase already applies elsewhere (see e.g.
+        WorkspaceView._position_desk_picker's docstring). Split out
+        from close_widget as its own method so it's callable/testable
+        without close_widget's own confirm-dialog/save_current_desk
+        machinery."""
+        profile_dir = self._chromium_profile_dir(instance_id)
+        if profile_dir.is_dir():
+            QTimer.singleShot(0, lambda: shutil.rmtree(profile_dir, ignore_errors=True))
 
     def change_current_desk_directory(self, new_directory: Path, confirm: Confirm | None = None) -> None:
         if new_directory == self.current_desk.directory:

@@ -6531,7 +6531,7 @@ e6ea1db. Investigate approaches to running Desk in a way that better
    The subprocess-isolated-dependencies alternative is recorded
    separately in `PARKINGLOT.md`.
 
-a5f66cc. Fix `kind: "html"` widgets' sub-resource requests (`<script
+a5f66cc. COMPLETED: Fix `kind: "html"` widgets' sub-resource requests (`<script
    src>`, `<link href>`, CSS `url(...)`, `<img src>`, etc.) losing the
    per-launch auth token, which silently 401s and aborts the
    module/resource graph with no console output -- the root cause
@@ -6594,3 +6594,76 @@ a5f66cc. Fix `kind: "html"` widgets' sub-resource requests (`<script
      general disposability is documented, not left to look like an
      oversight.
    [planned: kind-html-auth-token-and-profile-isolation.md]
+
+   Implemented as designed above: `TokenAuthMiddleware`/
+   `_token_from_scope` (`src/desk/server/app.py`) now check a
+   `desk_token` cookie as a third fallback (after query param and
+   `X-Desk-Token` header), and `TokenAuthMiddleware` sets it via a
+   wrapped ASGI `send` whenever the token specifically came from the
+   query string. Confirmed end to end with a real HTTP client against
+   a running server (no Qt involved): the widget page response sets
+   the cookie, a follow-up request carrying only the cookie succeeds,
+   and a credential-less request still 401s. `ChromiumWidget`
+   (`chromium_widget.py`) now constructs its own named, persistent
+   `QWebEngineProfile` per instance, storage/cache rooted under
+   `.desk_temp/chromium-profiles/<instance_id>/`; `window.py`'s
+   `_place_widget` computes that path via a new
+   `_chromium_profile_dir` helper, and `close_widget` deletes it
+   (deferred) via a new `_schedule_chromium_profile_cleanup` helper --
+   `WorkspaceView.clear_widgets` (Desk-switch) deliberately calls
+   neither. `architecture.md` documents both the token requirement and
+   the per-instance-profile isolation property.
+
+   Two real, non-obvious bugs found and fixed along the way, both
+   confirmed by direct reproduction, not assumed:
+   - **A genuine segfault** from parenting the new `QWebEngineProfile`
+     to the same widget as its `QWebEnginePage` (Qt's sibling
+     -destruction order between the two isn't guaranteed, and a
+     profile must outlive every page using it) -- fixed by leaving the
+     profile unparented and deferring its own `deleteLater()` to the
+     widget's `destroyed` signal (which only fires once every child,
+     including the page, is already gone). A second, separate
+     `RuntimeError` this surfaced (the profile's C++ object already
+     gone by the time that signal fired, e.g. during interpreter
+     shutdown) was fixed with an explicit `sip.isdeleted()` guard.
+   - **A verify-script-only, non-deterministic segfault** at process
+     exit once 2+ real per-instance profiles existed across a script's
+     lifetime -- confirmed directly that this is specific to a
+     headless `processEvents()`-polling test harness racing against
+     Qt/Chromium's own internal teardown at interpreter shutdown, and
+     that a real Desk session (which always runs via a genuine
+     `app.exec()` all the way to a real quit) is not at risk. Fixed in
+     every affected verify script by calling `os._exit(...)` instead
+     of `sys.exit(...)` as the final line -- skipping interpreter
+     teardown entirely, the same way force-quitting a process does --
+     since every check/assertion had already passed correctly before
+     the crash in every case. See `LEARNINGS.md`'s expanded TODO
+     `a5f66cc` entry for the full investigation.
+
+   Updated for the new required `ChromiumWidget` constructor parameter
+   and/or the new `os._exit()` teardown pattern:
+   `tests/verify/verify_shared_document_editor_base.py`,
+   `verify_custom_widget_content_hash.py`,
+   `verify_html_widget_local_storage.py`,
+   `verify_relocate_promoted_widget_source.py`,
+   `verify_stale_marker_click_dialog.py`,
+   `verify_tempui_custom_widgets.py`,
+   `verify_widget_error_indicator.py` (the last one was also missing
+   `current_desk` on its own `_FakeWindow` entirely, now added). New
+   `tests/verify/verify_kind_html_auth_token_and_profile_isolation.py`
+   (17 checks): the cookie mechanics above, a real multi-file widget
+   fixture that previously would have failed to load now loading
+   successfully end to end (confirmed via the custom element's
+   `shadowRoot`, mirroring the original hex_flower diagnosis's own
+   verification method), distinct on-disk profile directories for two
+   instances of the same widget kind, `_schedule_chromium_profile_cleanup`
+   deleting only the targeted instance's directory, `close_widget`
+   -vs-`clear_widgets` cleanup asymmetry (confirmed via source
+   inspection, given the full `DeskWindow`/`save_current_desk`
+   machinery `close_widget` depends on is disproportionate to
+   construct just to observe this one side effect), and
+   `BrowserWidget` continuing to use Qt's default profile, unaffected.
+   Full `tests/verify/` regression suite passes cleanly (88 scripts,
+   0 failures), reconfirmed with repeated runs of every script this
+   item touched given the non-deterministic nature of the crash it
+   fixed.

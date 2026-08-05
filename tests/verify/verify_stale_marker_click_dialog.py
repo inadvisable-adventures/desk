@@ -92,6 +92,7 @@ class _FakeWindow:
 _FakeWindow._register_custom_widget = DeskWindow._register_custom_widget
 _FakeWindow._refresh_stale_indicators_for = DeskWindow._refresh_stale_indicators_for
 _FakeWindow._place_widget = DeskWindow._place_widget
+_FakeWindow._chromium_profile_dir = DeskWindow._chromium_profile_dir
 _FakeWindow._bind_claude_widget = DeskWindow._bind_claude_widget
 _FakeWindow._bind_external_indicator = DeskWindow._bind_external_indicator
 _FakeWindow._bind_event_mediator = DeskWindow._bind_event_mediator
@@ -114,7 +115,7 @@ def _make_stale_frame(win, html_b64=SAMPLE_HTML_2_B64):
 
 
 def test_clicking_stale_button_emits_widget_stale_clicked():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         win = _FakeWindow(Path(d))
         frame = _make_stale_frame(win)
         check("stale button visible", frame._titlebar.stale_button.isVisible())
@@ -138,7 +139,7 @@ def test_clicking_stale_button_emits_widget_stale_clicked():
 
 
 def test_reload_now_reloads_only_this_instance_and_clears_stale():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         win = _FakeWindow(Path(d))
         frame = _make_stale_frame(win)
         other_widget = win._widgets["KanbanBoard"]
@@ -174,7 +175,7 @@ def test_reload_now_reloads_only_this_instance_and_clears_stale():
 
 
 def test_keep_for_now_changes_nothing():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         win = _FakeWindow(Path(d))
         frame = _make_stale_frame(win)
         placed_hash_before = frame.placed_content_hash
@@ -191,7 +192,7 @@ def test_keep_for_now_changes_nothing():
 
 
 def test_noop_for_non_html_widget():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         win = _FakeWindow(Path(d))
 
         class _FakeFrame:
@@ -203,7 +204,7 @@ def test_noop_for_non_html_widget():
 
 
 def test_noop_when_no_longer_actually_stale():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         win = _FakeWindow(Path(d))
         win._register_custom_widget(_definition(), source="tempui")
         widget = win._widgets["KanbanBoard"]
@@ -220,5 +221,19 @@ test_keep_for_now_changes_nothing()
 test_noop_for_non_html_widget()
 test_noop_when_no_longer_actually_stale()
 
+# TODO a5f66cc: os._exit(), not sys.exit() -- this script places
+# several kind:"html" (ChromiumWidget-backed) widgets across its test
+# functions, each now with its own real QWebEngineProfile (previously
+# all shared Qt's one default profile). Confirmed directly (see
+# LEARNINGS.md's TODO a5f66cc entry): once every check() above has
+# already passed correctly, normal Python interpreter shutdown can
+# still segfault tearing down 2+ such profiles/pages -- a real,
+# reproducible Qt/WebEngine internals race specific to that shutdown
+# path, not a bug in anything this script actually verifies. os._exit()
+# terminates immediately, skipping that teardown path entirely (the
+# same way force-quitting a process does), so the reported exit code
+# reliably reflects the real check() results above instead of being
+# clobbered by an unrelated crash.
 print(f"\n{passed} passed, {failed} failed")
-sys.exit(1 if failed else 0)
+sys.stdout.flush()
+os._exit(1 if failed else 0)

@@ -759,6 +759,18 @@ Desk widgets, regardless of implementation language, are defined by a
   serving uses `StaticFiles(..., html=True)`, which always serves
   `index.html` specifically; a custom `entry` for `html`-kind isn't
   supported yet.
+  Every request the browser makes for a widget's own page — not just the
+  top-level navigation — must carry the per-launch auth token
+  (`TokenAuthMiddleware`, `src/desk/server/app.py`). The top-level
+  navigation carries it as a query parameter; the injected Bridge client's
+  own calls carry it as an `X-Desk-Token` header; and (TODO `a5f66cc`) a
+  same-origin cookie set on the widget's main-page response covers
+  everything else — in particular, ordinary relative-path resource
+  references (`<script src>`, `<link href>`, CSS `url(...)`, `<img src>`)
+  that don't carry the query string forward and can't attach a custom
+  header. Without that cookie, any multi-file widget built the normal way
+  (as opposed to a single self-contained HTML file) would silently fail to
+  load its own assets.
 - **Tempui-DSL-defined custom widgets** (TODO `91b3f42`) are a third,
   dynamic way a `kind: "html"` `WidgetInfo` enters the live catalog —
   no `widgets/<id>/` directory at all. An agent (or any process writing
@@ -1029,7 +1041,24 @@ as every other Bridge GUI-thread call) ever blocks.
   same trust model as running any local script directly.
 - `kind: "html"` widgets are each their own `QWebEngineView` (its own
   Chromium renderer process), giving them isolation from each other and
-  from the Shell process by construction.
+  from the Shell process by construction. This isolation extends to
+  storage too (TODO `a5f66cc`): each instance gets its own persistent
+  `QWebEngineProfile` (cookies, cache, `localStorage`) rooted under
+  `.desk_temp/chromium-profiles/<instance_id>/`, rather than every
+  instance sharing Qt's one default profile — needed so the auth-token
+  cookie above is scoped to the instance that set it, not shared across
+  every `kind: "html"` widget on the origin (cookies are scoped by
+  host+path, not port, and every `kind: "html"` widget shares one
+  origin). Note this one subdirectory is a deliberate exception to
+  `.desk_temp/`'s usual "fully disposable, regenerate on demand"
+  convention — real per-instance browser storage isn't regenerable the
+  way compiled build output is; it's deleted only when that widget
+  instance is permanently removed (`DeskWindow.close_widget`), not on
+  every rebuild or Desk-switch. `widgets/browser/`'s Browser widget is
+  a separate, `kind: "python"` widget with its own plain
+  `QWebEngineView` and is unaffected by any of this — it keeps using
+  Qt's shared default profile, real persisted browsing (logins,
+  cookies) being exactly what it wants.
 - The Bridge API is capability-scoped per the widget's manifest; a `html`
   widget that hasn't declared `pty.spawn` cannot spawn shell processes,
   even though the underlying backend can.

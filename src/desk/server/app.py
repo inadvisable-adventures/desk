@@ -1,4 +1,5 @@
 import asyncio
+from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import parse_qs
 
@@ -16,14 +17,57 @@ from desk.widgets import WidgetInfo, discover_widgets
 # src/desk/server/app.py -> repo root, then the widgets directory.
 DEFAULT_WIDGETS_DIR = Path(__file__).resolve().parents[3] / "widgets"
 
+# TODO a5f66cc: a same-origin cookie, additive to the query-param/
+# X-Desk-Token-header checks below -- the one credential mechanism a
+# browser attaches automatically to every same-origin request,
+# including a kind:"html" widget's own plain <script src>/<link href>
+# sub-resource loads (which carry neither the query string nor a
+# custom header). See design-docs/architecture.md#security-considerations.
+DESK_TOKEN_COOKIE = "desk_token"
+
+
+def _token_from_query(scope: Scope) -> str | None:
+    query = parse_qs((scope.get("query_string") or b"").decode())
+    return query["token"][0] if "token" in query else None
+
 
 def _token_from_scope(scope: Scope) -> str | None:
-    query = parse_qs((scope.get("query_string") or b"").decode())
-    if "token" in query:
-        return query["token"][0]
+    token = _token_from_query(scope)
+    if token is not None:
+        return token
     headers = dict(scope.get("headers") or [])
     header_token = headers.get(b"x-desk-token")
-    return header_token.decode() if header_token else None
+    if header_token:
+        return header_token.decode()
+    cookie_header = headers.get(b"cookie")
+    if cookie_header:
+        cookies = SimpleCookie()
+        cookies.load(cookie_header.decode())
+        if DESK_TOKEN_COOKIE in cookies:
+            return cookies[DESK_TOKEN_COOKIE].value
+    return None
+
+
+def _inject_set_cookie(send: Send, token: str) -> Send:
+    """Wraps an ASGI `send` so the next `http.response.start` message
+    also carries a Set-Cookie for the token -- HttpOnly (no reason page
+    JS needs to read it, and it's already exposed to the page via the
+    injected Bridge client script regardless), no Secure (plain HTTP
+    over loopback), SameSite=Lax, no Max-Age (session-lifetime is fine:
+    the very first navigation of any new launch already carries a
+    fresh ?token= that re-sets this immediately, so correctness never
+    depends on the cookie surviving to the next launch)."""
+
+    async def wrapped(message: dict) -> None:
+        if message["type"] == "http.response.start":
+            headers = list(message.get("headers", []))
+            headers.append(
+                (b"set-cookie", f"{DESK_TOKEN_COOKIE}={token}; Path=/; HttpOnly; SameSite=Lax".encode())
+            )
+            message = {**message, "headers": headers}
+        await send(message)
+
+    return wrapped
 
 
 class TokenAuthMiddleware:
@@ -41,6 +85,14 @@ class TokenAuthMiddleware:
             return
 
         if _token_from_scope(scope) == self.token:
+            # TODO a5f66cc: only when the token specifically came from
+            # the query string -- in practice that's only ever a
+            # widget's own top-level page navigation (Bridge XHR calls
+            # always use the X-Desk-Token header, never the query
+            # string -- see bridge_client.py's call() helper), so this
+            # fires once per real page load, not on every request.
+            if scope["type"] == "http" and _token_from_query(scope) == self.token:
+                send = _inject_set_cookie(send, self.token)
             await self.app(scope, receive, send)
             return
 

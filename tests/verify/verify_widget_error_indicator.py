@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 app = QApplication.instance() or QApplication(sys.argv)
 
+from desk.desks import Desk  # noqa: E402
 from desk.hotreload import HotReloadBroker  # noqa: E402
 from desk.shell.canvas import WorkspaceView  # noqa: E402
 from desk.shell.chromium_widget import ChromiumWidget  # noqa: E402
@@ -67,6 +68,7 @@ class _FakeHandle:
 
 class _FakeWindow:
     def __init__(self, directory):
+        self.current_desk = Desk(path=directory / "test.desk")
         self._widgets = {}
         self._handle = _FakeHandle()
         self.view = WorkspaceView()
@@ -83,6 +85,7 @@ class _FakeWindow:
 
 
 _FakeWindow._place_widget = DeskWindow._place_widget
+_FakeWindow._chromium_profile_dir = DeskWindow._chromium_profile_dir
 _FakeWindow._bind_claude_widget = DeskWindow._bind_claude_widget
 _FakeWindow._bind_external_indicator = DeskWindow._bind_external_indicator
 _FakeWindow._bind_event_mediator = DeskWindow._bind_event_mediator
@@ -112,7 +115,7 @@ def _write_widget_py(directory, body):
 
 
 def test_error_button_hidden_by_default_and_shown_by_set_error():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         win = _FakeWindow(Path(d))
         info = _html_widget_info(Path(d))
         frame = win._place_widget("ordinary_html", info, (0, 0), (400, 300), instance_id=uuid_mod.uuid4().hex[:8])
@@ -130,7 +133,7 @@ test_error_button_hidden_by_default_and_shown_by_set_error()
 
 
 def test_clicking_error_button_emits_widget_error_clicked():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         win = _FakeWindow(Path(d))
         info = _html_widget_info(Path(d))
         frame = win._place_widget("ordinary_html", info, (0, 0), (400, 300), instance_id=uuid_mod.uuid4().hex[:8])
@@ -155,7 +158,7 @@ test_clicking_error_button_emits_widget_error_clicked()
 
 
 def test_on_widget_error_clicked_shows_dialog_and_clears_indicator():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         win = _FakeWindow(Path(d))
         info = _html_widget_info(Path(d))
         frame = win._place_widget("ordinary_html", info, (0, 0), (400, 300), instance_id=uuid_mod.uuid4().hex[:8])
@@ -172,7 +175,7 @@ test_on_widget_error_clicked_shows_dialog_and_clears_indicator()
 
 
 def test_on_widget_error_clicked_noop_with_no_error():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         win = _FakeWindow(Path(d))
         info = _html_widget_info(Path(d))
         frame = win._place_widget("ordinary_html", info, (0, 0), (400, 300), instance_id=uuid_mod.uuid4().hex[:8])
@@ -193,7 +196,7 @@ def _data_url(html: str) -> str:
 
 
 def test_console_error_call_is_captured():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         win = _FakeWindow(Path(d))
         info = _html_widget_info(Path(d))
         frame = win._place_widget("ordinary_html", info, (0, 0), (400, 300), instance_id=uuid_mod.uuid4().hex[:8])
@@ -210,7 +213,7 @@ test_console_error_call_is_captured()
 
 
 def test_uncaught_exception_is_captured_not_just_explicit_console_error():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         win = _FakeWindow(Path(d))
         info = _html_widget_info(Path(d))
         frame = win._place_widget("ordinary_html", info, (0, 0), (400, 300), instance_id=uuid_mod.uuid4().hex[:8])
@@ -225,7 +228,7 @@ test_uncaught_exception_is_captured_not_just_explicit_console_error()
 
 
 def test_reload_clears_the_html_error_indicator():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         win = _FakeWindow(Path(d))
         info = _html_widget_info(Path(d))
         frame = win._place_widget("ordinary_html", info, (0, 0), (400, 300), instance_id=uuid_mod.uuid4().hex[:8])
@@ -260,7 +263,7 @@ def build():
 
 
 def test_build_failure_lights_up_error_indicator_immediately():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         directory = Path(d)
         _write_widget_py(directory, FAILING_WIDGET_PY)
         win = _FakeWindow(directory)
@@ -279,7 +282,7 @@ test_build_failure_lights_up_error_indicator_immediately()
 
 
 def test_successful_build_never_shows_error_indicator():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         directory = Path(d)
         _write_widget_py(directory, WORKING_WIDGET_PY)
         win = _FakeWindow(directory)
@@ -294,7 +297,7 @@ test_successful_build_never_shows_error_indicator()
 
 
 def test_hot_reload_from_failing_to_working_clears_indicator_live():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         directory = Path(d)
         _write_widget_py(directory, FAILING_WIDGET_PY)
         win = _FakeWindow(directory)
@@ -312,5 +315,20 @@ def test_hot_reload_from_failing_to_working_clears_indicator_live():
 test_hot_reload_from_failing_to_working_clears_indicator_live()
 
 
+# TODO a5f66cc: os._exit(), not the default clean interpreter exit
+# -- this script places several kind:"html" (ChromiumWidget-backed)
+# widgets across its test functions, each now with its own real
+# QWebEngineProfile (previously all shared Qt's one default
+# profile). Confirmed directly (see LEARNINGS.md's TODO a5f66cc
+# entry): once every check()/assert above has already passed
+# correctly, normal Python interpreter shutdown can still segfault
+# tearing down 2+ such profiles/pages -- a real, reproducible
+# Qt/WebEngine internals race specific to that shutdown path, not a
+# bug in anything this script actually verifies. os._exit()
+# terminates immediately, skipping that teardown path entirely (the
+# same way force-quitting a process does), so the reported exit
+# code reliably reflects the real results above instead of being
+# clobbered by an unrelated crash.
 print(f"\n{passed} passed, {failed} failed")
-sys.exit(1 if failed else 0)
+sys.stdout.flush()
+os._exit(1 if failed else 0)
