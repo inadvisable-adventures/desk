@@ -6667,3 +6667,33 @@ a5f66cc. COMPLETED: Fix `kind: "html"` widgets' sub-resource requests (`<script
    0 failures), reconfirmed with repeated runs of every script this
    item touched given the non-deterministic nature of the crash it
    fixed.
+
+e42469e. Fix a now-stale claim in the tempui doc set (`src/desk/temp_ui.py`'s
+   `_CUSTOM_WIDGETS_DOC`, materialized as `tempui-custom-widgets.md` --
+   the docs shown to Claude/agent instances working *inside*
+   Desk-managed projects, not Desk's own internal `design-docs/`).
+   Found by re-checking the doc set against TODO `a5f66cc`'s changes
+   after the user asked to make sure the tempui docs stay current.
+   `a5f66cc` only updated `design-docs/architecture.md` (Desk's own
+   internal doc) -- it never touched `temp_ui.py`, leaving this
+   inaccuracy in what agents in *other* projects actually read. The
+   doc's "The Desk Bridge API" section currently states flatly that
+   `desk.self.getLocalStorage`/`setLocalStorage` is "the only way to
+   persist your widget's own state across a Desk reload (there is no
+   other storage available -- no `localStorage`/`IndexedDB`/cookies
+   persist a Chromium widget's page across a reload ... or ... a Desk
+   restart)". `a5f66cc`'s per-instance `QWebEngineProfile` isolation
+   makes this false: real browser storage now does persist across a
+   reload and a Desk restart, for as long as that widget instance
+   stays placed (its profile is only deleted on permanent removal).
+   Separately confirmed via research (see the investigation this TODO
+   is filed from): this fix is scoped narrowly to that one claim --
+   documenting the auth-token cookie mechanism itself was considered
+   and deliberately *not* added here, since the only widget-authoring
+   path currently available to an in-project agent (`DefineWidget`,
+   always single-inlined-file) never hits the bug the cookie fixes in
+   the first place; that only becomes relevant once `PARKINGLOT.md`'s
+   already-parked "Reconsider `DefineWidget`'s single-inlined-file
+   requirement" follow-up is implemented. Not designed/scoped beyond
+   the summary above yet -- the actual replacement wording, and the
+   version-bump/changelog-entry mechanics, are TODO for the plan.
