@@ -4,6 +4,32 @@ This file captures thoughts and TODO items that arise during work on other thing
 
 ## Items
 
+- **Subprocess-isolated `kind: "python"` transforms with their own
+  project-scoped dependencies**
+
+  Discussed alongside TODO `742ba0a` (adding `pypdf` as an optional
+  Desk dependency): `kind: "python"` transforms run in-process
+  (`desk_services/transforms/service.py`'s `_load_transform_module`/
+  `_run_python`, via `importlib`), so any library a transform imports
+  has to already be in whichever venv is running Desk itself -- a
+  project can never bring its own transform-only dependency today. The
+  more general alternative to growing Desk's own dependency list per
+  format (`pypdf` for PDFs, and whatever comes next) would be letting
+  a transform optionally run in a subprocess against a project-scoped
+  venv/dependency list instead of always running in Desk's own
+  interpreter -- so a project could declare and install its own
+  transform dependencies without Desk's `pyproject.toml` ever needing
+  to change. Deliberately not pursued now (real, unscoped design work,
+  and doesn't help today's concrete need) -- `742ba0a` ships the
+  narrower `pypdf`-as-optional-extra fix instead. Would likely reuse
+  the same underlying "managed external subprocess" primitive proposed
+  from two other angles in
+  `../FEEDBACK/FEEDBACK-DESK-batch-ingestion-job-concept-2026-08-03-1634.md`/
+  `../FEEDBACK/FEEDBACK-DESK-external-service-dependency-concept-2026-08-03-1634.md`
+  (not yet itself moved into `TODO.md`/`PARKINGLOT.md` -- see
+  `investigations/feedback_review.md`) -- worth designing together
+  with those rather than in isolation, if/when this gets picked up.
+
 - **Browser widget's back/forward buttons can get stuck stale
   (enabled/disabled state, not the underlying navigation itself)**
 
