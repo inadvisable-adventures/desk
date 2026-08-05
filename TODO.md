@@ -6697,3 +6697,4 @@ e42469e. Fix a now-stale claim in the tempui doc set (`src/desk/temp_ui.py`'s
    requirement" follow-up is implemented. Not designed/scoped beyond
    the summary above yet -- the actual replacement wording, and the
    version-bump/changelog-entry mechanics, are TODO for the plan.
+   [planned: tempui-doc-storage-claim-fix.md]
