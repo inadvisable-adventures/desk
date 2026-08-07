@@ -1,4 +1,4 @@
-# Fix transform discovery staleness (TODO `7c11fe0`)
+# Fix transform discovery staleness (TODO `7c11fe0`) (COMPLETED)
 
 ## Summary
 

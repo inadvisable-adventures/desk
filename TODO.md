@@ -6734,7 +6734,7 @@ a8e4115. COMPLETED: Add Desk's own `CLAUDE.md` a project instruction to use path
 
    Added the line verbatim to `CLAUDE.md`.
 
-7c11fe0. `TransformsService` (`src/desk_services/transforms/service.py`)
+7c11fe0. COMPLETED: `TransformsService` (`src/desk_services/transforms/service.py`)
    never notices a transform added or changed on disk after Desk
    startup/Desk-switch -- `_require` fails immediately with `Unknown
    transform: ... (call discover() first)` on a lookup miss, and even
@@ -6754,6 +6754,20 @@ a8e4115. COMPLETED: Add Desk's own `CLAUDE.md` a project instruction to use path
    newer, mirroring `_resolve_js_entry`'s own check for the JS/TS
    path. Not designed further yet.
    [planned: transform-discovery-staleness.md]
+
+   Implemented as designed: `discover()` now records
+   `desk_temp_dir`/`project_dir` onto `self`; `_require` retries
+   `discover()` once on a lookup miss before raising; `_run_python`
+   stats each Python transform's source file and drops/reloads the
+   cached module whenever its mtime has moved since it was last
+   loaded, tracked in a new `self._python_module_mtimes` dict. New
+   coverage in `tests/verify/verify_transforms_service.py` (3 new
+   checks): a transform added to disk after the initial `discover()`
+   is found and runs with no explicit second `discover()` call; a
+   genuinely unknown `transform_id` still raises after the retry; an
+   edited-on-disk Python transform's new source is picked up on the
+   very next invocation, not the stale cached module. Full
+   `tests/verify/` regression suite passes (89 scripts, 0 failures).
 
 47aaf73. The `[ERROR]` titlebar button can light up and then silently
    do nothing when clicked. Root cause, confirmed directly: the click
