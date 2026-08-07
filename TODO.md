@@ -6730,6 +6730,7 @@ a8e4115. Add Desk's own `CLAUDE.md` a project instruction to use paths
    recently given. From
    `../FEEDBACK/FEEDBACK-DESK-claude-md-relative-paths-2026-08-03-1604.md`.
    Not designed/scoped beyond the one-line addition itself -- trivial.
+   [planned: claude-md-relative-paths.md]
 
 7c11fe0. `TransformsService` (`src/desk_services/transforms/service.py`)
    never notices a transform added or changed on disk after Desk
