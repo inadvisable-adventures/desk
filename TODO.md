@@ -6915,6 +6915,7 @@ e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
      response.status` right before throwing) so calling code can
      branch on `err.status` without parsing the message.
    Not designed further yet.
+   [planned: stale-build-widget-script-fix.md]
 
 3cd90cf. Add a `desk.self.setSubtitle(text: string | null)` Bridge API
    call (any `kind: "html"` widget) so a widget instance can put its
