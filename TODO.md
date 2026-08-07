@@ -6318,8 +6318,11 @@ d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
      `RESERVED_TEMPUI_KEYWORDS`/`detect_temp_ui_kind` in
      `src/desk/temp_ui.py`, mirroring `DEFINE_WIDGET_KEYWORD`'s own
      shape) declares a summary line, a `kind` (`python` or `html`),
-     and the script content itself -- an agent drops a file into
-     `.desk_temp` the same way any other tempui file is dropped today.
+     zero or more `Capability<TAB>name` lines for the `html` case
+     (same shape/precedent as `DefineWidget`'s own `Capability` lines,
+     TODO `f693275`), and the script content itself -- an agent drops
+     a file into `.desk_temp` the same way any other tempui file is
+     dropped today.
    - `TempUiManager`'s existing directory watcher already turns any
      new `.desk_temp` file into a `file_added` signal with no new
      plumbing needed; `DeskWindow._on_temp_ui_file_added` /
@@ -6342,39 +6345,33 @@ d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
      code runs without an explicit, visible user action -- this is
      real code execution triggered by an agent-written file, so the
      confirm-before-running step is load-bearing, not optional chrome).
+     **Decided**: View Code is the only review step -- no separate
+     capability/risk summary or harder confirmation dialog on top of
+     Start; matches how ordinary code review already works (once the
+     source is visible, that's the review).
    - On Start, dispatch by the declared `kind`:
      - `html`: materialize + mount as a real, ephemeral `kind: "html"`
        widget instance, reusing `desk.custom_widgets.materialize` and
        the per-instance token/`QWebEngineProfile` isolation TODO
        `a5f66cc` already built for `DefineWidget` -- the script's own
-       JS gets exactly the same authenticated `window.desk.*` Bridge
-       API access an ordinary `kind: "html"` widget's JS already has,
-       no new auth/injection mechanism needed.
-     - `python`: needs real design -- whether this reuses
-       `PythonWidgetHost`'s existing dynamic-module-loading shape
-       (which expects a `build() -> QWidget` entry point, built for
-       persistent widget UI, not a one-shot script) or a simpler
-       direct-exec model giving the script whatever a normal
-       `kind: "python"` widget's own code can already reach (e.g.
-       `desk.fs`, `desk.terminal_widget`) is not decided.
+       JS gets an authenticated `window.desk.*` Bridge API scoped to
+       exactly the `Capability` lines it declared, the same coarse
+       per-resource capability check `require_caller` already enforces
+       for every other `kind: "html"` widget (`app.py:224`); no new
+       auth/injection/capability mechanism needed, just a new source
+       of a `WidgetInfo.capabilities` list.
+     - `python`: **Decided**: simple direct-exec, not
+       `PythonWidgetHost`'s `build() -> QWidget` pattern -- run the
+       script in a fresh module namespace with the `desk` package
+       importable, capturing stdout/stderr/exceptions for the status
+       display below. Proportionate to "a one-time script," not a
+       real, persistent interactive widget.
    - A status display in the Job Runner widget (executing / done /
      errored) -- no progress protocol, run history, or resumability
      (that's the sibling FEEDBACK item's own, heavier concept).
-
-   Open questions, not designed further yet:
-   - Whether/how the Start button's confirmation surfaces *what* the
-     script is about to be able to do before the user clicks it (e.g.
-     for an `html`-kind job, that it's about to get real Bridge API
-     access) -- "view the code first" (the View Code button) is one
-     mitigation, but may not be sufficient on its own given this is
-     literal agent-authored code execution.
-   - Whether a run Job file is deleted after running, kept around as a
-     one-off record, or something in between -- and whether a second
-     "Start" click on an already-run Job should be possible at all.
-   - Whether Job files need any capability-declaration concept at all
-     (mirroring `DefineWidget`'s own `Capability` lines) for the
-     `html` case, or whether "the user saw View Code and clicked
-     Start" is considered sufficient authorization on its own.
+   - **Decided**: a run Job file is kept (not deleted) after running,
+     but its Start button becomes inert/hidden once it's finished --
+     a record of what ran, not a re-runnable saved tool.
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
