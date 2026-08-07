@@ -6796,6 +6796,7 @@ a8e4115. COMPLETED: Add Desk's own `CLAUDE.md` a project instruction to use path
    `kind: "python"` path (`build_error_changed`) always carries
    `traceback.format_exc()`, never empty, so it doesn't have this
    problem. Not designed further yet.
+   [planned: error-indicator-empty-message-noop.md]
 
 1b7e500. `desk-temporary-ui.md`'s "Questions for the user" section
    (`src/desk/temp_ui.py:236`, "Each entry is a `## <short summary>`
