@@ -6296,6 +6296,86 @@ e4662a5. COMPLETED: Make the pan/zoom control (`src/desk/shell/zoom_control.py`'
    rather than acted on unilaterally, since it's unrelated to this
    item's scope.
 
+d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
+   script can run with real widget-context capabilities -- notably
+   Bridge API access, which no agent-run script can reach today --
+   without needing to build out a full tempui `DefineWidget`/
+   `widgets/<id>/` registration for a single ad-hoc task. Prompted by
+   an agent's own observation while working on Desk (this session)
+   that it's "silly" an agent can't just use `window.desk.*` for a
+   one-off Bridge API call the way a real `kind: "html"` widget's own
+   JS can. Related to, but a materially different shape from,
+   `../FEEDBACK/FEEDBACK-DESK-batch-ingestion-job-concept-2026-08-03-1634.md`
+   (see the "Notes from Desk" section added to that file for the
+   relationship) -- that item is long-running/checkpointed/resumable
+   supervised pipelines; this one is a single one-shot run with no
+   persistence/checkpoint concept at all.
+
+   Suggested mechanism, following this project's own established
+   tempui-DSL-file-drop conventions rather than inventing a new
+   delivery channel:
+   - A new tempui DSL keyword (e.g. `Job`, added to
+     `RESERVED_TEMPUI_KEYWORDS`/`detect_temp_ui_kind` in
+     `src/desk/temp_ui.py`, mirroring `DEFINE_WIDGET_KEYWORD`'s own
+     shape) declares a summary line, a `kind` (`python` or `html`),
+     and the script content itself -- an agent drops a file into
+     `.desk_temp` the same way any other tempui file is dropped today.
+   - `TempUiManager`'s existing directory watcher already turns any
+     new `.desk_temp` file into a `file_added` signal with no new
+     plumbing needed; `DeskWindow._on_temp_ui_file_added` /
+     `_notify_temp_ui` / `_activate_temp_ui`
+     (`src/desk/shell/window.py:1553-1683`) is the exact existing
+     "new file -> notification -> click -> open a widget bound to it"
+     pipeline every other tempui kind (Scratch, Question,
+     DiscussParkingLotItem, ...) already uses -- a new "Job Runner"
+     widget kind would bind to the Job file the same way, via
+     `_bind_temp_ui_content`.
+   - The Job Runner widget itself shows: the declared summary; a
+     "View Code" button that opens the script's own text in the
+     Editor widget (mirroring `desk.editor.openOrScrap`/
+     `DeskWindow.open_editor_or_scrap`, `window.py:774`, as the
+     existing "show me this text in a real editor" precedent -- though
+     the script lives inside the tempui file's own DSL-wrapped
+     content here, not a standalone file, so this may need a
+     "materialize just the script body to a temp file first" step);
+     and a "Start" button, inert until clicked (the point being: no
+     code runs without an explicit, visible user action -- this is
+     real code execution triggered by an agent-written file, so the
+     confirm-before-running step is load-bearing, not optional chrome).
+   - On Start, dispatch by the declared `kind`:
+     - `html`: materialize + mount as a real, ephemeral `kind: "html"`
+       widget instance, reusing `desk.custom_widgets.materialize` and
+       the per-instance token/`QWebEngineProfile` isolation TODO
+       `a5f66cc` already built for `DefineWidget` -- the script's own
+       JS gets exactly the same authenticated `window.desk.*` Bridge
+       API access an ordinary `kind: "html"` widget's JS already has,
+       no new auth/injection mechanism needed.
+     - `python`: needs real design -- whether this reuses
+       `PythonWidgetHost`'s existing dynamic-module-loading shape
+       (which expects a `build() -> QWidget` entry point, built for
+       persistent widget UI, not a one-shot script) or a simpler
+       direct-exec model giving the script whatever a normal
+       `kind: "python"` widget's own code can already reach (e.g.
+       `desk.fs`, `desk.terminal_widget`) is not decided.
+   - A status display in the Job Runner widget (executing / done /
+     errored) -- no progress protocol, run history, or resumability
+     (that's the sibling FEEDBACK item's own, heavier concept).
+
+   Open questions, not designed further yet:
+   - Whether/how the Start button's confirmation surfaces *what* the
+     script is about to be able to do before the user clicks it (e.g.
+     for an `html`-kind job, that it's about to get real Bridge API
+     access) -- "view the code first" (the View Code button) is one
+     mitigation, but may not be sufficient on its own given this is
+     literal agent-authored code execution.
+   - Whether a run Job file is deleted after running, kept around as a
+     one-off record, or something in between -- and whether a second
+     "Start" click on an already-run Job should be possible at all.
+   - Whether Job files need any capability-declaration concept at all
+     (mirroring `DefineWidget`'s own `Capability` lines) for the
+     `html` case, or whether "the user saw View Code and clicked
+     Start" is considered sufficient authorization on its own.
+
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
    single-line `QLineEdit`) a multi-line box that wraps text instead,
