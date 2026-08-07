@@ -6372,6 +6372,19 @@ d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
    - **Decided**: a run Job file is kept (not deleted) after running,
      but its Start button becomes inert/hidden once it's finished --
      a record of what ran, not a re-runnable saved tool.
+   - **Agent-facing documentation must be updated as part of this
+     item, not left as a follow-up** -- the whole point is giving
+     agents a capability they don't know exists yet, so the tempui doc
+     set an agent actually reads (`src/desk/temp_ui.py`'s doc
+     constants, likely a new split doc file or a new section in
+     `_CUSTOM_WIDGETS_DOC`, matching the established doc-split
+     convention) needs to explain the `Job` keyword, its file format
+     (summary/`kind`/`Capability` lines/script body), and the
+     `html`/`python` execution split, with the usual
+     `TEMPUI_DOC_VERSION` bump and matching `_NEW_FEATURES_DOC` entry
+     (same convention every other tempui-DSL addition already follows
+     -- see TODO `e42469e` for what happens when a real capability
+     ships without this: agents kept not finding out it existed).
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
