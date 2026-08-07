@@ -6845,6 +6845,7 @@ a8e4115. COMPLETED: Add Desk's own `CLAUDE.md` a project instruction to use path
    `_relocate_promoted_widget_source`-style "free for the common case
    to ignore, a real breadcrumb for the uncommon one" precedent) when
    that count is nonzero. Not designed further yet.
+   [planned: questions-md-format-doc-and-silent-failure.md]
 
 e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
    can silently defeat the already-shipped capabilities-emission fix
