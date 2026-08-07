@@ -6753,6 +6753,7 @@ a8e4115. COMPLETED: Add Desk's own `CLAUDE.md` a project instruction to use path
    `self._python_modules[info.id]` if the source's current mtime is
    newer, mirroring `_resolve_js_entry`'s own check for the JS/TS
    path. Not designed further yet.
+   [planned: transform-discovery-staleness.md]
 
 47aaf73. The `[ERROR]` titlebar button can light up and then silently
    do nothing when clicked. Root cause, confirmed directly: the click
