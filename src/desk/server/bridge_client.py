@@ -120,6 +120,7 @@ BRIDGE_CLIENT_TEMPLATE = """
       getManifest: () => call("GET", "/api/bridge/self/getManifest"),
       getLocalStorage: () => call("GET", "/api/bridge/self/getLocalStorage"),
       setLocalStorage: (data) => call("POST", "/api/bridge/self/setLocalStorage", { data }),
+      setSubtitle: (text) => call("POST", "/api/bridge/self/setSubtitle", { text: text ?? null }),
     },
   };
 })();

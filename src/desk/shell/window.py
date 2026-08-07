@@ -1017,6 +1017,17 @@ class DeskWindow(QMainWindow):
         disk write on every call."""
         self._html_widget_local_storage[instance_id] = data
 
+    def set_widget_subtitle(self, instance_id: str, text: str | None) -> None:
+        """The Bridge API's `self.setSubtitle` (TODO 3cd90cf), called
+        via `GuiBridge` from the (background-thread) Local Web Server.
+        A silent no-op for an unknown instance id (e.g. a request
+        racing a just-closed widget) -- same tolerance as
+        start_dom_snapshot's own unknown-target handling, not worth
+        surfacing as a Bridge-level failure to the caller."""
+        frame = self.find_frame_by_instance_id(instance_id)
+        if frame is not None:
+            frame.set_subtitle(text)
+
     def _bind_temp_ui_content(self, content, tempui_path: Path, directory: Path) -> None:
         """Wires a freshly-placed or restored TempUI-backed widget's
         content to its source tempui_path -- Question/LightningRound

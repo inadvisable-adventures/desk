@@ -292,6 +292,7 @@ class _TitleBar(QWidget):
         super().__init__(parent)
         self.setCursor(Qt.CursorShape.SizeAllCursor)
         self._title = title
+        self._subtitle: str | None = None
         self._external = False
         self._stale = False
         self._has_error = False
@@ -336,13 +337,24 @@ class _TitleBar(QWidget):
         self.apply_scale(1.0)
 
     def _update_label_text(self) -> None:
-        self._label.setText(f"{self._title} [EXTERNAL]" if self._external else self._title)
+        text = f"{self._title} — {self._subtitle}" if self._subtitle else self._title
+        if self._external:
+            text = f"{text} [EXTERNAL]"
+        self._label.setText(text)
 
     def set_external(self, is_external: bool) -> None:
         """Shows/hides the "[EXTERNAL]" marker (TODO a053e3a) -- for a
         widget whose loaded file is outside the current Desk's
         directory."""
         self._external = is_external
+        self._update_label_text()
+
+    def set_subtitle(self, subtitle: str | None) -> None:
+        """The Bridge API's `self.setSubtitle` (TODO 3cd90cf) -- lets a
+        widget instance put its own state (e.g. which document it's
+        editing) into its own titlebar. `None`/empty clears it back to
+        the bare title."""
+        self._subtitle = subtitle
         self._update_label_text()
 
     def set_stale(self, is_stale: bool) -> None:
@@ -720,6 +732,11 @@ class WidgetFrame(QWidget):
         a053e3a). See `desk.shell.window.DeskWindow`'s generic
         `external_changed`-signal binding in `_place_widget`."""
         self._titlebar.set_external(is_external)
+
+    def set_subtitle(self, subtitle: str | None) -> None:
+        """The Bridge API's `self.setSubtitle` (TODO 3cd90cf) -- see
+        `desk.shell.window.DeskWindow.set_widget_subtitle`."""
+        self._titlebar.set_subtitle(subtitle)
 
     def set_focused(self, focused: bool) -> None:
         """TODO 397770c -- called by WorkspaceView's app-wide

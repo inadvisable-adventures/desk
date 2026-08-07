@@ -1,4 +1,4 @@
-# Add `desk.self.setSubtitle` Bridge API call (TODO `3cd90cf`)
+# Add `desk.self.setSubtitle` Bridge API call (TODO `3cd90cf`) (COMPLETED)
 
 ## Summary
 

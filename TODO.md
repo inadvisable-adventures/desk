@@ -6997,7 +6997,40 @@ e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
    `current_context` doesn't have an obvious existing per-instance-id
    hook a `python`-kind widget's own code could use the same way, and
    investigating that is real, separate work, not bundled in here.
-   [planned: widget-titlebar-subtitle-api.md]
+   [planned: widget-titlebar-subtitle-api.md (COMPLETED)]
+
+   COMPLETED: `bridge_client.py`'s `self: {...}` object gained
+   `setSubtitle: (text) => call("POST", "/api/bridge/self/setSubtitle",
+   { text: text ?? null })`. `app.py` gained
+   `class SetSubtitleRequest(BaseModel): text: str | None` and
+   `POST /api/bridge/self/setSubtitle`, gated only by
+   `require_instance_id` (no capability check), mirroring
+   `self_set_local_storage` exactly. `DeskWindow.set_widget_subtitle
+   (instance_id, text)` resolves via `find_frame_by_instance_id` and
+   silently no-ops for an unknown instance id. `_TitleBar` gained
+   `self._subtitle: str | None` and `set_subtitle`;
+   `_update_label_text` now composes `f"{title} — {subtitle}"` (only
+   when `subtitle` is truthy) before appending the existing
+   `[EXTERNAL]` suffix. `WidgetFrame.set_subtitle` thinly delegates to
+   `_titlebar.set_subtitle`, matching `set_external`/`set_stale`'s own
+   shape. `TEMPUI_DOC_VERSION` bumped 29->30 with a matching comment
+   block, a new `desk.self.setSubtitle` bullet in the Bridge API
+   section of `_CUSTOM_WIDGETS_DOC` (alongside `getManifest`/
+   `getLocalStorage`/`setLocalStorage`), and a `## Version 30` entry in
+   `_NEW_FEATURES_DOC`. New
+   `tests/verify/verify_widget_titlebar_subtitle.py` (18 checks, real
+   Qt widgets, no mocking): `_TitleBar`/`WidgetFrame` label composition
+   across every combination of subtitle/`[EXTERNAL]`, and that both
+   `None` and `""` clear the subtitle back to the bare title;
+   `DeskWindow.set_widget_subtitle` resolving the right frame among
+   several and silently no-oping for an unknown instance id; the
+   rendered Bridge client template declaring `self.setSubtitle`; doc
+   -version/content checks; a real HTTP round trip through a real
+   `start_server` instance with no `X-Desk-Widget-Id` header sent at
+   all (confirming no capability is required), whose response is
+   confirmed against the real, live titlebar label text afterward, not
+   just the HTTP response body. Full `tests/verify/` regression suite
+   passes (93 scripts total, 0 failures).
 
 7f984ec. Several small gaps found adopting Desk's shared/not-shared
    `development-process.md` doc split (TODO `1a96c9f`/`c458012`) into

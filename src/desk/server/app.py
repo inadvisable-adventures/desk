@@ -143,6 +143,10 @@ class SetLocalStorageRequest(BaseModel):
     data: dict
 
 
+class SetSubtitleRequest(BaseModel):
+    text: str | None
+
+
 class EventNamesRequest(BaseModel):
     names: list[str]
 
@@ -311,6 +315,13 @@ def create_app(
         body: SetLocalStorageRequest, instance_id: str = Depends(require_instance_id)
     ):
         await run_on_gui(lambda: gui_bridge.window.set_html_widget_local_storage(instance_id, body.data))
+        return {"ok": True}
+
+    @app.post("/api/bridge/self/setSubtitle")
+    async def self_set_subtitle(
+        body: SetSubtitleRequest, instance_id: str = Depends(require_instance_id)
+    ):
+        await run_on_gui(lambda: gui_bridge.window.set_widget_subtitle(instance_id, body.text))
         return {"ok": True}
 
     @app.get("/api/bridge/workspace/getState")

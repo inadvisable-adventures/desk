@@ -194,7 +194,12 @@ SHARED_COMPONENTS_DIRNAME = "shared-components"
 # nothing telling the project so; (b) deletes any other DefineWidget
 # file for the same keyword immediately after a successful build,
 # instead of accumulating one leftover file per rebuild forever.
-TEMPUI_DOC_VERSION = 29
+#
+# TODO 3cd90cf: bumped 29 -> 30 -- new `desk.self.setSubtitle(text)`
+# Bridge API call, documented in the "self.*" list above: lets a
+# widget instance put its own state into its own titlebar, alongside
+# getManifest/getLocalStorage/setLocalStorage.
+TEMPUI_DOC_VERSION = 30
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -734,6 +739,16 @@ All calls are `async` (they return a `Promise`):
   version of your widget's code is currently registered, and construct
   a correct project-relative path yourself if you ever need to, without
   declaring the `fs` capability just to find out where you are).
+- `desk.self.setSubtitle(text)` → `{ ok: true }` — puts your own
+  instance's state into its own titlebar, next to its kind's static
+  label (e.g. `"My Widget — some-document.md"`). Every instance of
+  your widget's kind otherwise shows the identical label, so this is
+  how one particular instance shows *which* thing it's currently
+  pointed at. Call it again whenever that changes; pass `null` (or an
+  empty string) to clear it back to the bare label. Not persisted —
+  call it again after restoring your own state (e.g. right after
+  `getLocalStorage`) on every fresh page load, the same way you'd
+  re-render your own content.
 
 If you're porting an existing web app/component into a `DefineWidget`
 widget, it likely already has its own persistence mechanism (custom
@@ -994,6 +1009,17 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 30
+- New `desk.self.setSubtitle(text)` Bridge API call -- lets a widget
+  instance put its own state (e.g. which document it's editing) into
+  its own titlebar, alongside the existing `getManifest`/
+  `getLocalStorage`/`setLocalStorage`. `text` composes with the
+  titlebar's kind label as `"<label> — <text>"`, before the
+  `[EXTERNAL]` suffix; `null`/empty clears it back to the bare label.
+  Needs no capability declaration (same as `getLocalStorage`/
+  `setLocalStorage`) and isn't persisted -- call it again on every
+  fresh page load once your own state is restored.
 
 ## Version 29
 - `.desk_temp/build_widget.py` now warns to stderr, at the start of
