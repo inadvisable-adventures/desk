@@ -5,4 +5,5 @@
 - In TypeScript, prefer static type imports at the top of a file rather than inline ones.
 - generally, the labels for UI elements should not be user-selectable, unless that is specifically requested.
 - avoid putting HTML and CSS directly in code that will run in the browser. prefer `<template>` and `<slot>` where possible in web component code especially.
+- use paths relative to the current project directory rather than absolute ones.
 

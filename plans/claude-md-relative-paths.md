@@ -1,4 +1,4 @@
-# Add a relative-paths instruction to Desk's own CLAUDE.md (TODO `a8e4115`)
+# Add a relative-paths instruction to Desk's own CLAUDE.md (TODO `a8e4115`) (COMPLETED)
 
 ## Summary
 

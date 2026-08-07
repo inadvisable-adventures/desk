@@ -6724,13 +6724,15 @@ e42469e. COMPLETED: Fix a now-stale claim in the tempui doc set (`src/desk/temp_
    correctly against the new version). Full `tests/verify/`
    regression suite passes (89 scripts, 0 failures).
 
-a8e4115. Add Desk's own `CLAUDE.md` a project instruction to use paths
+a8e4115. COMPLETED: Add Desk's own `CLAUDE.md` a project instruction to use paths
    relative to the current project directory rather than absolute
    ones, matching an instruction another project's `CLAUDE.md` was
    recently given. From
    `../FEEDBACK/FEEDBACK-DESK-claude-md-relative-paths-2026-08-03-1604.md`.
    Not designed/scoped beyond the one-line addition itself -- trivial.
    [planned: claude-md-relative-paths.md]
+
+   Added the line verbatim to `CLAUDE.md`.
 
 7c11fe0. `TransformsService` (`src/desk_services/transforms/service.py`)
    never notices a transform added or changed on disk after Desk
