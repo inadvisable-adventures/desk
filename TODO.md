@@ -6915,7 +6915,51 @@ e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
      response.status` right before throwing) so calling code can
      branch on `err.status` without parsing the message.
    Not designed further yet.
-   [planned: stale-build-widget-script-fix.md]
+   [planned: stale-build-widget-script-fix.md (COMPLETED)]
+
+   COMPLETED: confirmed `_BUILD_WIDGET_SCRIPT`'s `main()`
+   (`src/desk/temp_ui.py`) now checks a new module constant
+   `STALE_SIBLING_SCRIPT_PATH = Path("scripts/build_widget.py")` via a
+   new `_warn_if_stale_sibling_exists()`, called as the very first
+   thing in `main()` -- prints a stderr warning naming both the stale
+   path and the canonical `.desk_temp/build_widget.py` one, never
+   aborts the build. `build_widget()`'s return type changed from `str`
+   to `tuple[str, str]` (`(manifest["keyword"], tempui_text)`), so
+   `main()` now has the keyword available after a successful build; a
+   new `_delete_other_builds_for_keyword(temp_ui_dir, keyword, keep)`
+   deletes every other file in `temp_ui_dir` whose first line starts
+   with `DefineWidget\t<keyword>\t`, called right after the fresh
+   `.desk_temp/<uuid>` file is written -- tolerates `OSError`/
+   `UnicodeDecodeError` per-candidate rather than aborting the whole
+   scan. `bridge_client.py`'s `call()` helper now constructs the thrown
+   `Error` as a variable and sets `err.status = response.status` right
+   before `throw err;`, additive alongside the existing free-text
+   message. `TEMPUI_DOC_VERSION` bumped 28->29 with a matching comment
+   block and a `## Version 29` entry in `_NEW_FEATURES_DOC` describing
+   both build-script behavior changes. New
+   `tests/verify/verify_stale_build_widget_script_fix.py` (20 checks,
+   real subprocess builds via a real `tsc`, real HTTP round trip
+   through a real `start_server` instance, real `node` execution of
+   the actual rendered `bridge_client.py` template against that live
+   server): doc-version/changelog content; a real build with a stale
+   `scripts/build_widget.py` sibling present prints the warning to
+   stderr and still succeeds; a build with no sibling prints nothing
+   extra; building the same keyword three times (interleaved with a
+   different keyword's own build) leaves exactly one `DefineWidget`
+   file for the repeated keyword and leaves the unrelated keyword's
+   file untouched; a real 403 capability-rejection response round-trips
+   through the actual Bridge client JS (executed under real Node, with
+   `fetch` rebased onto the real server's origin since plain Node has
+   no page origin to resolve a relative URL against) and the caught
+   `Error` has both `.status === 403` and the status still present in
+   `.message`. Fixed one pre-existing regression along the way:
+   `tests/verify/verify_build_widget.py` still called
+   `build_widget.build_widget(...)` expecting a plain string back --
+   updated its two call sites to unpack `(keyword, text)`, plus a new
+   assertion that the returned keyword matches the manifest. Full
+   `tests/verify/` regression suite passes (92 scripts total, 0
+   failures beyond the one pre-existing `verify_build_widget.py` gap
+   just fixed).
 
 3cd90cf. Add a `desk.self.setSubtitle(text: string | null)` Bridge API
    call (any `kind: "html"` widget) so a widget instance can put its

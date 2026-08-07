@@ -185,7 +185,16 @@ SHARED_COMPONENTS_DIRNAME = "shared-components"
 # so). A heading in the old, documented-but-never-actually-accepted
 # shape still silently fails to parse as before -- this bump fixes the
 # doc, not the parser's own strictness.
-TEMPUI_DOC_VERSION = 28
+#
+# TODO e86a31b: bumped 28 -> 29 -- the generated .desk_temp/build_widget.py
+# now (a) warns to stderr if a stale scripts/build_widget.py sibling
+# also exists in the project (from before TODO 029047b moved this
+# mechanism here), since such a copy can silently defeat a fix already
+# shipped here (e.g. TODO 31db3f6's capabilities emission) with
+# nothing telling the project so; (b) deletes any other DefineWidget
+# file for the same keyword immediately after a successful build,
+# instead of accumulating one leftover file per rebuild forever.
+TEMPUI_DOC_VERSION = 29
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -986,6 +995,22 @@ own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
 
+## Version 29
+- `.desk_temp/build_widget.py` now warns to stderr, at the start of
+  every run, if a `scripts/build_widget.py` also exists in the
+  project -- a copy from before this mechanism moved to `.desk_temp/`
+  (TODO `029047b`) can silently defeat a fix already shipped here
+  (e.g. capabilities emission, Version 22) with nothing telling the
+  project the copy being run might be the stale one. Not an error --
+  the build still proceeds either way.
+- `.desk_temp/build_widget.py` also now deletes any other
+  `DefineWidget` file for the same widget keyword immediately after a
+  successful build, instead of leaving one leftover file behind per
+  rebuild forever (a real, if narrow, risk: a startup/Desk-switch
+  re-scan of `.desk_temp` is alphabetical, not chronological, so
+  several stale same-keyword files left behind could make an old one
+  "win" again).
+
 ## Version 28
 - "Questions for the user" corrected: the documented `QUESTIONS.md`
   heading format (`## <short summary>`) never actually matched what
@@ -1329,7 +1354,10 @@ def _chunk(text: str, size: int) -> list[str]:
     return [text[i : i + size] for i in range(0, len(text), size)] or [""]
 
 
-def build_widget(widget_dir: Path) -> str:
+def build_widget(widget_dir: Path) -> tuple[str, str]:
+    """Returns (keyword, tempui_text) -- the keyword is needed by
+    main() below to find and clean up any other DefineWidget file for
+    this same widget kind, not just to build a fresh one."""
     manifest = _read_manifest(widget_dir)
     tsconfig = _read_tsconfig(widget_dir)
     out_dir = _read_out_dir(widget_dir, tsconfig)
@@ -1345,7 +1373,53 @@ def build_widget(widget_dir: Path) -> str:
     ]
     lines.extend(f"Capability\\t{cap}" for cap in manifest.get("capabilities", []))
     lines.extend(f"Html\\t{chunk}" for chunk in _chunk(html_b64, HTML_CHUNK_SIZE))
-    return "\\n".join(lines) + "\\n"
+    return manifest["keyword"], "\\n".join(lines) + "\\n"
+
+
+# TODO e86a31b: the historical, pre-029047b seeded location -- a
+# project that adopted Desk before that TODO moved this mechanism to
+# .desk_temp/build_widget.py (this file) can still have a stale copy
+# sitting there, silently defeating any fix landed here since (e.g.
+# TODO 31db3f6's capabilities emission) without anything today telling
+# them so. Checked by path only, not content/version -- this file
+# doesn't know anything about a copy it didn't write, just its own
+# canonical location and whether something else also claims that name.
+STALE_SIBLING_SCRIPT_PATH = Path("scripts/build_widget.py")
+
+
+def _warn_if_stale_sibling_exists() -> None:
+    if STALE_SIBLING_SCRIPT_PATH.is_file():
+        print(
+            f"warning: {STALE_SIBLING_SCRIPT_PATH} also exists in this project and is not "
+            f"kept up to date -- if you're not sure which one you just ran, it was probably "
+            f"the wrong one. Use .desk_temp/build_widget.py (this file) instead.",
+            file=sys.stderr,
+        )
+
+
+def _delete_other_builds_for_keyword(temp_ui_dir: Path, keyword: str, keep: Path) -> None:
+    """TODO e86a31b: an un-promoted widget rebuilt many times
+    accumulates one leftover DefineWidget file per rebuild forever --
+    harmless during one continuously-running Desk session (the
+    most-recently-registered file always wins), but
+    _register_custom_widgets_from_desk_temp re-scans .desk_temp in
+    alphabetical (not chronological) order at startup/Desk-switch, so
+    several stale same-keyword files left behind risk an old one
+    "winning" again with no relationship to which was actually built
+    most recently. Deletes every other file in temp_ui_dir whose first
+    line is this same keyword's own DefineWidget line -- cheap (a
+    handful of files at most), and only ever run right after a
+    successful build."""
+    marker = f"DefineWidget\\t{keyword}\\t"
+    for candidate in temp_ui_dir.iterdir():
+        if candidate == keep or not candidate.is_file():
+            continue
+        try:
+            first_line = candidate.open(encoding="utf-8").readline()
+        except (OSError, UnicodeDecodeError):
+            continue
+        if first_line.startswith(marker):
+            candidate.unlink()
 
 
 def main(argv: list[str]) -> int:
@@ -1357,8 +1431,10 @@ def main(argv: list[str]) -> int:
         print(f"{widget_dir} is not a directory", file=sys.stderr)
         return 1
 
+    _warn_if_stale_sibling_exists()
+
     try:
-        tempui_text = build_widget(widget_dir)
+        keyword, tempui_text = build_widget(widget_dir)
     except BuildError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
@@ -1367,6 +1443,7 @@ def main(argv: list[str]) -> int:
     temp_ui_dir.mkdir(exist_ok=True)
     out_path = temp_ui_dir / str(uuid.uuid4())
     out_path.write_text(tempui_text)
+    _delete_other_builds_for_keyword(temp_ui_dir, keyword, keep=out_path)
     print(out_path)
     return 0
 

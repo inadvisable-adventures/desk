@@ -1,4 +1,4 @@
-# Warn on a stale build_widget.py sibling, clean up old build output, add err.status (TODO `e86a31b`)
+# Warn on a stale build_widget.py sibling, clean up old build output, add err.status (TODO `e86a31b`) (COMPLETED)
 
 ## Summary
 

@@ -75,7 +75,8 @@ widget_dir.mkdir(parents=True)
 if shutil.which("tsc") is None:
     check("tsc available for this script's own checks", False)
 else:
-    text = build_widget.build_widget(widget_dir)
+    keyword, text = build_widget.build_widget(widget_dir)
+    check("build_widget returns the manifest keyword alongside the text", keyword == "HelloWidget")
     check("detect_temp_ui_kind sees define_widget", detect_temp_ui_kind(text) == "define_widget")
     definition = parse_define_widget(text)
     check("parse succeeds", definition is not None)
@@ -157,7 +158,7 @@ else:
     (caps_dir / "with_caps.ts").write_text("console.log(1);\n")
     (caps_dir / "widget.html").write_text("<html><script>\n/* BUILD:COMPILED_JS */\n</script></html>")
 
-    caps_text = build_widget.build_widget(caps_dir)
+    _caps_keyword, caps_text = build_widget.build_widget(caps_dir)
     check(
         "widget.json's capabilities produce Capability<TAB>name lines in the generated file",
         "Capability\tfs" in caps_text and "Capability\teditor" in caps_text,

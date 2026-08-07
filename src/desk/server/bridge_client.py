@@ -32,7 +32,13 @@ BRIDGE_CLIENT_TEMPLATE = """
     const response = await fetch(path, options);
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`Desk Bridge ${path} failed (${response.status}): ${text}`);
+      const err = new Error(`Desk Bridge ${path} failed (${response.status}): ${text}`);
+      // TODO e86a31b: a structured property, not just embedded in the
+      // message string -- lets calling code branch on e.g. err.status
+      // === 403 (a capability rejection) vs. err.status === 400 (a
+      // genuine not-found) without regex/substring-matching free text.
+      err.status = response.status;
+      throw err;
     }
     return response.json();
   }
