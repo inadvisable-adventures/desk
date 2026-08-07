@@ -6723,3 +6723,242 @@ e42469e. COMPLETED: Fix a now-stale claim in the tempui doc set (`src/desk/temp_
    `ensure_docs_current`'s stale-doc rewrite path still working
    correctly against the new version). Full `tests/verify/`
    regression suite passes (89 scripts, 0 failures).
+
+a8e4115. Add Desk's own `CLAUDE.md` a project instruction to use paths
+   relative to the current project directory rather than absolute
+   ones, matching an instruction another project's `CLAUDE.md` was
+   recently given. From
+   `../FEEDBACK/FEEDBACK-DESK-claude-md-relative-paths-2026-08-03-1604.md`.
+   Not designed/scoped beyond the one-line addition itself -- trivial.
+
+7c11fe0. `TransformsService` (`src/desk_services/transforms/service.py`)
+   never notices a transform added or changed on disk after Desk
+   startup/Desk-switch -- `_require` fails immediately with `Unknown
+   transform: ... (call discover() first)` on a lookup miss, and even
+   a manual re-`discover()` (e.g. via the Transform Manager widget's
+   Refresh button) doesn't help an *edited* Python transform, since
+   `self._python_modules` is never invalidated (the JS/TS path already
+   partially self-heals via `_resolve_js_entry`'s own mtime check,
+   `service.py:118-120`, but there's no Python equivalent). From
+   `../FEEDBACK/FEEDBACK-DESK-transform-discovery-staleness-2026-08-04-1301.md`.
+   Suggested fix: on a lookup miss, `_require` retries `discover()`
+   once (needs `desk_temp_dir`/`project_dir` stored on the service at
+   the last real `discover()` call, e.g. alongside `self._transforms`,
+   so `_require` doesn't need every call site to pass them through)
+   before raising `Unknown transform`; separately, track each Python
+   transform's source mtime at load time and drop/reload
+   `self._python_modules[info.id]` if the source's current mtime is
+   newer, mirroring `_resolve_js_entry`'s own check for the JS/TS
+   path. Not designed further yet.
+
+47aaf73. The `[ERROR]` titlebar button can light up and then silently
+   do nothing when clicked. Root cause, confirmed directly: the click
+   handler (`DeskWindow._on_widget_error_clicked`,
+   `src/desk/shell/window.py:1970`) does `if not
+   frame.last_error_message: return` -- inferring "was there an
+   error" from the captured message string's truthiness -- but the
+   capture code (`_LoggingWebEnginePage.javaScriptConsoleMessage`,
+   `src/desk/shell/chromium_widget.py:57-68`) already has a deliberate
+   `message or ""` fallback for exactly the case where Qt hands back a
+   falsy message for a real error (an uncaught exception/rejection/
+   `console.error()` call with no usable text) -- so the click
+   handler's own gate is wrong precisely for the case that fallback
+   exists to handle: the button stays visible (lit) forever, since
+   `set_error(False)` is never reached. From
+   `../FEEDBACK/FEEDBACK-DESK-error-indicator-empty-message-noop-2026-08-04-1305.md`.
+   Suggested fix: give `WidgetFrame` (or reuse `_TitleBar`'s own
+   existing, currently-private `_has_error` bool,
+   `widget_frame.py:297`) an explicit has-error flag, independent of
+   `last_error_message`'s content; gate `_on_widget_error_clicked` on
+   that flag, not on `last_error_message` truthiness; fall back to a
+   placeholder string (e.g. `"(no error message was captured)"`) when
+   showing the dialog for an error with empty text, instead of the
+   message's emptiness silently cancelling the whole notification.
+   Only affects the `kind: "html"`/`ChromiumWidget` path -- the
+   `kind: "python"` path (`build_error_changed`) always carries
+   `traceback.format_exc()`, never empty, so it doesn't have this
+   problem. Not designed further yet.
+
+1b7e500. `desk-temporary-ui.md`'s "Questions for the user" section
+   (`src/desk/temp_ui.py:236`, "Each entry is a `## <short summary>`
+   heading...") describes a `QUESTIONS.md` heading format the real
+   parser doesn't accept -- `src/desk/questions_file.py`'s
+   `ENTRY_START_RE`/`TODO_ID_RE` (lines 20-21) require the heading to
+   **start with the literal word `TODO`** and every referenced id to
+   be **backtick-wrapped**: `## TODO \`<id>\`[/\`<id2>\`...]:
+   <summary>` (confirmed against `plans/questions-widget.md`'s own
+   original design -- entries were deliberately scoped to
+   TODO-blocking questions, not general free-standing ones -- none of
+   which the doc mentions). An entry whose heading doesn't match
+   `ENTRY_START_RE` at all doesn't partially parse -- it's silently
+   absorbed into `preamble`, genuinely invisible: `parse_questions_file`
+   returns it as zero entries, `_on_questions_file_changed`
+   (`window.py:1465`) computes an empty `new_keys` and returns before
+   ever showing the "new question" notification the doc promises, and
+   the Questions widget shows nothing either -- indistinguishable from
+   a `QUESTIONS.md` with no questions at all, at every layer, with no
+   diagnostic anywhere. From
+   `../FEEDBACK/FEEDBACK-DESK-questions-md-format-undocumented-and-brittle-2026-08-04-1347.md`.
+   Suggested fix: correct the doc to state the real required heading
+   shape and that an entry must reference at least one TODO id
+   (matching the deliberate original design -- not changing
+   `questions_file.py`'s parser to add free-standing-question support,
+   which would be a real feature addition, not a doc-accuracy fix);
+   separately, stop the failure being *totally* silent -- e.g. a small
+   helper that counts real `## ` headings that didn't match
+   `ENTRY_START_RE` in a given file, with `_on_questions_file_changed`
+   logging a low-severity warning (matching this project's own
+   `_relocate_promoted_widget_source`-style "free for the common case
+   to ignore, a real breadcrumb for the uncommon one" precedent) when
+   that count is nonzero. Not designed further yet.
+
+e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
+   can silently defeat the already-shipped capabilities-emission fix
+   already living in the auto-refreshed `.desk_temp/build_widget.py`
+   (TODO `31db3f6`) -- both compile/produce a valid `DefineWidget`
+   file with the same exit code either way, but the stale copy (from
+   before TODO `029047b` moved the mechanism to `.desk_temp/`, bumped
+   16->17) has zero mentions of `Capability` and silently drops every
+   capability a widget declares. Confirmed via `git grep`/`ls` that
+   Desk's own repo no longer seeds any `scripts/build_widget.py`
+   itself (no `_seed_build_widget_script`-shaped function exists) --
+   this is purely legacy drift in a project that adopted Desk before
+   that move, with nothing today warning it's stale/unused. From
+   `../FEEDBACK/FEEDBACK-DESK-stale-build-widget-script-defeats-capabilities-fix-2026-07-31-1445.md`.
+   Suggested fix: have the generated `.desk_temp/build_widget.py`
+   script (`_BUILD_WIDGET_SCRIPT` in `src/desk/temp_ui.py:1126`,
+   specifically its `main()` at line 1312) check, at the very start of
+   `main()`, whether a `scripts/build_widget.py` also exists in the
+   project and print a loud warning if so -- doesn't need either
+   file's own version, just its own canonical location plus the other
+   one's existence. Two smaller, related gaps from the same FEEDBACK
+   item, fixable in the same pass:
+   - `main()` (same file) writes a fresh `.desk_temp/<uuid>` file on
+     every build and never touches an earlier build's file for the
+     same keyword -- an un-promoted widget iterated on across many
+     sessions accumulates one leftover file per rebuild forever, with
+     a real (if narrow) risk: `_register_custom_widgets_from_desk_temp`
+     re-scans `.desk_temp` in alphabetical (not chronological) order
+     at startup/Desk-switch, so several stale same-keyword files left
+     behind could make an old one "win" again with no relationship to
+     which was built most recently. Since `build_widget()` already
+     knows the keyword it just built, have `main()` delete any other
+     same-keyword `DefineWidget` file in the same output directory
+     immediately after a successful build.
+   - The Bridge client's thrown `Error`
+     (`src/desk/server/bridge_client.py`'s `call()` helper) bakes the
+     HTTP status into the message string (`` `Desk Bridge ${path}
+     failed (${response.status}): ${text}` ``) instead of exposing it
+     as a structured property -- a capability rejection (403) and a
+     genuine not-found (400) are indistinguishable from a `catch`
+     block without regex/substring-matching the free-text message.
+     Attach the numeric status directly (e.g. `err.status =
+     response.status` right before throwing) so calling code can
+     branch on `err.status` without parsing the message.
+   Not designed further yet.
+
+3cd90cf. Add a `desk.self.setSubtitle(text: string | null)` Bridge API
+   call (any `kind: "html"` widget) so a widget instance can put its
+   own state (e.g. which document it's editing) into its own
+   titlebar, alongside the existing `[EXTERNAL]` text suffix (the
+   `[STALE]`/`[ERROR]`/`[TEMPUI]` indicators are separate clickable
+   titlebar *buttons*, not part of the label text, so this only needs
+   to compose with `[EXTERNAL]`). From
+   `../FEEDBACK/FEEDBACK-DESK-widget-titlebar-subtitle-api-2026-08-03-1830.md`.
+   A widget's titlebar text is fixed at construction
+   (`_TitleBar.__init__`, `src/desk/shell/widget_frame.py:291`) and
+   never changes except that suffix -- no widget-authored way to
+   surface *which* particular thing an instance is showing (e.g. a
+   file-editor-shaped widget letting the user pick a document at
+   runtime has no titlebar-level option to show which one, only its
+   own in-content UI). Routing plumbing already substantially exists,
+   mirroring `getLocalStorage`/`setLocalStorage`'s own shape exactly
+   (`self`-scoped, `require_instance_id`-only, "need no broader
+   capability" per that pair's own precedent, `app.py:304-314`):
+   `DeskWindow.find_frame_by_instance_id` (`window.py:1099`) already
+   resolves an instance id to its live `WidgetFrame`. Suggested
+   pieces: `bridge_client.py`'s `self: {...}` object gets a
+   `setSubtitle` call; `app.py` gets a matching
+   `POST /api/bridge/self/setSubtitle` route (a `SetSubtitleRequest`
+   pydantic model mirroring `SetLocalStorageRequest`); `DeskWindow`
+   gets a `set_widget_subtitle(instance_id, text)` →
+   `find_frame_by_instance_id` → new `WidgetFrame.set_subtitle`/
+   `_TitleBar.set_subtitle` pair; `_TitleBar._update_label_text`
+   (`widget_frame.py:338`) composes title + subtitle + `[EXTERNAL]`.
+   `None`/empty clears it back to the bare title. Needs a
+   `TEMPUI_DOC_VERSION` bump + `_CUSTOM_WIDGETS_DOC`/`_NEW_FEATURES_DOC`
+   entries documenting the new call, matching this project's own
+   established convention. Explicitly out of scope (per the FEEDBACK
+   item's own framing): the equivalent for `kind: "python"` widgets --
+   `current_context` doesn't have an obvious existing per-instance-id
+   hook a `python`-kind widget's own code could use the same way, and
+   investigating that is real, separate work, not bundled in here. Not
+   designed further yet.
+
+7f984ec. Several small gaps found adopting Desk's shared/not-shared
+   `development-process.md` doc split (TODO `1a96c9f`/`c458012`) into
+   an existing project (`world-timelines`), each confirmed directly
+   against Desk's own current seeding code. From
+   `../FEEDBACK/FEEDBACK-DESK-new-desk-in-existing-project-source-diving-2026-08-03-1506.md`:
+   - **No breadcrumb when seeding into a project that already has its
+     own `development-process.md`.** `_seed_development_process`
+     (`src/desk/shell/window.py:1802`) copies
+     `shared_development_process.md`/
+     `specifically-not-working-on-desk-itself-development-process.md`
+     into a project whenever the destination doesn't already have that
+     *specific* filename, independently per file -- so a project with
+     its own pre-existing, pre-split `development-process.md` (which
+     is left untouched, per the function's own no-overwrite rule)
+     silently gets the two new peer files with nothing explaining what
+     they are, that the top-level file still needs a manual rewrite to
+     reference them, or where to find the how-to for the TODO-id
+     conversion (see below). Suggested fix: the same low-cost, already
+     -established mechanism the tempui-doc-drift notification (TODO
+     `7c7b676`) uses -- drop a same-directory `Scratch` tempui note
+     explaining what just got seeded and what manual step is still
+     needed, with the exact template pointer
+     (`plans/fork-development-process-doc.md`). Confirmed via `git
+     grep` that Desk has no standing check for "peer files exist but
+     the top-level file doesn't reference `shared_development_process.md`"
+     either -- worth deciding whether that's a one-time-seed note or a
+     recurring check when such a project is opened.
+   - **`how-to-convert-item-id-one-time.md` isn't seeded alongside
+     `scripts/todo_item_ids.py`.** Confirmed the file exists in Desk's
+     own repo root but `_seed_todo_item_ids_script`
+     (`window.py:1824`) doesn't copy it -- the script's own docstring
+     says it's "meant to be copied verbatim into other projects," but
+     the doc that makes running its `convert` mode *safely* possible
+     (dry-run-first, never-hand-modify-the-script discipline) doesn't
+     travel with it.
+   - **`todo_item_ids.py` (`scripts/todo_item_ids.py`) doesn't handle
+     three real reference shapes**, confirmed directly against its
+     current regexes: (a) existing `"TODO item N"` phrasing --
+     `convert`'s singular-reference replacement
+     (`re.sub(rf"\bitem\s+{number}\b", f"TODO {item_id}", text)`,
+     line 101) matches `item N` regardless of what precedes it, so
+     `"TODO item 16"` becomes `"TODO TODO <id>"`; (b) en-dash ranges
+     like `"items 6–8"` -- the plural-reference regex
+     (`r"\bitems\s+(\d+(?:/\d+)+)\b"`, line 95) only matches
+     slash-separated lists, so an en-dash range matches neither the
+     plural nor the singular pass and is silently left completely
+     unconverted; (c) a `<!-- Item format: 1. ... 2. ... -->`-shaped
+     documentation comment whose own literal `1.`/`2.` lines (if
+     written across multiple lines inside the HTML comment) collide
+     with `ITEM_START_RE` (`^(\d+)\.\s`, line 54, which has no
+     HTML-comment awareness at all) and get treated as real item
+     boundaries, corrupting the conversion if those numbers collide
+     with real items. All three need pre-normalizing by hand today
+     before running `convert` safely. Since this script is meant to be
+     copied verbatim and never locally modified, fixing these once
+     upstream (not requiring every future project to hand-discover and
+     work around them) keeps that "verbatim, never customize"
+     invariant actually meaningful.
+   - **The `../FEEDBACK/` convention isn't documented in
+     `shared_development_process.md`.** Confirmed via grep: neither
+     `development-process.md` nor `shared_development_process.md`
+     mentions it anywhere -- a newly-seeded or freshly-converted
+     project has no in-project way to learn this convention exists at
+     all. Fold a short section into `shared_development_process.md`
+     describing it.
+   Not designed further yet -- four related but independent sub-fixes,
+   likely worth separate implementation steps within one plan.
