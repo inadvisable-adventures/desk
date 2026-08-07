@@ -6996,8 +6996,8 @@ e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
    item's own framing): the equivalent for `kind: "python"` widgets --
    `current_context` doesn't have an obvious existing per-instance-id
    hook a `python`-kind widget's own code could use the same way, and
-   investigating that is real, separate work, not bundled in here. Not
-   designed further yet.
+   investigating that is real, separate work, not bundled in here.
+   [planned: widget-titlebar-subtitle-api.md]
 
 7f984ec. Several small gaps found adopting Desk's shared/not-shared
    `development-process.md` doc split (TODO `1a96c9f`/`c458012`) into
