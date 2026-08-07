@@ -80,3 +80,11 @@ TODO items in `TODO.md` are worked through in the order they are listed.
 ## Prioritizing TODO Items
 
 The user can ask to prioritize a TODO item (e.g. "prioritize foo") to have it worked on sooner. This means moving that item up in `TODO.md` — reordering it earlier, ahead of items that would otherwise be worked on first — without otherwise changing its content, plan, or status. Since ids are permanent and carry no ordering information (see "Item IDs" above), reordering is just moving the item's whole text block to its new position — no renumbering, and no cross-references to update. Commit the reordered `TODO.md` on its own.
+
+## External Feedback (`../FEEDBACK/`)
+
+`../FEEDBACK/` (a directory sibling to this repo, shared across every project built with Desk) is where a Claude instance working in a *different* project drops a write-up when something about Desk itself — not that other project — caused real friction. Each file is named `FEEDBACK-DESK-<slug>-<date>-<time>.md`.
+
+When working on Desk itself, periodically re-scan `../FEEDBACK/` for files that haven't been acted on yet. For each one worth acting on, add a TODO item (or a `PARKINGLOT.md` entry, if it's not ready to act on yet) that cites the specific file it came from — the same way most existing `TODO.md` items already do. Never edit or delete a `../FEEDBACK/` file directly; only ever add `TODO.md`/`PARKINGLOT.md` entries in response to what it says.
+
+Once every `TODO.md`/`PARKINGLOT.md` entry a given `../FEEDBACK/` file produced is `COMPLETED`, move that file into `../FEEDBACK/implemented/` (create it if it doesn't exist yet) — this keeps the top-level `../FEEDBACK/` listing showing only what's still actionable.

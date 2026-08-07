@@ -1,4 +1,4 @@
-# Fix four small gaps adopting the development-process.md doc split (TODO `7f984ec`)
+# Fix four small gaps adopting the development-process.md doc split (TODO `7f984ec`) (COMPLETED)
 
 ## Summary
 

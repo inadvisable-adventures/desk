@@ -135,6 +135,12 @@ DEVELOPMENT_PROCESS_FILENAME = "development-process.md"
 # longer does.
 SHARED_DEVELOPMENT_PROCESS_FILENAME = "shared_development_process.md"
 NOT_DESK_DEVELOPMENT_PROCESS_FILENAME = "specifically-not-working-on-desk-itself-development-process.md"
+# TODO 7f984ec: scripts/todo_item_ids.py's own docstring points here for
+# the one-time `convert` procedure -- seeded alongside the script (see
+# _seed_todo_item_ids_script) for the same "the thing it points to
+# should travel with it" reason SHARED_DEVELOPMENT_PROCESS_FILENAME
+# above travels with DEVELOPMENT_PROCESS_FILENAME.
+HOW_TO_CONVERT_ITEM_ID_FILENAME = "how-to-convert-item-id-one-time.md"
 # TODO cb2790d: a new Desk's default-widgets seeding looks for this exact
 # filename, same convention as the other well-known-filename constants
 # above.
@@ -1374,17 +1380,23 @@ class DeskWindow(QMainWindow):
         if path.exists():
             self._warn("New Desk", f"A Desk named “{name}” already exists here.")
             return
+        needs_dev_process_breadcrumb = False
         if copy_development_process:
             # Reads from the *current* (about-to-be-left) Desk's
             # directory -- must run before switch_desk below reassigns
             # self.current_desk.
-            self._seed_development_process(directory)
+            needs_dev_process_breadcrumb = self._seed_development_process(directory)
             self._seed_todo_item_ids_script(directory)
         self.switch_desk(
             path,
             confirm=lambda: True,
             provisioning=NewDeskProvisioning(create_temp_ui, create_gitignore),
         )
+        if needs_dev_process_breadcrumb:
+            # TODO 7f984ec: only now, not above -- switch_desk is what
+            # actually provisions .desk_temp and starts the tempui
+            # watcher this breadcrumb note needs to land in.
+            self._temp_ui_manager.notify_dev_process_peers_seeded(directory)
         # Re-checked immediately before the actual on-disk creation
         # (TODO 4716585): switch_desk above does real work
         # (provisioning, placing widgets) that takes real time, during
@@ -1826,7 +1838,7 @@ class DeskWindow(QMainWindow):
             copy_development_process=copy_development_process,
         )
 
-    def _seed_development_process(self, directory: Path) -> None:
+    def _seed_development_process(self, directory: Path) -> bool:
         """Copies the current Desk's development-process.md, and (TODO
         1a96c9f) its shared_development_process.md/specifically-not
         -working-on-desk-itself-development-process.md peers, into
@@ -1836,7 +1848,18 @@ class DeskWindow(QMainWindow):
         already runs immediately before the write with nothing in
         between (TODO 4716585's re-check-immediately-before-create
         requirement) -- confirmed correct as-is, no change needed
-        here."""
+        here.
+
+        Returns whether `directory` already had its own
+        development-process.md while at least one *peer* file was
+        newly seeded alongside it (TODO 7f984ec) -- the specific mixed
+        case worth a breadcrumb (see new_desk's
+        notify_dev_process_peers_seeded call): a brand-new project with
+        nothing pre-existing gets all three files with nothing to
+        explain, so this is False whenever development-process.md
+        itself was also newly seeded (or nothing was seeded at all)."""
+        top_level_already_existed = (directory / DEVELOPMENT_PROCESS_FILENAME).exists()
+        peer_seeded = False
         for filename in (
             DEVELOPMENT_PROCESS_FILENAME,
             SHARED_DEVELOPMENT_PROCESS_FILENAME,
@@ -1847,6 +1870,9 @@ class DeskWindow(QMainWindow):
             if not source.is_file() or destination.exists():
                 continue
             destination.write_text(source.read_text())
+            if filename != DEVELOPMENT_PROCESS_FILENAME:
+                peer_seeded = True
+        return top_level_already_existed and peer_seeded
 
     def _seed_todo_item_ids_script(self, directory: Path) -> None:
         """Copies the current Desk's scripts/todo_item_ids.py into
@@ -1859,14 +1885,23 @@ class DeskWindow(QMainWindow):
         directory (won't exist yet in a brand-new project) and sets the
         copy executable -- explicit 0o755, not copied from the source
         file's own mode bits, since umask/source-filesystem quirks
-        shouldn't leak into the destination."""
+        shouldn't leak into the destination. Also seeds
+        how-to-convert-item-id-one-time.md alongside it (TODO 7f984ec)
+        -- the script's own docstring points there for the one-time
+        `convert` procedure, so copying the script without it leaves
+        that pointer broken in the new project the same way skipping
+        the peer docs would for development-process.md."""
         source = self.current_desk.directory / "scripts" / "todo_item_ids.py"
         destination = directory / "scripts" / "todo_item_ids.py"
-        if not source.is_file() or destination.exists():
-            return
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(source.read_text())
-        destination.chmod(0o755)
+        if source.is_file() and not destination.exists():
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(source.read_text())
+            destination.chmod(0o755)
+
+        how_to_source = self.current_desk.directory / HOW_TO_CONVERT_ITEM_ID_FILENAME
+        how_to_destination = directory / HOW_TO_CONVERT_ITEM_ID_FILENAME
+        if how_to_source.is_file() and not how_to_destination.exists():
+            how_to_destination.write_text(how_to_source.read_text())
 
     # -- TempUI-defined custom widgets (TODO 91b3f42) --------------------
 

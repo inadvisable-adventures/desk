@@ -7,7 +7,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, "src")
 
-from desk.shell.window import DeskWindow  # noqa: E402
+from desk.shell.window import DeskWindow, HOW_TO_CONVERT_ITEM_ID_FILENAME  # noqa: E402
 from desk.desks import Desk  # noqa: E402
 from desk.temp_ui import ensure_gitignore_entry, GITIGNORE_ENTRIES, GITIGNORE_COMMENT  # noqa: E402
 from desk.todo_ids import make_item_id  # noqa: E402
@@ -89,6 +89,60 @@ def test_seed_noop_when_same_directory():
     print("no-ops when source and destination are the same file: PASS")
 
 
+def test_seed_also_copies_how_to_doc_alongside_script():
+    with tempfile.TemporaryDirectory() as d:
+        current_dir = Path(d) / "current"
+        current_dir.mkdir()
+        (current_dir / "scripts").mkdir()
+        (current_dir / "scripts" / "todo_item_ids.py").write_text("SOURCE SCRIPT")
+        (current_dir / HOW_TO_CONVERT_ITEM_ID_FILENAME).write_text("SOURCE HOW-TO")
+        new_dir = Path(d) / "new"
+        new_dir.mkdir()
+
+        window = _FakeWindow(Desk(path=current_dir / "default.desk"))
+        window._seed_todo_item_ids_script(new_dir)
+
+        seeded = new_dir / HOW_TO_CONVERT_ITEM_ID_FILENAME
+        assert seeded.is_file()
+        assert seeded.read_text() == "SOURCE HOW-TO"
+    print("seeds how-to-convert-item-id-one-time.md alongside the script: PASS")
+
+
+def test_how_to_doc_noop_when_no_source():
+    with tempfile.TemporaryDirectory() as d:
+        current_dir = Path(d) / "current"
+        current_dir.mkdir()
+        (current_dir / "scripts").mkdir()
+        (current_dir / "scripts" / "todo_item_ids.py").write_text("SOURCE SCRIPT")
+        # No how-to doc in the source Desk's own directory.
+        new_dir = Path(d) / "new"
+        new_dir.mkdir()
+
+        window = _FakeWindow(Desk(path=current_dir / "default.desk"))
+        window._seed_todo_item_ids_script(new_dir)
+
+        assert not (new_dir / HOW_TO_CONVERT_ITEM_ID_FILENAME).exists()
+    print("how-to doc seeding no-ops when the source Desk has none: PASS")
+
+
+def test_how_to_doc_never_overwrites_existing_destination():
+    with tempfile.TemporaryDirectory() as d:
+        current_dir = Path(d) / "current"
+        current_dir.mkdir()
+        (current_dir / "scripts").mkdir()
+        (current_dir / "scripts" / "todo_item_ids.py").write_text("SOURCE SCRIPT")
+        (current_dir / HOW_TO_CONVERT_ITEM_ID_FILENAME).write_text("SOURCE HOW-TO")
+        new_dir = Path(d) / "new"
+        new_dir.mkdir()
+        (new_dir / HOW_TO_CONVERT_ITEM_ID_FILENAME).write_text("EXISTING DESTINATION HOW-TO")
+
+        window = _FakeWindow(Desk(path=current_dir / "default.desk"))
+        window._seed_todo_item_ids_script(new_dir)
+
+        assert (new_dir / HOW_TO_CONVERT_ITEM_ID_FILENAME).read_text() == "EXISTING DESTINATION HOW-TO"
+    print("how-to doc seeding never overwrites an existing destination file: PASS")
+
+
 def test_real_script_is_self_contained_and_matches_desk_todo_ids():
     script_path = Path("scripts/todo_item_ids.py").resolve()
     assert script_path.is_file()
@@ -160,6 +214,9 @@ test_seed_copies_and_marks_executable()
 test_seed_noop_when_no_source()
 test_seed_never_overwrites_existing_destination()
 test_seed_noop_when_same_directory()
+test_seed_also_copies_how_to_doc_alongside_script()
+test_how_to_doc_noop_when_no_source()
+test_how_to_doc_never_overwrites_existing_destination()
 test_real_script_is_self_contained_and_matches_desk_todo_ids()
 test_gitignore_fresh_file_gets_both_entries()
 test_gitignore_only_appends_missing_entry()

@@ -7097,4 +7097,71 @@ e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
      project has no in-project way to learn this convention exists at
      all. Fold a short section into `shared_development_process.md`
      describing it.
-   [planned: new-desk-existing-project-gaps.md]
+   [planned: new-desk-existing-project-gaps.md (COMPLETED)]
+
+   COMPLETED: `TempUiManager._notify_docs_upgraded`'s note-writing was
+   factored out into a shared `_write_scratch_note(temp_dir, title,
+   body)`; a new public `TempUiManager.notify_dev_process_peers_seeded
+   (directory)` uses it, guarded by `self._watched_directory == directory
+   / TEMP_UI_DIRNAME` (a no-op otherwise -- nowhere to write the note).
+   `DeskWindow._seed_development_process` now returns whether a
+   breadcrumb is warranted (a peer file newly seeded *and* the
+   top-level `development-process.md` already existed); `new_desk`
+   captures that and calls `notify_dev_process_peers_seeded` right
+   after `switch_desk` (not before -- `.desk_temp`/the watcher don't
+   exist yet at seed time). `_seed_todo_item_ids_script` also seeds a
+   new `HOW_TO_CONVERT_ITEM_ID_FILENAME` ("how-to-convert-item-id-one-
+   time.md") alongside the script, same no-overwrite/no-op-if-missing
+   -source posture as everything else it already does.
+   `scripts/todo_item_ids.py`: `_html_comment_line_indices` marks line
+   indices inside a (possibly multi-line) `<!-- ... -->` block;
+   `_split_items` now skips any `ITEM_START_RE` match on such a line.
+   The singular cross-reference regex now optionally consumes a
+   leading `TODO\s+` and replaces the whole match, so `"TODO item 16"`
+   and `"item 16"` both become `"TODO <id>"`, never `"TODO TODO
+   <id>"`. A new plural en-dash/hyphen-range pattern
+   (`r"\bitems\s+(\d+)\s*[-–]\s*(\d+)\b"`) expands an inclusive range
+   to slash-joined `TODO <id>` references, matching the existing
+   slash-list rendering. Found and fixed one more real bug along the
+   way, caught only by actually running the fix against a fixture: the
+   cross-reference passes' `\s+` (deliberately spanning newlines for a
+   legitimately word-wrapped reference) could still reach from ordinary
+   prose across a comment boundary into the comment's own literal
+   example text and corrupt it -- fixed with a `_mask_for_text(text)`
+   per-character mask (recomputed fresh before *each* substitution pass,
+   since a pass can change `text`'s length and desync a mask computed
+   against an earlier version of it) that makes every cross-reference
+   substitution skip any match touching a comment line, leaving the
+   match text untouched instead. `shared_development_process.md` gained
+   a new "External Feedback (`../FEEDBACK/`)" section: what the
+   directory is, that acting on a file means citing it in a new
+   `TODO.md`/`PARKINGLOT.md` entry, and the (previously undocumented,
+   confirmed via `ls ../FEEDBACK/implemented/`) convention of moving a
+   file into `../FEEDBACK/implemented/` once every entry it produced is
+   `COMPLETED`. Applied that convention retroactively to this session's
+   own six other already-`COMPLETED` items from this same batch plus
+   this TODO's own source file (`a8e4115`, `7c11fe0`, `47aaf73`,
+   `1b7e500`, `e86a31b`, `3cd90cf`, `7f984ec` -- all seven files moved
+   into `../FEEDBACK/implemented/`), so the newly-documented convention
+   doesn't start already out of sync with this session's own recent
+   history. New/extended verify coverage, real (no mocking):
+   `tests/verify/verify_dev_process_seeding.py` (extended, 3 new
+   checks) covers `_seed_development_process`'s new return value across
+   the pre-existing-top-level/brand-new/nothing-to-seed cases;
+   `tests/verify/verify_seed_todo_item_ids_script.py` (extended, 3 new
+   checks) covers the how-to-doc seeding's copy/no-op/never-overwrite
+   behavior; new
+   `tests/verify/verify_new_desk_existing_project_gaps.py` (18 checks)
+   covers a real `TempUiManager.provision` + `notify_dev_process_peers_
+   seeded` round trip (a real Scratch note actually appears in
+   `.desk_temp`, with the right content), the no-op case for an
+   unwatched directory, `new_desk`'s exact call ordering (seed, then
+   `switch_desk`, then the breadcrumb, then save) across the warranted/
+   not-warranted/`copy_development_process=False` cases, and the new
+   `shared_development_process.md` section's content; new
+   `tests/verify/verify_todo_item_ids_script_regex_fixes.py` (15
+   checks) subprocess-invokes the real script against a real fixture
+   combining all three original bug shapes plus the comment-boundary
+   corruption bug found along the way, confirming each is now handled
+   correctly in one real `convert` run. Full `tests/verify/`
+   regression suite passes (96 scripts total, 0 failures).

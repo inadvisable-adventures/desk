@@ -159,13 +159,9 @@ class TempUiManager(QObject):
 
         return temp_dir
 
-    def _notify_docs_upgraded(self, temp_dir: Path, previous_version: int) -> None:
-        """A same-directory Scratch note (TODO 7c7b676) when
-        ensure_docs_current found the doc set's embedded version
-        genuinely differed from TEMPUI_DOC_VERSION -- not for a mere
-        repair (a missing split file with an already-current version)
-        or a brand-new .desk_temp, neither of which is "a convention
-        changed" in the sense worth surfacing. Written directly and
+    def _write_scratch_note(self, temp_dir: Path, title: str, body: str) -> None:
+        """Shared by every same-directory Scratch-note breadcrumb this
+        class writes (TODO 7c7b676/7f984ec) -- written directly and
         reported via the same file_added path a watcher-observed file
         would take (_relay.added.emit + recording the filename in
         _known_files), rather than relying on the watcher to notice
@@ -175,15 +171,60 @@ class TempUiManager(QObject):
         after isn't guaranteed to be seen (the same class of concern
         TODO 578cb6b's migration had to reason about for real)."""
         note_path = temp_dir / str(uuid.uuid4())
-        note_path.write_text(
-            "Scratch Desk's tempui conventions changed\n"
+        note_path.write_text(f"Scratch {title}\n{body}\n")
+        self._known_files.add(note_path.name)
+        self._relay.added.emit(note_path)
+
+    def _notify_docs_upgraded(self, temp_dir: Path, previous_version: int) -> None:
+        """A same-directory Scratch note (TODO 7c7b676) when
+        ensure_docs_current found the doc set's embedded version
+        genuinely differed from TEMPUI_DOC_VERSION -- not for a mere
+        repair (a missing split file with an already-current version)
+        or a brand-new .desk_temp, neither of which is "a convention
+        changed" in the sense worth surfacing."""
+        self._write_scratch_note(
+            temp_dir,
+            "Desk's tempui conventions changed",
             f"This project's tempui docs were just refreshed from version "
             f"{previous_version} to {TEMPUI_DOC_VERSION}. See "
             "tempui-breaking-changes.md for what changed in between -- some "
-            "of it may affect widgets already built in this project.\n"
+            "of it may affect widgets already built in this project.",
         )
-        self._known_files.add(note_path.name)
-        self._relay.added.emit(note_path)
+
+    def notify_dev_process_peers_seeded(self, directory: Path) -> None:
+        """A same-directory Scratch note (TODO 7f984ec) when
+        DeskWindow._seed_development_process just copied
+        shared_development_process.md/specifically-not-working-on-desk
+        -itself-development-process.md into a project that already had
+        its own pre-existing, pre-split development-process.md (left
+        untouched, per that method's own no-overwrite rule) -- without
+        this, the two new peer files land with nothing explaining what
+        they are or that a manual rewrite is still needed. Called from
+        DeskWindow.new_desk *after* switch_desk has provisioned
+        .desk_temp and started the watcher (unlike
+        _notify_docs_upgraded above, this can't run any earlier: the
+        seeding itself happens before switch_desk, when there may not
+        even be a .desk_temp yet to write into). A no-op if .desk_temp
+        isn't currently being watched for this directory (e.g.
+        create_temp_ui was declined) -- there's nowhere for the note to
+        go."""
+        temp_dir = directory / TEMP_UI_DIRNAME
+        if self._watched_directory != temp_dir:
+            return
+        self._write_scratch_note(
+            temp_dir,
+            "development-process.md peers were just seeded",
+            "This project already had its own development-process.md, so "
+            "it was left untouched, but shared_development_process.md and "
+            "specifically-not-working-on-desk-itself-development-process.md "
+            "were just copied in alongside it. Your existing "
+            "development-process.md still needs a manual rewrite to "
+            "actually reference the new peer files -- see "
+            "plans/fork-development-process-doc.md for the template this "
+            "project's own doc split originally used. If "
+            "scripts/todo_item_ids.py was also just seeded, "
+            "how-to-convert-item-id-one-time.md came with it.",
+        )
 
     def record_own_write(self, path: Path, text: str) -> None:
         """Wired into current_context.set_temp_ui_write_recorder so the
