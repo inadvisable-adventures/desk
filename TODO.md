@@ -6385,6 +6385,7 @@ d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
      (same convention every other tempui-DSL addition already follows
      -- see TODO `e42469e` for what happens when a real capability
      ships without this: agents kept not finding out it existed).
+   [planned: lightweight-agent-job-mechanism.md]
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
