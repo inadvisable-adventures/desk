@@ -1,4 +1,4 @@
-# Fix file-watcher schedule/dispatch lock-ordering deadlock (TODO `c4d79f0`)
+# Fix file-watcher schedule/dispatch lock-ordering deadlock (TODO `c4d79f0`) (COMPLETED)
 
 ## Summary
 
@@ -93,13 +93,17 @@ which is exactly what fires a dispatch on an existing watch.
    dropped before calling `schedule()` (non-obvious -- the reason lives
    in how watchdog's own dispatch thread re-enters this class).
 3. Add a deterministic regression repro to `tests/verify/
-   verify_file_watcher.py`: force the exact interleaving (thread A
-   holds `svc._lock` directly, thread B is driven into `_dispatch`
-   -- via a real filesystem event on an already-watched key -- so it
-   blocks trying to acquire `svc._lock`, then thread A calls `svc.
-   _observer.schedule(...)` directly) and assert it completes within a
-   generous timeout via a background thread + `join(timeout=...)`,
-   rather than hanging the test suite itself if the fix regresses.
+   verify_file_watcher.py`. Revised during implementation from the
+   originally-planned real-filesystem-timing repro to a more direct,
+   fully deterministic one: monkeypatch `svc._observer.schedule` to
+   probe -- from a separate helper thread, so the probe itself can
+   never hang the test -- whether `svc._lock` is held at the instant
+   `schedule()` is entered (a plain `threading.Lock` isn't reentrant,
+   so a same-thread hold is detectable via a timed `acquire()` from
+   another thread). This checks the actual invariant that matters
+   (does `watch()` ever call into `schedule()` while still holding its
+   own lock) without depending on winning a real race against
+   watchdog's own background threads.
 4. Add a `LEARNINGS.md` entry: watchdog's dispatch thread re-enters
    caller code (event-handler callbacks) *while holding its own
    internal lock*, so any lock a caller's `schedule()`-time code holds
@@ -119,18 +123,23 @@ which is exactly what fires a dispatch on an existing watch.
 ## Verification
 
 New test in `tests/verify/verify_file_watcher.py`,
-`test_watch_during_dispatch_does_not_deadlock`:
+`test_watch_does_not_hold_lock_across_observer_schedule`:
 - Real `FileWatcherService`, real filesystem, real watchdog `Observer`
   (no mocking).
-- Establishes watch #1 on a temp dir.
-- Forces the exact interleaving described in the deadlock analysis
-  above (thread A holds `svc._lock` directly; a real filesystem event
-  drives watchdog's dispatch thread into `_dispatch`, which blocks on
-  `svc._lock`; thread A then calls `svc._observer.schedule(...)`
-  directly, which blocks on watchdog's lock) and asserts, via a
-  background thread joined with a timeout, that this resolves instead
-  of hanging forever.
-- Existing `test_dedup_and_fanout` and `test_nested_path_collision_fixed`
-  continue to pass unmodified -- confirms the fix doesn't change
-  normal (non-racing) `watch()`/`cancel()` behavior.
-- Full `tests/verify/` regression suite.
+- Monkeypatches `svc._observer.schedule` to spy on whether `svc._lock`
+  is held (via a bounded-timeout acquire attempt from a helper thread)
+  at the moment `watch()` calls into it, then calls the real,
+  unmodified `svc.watch()`.
+- Confirmed this actually catches the regression: temporarily reverted
+  the fix (`git stash` on `service.py` alone) and reran -- the new test
+  fails with the expected assertion message against the old code,
+  passes against the fix. The two pre-existing tests
+  (`test_dedup_and_fanout`, `test_nested_path_collision_fixed`) were
+  unaffected either way, confirming the fix doesn't change normal
+  (non-racing) `watch()`/`cancel()` behavior.
+- Full `tests/verify/` suite (89 scripts, `QT_QPA_PLATFORM=offscreen`,
+  60s timeout each): 88 pass. The one failure,
+  `verify_pypdf_optional_dependency.py` (`ModuleNotFoundError: No
+  module named 'pypdf'`), is pre-existing and unrelated -- reproduces
+  identically with this change's files stashed out (missing optional
+  dependency in this checkout's venv, not a code regression).

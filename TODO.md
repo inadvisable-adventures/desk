@@ -6296,7 +6296,7 @@ e4662a5. COMPLETED: Make the pan/zoom control (`src/desk/shell/zoom_control.py`'
    rather than acted on unilaterally, since it's unrelated to this
    item's scope.
 
-c4d79f0. Fix file-watcher deadlock: `FileWatcherService.watch()` (`src/
+c4d79f0. COMPLETED: Fix file-watcher deadlock: `FileWatcherService.watch()` (`src/
    desk_services/file_watcher/service.py`) calls `self._observer.
    schedule()` while holding its own `self._lock`, but watchdog's
    dispatch thread acquires its own internal lock first and then calls

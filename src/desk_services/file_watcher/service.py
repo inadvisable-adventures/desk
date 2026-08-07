@@ -103,15 +103,36 @@ class FileWatcherService:
         themselves, same as before this service existed).  `callback`
         is invoked with the resolved, gotcha-normalized changed path,
         on the watchdog background thread -- exactly as every existing
-        consumer already expected before migrating onto this service."""
+        consumer already expected before migrating onto this service.
+
+        Deliberately does NOT hold `self._lock` while calling into
+        `self._observer.schedule()` (TODO c4d79f0): that call
+        acquires watchdog's own internal `BaseObserver._lock`, and
+        watchdog's dispatch thread acquires that same lock *before*
+        calling back into our `_dispatch` (to deliver an event on some
+        other, already-scheduled key), which needs `self._lock`. Doing
+        the schedule() call under our lock means one thread can go
+        ours-then-theirs while the dispatch thread simultaneously goes
+        theirs-then-ours -- a reliable deadlock (reproduced in
+        verify_file_watcher.py), not a rare one: any `watch()` call for
+        a brand-new key racing an in-flight dispatch for an existing
+        key hits it. Scheduling outside the lock breaks the cycle."""
         key = _WatchKey(path.resolve(), recursive)
         with self._lock:
-            subscribers = self._subscribers.setdefault(key, [])
-            subscribers.append(callback)
-            if key not in self._observed_watches:
-                handler = _NormalizingHandler(key, self._dispatch)
-                watch = self._observer.schedule(handler, str(key.path), recursive=recursive)
-                self._observed_watches[key] = watch
+            is_new = key not in self._subscribers
+            self._subscribers.setdefault(key, []).append(callback)
+        if is_new:
+            handler = _NormalizingHandler(key, self._dispatch)
+            watch = self._observer.schedule(handler, str(key.path), recursive=recursive)
+            with self._lock:
+                if key in self._subscribers:
+                    self._observed_watches[key] = watch
+                    watch = None
+            if watch is not None:
+                # Every subscriber cancelled while schedule() was in
+                # flight -- nothing left to hand the ObservedWatch to,
+                # so unschedule it ourselves instead of leaking it.
+                self._observer.unschedule(watch)
         return WatchHandle(self, key, callback)
 
     def _dispatch(self, key: _WatchKey, changed_path: Path) -> None:
