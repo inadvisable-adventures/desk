@@ -188,6 +188,60 @@ def test_on_widget_error_clicked_noop_with_no_error():
 test_on_widget_error_clicked_noop_with_no_error()
 
 
+# ---------- TODO 47aaf73: an error with empty captured text ----------
+
+
+def test_error_with_empty_message_still_shows_button_and_flag():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        win = _FakeWindow(Path(d))
+        info = _html_widget_info(Path(d))
+        frame = win._place_widget("ordinary_html", info, (0, 0), (400, 300), instance_id=uuid_mod.uuid4().hex[:8])
+
+        frame.set_error(True, "")
+        check("has_error is True even though the captured message is empty", frame.has_error is True)
+        check("[ERROR] button still visible with an empty captured message", frame._titlebar.error_button.isVisible())
+
+
+test_error_with_empty_message_still_shows_button_and_flag()
+
+
+def test_clicking_error_button_with_empty_message_shows_placeholder_not_a_noop():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        win = _FakeWindow(Path(d))
+        info = _html_widget_info(Path(d))
+        frame = win._place_widget("ordinary_html", info, (0, 0), (400, 300), instance_id=uuid_mod.uuid4().hex[:8])
+        frame.set_error(True, "")
+
+        win._confirm_widget_error_dismissed = win._confirm_widget_error_dismissed_recording
+        win._on_widget_error_clicked(frame)
+
+        check(
+            "clicking with an empty captured message no longer silently does nothing -- the dialog is shown with a placeholder",
+            win.confirm_calls == ["(no error message was captured)"],
+        )
+        check("indicator cleared after acknowledging the empty-message error", not frame._titlebar.error_button.isVisible())
+        check("has_error is False after clearing", frame.has_error is False)
+
+
+test_clicking_error_button_with_empty_message_shows_placeholder_not_a_noop()
+
+
+def test_has_error_flag_matches_button_visibility_through_a_full_cycle():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        win = _FakeWindow(Path(d))
+        info = _html_widget_info(Path(d))
+        frame = win._place_widget("ordinary_html", info, (0, 0), (400, 300), instance_id=uuid_mod.uuid4().hex[:8])
+
+        check("has_error starts False", frame.has_error is False)
+        frame.set_error(True, "boom")
+        check("has_error True after set_error(True, ...)", frame.has_error is True)
+        frame.set_error(False)
+        check("has_error False after set_error(False)", frame.has_error is False)
+
+
+test_has_error_flag_matches_button_visibility_through_a_full_cycle()
+
+
 # ---------- kind:"html" real capture (real QtWebEngine JS execution, data: URL) ----------
 
 

@@ -1,4 +1,4 @@
-# Fix the [ERROR] titlebar button's empty-message noop (TODO `47aaf73`)
+# Fix the [ERROR] titlebar button's empty-message noop (TODO `47aaf73`) (COMPLETED)
 
 ## Summary
 

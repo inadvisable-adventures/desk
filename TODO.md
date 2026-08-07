@@ -6769,7 +6769,7 @@ a8e4115. COMPLETED: Add Desk's own `CLAUDE.md` a project instruction to use path
    very next invocation, not the stale cached module. Full
    `tests/verify/` regression suite passes (89 scripts, 0 failures).
 
-47aaf73. The `[ERROR]` titlebar button can light up and then silently
+47aaf73. COMPLETED: The `[ERROR]` titlebar button can light up and then silently
    do nothing when clicked. Root cause, confirmed directly: the click
    handler (`DeskWindow._on_widget_error_clicked`,
    `src/desk/shell/window.py:1970`) does `if not
@@ -6797,6 +6797,21 @@ a8e4115. COMPLETED: Add Desk's own `CLAUDE.md` a project instruction to use path
    `traceback.format_exc()`, never empty, so it doesn't have this
    problem. Not designed further yet.
    [planned: error-indicator-empty-message-noop.md]
+
+   Implemented as designed: `WidgetFrame` gained a public `has_error:
+   bool` (matching `self.locked`'s own naming convention, not a
+   private-prefixed name, since `DeskWindow` reads it externally --
+   distinct from `_TitleBar`'s own, unrelated private `_has_error`
+   used purely for button-visibility styling), set unconditionally in
+   `set_error`. `_on_widget_error_clicked` now gates on `frame
+   .has_error`, and falls back to `"(no error message was captured)"`
+   when showing the dialog for an empty captured message. New coverage
+   in `tests/verify/verify_widget_error_indicator.py` (5 new checks):
+   an empty-message error still sets `has_error`/shows the button,
+   clicking it now actually shows the placeholder-text dialog instead
+   of silently doing nothing, the indicator/flag both clear correctly
+   afterward, and a full set/clear cycle keeps the flag in sync. Full
+   `tests/verify/` regression suite passes (89 scripts, 0 failures).
 
 1b7e500. `desk-temporary-ui.md`'s "Questions for the user" section
    (`src/desk/temp_ui.py:236`, "Each entry is a `## <short summary>`

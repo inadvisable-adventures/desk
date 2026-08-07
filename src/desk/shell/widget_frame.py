@@ -654,6 +654,14 @@ class WidgetFrame(QWidget):
         # DeskWindow._on_widget_error_clicked when the [ERROR] button is
         # clicked; see set_error.
         self.last_error_message: str = ""
+        # TODO 47aaf73: whether there's currently an error to show,
+        # independent of last_error_message's own content -- a real
+        # error can carry an empty message (see chromium_widget.py's
+        # `message or ""` fallback), so last_error_message's truthiness
+        # alone is the wrong thing for _on_widget_error_clicked to gate
+        # on. Mirrors self.locked's own shape (a plain public bool kept
+        # in sync with _titlebar's private state via set_error below).
+        self.has_error: bool = False
         self._view_scale = 1.0
         self._chrome_state = "full"
         self._apply_border_scale(1.0)
@@ -750,9 +758,14 @@ class WidgetFrame(QWidget):
         stored for `_on_widget_error_clicked` to display; ignored when
         `has_error` is False (clearing the indicator doesn't need to also
         clear the last message -- a stale message is never shown since
-        the button is hidden)."""
+        the button is hidden). `has_error` (this attribute, TODO
+        `47aaf73`), unlike `last_error_message`, is always set
+        unconditionally -- it's the real "is there currently an error"
+        signal, independent of whether `message` happened to be
+        empty."""
         if has_error:
             self.last_error_message = message
+        self.has_error = has_error
         self._titlebar.set_error(has_error)
         self._update_chrome_state()
 

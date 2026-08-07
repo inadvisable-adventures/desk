@@ -1972,10 +1972,16 @@ class DeskWindow(QMainWindow):
         the captured error text, then clears the indicator -- same
         "diagnosed, now handled" shape as reloading clears `[STALE]`. A
         later error on the same instance re-lights it (WidgetFrame.set_error
-        is called fresh each time one is captured)."""
-        if not frame.last_error_message:
+        is called fresh each time one is captured).
+
+        TODO 47aaf73: gates on `frame.has_error`, not
+        `frame.last_error_message` truthiness -- a real error can carry
+        an empty captured message (see chromium_widget.py's `message or
+        ""` fallback), and gating on the message itself made the button
+        light up and then silently do nothing for exactly that case."""
+        if not frame.has_error:
             return
-        self._confirm_widget_error_dismissed(frame.last_error_message)
+        self._confirm_widget_error_dismissed(frame.last_error_message or "(no error message was captured)")
         frame.set_error(False)
 
     def _confirm_widget_error_dismissed(self, message: str) -> None:
