@@ -1,4 +1,4 @@
-# Fix QUESTIONS.md format doc gap and silent parse failure (TODO `1b7e500`)
+# Fix QUESTIONS.md format doc gap and silent parse failure (TODO `1b7e500`) (COMPLETED)
 
 ## Summary
 

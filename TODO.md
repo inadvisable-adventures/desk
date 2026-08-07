@@ -6813,7 +6813,7 @@ a8e4115. COMPLETED: Add Desk's own `CLAUDE.md` a project instruction to use path
    afterward, and a full set/clear cycle keeps the flag in sync. Full
    `tests/verify/` regression suite passes (89 scripts, 0 failures).
 
-1b7e500. `desk-temporary-ui.md`'s "Questions for the user" section
+1b7e500. COMPLETED: `desk-temporary-ui.md`'s "Questions for the user" section
    (`src/desk/temp_ui.py:236`, "Each entry is a `## <short summary>`
    heading...") describes a `QUESTIONS.md` heading format the real
    parser doesn't accept -- `src/desk/questions_file.py`'s
@@ -6846,6 +6846,30 @@ a8e4115. COMPLETED: Add Desk's own `CLAUDE.md` a project instruction to use path
    to ignore, a real breadcrumb for the uncommon one" precedent) when
    that count is nonzero. Not designed further yet.
    [planned: questions-md-format-doc-and-silent-failure.md]
+
+   Implemented as designed: rewrote the doc section to state the real
+   required heading shape (a fenced-code-block example, not nested
+   backticks, after catching a real `SyntaxWarning`/leaked-backslash
+   bug in an early draft of the edit) and the TODO-id requirement
+   explicitly; bumped `TEMPUI_DOC_VERSION` 27 -> 28 with a matching
+   `_NEW_FEATURES_DOC` entry. New `questions_file.unparsed_heading_count(path)`
+   (counts `## ` headings that don't match `ENTRY_START_RE`, without
+   changing `parse_questions_file`'s own 4-call-site return signature);
+   `_on_questions_file_changed` now calls it and logs a `logger.warning`
+   naming the file and count when nonzero, leaving the well-formed case
+   completely silent as before. New
+   `tests/verify/verify_questions_md_format_fix.py` (15 checks): doc
+   content, the new-features entry, `unparsed_heading_count` against
+   well-formed/no-heading/malformed/mixed fixtures (confirmed to report
+   the real count, not just nonzero -- caught and fixed a test-fixture
+   mistake of my own along the way, an id that wasn't backtick-wrapped
+   but still matched `ENTRY_START_RE`'s literal-`TODO`-prefix check, so
+   it wasn't actually "unparsed" by this function's own documented
+   definition), and real logging capture (via this project's own
+   established `_WindowLogCapture` pattern) confirming a malformed file
+   logs exactly one warning naming the path/count and a well-formed one
+   logs nothing. Full `tests/verify/` regression suite passes (90
+   scripts, 0 failures).
 
 e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
    can silently defeat the already-shipped capabilities-emission fix

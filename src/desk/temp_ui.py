@@ -174,7 +174,18 @@ SHARED_COMPONENTS_DIRNAME = "shared-components"
 # setLocalStorage (its data lives in the portable .desk file, unlike
 # the newer per-instance storage, which is .desk_temp-scoped and
 # deleted with the widget instance).
-TEMPUI_DOC_VERSION = 27
+#
+# TODO 1b7e500: bumped 27 -> 28 -- "Questions for the user"'s described
+# QUESTIONS.md heading format ("## <short summary>") never matched
+# what questions_file.py's actual parser requires (a leading literal
+# "TODO", backtick-wrapped id(s)) -- corrected to state the real
+# required shape and that an entry must reference at least one TODO.md
+# item id (this mechanism was always scoped to TODO-blocking
+# questions, not general free-standing ones, but the doc never said
+# so). A heading in the old, documented-but-never-actually-accepted
+# shape still silently fails to parse as before -- this bump fixes the
+# doc, not the parser's own strictness.
+TEMPUI_DOC_VERSION = 28
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -229,16 +240,31 @@ re-read this whole doc set and diff it against memory. There's also
 
 ## Questions for the user: use QUESTIONS.md, not this DSL
 
-If you have an open-ended question *for the user* — something you're
-genuinely blocked on and need their input to resolve, as opposed to a
-single quick multiple-choice decision (`Question`/`LightningRound`
-below are for that) — write it to `QUESTIONS.md` at the project root
-instead of creating a file here. Each entry is a `## <short summary>`
-heading, the question's own text below it, then a trailing
-`(Answer: )` placeholder line for the user to fill in (leave it empty;
-never write your own guess into it). If `QUESTIONS.md` doesn't exist
-yet, create it with a `# Questions with optional answers` title line
-first.
+If you have an open-ended question *for the user* that's blocking a
+specific TODO.md item -- something you're genuinely blocked on and
+need their input to resolve, as opposed to a single quick
+multiple-choice decision (`Question`/`LightningRound` below are for
+that) -- write it to `QUESTIONS.md` at the project root instead of
+creating a file here. This mechanism is specifically for questions
+tied to one or more TODO.md items -- there's no supported way to add a
+general, free-standing question with no TODO id attached.
+
+Each entry's heading **must start with the literal word `TODO`**,
+followed by one or more backtick-wrapped TODO.md item ids (separated
+by `/` if more than one), then a colon and a short summary:
+
+```
+## TODO `9743419`: What should the save-a-copy filename be?
+```
+
+A heading in any other shape (no leading `TODO`, an id that isn't
+backtick-wrapped, etc.) is not recognized at all -- it's silently
+treated as ordinary prose above the first real entry, not as a
+question, with nothing shown to the user. Below the heading: the
+question's own text, then a trailing `(Answer: )` placeholder line for
+the user to fill in (leave it empty; never write your own guess into
+it). If `QUESTIONS.md` doesn't exist yet, create it with a `#
+Questions with optional answers` title line first.
 
 Desk watches `QUESTIONS.md` the same way it watches this directory: a
 newly-added entry surfaces as a top-right notification, which either
@@ -959,6 +985,19 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 28
+- "Questions for the user" corrected: the documented `QUESTIONS.md`
+  heading format (`## <short summary>`) never actually matched what
+  the real parser requires. The real, required shape starts with a
+  literal `TODO`, followed by one or more backtick-wrapped TODO.md
+  item ids, then a colon and summary -- see
+  `desk-temporary-ui.md`'s own "Questions for the user" section (same
+  directory) for a full example. This mechanism has always been
+  scoped to questions blocking a specific TODO.md item, not general
+  free-standing ones -- a heading in any other shape (including the
+  old documented example) is silently not recognized as a question at
+  all.
 
 ## Version 27
 - "The Desk Bridge API" section's storage guidance corrected:

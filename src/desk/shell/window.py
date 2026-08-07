@@ -22,7 +22,7 @@ from desk.file_type_registry import (
 )
 from desk.file_watch import SingleFileWatcher
 from desk.hotreload import HotReloadBroker
-from desk.questions_file import find_nearest_questions_file, parse_questions_file
+from desk.questions_file import find_nearest_questions_file, parse_questions_file, unparsed_heading_count
 from desk.recent_desks import add_to_mru, prune_missing_mru_entries
 from desk.server.bridge_client import DOM_SNAPSHOT_JS
 from desk.server.runner import ServerHandle
@@ -1472,6 +1472,22 @@ class DeskWindow(QMainWindow):
         questions_path = self._questions_path
         if questions_path is None or not questions_path.is_file():
             return
+        # TODO 1b7e500: a "## " heading that doesn't match the required
+        # entry shape (ENTRY_START_RE) is otherwise absorbed silently
+        # into preamble -- no error, no notification, nothing shown to
+        # the user. A low-severity log line is the cheap, proportionate
+        # fix: free to ignore in the common (correctly-formatted) case,
+        # a real breadcrumb for the uncommon one, matching this
+        # project's own _relocate_promoted_widget_source precedent.
+        unparsed_count = unparsed_heading_count(questions_path)
+        if unparsed_count:
+            logger.warning(
+                "%s has %d '## ' heading(s) that don't match the required "
+                "'## TODO `<id>`: <summary>' entry format -- silently not "
+                "shown as questions",
+                questions_path,
+                unparsed_count,
+            )
         _, entries = parse_questions_file(questions_path)
         keys = {tuple(entry.todo_ids) for entry in entries}
         new_keys = keys - (self._known_question_keys or set())
