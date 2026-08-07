@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow
 
 from desk.custom_widgets import materialize
 from desk.desks import DESK_SUFFIX, Desk, WidgetState, desk_state_dict, load_desk, save_desk
+from desk.jobs import materialize as materialize_job
 from desk.file_type_registry import (
     FILE_TYPE_REGISTRY_UPDATED_EVENT,
     entry_from_dict,
@@ -40,6 +41,7 @@ from desk.temp_ui import (
     CUSTOM_WIDGET_SRC_DIRNAME,
     CustomWidgetDefinition,
     DOC_FILENAME,
+    JobDefinition,
     MARKDOWN_KEYWORD,
     OPEN_IMAGE_KEYWORD,
     PROMOTED_WIDGET_SRC_DIRNAME,
@@ -50,6 +52,7 @@ from desk.temp_ui import (
     is_temp_ui_filename,
     parse_define_widget,
     parse_discuss_parking_lot_item,
+    parse_job,
     parse_lightning_round,
     parse_markdown_tempui,
     parse_open_image,
@@ -80,6 +83,7 @@ QUESTIONS_WIDGET_ID = "questions"
 IMAGE_VIEWER_WIDGET_ID = "image_viewer"
 EDITOR_WIDGET_ID = "editor"
 CRASH_LOG_WIDGET_ID = "crash_log"
+JOB_RUNNER_WIDGET_ID = "job_runner"
 # TODO 7f51230: crash logs now live in .desk_temp/DESK-CRASH-*.log --
 # matches desk.crash_handler's own filename convention.
 CRASH_LOG_GLOB = "DESK-CRASH-*.log"
@@ -119,6 +123,7 @@ TEMP_UI_WIDGET_IDS = {
     MARKDOWN_WIDGET_ID,
     SCRATCH_WIDGET_ID,
     IMAGE_VIEWER_WIDGET_ID,
+    JOB_RUNNER_WIDGET_ID,
 }
 
 WIDGET_SPACING = 700
@@ -309,6 +314,7 @@ class DeskWindow(QMainWindow):
         current_context.set_widget_display_name_resolver(self._display_name_for_instance)
         current_context.set_widget_catalog_provider(self.get_widget_catalog_dicts)
         current_context.set_hot_reload_broker(self._broker)
+        current_context.set_html_job_starter(self.start_html_job)
         self._sync_tempui_doc()
         self._open_crash_log_widgets()
 
@@ -1113,6 +1119,67 @@ class DeskWindow(QMainWindow):
         target = Path(raw)
         return target if target.is_absolute() else (directory / target).resolve()
 
+    # -- One-shot agent Jobs (TODO d7e66f6) -------------------------------
+
+    def start_html_job(
+        self, job_id: str, definition: JobDefinition, on_status: Callable[[str, str], None]
+    ) -> None:
+        """The `current_context` "html Job starter" hook -- materializes
+        an `html`-kind Job's script to a real index.html, mounts it on
+        the already-running Local Web Server, registers a `WidgetInfo`
+        scoped to exactly its declared `Capability` lines (never through
+        `_register_custom_widget` -- that machinery is about a reusable,
+        promotable widget *kind*; a Job is neither, it's a one-shot
+        instance), and places a real, visible `ChromiumWidget` instance
+        -- the script's own JS gets the same authenticated
+        `window.desk.*` Bridge API access an ordinary `kind: "html"`
+        widget's JS already has, scoped by the same `require_caller`
+        capability check every other `kind: "html"` widget goes
+        through; no new auth/injection mechanism needed. `job_id`
+        doubles as both the widget id and the instance id -- a Job only
+        ever has one execution/instance, unlike a `DefineWidget` keyword.
+
+        `on_status(status, detail)` is called once immediately with
+        `("executing", "")`, then exactly once more with `("done", "")`
+        or `("errored", message)` once the placed page finishes loading
+        (`QWebEngineView.loadFinished`) or logs a console error
+        (`ChromiumWidget.error_state_changed`, TODO d4d6c71) -- "done"
+        reflects page-load completion, not completion of whatever async
+        Bridge calls the script's own JS may have kicked off (see
+        tempui-jobs.md's own caveat about this)."""
+        directory = materialize_job(self.current_desk.directory / TEMP_UI_DIRNAME, job_id, definition)
+        if directory is None:
+            on_status("errored", "Failed to decode this Job's script content.")
+            return
+        info = WidgetInfo(
+            id=job_id,
+            path=directory,
+            kind="html",
+            name=definition.summary or "Job",
+            entry="index.html",
+            capabilities=definition.capabilities,
+            default_size=None,
+            tempui_only=True,
+        )
+        self._widgets[job_id] = info
+        self._handle.mount_html_widget(job_id, directory, info)
+        on_status("executing", "")
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        frame = self._place_widget(job_id, info, (center.x(), center.y()), None, instance_id=job_id)
+
+        def _on_load_finished(ok: bool) -> None:
+            if ok:
+                on_status("done", "")
+            else:
+                on_status("errored", "The job's page failed to load.")
+
+        def _on_error_state_changed(has_error: bool, message: str) -> None:
+            if has_error:
+                on_status("errored", message)
+
+        frame.content.loadFinished.connect(_on_load_finished)
+        frame.content.error_state_changed.connect(_on_error_state_changed)
+
     def find_frame_by_instance_id(self, instance_id: str) -> WidgetFrame | None:
         for frame in self.view._frames:
             if frame.instance_id == instance_id:
@@ -1621,6 +1688,10 @@ class DeskWindow(QMainWindow):
                 parsed = parse_discuss_parking_lot_item(content_text)
                 if parsed and parsed[0]:
                     text = f"Discuss: {parsed[0]}"
+            elif kind == "job":
+                job_definition = parse_job(content_text)
+                if job_definition is not None and job_definition.summary:
+                    text = f"Job: {job_definition.summary}"
             elif kind.startswith("custom:"):
                 definition = self._custom_widget_definitions.get(kind.split(":", 1)[1])
                 if definition is not None:
@@ -1654,6 +1725,8 @@ class DeskWindow(QMainWindow):
             return SCRATCH_WIDGET_ID
         if kind == "discuss_parking_lot_item":
             return CLAUDE_WIDGET_ID
+        if kind == "job":
+            return JOB_RUNNER_WIDGET_ID
         if kind.startswith("custom:"):
             return kind.split(":", 1)[1]
         return QUESTION_WIDGET_ID

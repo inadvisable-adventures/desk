@@ -1,4 +1,4 @@
-# Lightweight one-shot agent Job mechanism (TODO `d7e66f6`)
+# Lightweight one-shot agent Job mechanism (TODO `d7e66f6`) (COMPLETED)
 
 ## Summary
 

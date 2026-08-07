@@ -6385,7 +6385,77 @@ d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
      (same convention every other tempui-DSL addition already follows
      -- see TODO `e42469e` for what happens when a real capability
      ships without this: agents kept not finding out it existed).
-   [planned: lightweight-agent-job-mechanism.md]
+   [planned: lightweight-agent-job-mechanism.md (COMPLETED)]
+
+   COMPLETED: `temp_ui.py` gained `JOB_KEYWORD = "Job"` (added to
+   `RESERVED_TEMPUI_KEYWORDS`), a `JobDefinition` dataclass, and
+   `parse_job` (mirrors `parse_define_widget` exactly: `Job<TAB>kind
+   <TAB>summary` first line, `Capability<TAB>name` lines, `Script<TAB>
+   base64-chunk` lines concatenated in file order); `detect_temp_ui_kind`
+   gained a `"job"` branch. New `src/desk/jobs.py` mirrors
+   `desk.custom_widgets` under its own `jobs/` cache subdir:
+   `materialize` (writes an execution-ready `index.html`/`script.py`
+   by kind) and `materialize_script_body` (View Code's own separate
+   plain-text copy, named distinctly so it never collides with the
+   execution entry). `current_context` gained one new hook,
+   `set_html_job_starter`/`get_html_job_starter` -- `python`-kind
+   execution needed no `DeskWindow` involvement at all (a pure
+   background-thread direct-exec, `git_diff/widget.py`'s own
+   `_Relay(QObject)` shape). `window.py` gained
+   `JOB_RUNNER_WIDGET_ID`, `_temp_ui_widget_id_for`/`_notify_temp_ui`
+   `"job"` branches (Job is Scratch/Question-shaped -- one file, one
+   bound instance via the *existing*, unmodified
+   `_bind_temp_ui_content` fallback branch, not `DefineWidget`'s
+   two-step shape), `JOB_RUNNER_WIDGET_ID` added to
+   `TEMP_UI_WIDGET_IDS` (restore reconnection), and
+   `start_html_job(job_id, definition, on_status)`: materializes,
+   registers a `WidgetInfo` scoped to exactly the declared
+   `Capability` lines directly into `self._widgets` (never through
+   `_register_custom_widget` -- that machinery is for a reusable,
+   promotable widget *kind*; a Job is a one-shot instance), mounts on
+   the real running server, and places a real, visible `ChromiumWidget`
+   -- `job_id` doubles as both widget id and instance id.
+   `on_status("executing"/"done"/"errored", detail)` reuses
+   `ChromiumWidget`'s own existing `loadFinished`/`error_state_changed`
+   signals, no new ones needed. New `widgets/job_runner/` (`kind:
+   "python"`): summary/kind display, View Code (materializes the
+   script body, calls `current_context.get_editor_or_scrap_opener()`),
+   Start (dispatches by kind), a status display, `get_widget_local_storage`/
+   `set_widget_local_storage` (persists `{"status", "detail"}` across
+   a Desk reload -- a restored `"executing"` status is shown as
+   `"interrupted"` with Start re-enabled, not a permanently stuck
+   widget), and `has_unsaved_local_edits` (`True` once started,
+   reusing `_refresh_live_temp_ui`'s existing Scratch-widget-established
+   opt-out mechanism so an external edit to an already-started Job's
+   file can't clobber it). `temp_ui.py` also gained a new split doc,
+   `tempui-jobs.md` (file format, the real capability-namespace list,
+   an explicit "Done means page-load-finished, not that your own async
+   Bridge calls resolved" caveat, and a worked `python`-kind example),
+   `TEMPUI_DOC_VERSION` bumped 30->31 with a matching comment block and
+   `_NEW_FEATURES_DOC` entry, and `DOC_TEMPLATE`'s file-type list
+   bumped eight->nine with a new `Job` bullet linking to the new doc.
+   New verify coverage, real (no mocking): `verify_job_tempui_parsing.py`
+   (17 checks: parse round-trip including multi-chunk `Script` lines,
+   garbage rejection, `detect_temp_ui_kind`); `verify_jobs_materialize.py`
+   (14 checks: real file writes by kind, malformed-base64 tolerance,
+   the two materialize paths coexisting in the same job directory
+   without colliding); `verify_job_runner_widget.py` (21 checks: real
+   `QWidget` construction, a real background-thread python-kind
+   execution reaching "done" with captured stdout or "errored" with a
+   real captured traceback, persisted-status round-trip including the
+   interrupted-on-restore case, View Code's real materialize-then-open
+   call, and the html-kind dispatch through the starter hook);
+   `verify_html_job_execution.py` (13 checks, real `start_server` +
+   a real, visible `ChromiumWidget`, `os._exit()` per TODO `a5f66cc`'s
+   established pattern: confirmed via a real HTTP round trip that a
+   declared `workspace` capability call succeeds while an undeclared
+   `fs` capability call gets a real 403 -- `err.status` from TODO
+   `e86a31b` made this assertion possible without string-matching);
+   `verify_job_notification_routing.py` (5 checks: the notification/
+   routing dispatch for a real Job file); `verify_tempui_jobs_doc.py`
+   (14 checks: doc-version/content, cross-referencing rather than
+   duplicating the Bridge API capability list). Full `tests/verify/`
+   regression suite passes (100 scripts total, 0 failures).
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a

@@ -58,7 +58,16 @@ Subscribers widget zoom/pan the Workspace Canvas to a specific placed
 widget instance (by instance id) and show a human-readable label for
 one, without needing to import `desk.shell.window`/`desk.shell.canvas`
 directly -- see `desk.shell.window.DeskWindow
-.zoom_to_widget_by_instance_id`/`_display_name_for_instance`."""
+.zoom_to_widget_by_instance_id`/`_display_name_for_instance`.
+
+Also holds an "html Job starter" hook (TODO d7e66f6), same shape
+again: lets the Job Runner widget (`widgets/job_runner/widget.py`)
+start an `html`-kind Job -- materialize + mount + place a real,
+capability-scoped `kind: "html"` widget instance -- without needing to
+import `desk.shell.window` directly. A `python`-kind Job needs no such
+hook: it runs entirely in-process on a background thread, no
+`DeskWindow` involvement required. See `desk.shell.window.DeskWindow
+.start_html_job`."""
 from collections.abc import Callable
 from pathlib import Path
 
@@ -67,6 +76,7 @@ from PyQt6.QtWidgets import QWidget
 
 from desk.event_mediator import EventMediator
 from desk.hotreload import HotReloadBroker
+from desk.temp_ui import JobDefinition
 
 _current_directory: Path | None = None
 _widget_opener: Callable[[str], QWidget | None] | None = None
@@ -85,6 +95,7 @@ _file_type_registry_provider: Callable[[], list[dict]] | None = None
 _widget_catalog_provider: Callable[[], list[dict]] | None = None
 _hot_reload_broker: HotReloadBroker | None = None
 _popup_opener: Callable[[str, str, list[str], str | None], str | None] | None = None
+_html_job_starter: Callable[[str, JobDefinition, Callable[[str, str], None]], None] | None = None
 
 
 def set_current_desk_directory(directory: Path) -> None:
@@ -317,3 +328,20 @@ def set_hot_reload_broker(broker: HotReloadBroker) -> None:
 
 def get_hot_reload_broker() -> HotReloadBroker | None:
     return _hot_reload_broker
+
+
+def set_html_job_starter(starter: Callable[[str, JobDefinition, Callable[[str, str], None]], None]) -> None:
+    """TODO d7e66f6: `starter(job_id, definition, on_status)` --
+    materializes, mounts, and places a real, capability-scoped
+    `kind: "html"` widget instance for an `html`-kind Job.
+    `on_status(status, detail)` is called with `("executing", "")`
+    immediately, then exactly one of `("done", "")` or
+    `("errored", message)` once the placed instance's page finishes
+    loading or logs a console error. See
+    `desk.shell.window.DeskWindow.start_html_job`."""
+    global _html_job_starter
+    _html_job_starter = starter
+
+
+def get_html_job_starter() -> Callable[[str, JobDefinition, Callable[[str, str], None]], None] | None:
+    return _html_job_starter

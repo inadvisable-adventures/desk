@@ -199,7 +199,14 @@ SHARED_COMPONENTS_DIRNAME = "shared-components"
 # Bridge API call, documented in the "self.*" list above: lets a
 # widget instance put its own state into its own titlebar, alongside
 # getManifest/getLocalStorage/setLocalStorage.
-TEMPUI_DOC_VERSION = 30
+#
+# TODO d7e66f6: bumped 30 -> 31 -- new `Job` tempui DSL keyword: run a
+# one-time script with real widget-context capabilities (notably
+# Bridge API access for a `kind: "html"` Job) without building a full
+# `DefineWidget`/`widgets/<id>/` registration. New split doc,
+# tempui-jobs.md; the main file-type list above gained a matching
+# bullet (eight built-in file types -> nine).
+TEMPUI_DOC_VERSION = 31
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -215,7 +222,7 @@ Each file is named with a bare UUID (e.g.
 `550e8400-e29b-41d4-a716-446655440000`, no extension). Desk watches
 this directory: a newly-created file shows up as a clickable
 notification in the app's upper-right corner; clicking it places a new
-widget on the canvas, centered in the current view. There are eight
+widget on the canvas, centered in the current view. There are nine
 built-in file types, distinguished by their first line's keyword:
 
 - `Question` (below) — a quick multiple-choice question, answered by
@@ -237,6 +244,10 @@ built-in file types, distinguished by their first line's keyword:
 - `DiscussParkingLotItem` — have Desk start a brand-new `claude`
   session to discuss one `PARKINGLOT.md` item. See
   [tempui-discuss-parking-lot-item.md](./tempui-discuss-parking-lot-item.md).
+- `Job` — run a one-time script with real widget-context capabilities
+  (notably Bridge API access), without building a full `DefineWidget`/
+  `widgets/<id>/` registration for it. See
+  [tempui-jobs.md](./tempui-jobs.md).
 
 Every file named above lives in this same directory.
 
@@ -941,6 +952,88 @@ and once the new session starts there's nothing more Desk does with
 this file.
 """
 
+_JOBS_DOC = """# TempUI DSL: Job
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its shared version number -- this file
+just covers the `Job` keyword.
+
+For running a **one-time script** with real widget-context
+capabilities -- notably Bridge API access, which nothing else lets you
+reach outside a real `kind: "html"` widget's own JS -- without
+building a full `DefineWidget` (a reusable, promotable widget *kind*)
+or a `widgets/<id>/` registration just for one throwaway task. If what
+you actually want is a reusable widget *kind* placeable many times, or
+something that stays running (a background service, a long,
+checkpointed pipeline), a `Job` is the wrong tool -- it's a single
+one-shot run, no more.
+
+- The first line is `Job<TAB>kind<TAB>summary` -- `kind` is `python`
+  or `html`; `summary` is shown in the notification and the placed Job
+  Runner widget, never executed.
+- Zero or more `Capability<TAB>name` lines -- only meaningful for
+  `kind: "html"` (ignored, but harmless, for `kind: "python"`): the
+  same coarse Bridge API capability names a `DefineWidget`'s own
+  `Capability` lines use (`workspace`, `fs`, `widgets`, `events`,
+  `filetypes`, `editor`, `popups`, `transforms`, `introspect` -- see
+  "The Desk Bridge API" in `tempui-custom-widgets.md` for what each
+  one actually grants). Declare only what your script actually calls
+  -- an undeclared capability's Bridge call gets a real HTTP 403, not
+  silent success.
+- One or more `Script<TAB>base64-chunk` lines -- your script's entire
+  source, base64-encoded (chunk it across several `Script` lines for a
+  long script; they're concatenated in file order before decoding,
+  the same convention `DefineWidget`'s own `Html` lines use). For
+  `kind: "html"`, this is a complete, self-contained HTML document
+  (same shape as a `DefineWidget`'s own content) -- your page's JS gets
+  `window.desk.*` injected automatically, scoped to exactly the
+  `Capability` lines you declared above. For `kind: "python"`, this is
+  a plain Python script, executed directly (no `desk` package import
+  needed beyond what you'd already use in any other Python code in
+  this environment) -- there is no capability scoping for `kind:
+  "python"` at all; it runs with the same access any other code
+  already running in this process has.
+
+Clicking the resulting notification places a **Job Runner** widget,
+showing your declared summary, a "View Code" button (opens your
+script's own source in a real editor), and a "Start" button --
+**nothing runs until Start is clicked**. Once started, Start becomes
+disabled and stays that way (even across a Desk reload) -- a `Job` is
+a one-shot run, not a repeatable tool; write a new `Job` file for a
+second run.
+
+**"Done" means the page finished loading, not that every async Bridge
+call your script's own JS kicked off has resolved.** There is no
+generic way for Desk to know an arbitrary web page's own async work
+has actually finished -- if your `kind: "html"` script fires off a
+Bridge call and returns immediately, the Job Runner widget may show
+"Done" before that call's effect is visible elsewhere. If you need to
+know a specific call actually completed, have your own script make
+that visible some other way (e.g. render its own result in the page),
+rather than relying on the Job Runner's status display as a strict
+completion signal.
+
+Example (`kind: "python"`, script shown decoded/unwrapped for
+readability -- the real file's `Script` line(s) would carry it
+base64-encoded):
+
+```
+Job	python	Delete .desk_temp/jobs/ entries older than 7 days
+Script	<base64-encoded script text>
+```
+
+```python
+import time
+from pathlib import Path
+
+cutoff = time.time() - 7 * 24 * 60 * 60
+jobs_dir = Path(".desk_temp/jobs")
+for entry in jobs_dir.iterdir() if jobs_dir.is_dir() else []:
+    if entry.stat().st_mtime < cutoff:
+        print(f"would remove {entry}")
+```
+"""
+
 # TODO 7462cdb: reverse-chronological changelogs for the whole tempui
 # doc set, tagged by the TEMPUI_DOC_VERSION each entry was introduced
 # in -- not DSL-keyword-triggered file types themselves (nothing writes
@@ -1009,6 +1102,16 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 31
+- New `Job` tempui DSL keyword -- run a one-time script with real
+  widget-context capabilities (notably Bridge API access for a
+  `kind: "html"` Job, previously unreachable outside a real
+  `kind: "html"` widget's own JS) without building a full
+  `DefineWidget`/`widgets/<id>/` registration for it. See
+  `tempui-jobs.md` for the file format, the capability list, and an
+  important caveat about what "Done" actually means for a `kind:
+  "html"` Job.
 
 ## Version 30
 - New `desk.self.setSubtitle(text)` Bridge API call -- lets a widget
@@ -1484,6 +1587,7 @@ IMAGE_DOC_FILENAME = "tempui-image.md"
 SCRATCH_DOC_FILENAME = "tempui-scratch.md"
 CUSTOM_WIDGETS_DOC_FILENAME = "tempui-custom-widgets.md"
 DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME = "tempui-discuss-parking-lot-item.md"
+JOBS_DOC_FILENAME = "tempui-jobs.md"
 BREAKING_CHANGES_DOC_FILENAME = "tempui-breaking-changes.md"
 NEW_FEATURES_DOC_FILENAME = "tempui-new-features.md"
 BUILD_WIDGET_SCRIPT_FILENAME = "build_widget.py"
@@ -1502,6 +1606,7 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     SCRATCH_DOC_FILENAME: _SCRATCH_DOC,
     CUSTOM_WIDGETS_DOC_FILENAME: _CUSTOM_WIDGETS_DOC,
     DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME: _DISCUSS_PARKING_LOT_ITEM_DOC,
+    JOBS_DOC_FILENAME: _JOBS_DOC,
     BREAKING_CHANGES_DOC_FILENAME: _BREAKING_CHANGES_DOC,
     NEW_FEATURES_DOC_FILENAME: _NEW_FEATURES_DOC,
     BUILD_WIDGET_SCRIPT_FILENAME: _BUILD_WIDGET_SCRIPT,
@@ -1640,6 +1745,7 @@ SCRATCH_KEYWORD = "Scratch"
 MARKDOWN_KEYWORD = "Markdown"
 DEFINE_WIDGET_KEYWORD = "DefineWidget"
 DISCUSS_PARKING_LOT_ITEM_KEYWORD = "DiscussParkingLotItem"
+JOB_KEYWORD = "Job"
 UNANSWERED = "unanswered"
 
 # Every built-in DSL keyword a DefineWidget can't reuse as its own
@@ -1659,6 +1765,7 @@ RESERVED_TEMPUI_KEYWORDS = frozenset(
         MARKDOWN_KEYWORD,
         DEFINE_WIDGET_KEYWORD,
         DISCUSS_PARKING_LOT_ITEM_KEYWORD,
+        JOB_KEYWORD,
     }
 )
 
@@ -1751,12 +1858,72 @@ def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
     )
 
 
+@dataclass
+class JobDefinition:
+    """A tempui-DSL-defined one-shot agent Job (TODO d7e66f6) --
+    Scratch/Question-shaped (one file, one bound widget instance), not
+    DefineWidget's two-step type-then-instance shape: nothing else
+    invokes a Job, this *is* the invocation. `kind` is `"python"` or
+    `"html"`; `capabilities` (meaningful for `kind == "html"` only,
+    always collected regardless -- harmless to ignore for `"python"`)
+    are the same coarse Bridge API capability strings a real
+    `widgets/<id>/widget.json` or a `DefineWidget`'s own `Capability`
+    lines already use. `script_b64` is the job's entire script body,
+    base64-encoded (tabs/newlines in real script content can't
+    otherwise survive this TAB-delimited-lines format)."""
+
+    kind: str
+    summary: str
+    script_b64: str
+    capabilities: list[str] = field(default_factory=list)
+
+
+def parse_job(text: str) -> JobDefinition | None:
+    """Extracts a JobDefinition from a Job temp-UI file:
+    `Job<TAB>kind<TAB>summary` (must be the first line, `kind` one of
+    "python"/"html"), zero or more `Capability<TAB>name` lines (same
+    shape as parse_define_widget's), and one or more
+    `Script<TAB>base64-chunk` lines (concatenated in file order before
+    decoding, mirroring Html's own chunking). Returns None if the file
+    doesn't start with the Job keyword, has no valid kind, or has no
+    Script content at all."""
+    lines = text.splitlines()
+    if not lines:
+        return None
+    first = lines[0].split("\t")
+    if not first or first[0] != JOB_KEYWORD:
+        return None
+    kind = first[1].strip() if len(first) > 1 else ""
+    if kind not in ("python", "html"):
+        return None
+    summary = first[2].strip() if len(first) > 2 else ""
+
+    capabilities: list[str] = []
+    script_chunks: list[str] = []
+    for line in lines[1:]:
+        if line.startswith("Capability\t"):
+            name = line.split("\t", 1)[1].strip()
+            if name:
+                capabilities.append(name)
+        elif line.startswith("Script\t"):
+            script_chunks.append(line.split("\t", 1)[1])
+
+    if not script_chunks:
+        return None
+    return JobDefinition(
+        kind=kind,
+        summary=summary,
+        script_b64="".join(script_chunks),
+        capabilities=capabilities,
+    )
+
+
 def detect_temp_ui_kind(text: str, custom_keywords: Collection[str] = ()) -> str:
     """"question" (the original, default type), "lightning_round",
     "open_markdown", "open_image", "scratch", "markdown_content",
-    "define_widget", "discuss_parking_lot_item", or (if the file's own
-    keyword is a currently-known custom widget -- TODO 91b3f42)
-    "custom:<keyword>" -- read from the first non-blank line's
+    "define_widget", "discuss_parking_lot_item", "job", or (if the
+    file's own keyword is a currently-known custom widget -- TODO
+    91b3f42) "custom:<keyword>" -- read from the first non-blank line's
     keyword. Lets a caller
     that's seeing a temp-ui file for the first time (a notification, a
     saved Desk's widget state) know which widget kind to place without
@@ -1785,6 +1952,8 @@ def detect_temp_ui_kind(text: str, custom_keywords: Collection[str] = ()) -> str
                 return "define_widget"
             if keyword == DISCUSS_PARKING_LOT_ITEM_KEYWORD:
                 return "discuss_parking_lot_item"
+            if keyword == JOB_KEYWORD:
+                return "job"
             if keyword in custom_keywords:
                 return f"custom:{keyword}"
             return "question"
