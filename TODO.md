@@ -7097,5 +7097,4 @@ e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
      project has no in-project way to learn this convention exists at
      all. Fold a short section into `shared_development_process.md`
      describing it.
-   Not designed further yet -- four related but independent sub-fixes,
-   likely worth separate implementation steps within one plan.
+   [planned: new-desk-existing-project-gaps.md]
