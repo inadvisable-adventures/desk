@@ -254,22 +254,65 @@ by name as one of the two independent reports (alongside the
 item's own stated top blocker is off the table; gaps 1-6 are what's
 actually left.
 
+### Shared state store design (gaps 1-6)
+
+Gaps 1/2/3 all reduce to the same fix, so the design conversation
+started there rather than gap-by-gap:
+
+- **Bridge API**: a new `state` capability; `desk.state.get(key)` /
+  `desk.state.set(key, value)`. `set()` closes gap 1 (current
+  selection/query results have a real home), gap 2 (a widget getting
+  only `{id}` over `desk.events` can resolve it via `get()` instead of
+  needing its own redundant cache), and gap 3 (a natural place to
+  record "which widget currently owns worker execution" -- the actual
+  coordination is then just ordinary read/write against the store plus
+  `events`, not a new RPC primitive).
+- **Change notifications reuse `desk.events`**, not a new transport --
+  `set()` auto-publishes a well-known event (e.g. `desk.state.changed`,
+  `{key, value}` payload) rather than inventing a second delivery
+  mechanism alongside the one that already exists.
+- **Gap 4 (long-poll ordering/latency risk) is addressed by `get()`
+  being pull-based, not by fixing the transport.** The drift risk the
+  FEEDBACK item describes is specifically about notification-only
+  state (nothing retained) -- once there's a real store behind it, a
+  widget that missed or was delayed on a change notification can
+  always re-fetch the current authoritative value on demand. No change
+  to `desk.events`' own 30-second-clamped long-poll delivery is
+  needed.
+- **Gap 5 (untyped payloads)**: per-key JSON Schema declared in the
+  widget manifest, validated on `set()` -- a schema violation returns
+  a real error status, the same `err.status`-carrying pattern the
+  Bridge client already uses elsewhere (TODO `e86a31b`).
+- **Gap 6 (orchestration) needs no new primitive**, confirmed -- a
+  coordinator widget is just ordinary code built on `state` + `events`,
+  matching the FEEDBACK item's own read once (1) and (5) exist.
+
+**Decided**:
+- The store **persists across a Desk reload**, written into the
+  `.desk` file -- same pull-based "saved at quit, not on every write"
+  model `desk.self.getLocalStorage` already uses, and matches
+  `world-timelines`'s own real use case (current selection/query
+  results are exactly the kind of thing worth surviving a reload).
+- The FEEDBACK item's separately-suggested **"retained" publish mode**
+  for `desk.events` (deliver the last message for a name to a
+  newly-subscribing widget) is **dropped, not built** -- once
+  `desk.state.get()` exists, a retained-publish mode would solve a
+  strict subset of the same problem through a second, parallel
+  mechanism. Redundant surface area for no real gain.
+
+This closes out `widget-extraction-communication-gaps` entirely: gap 7
+already fixed, gaps 1-6 now have a real (if not yet planned/built)
+design.
+
 ## Where things were left
 
 Nothing above has been turned into a TODO item or a plan -- this is
 purely a discussion record, matching `investigations/feedback_review.md`'s
-own established shape for exactly this situation. Open threads, not
-yet started:
+own established shape for exactly this situation. Both FEEDBACK items'
+own inventories are now fully scoped/designed at a discussion level.
+Open threads, not yet started:
 
-1. **Gaps 1-6 of `widget-extraction-communication-gaps`** haven't been
-   discussed in the same depth the DSL inventory got -- the shared
-   project-scoped state store's actual shape (capability model, change
-   -notification mechanism, how it composes with `desk.events`), the
-   retained-publish-mode idea mentioned in the FEEDBACK item's own
-   suggested fix but not yet discussed here, the schema-declaration
-   mechanism, and the coordinator-widget pattern all still need real
-   design conversation.
-2. **The editor widget's actual raw-text+structured-UI sync design**
+1. **The editor widget's actual raw-text+structured-UI sync design**
    hasn't been started at all -- only prior-art research (confirming
    nothing to build on exists) has happened. This needs original
    design: how the two views detect and resolve conflicting edits,
@@ -277,7 +320,7 @@ yet started:
    vs. the layout tree, and how the "reusable building block, not a
    one-off" goal gets realized concretely (a shared TS base class
    alongside `document-editor-base`? something else?).
-3. No decision has been made about **which of the two FEEDBACK items'
+2. No decision has been made about **which of the two FEEDBACK items'
    threads to actually turn into a TODO/plan first**, or whether they
    should be filed as one combined item or several independent ones
    (the DSL, the editor widget, and the communication-gaps state store
