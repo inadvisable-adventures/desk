@@ -973,21 +973,6 @@ This file captures thoughts and TODO items that arise during work on other thing
   while investigating `can_use_tool`'s shadowing behavior) versus what
   would need real custom logic inside `can_use_tool` itself.
 
-- **Research offline text-to-speech (TTS) options**
-
-  The reverse direction of the already-shipped local speech-to-text
-  work (TODOs `f9d2dc7`/`1cd0ca2`/`b32fb81`, `mlx-whisper`-based): no
-  research done yet into what a local/offline TTS engine for this
-  project would even look like -- candidate libraries, model sizes and
-  license terms, voice quality, and whether anything comparable to
-  `mlx-whisper`'s Apple Silicon-optimized story exists for TTS
-  specifically (vs. a general cross-platform option), all still open.
-  No concrete use case driving this yet either (unlike the STT work,
-  which had the Voice Input widget as a clear target) -- surfaced
-  purely as "the natural counterpart to what we already have," not in
-  response to a specific need. Purely a research item: figure out real
-  options and their tradeoffs before this becomes a planned TODO.
-
 - **Investigate ways for Claude to keep working on TODO items in the
   cloud while the user is offline**
 

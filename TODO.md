@@ -7326,3 +7326,18 @@ e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
    corruption bug found along the way, confirming each is now handled
    correctly in one real `convert` run. Full `tests/verify/`
    regression suite passes (96 scripts total, 0 failures).
+676a133. Investigate offline/local text-to-speech (TTS) options for this
+   project -- the reverse direction of the already-shipped local
+   speech-to-text work (TODOs `f9d2dc7`/`1cd0ca2`/`b32fb81`,
+   `mlx-whisper`-based). Candidate libraries, model sizes and license
+   terms, voice quality, and whether anything comparable to
+   `mlx-whisper`'s Apple-Silicon-optimized story exists for TTS
+   specifically (vs. a general cross-platform option) are all open.
+   No concrete use case driving this yet either (unlike the STT work,
+   which had the Voice Input widget as a clear target) -- surfaced
+   purely as "the natural counterpart to what we already have," moved
+   here from `PARKINGLOT.md`. Write up findings and recommendations in
+   `investigations/tts_options.md`. No application code changes -- a
+   pure investigation; figure out real options and their tradeoffs
+   before this becomes a planned, implementable TODO.
+   [planned: investigate-tts-options.md]
