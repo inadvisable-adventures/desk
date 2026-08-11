@@ -7326,7 +7326,7 @@ e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
    corruption bug found along the way, confirming each is now handled
    correctly in one real `convert` run. Full `tests/verify/`
    regression suite passes (96 scripts total, 0 failures).
-676a133. Investigate offline/local text-to-speech (TTS) options for this
+676a133. COMPLETED: Investigate offline/local text-to-speech (TTS) options for this
    project -- the reverse direction of the already-shipped local
    speech-to-text work (TODOs `f9d2dc7`/`1cd0ca2`/`b32fb81`,
    `mlx-whisper`-based). Candidate libraries, model sizes and license
@@ -7340,4 +7340,31 @@ e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
    `investigations/tts_options.md`. No application code changes -- a
    pure investigation; figure out real options and their tradeoffs
    before this becomes a planned, implementable TODO.
-   [planned: investigate-tts-options.md]
+   [planned: investigate-tts-options.md (COMPLETED)]
+
+   Surveyed four candidates: macOS `say`/`AVSpeechSynthesizer` (zero
+   new dependency, on-device neural voices since Sonoma, but thin
+   programmatic control and no scriptable way to fetch the better
+   voice packs); `mlx-audio` + Kokoro-82M (MIT toolkit / Apache 2.0
+   weights, ~300MB, #1 on the TTS Arena leaderboard as of Jan 2026 --
+   the real MLX-native analog to `mlx-whisper`, though a third-party
+   project rather than living in `ml-explore`'s own org the way
+   `mlx-whisper` does); Piper (ONNX/CPU, ~75MB/voice, 100+ voices/35+
+   languages, the actual general cross-platform option -- license is
+   murky, MIT on the now-archived original repo vs. GPL-3.0 on the
+   active fork, flagged as unresolved rather than papered over); Coqui
+   XTTS v2 (best quality/voice-cloning surveyed, but its weights are
+   CPML-licensed non-commercial-only with no one left to sell a
+   commercial license since Coqui Inc. shut down in Jan 2024 --
+   ruled out for anything this MIT-licensed project would ship or
+   default to). Answered the original "is there an Apple-Silicon-
+   optimized story like `mlx-whisper`" question directly: yes,
+   `mlx-audio`/Kokoro, with the third-party-provenance caveat above.
+   No recommendation committed to, per `PARKINGLOT.md`'s original
+   framing -- no concrete use case exists yet to design against;
+   findings and the shape of the tradeoff for whoever picks this up
+   are written up in `investigations/tts_options.md`.
+
+   No application code changed -- a pure investigation. Confirmed the
+   new file exists; full regression suite: 100 scripts, 0 failures
+   (unchanged, as expected).

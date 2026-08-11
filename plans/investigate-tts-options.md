@@ -1,4 +1,4 @@
-# Plan: TODO 676a133 — investigate offline TTS options
+# Plan: TODO 676a133 (COMPLETED) — investigate offline TTS options
 
 Moved from `PARKINGLOT.md`'s "Research offline text-to-speech (TTS)
 options" entry. Research what a local/offline TTS engine for this
