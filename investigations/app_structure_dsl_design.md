@@ -13,7 +13,7 @@ open.
 
 ## Sources
 
-Both read in full:
+All read in full:
 
 - `../FEEDBACK/FEEDBACK-DESK-app-structure-dsl-and-editor-widget-2026-08-03-1634.md`
   -- a declarative DSL + codegen + editor widget for the hand-written
@@ -23,6 +23,12 @@ Both read in full:
   -- the sibling problem: what breaks when that same app's components
   become separate, independently-sandboxed Desk widget *instances*
   instead of one page sharing one JS object's memory.
+- `../FEEDBACK/FEEDBACK-DESK-shared-state-with-semantic-edits-2026-08-10-2141.md`
+  -- a small, concrete instance of the same gap (two widgets in the
+  `file-tree` project agreeing on "current directory"), written from a
+  different project, found while re-scanning `../FEEDBACK/` for new
+  state-store-related items. Sharpens the state-store design below
+  with a piece it didn't have yet: semantic edit records.
 
 Also referenced, not re-read in full: `TODO.md`'s `a5f66cc` (COMPLETED)
 and `d4368bd` (COMPLETED) entries -- see below.
@@ -260,7 +266,7 @@ Gaps 1/2/3 all reduce to the same fix, so the design conversation
 started there rather than gap-by-gap:
 
 - **Bridge API**: a new `state` capability; `desk.state.get(key)` /
-  `desk.state.set(key, value)`. `set()` closes gap 1 (current
+  `desk.state.set(key, value, edit?)`. `set()` closes gap 1 (current
   selection/query results have a real home), gap 2 (a widget getting
   only `{id}` over `desk.events` can resolve it via `get()` instead of
   needing its own redundant cache), and gap 3 (a natural place to
@@ -269,7 +275,7 @@ started there rather than gap-by-gap:
   `events`, not a new RPC primitive).
 - **Change notifications reuse `desk.events`**, not a new transport --
   `set()` auto-publishes a well-known event (e.g. `desk.state.changed`,
-  `{key, value}` payload) rather than inventing a second delivery
+  `{key, value, edit}` payload) rather than inventing a second delivery
   mechanism alongside the one that already exists.
 - **Gap 4 (long-poll ordering/latency risk) is addressed by `get()`
   being pull-based, not by fixing the transport.** The drift risk the
@@ -303,6 +309,58 @@ started there rather than gap-by-gap:
 This closes out `widget-extraction-communication-gaps` entirely: gap 7
 already fixed, gaps 1-6 now have a real (if not yet planned/built)
 design.
+
+### Semantic edits (folded in from `shared-state-with-semantic-edits`)
+
+`FEEDBACK-DESK-shared-state-with-semantic-edits-2026-08-10-2141.md`
+(see Sources) is a small, concrete case -- two `file-tree` widgets,
+`DeskConsole` and `DirectoryTreeView`, needing to agree on "current
+directory" -- that independently hand-rolled four things on top of
+`desk.events`: a private copy per widget, replaying commands instead
+of sharing values, a request/response late-join protocol, and a
+retry-on-race hack for that protocol. **Three of those four are
+already solved by the design above**: `get()` returning the current
+value immediately deletes the late-join protocol and its race-condition
+retry hack outright (a widget never asks a peer and hopes one's
+listening -- it asks Desk, which already knows), and a display-only
+subscriber reading a value someone else already computed never needs
+its own private copy.
+
+The one piece the design above didn't have: **semantic edits, not just
+value replacement**. `DeskConsole` doesn't just want to know the new
+directory value -- it wants to know *that a `cd` with this argument
+happened*, even when the change originated from the *other* widget (a
+tree-view click), so it can render the right history line without
+re-deriving "what command produced this transition" from a diff.
+
+**Folded into the design**:
+- `set(key, value, edit?)` -- the writer (whichever widget already
+  knows the domain semantics) computes the resulting value itself and
+  optionally attaches a structured `edit` record (e.g. `{"op": "cd",
+  "arg": "desk"}`) describing what produced it. Desk never interprets
+  `edit` -- it has no way to run arbitrary widget-authored reducer
+  logic -- it's opaque, just stored and relayed, the same way
+  `desk.events` payloads already are today.
+- Subscribers receive `(value, edit)` on every change (change
+  notifications, and history entries below, both carry the pair) -- a
+  value-only subscriber ignores `edit`; a semantics-aware one (like
+  `DeskConsole`) uses it directly instead of diffing.
+- `edit`'s shape can reuse the same per-key JSON Schema validation
+  already planned for gap 5 -- covering both the value's shape and the
+  edit's shape, not just the value's.
+- **Decided**: the store retains a **small, bounded history of past
+  (value, edit) pairs per key**, not just the current one -- queryable
+  via `getHistory(key, limit)`, so a widget that just reconnected or
+  reloaded can catch up on what happened while it wasn't listening
+  (e.g. reconstructing `DeskConsole`'s own command-log display),
+  rather than only ever seeing "what's true now." Proposed defaults,
+  not yet locked down further than this: entries returned **oldest
+  -first** (so a widget can replay them in order); a **fixed, small
+  default cap** per key, not per-key configurable in v1; and the
+  history **persists across a Desk reload** alongside the value
+  itself, for the same consistency reason the value's own persistence
+  was decided (a widget reloading right after Desk restarts shouldn't
+  see a value with no explanation of how it got there).
 
 ## Where things were left
 
