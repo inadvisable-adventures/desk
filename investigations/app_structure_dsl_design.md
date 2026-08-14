@@ -353,14 +353,16 @@ re-deriving "what command produced this transition" from a diff.
   via `getHistory(key, limit)`, so a widget that just reconnected or
   reloaded can catch up on what happened while it wasn't listening
   (e.g. reconstructing `DeskConsole`'s own command-log display),
-  rather than only ever seeing "what's true now." Proposed defaults,
-  not yet locked down further than this: entries returned **oldest
-  -first** (so a widget can replay them in order); a **fixed, small
-  default cap** per key, not per-key configurable in v1; and the
-  history **persists across a Desk reload** alongside the value
-  itself, for the same consistency reason the value's own persistence
-  was decided (a widget reloading right after Desk restarts shouldn't
-  see a value with no explanation of how it got there).
+  rather than only ever seeing "what's true now." **Decided**: the
+  history is a **fixed-size-N FIFO queue** per key -- for a cap of N,
+  the history always holds exactly the N most recent edits, oldest
+  dropped as new ones arrive; entries are returned **latest-first**
+  from `getHistory`. N is a **fixed, small default, not per-key
+  configurable in v1**; and the history **persists across a Desk
+  reload** alongside the value itself, for the same consistency reason
+  the value's own persistence was decided (a widget reloading right
+  after Desk restarts shouldn't see a value with no explanation of how
+  it got there).
 
 ## Where things were left
 
