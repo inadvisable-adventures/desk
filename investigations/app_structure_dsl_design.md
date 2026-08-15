@@ -366,10 +366,21 @@ re-deriving "what command produced this transition" from a diff.
 
 ## Where things were left
 
-Nothing above has been turned into a TODO item or a plan -- this is
-purely a discussion record, matching `investigations/feedback_review.md`'s
-own established shape for exactly this situation. Both FEEDBACK items'
-own inventories are now fully scoped/designed at a discussion level.
+**Update**: the app-structure DSL itself (schema/parser/codegen -- the
+"Full DSL inventory" section above) is no longer just a discussion
+record -- filed and implemented as TODO `48e3b39`
+(`plans/app-structure-dsl.md`, COMPLETED). Layout mode 1, the
+event-wiring table, state slots, and the escape hatch are real,
+tested code (`app_dsl/` at this repo's root); layout mode 2 and the
+eject feature remain deferred, as designed above. One real
+architectural gap found while implementing, not anticipated in the
+design discussion above: the generated code uses real ES modules,
+which aren't yet compatible with `build_widget.py`'s own
+global-script-concatenation packaging model -- see `PARKINGLOT.md`
+for the open follow-up. The rest of this section's own open threads
+are otherwise unaffected by that -- this is a discussion record for
+everything else below.
+
 Open threads, not yet started:
 
 1. **The editor widget's actual raw-text+structured-UI sync design**
@@ -380,8 +391,11 @@ Open threads, not yet started:
    vs. the layout tree, and how the "reusable building block, not a
    one-off" goal gets realized concretely (a shared TS base class
    alongside `document-editor-base`? something else?).
-2. No decision has been made about **which of the two FEEDBACK items'
-   threads to actually turn into a TODO/plan first**, or whether they
-   should be filed as one combined item or several independent ones
-   (the DSL, the editor widget, and the communication-gaps state store
-   all have real inter-dependencies but are separable pieces of work).
+2. **The shared, project-scoped state store** (`desk.state.*`,
+   including the semantic-edits refinement) is fully designed at a
+   discussion level but not yet filed as a TODO or implemented.
+3. The ES-modules-vs-`build_widget.py` packaging gap noted above
+   needs a real decision (a non-module codegen mode, or a bundling
+   step) before the app-structure DSL's own "dual transpilation
+   target" goal is actually proven for a Desk-widget build, not just
+   a standalone one.
