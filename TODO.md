@@ -6457,6 +6457,67 @@ d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
    duplicating the Bridge API capability list). Full `tests/verify/`
    regression suite passes (100 scripts total, 0 failures).
 
+48e3b39. App-structure DSL: a declarative schema + parser + dual-target
+   codegen tool for the wiring/layout code of a multi-component SPA
+   built as a single `kind: "html"` widget -- generalized from
+   `world-timelines`'s own hand-written `app-root.ts`/`main.ts` (~500
+   lines of component registration, pane/grid layout, event-delegation
+   wiring, and a Web Worker channel), not specific to it. From
+   `../FEEDBACK/FEEDBACK-DESK-app-structure-dsl-and-editor-widget-2026-08-03-1634.md`.
+   Full design discussion, already had -- see
+   `investigations/app_structure_dsl_design.md` for the complete
+   record (design principles, the layout mode designs, and the full
+   inventory scoping decisions); this item is the "go implement it"
+   step, not a fresh design pass. Summary of what's in v1, per that
+   doc:
+   - **Component registry**: an explicit `{tag, source}` list; codegen
+     emits the import + `customElements.define` boilerplate.
+   - **Layout**, three modes: n-split-panes (a tree of `hsplit`/
+     `vsplit`/`pane` nodes, named static layout variants switched at
+     runtime, per-split resize constraints), windowed (flat `window`
+     entries close to Desk's own `.desk`-file `WidgetState` shape),
+     and raw HTML/CSS/TS (no DSL involvement -- components are plain
+     custom elements by construction). A "dump current layout to
+     HTML/CSS/TS" codegen option for modes 1/2 is a one-way eject.
+   - **Event-wiring table**: `{event, from, actions}` entries, each
+     action either a state mutation or a child method call, supporting
+     fan-out to multiple actions per event. Worker channels are folded
+     into this same table (a worker is just another named component)
+     rather than a separate mechanism.
+   - **State slots**: plain typed slots with declared defaults: no
+     derived/computed state in v1.
+   - **Escape hatch**: named handler functions the generated code
+     calls out to at declared extension points -- also where the two
+     deliberately-deferred inventory items (a field<->DSL-text-line
+     bidirectional sync sub-DSL, and cache/data-source declarations)
+     live until/unless a second real use case justifies generalizing
+     them into the DSL proper.
+   - **Dual transpilation target**: every individual component stays
+     plain TypeScript+HTML+CSS, with zero Desk-awareness and zero
+     build-time overhead when built outside Desk -- all Desk
+     -integration work happens in this codegen layer, which supports
+     (at least) a standalone build (no Desk runtime dependency) and a
+     Desk-widget build (packaged the same way `build_widget.py`
+     already packages a `DefineWidget`/`widgets/<id>/` source
+     directory -- multi-file `kind: "html"` widgets now load reliably,
+     TODO `a5f66cc`).
+   Explicitly out of scope for this item, each a separate, large
+   enough piece of work to get its own TODO later: the **visual
+   layout-editing widget** (drag/resize panes or windows, assign a
+   widget by name to a slot); the **DSL editor widget** itself (raw
+   -text + structured-UI bidirectional sync, meant as a reusable
+   building block -- still needs original design per the investigation
+   doc, no prior Desk precedent exists); and the **shared,
+   project-scoped state store** (`desk.state.*`, from the sibling
+   `widget-extraction-communication-gaps` FEEDBACK item -- a Desk-core
+   Bridge API primitive, architecturally distinct from this DSL
+   tool). Not designed further than the investigation doc's own level
+   of detail yet -- exact JSON Schema field names, the codegen's
+   internal structure, and where in this repo the tool actually lives
+   (likely a new seedable script alongside `scripts/todo_item_ids.py`/
+   the generated `build_widget.py`, given its scope) all need a real
+   plan before implementation starts.
+
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
    single-line `QLineEdit`) a multi-line box that wraps text instead,
