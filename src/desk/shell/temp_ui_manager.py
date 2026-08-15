@@ -14,6 +14,7 @@ from desk.temp_ui import (
     ensure_docs_current,
     ensure_gitignore_entry,
     is_temp_ui_filename,
+    sync_app_dsl_tool,
     sync_shared_components,
     write_tempui_docs,
 )
@@ -148,6 +149,9 @@ class TempUiManager(QObject):
         # exists" like the doc branch above -- every open/switch gets
         # the current shared-components/ library.
         sync_shared_components(temp_dir)
+        # TODO 48e3b39: same always-fresh mirroring for the
+        # app-structure DSL's own codegen tool.
+        sync_app_dsl_tool(temp_dir)
 
         # Must run before _notify_docs_upgraded below (TODO 7c7b676):
         # _start_watching clears self._known_files, which that method

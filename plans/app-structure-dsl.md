@@ -1,4 +1,4 @@
-# App-structure DSL: schema, parser, and codegen (TODO `48e3b39`)
+# App-structure DSL: schema, parser, and codegen (TODO `48e3b39`) (COMPLETED)
 
 ## Summary
 

@@ -37,6 +37,15 @@ PROMOTED_WIDGET_SRC_DIRNAME = "desk_widgets"
 # instead.
 SHARED_COMPONENTS_DIRNAME = "shared-components"
 
+# TODO 48e3b39: the app-structure DSL's own schema/parser/codegen
+# tool (see app_dsl/README.md at this repo's own root) -- mirrored
+# into every project's own .desk_temp/app_dsl/ the same always-fresh
+# way SHARED_COMPONENTS_DIRNAME is (sync_app_dsl_tool below), for the
+# same reason: real, multi-file, actively-developed Python source,
+# not a single script small/stable enough to embed as one string
+# constant the way _BUILD_WIDGET_SCRIPT is.
+APP_DSL_DIRNAME = "app_dsl"
+
 # desk-temporary-ui.md's *static* main content (DOC_TEMPLATE below) is
 # only ever written once, the first time a directory's .desk_temp is
 # provisioned -- an older Desk directory otherwise keeps whatever
@@ -206,7 +215,15 @@ SHARED_COMPONENTS_DIRNAME = "shared-components"
 # `DefineWidget`/`widgets/<id>/` registration. New split doc,
 # tempui-jobs.md; the main file-type list above gained a matching
 # bullet (eight built-in file types -> nine).
-TEMPUI_DOC_VERSION = 31
+#
+# TODO 48e3b39: bumped 31 -> 32 -- new `.desk_temp/app_dsl/` tool (not
+# a new tempui DSL keyword -- a separate, real-source codegen tool,
+# same "Authoring from real source" section as build_widget.py):
+# schema + parser + codegen for a multi-component widget's own
+# wiring/layout/event-table code, generalized from a hand-written SPA
+# structure. Standalone-build output only so far -- see the doc's own
+# note and PARKINGLOT.md for the open Desk-widget-target gap.
+TEMPUI_DOC_VERSION = 32
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -675,6 +692,16 @@ suits the component. Importing a base class a widget's own file
 widget's own file (see "Authoring from real source" above) so
 `build_widget.py` concatenates it first.
 
+If your widget is actually several wired-together components (a
+multi-pane layout, an event-wiring table between them, shared
+app-level state) rather than one self-contained custom element,
+`.desk_temp/app_dsl/` is a separate, real (if smaller-scoped so far)
+tool for exactly that -- see `app_dsl/README.md` (same directory) for
+the DSL format. As of this writing it generates real TypeScript ES
+modules for a **standalone** build; feeding that output into
+`build_widget.py`'s own global-script-concatenation packaging model
+for a Desk-widget build isn't wired up yet (see `PARKINGLOT.md`).
+
 ## Invoking a defined widget
 
 A separate tempui file whose **entire first line is just the
@@ -1102,6 +1129,15 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 32
+- New `.desk_temp/app_dsl/` tool -- a schema + parser + codegen tool
+  for a multi-component widget's own wiring/layout/event-table code
+  (generalized from a hand-written SPA structure), not a new tempui
+  DSL keyword. See `app_dsl/README.md` for the DSL format. Generates
+  real TypeScript ES modules for a standalone build; a Desk-widget
+  build target isn't wired into `build_widget.py`'s own packaging
+  pipeline yet (see `PARKINGLOT.md`).
 
 ## Version 31
 - New `Job` tempui DSL keyword -- run a one-time script with real
@@ -1729,6 +1765,30 @@ def sync_shared_components(temp_dir: Path) -> None:
     if destination.exists():
         shutil.rmtree(destination)
     shutil.copytree(source, destination)
+
+
+def _repo_app_dsl_dir() -> Path:
+    """This installed `desk` package's own app_dsl/ directory (TODO
+    48e3b39) -- mirrors _repo_shared_components_dir's exact shape and
+    reasoning above."""
+    return Path(__file__).resolve().parents[2] / APP_DSL_DIRNAME
+
+
+def sync_app_dsl_tool(temp_dir: Path) -> None:
+    """Mirrors this repo's own app_dsl/ into `temp_dir/app_dsl`, always
+    fresh (TODO 48e3b39) -- mirrors sync_shared_components's exact
+    shape/reasoning above (unconditional full copy, no "only if
+    missing/stale" check; a no-op if this checkout has no app_dsl/ of
+    its own). `__pycache__` is excluded -- a stale local bytecode
+    cache from running this repo's own scripts has no business being
+    mirrored into a project's `.desk_temp/`."""
+    source = _repo_app_dsl_dir()
+    if not source.is_dir():
+        return
+    destination = temp_dir / APP_DSL_DIRNAME
+    if destination.exists():
+        shutil.rmtree(destination)
+    shutil.copytree(source, destination, ignore=shutil.ignore_patterns("__pycache__"))
 
 
 @dataclass

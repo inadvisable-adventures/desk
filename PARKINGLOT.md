@@ -999,3 +999,36 @@ This file captures thoughts and TODO items that arise during work on other thing
   now -- figure out what's realistically available and what the
   actual shape of the risk/tradeoffs is before this becomes a planned
   TODO.
+
+- **`app_dsl/`'s generated TypeScript (TODO `48e3b39`) uses real ES
+  modules; `build_widget.py`'s `DefineWidget` packaging model doesn't
+  support them**
+
+  Found implementing `app_dsl/codegen.py`: the generated
+  `app-wiring.ts` uses ordinary `import`/`export` (confirmed real,
+  working TypeScript -- compiles and runs correctly under a real
+  `tsc`/`node`, verified directly). But `.desk_temp/build_widget.py`'s
+  own `DefineWidget` authoring convention concatenates *global,
+  non-module* scripts (no `import`/`export` at all) in
+  `tsconfig.json`'s declared `files` order, then inlines the
+  concatenated result into one `<script>` tag -- confirmed directly
+  that `shared-components/document-editor-base/document-editor-base.ts`
+  (the closest existing precedent for real-source-authored,
+  multi-file `DefineWidget` content) has zero `import`/`export`
+  statements anywhere, for exactly this reason.
+
+  This means `app_dsl`'s codegen output works today for a
+  **standalone** build (a project's own `tsc`/bundler already
+  understands ES modules) but isn't yet usable as input to
+  `build_widget.py`'s packaging pipeline for a **Desk-widget** build
+  -- the "dual transpilation target" goal from the original design
+  (`investigations/app_structure_dsl_design.md`) is only actually
+  proven for one of the two targets so far. Two plausible fixes, not
+  investigated yet: (a) a non-module ("global script") output mode in
+  `codegen.py`, alongside the current one, matching
+  `document-editor-base.ts`'s own convention; or (b) a real bundling
+  step (esbuild or similar -- a new dependency, which `CLAUDE.md`
+  otherwise asks to avoid, so this would need a deliberate, justified
+  exception the way `pypdf` got one) between `app_dsl`'s output and
+  `build_widget.py`'s input. Not designed further -- surfaced here
+  rather than silently left unmentioned.

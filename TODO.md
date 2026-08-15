@@ -6517,7 +6517,88 @@ d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
    (likely a new seedable script alongside `scripts/todo_item_ids.py`/
    the generated `build_widget.py`, given its scope) all need a real
    plan before implementation starts.
-   [planned: app-structure-dsl.md]
+   [planned: app-structure-dsl.md (COMPLETED)]
+
+   COMPLETED: new top-level `app_dsl/` (git-tracked, mirrored fresh
+   into every project's `.desk_temp/app_dsl/` on every open/switch --
+   `sync_app_dsl_tool`/`_repo_app_dsl_dir` in `src/desk/temp_ui.py`,
+   mirroring `sync_shared_components`'s exact always-fresh shape,
+   wired into `TempUiManager.provision` alongside it, `__pycache__`
+   excluded). `app_dsl/schema.py`: dataclasses for `ComponentEntry`,
+   `SplitLayoutNode` (recursive `hsplit`/`vsplit`/`pane`),
+   `WindowEntry`, `LayoutDefinition`, `StateMutationAction`/
+   `CallAction`, `EventWiringEntry`, `StateSlot`, `HandlerRef`,
+   `AppDefinition`, `DslError`. `app_dsl/parse.py`:
+   `parse_app_definition(json_text) -> AppDefinition` -- hand-written
+   validation (no JSON Schema library, `CLAUDE.md`), every
+   cross-reference (a layout pane's `widget`, an action's state-slot/
+   component/handler target) resolved against the declared registry/
+   state list/handlers, a clear `DslError` naming the exact bad
+   reference on failure. `app_dsl/codegen.py`:
+   `generate(definition, components_dir, out_dir) -> {filename:
+   content}` -- component registry import+`customElements.define`
+   boilerplate; state slots as `export let <name>: <type> = <default>`
+   plus a generated setter; layout mode 1 (n-split-panes) as real
+   nested-`<div>` builder functions per named variant (flexbox CSS,
+   `app-layout.css`) with `buildLayout(variant)`/
+   `DEFAULT_LAYOUT_VARIANT` exports; the event-wiring table as
+   `querySelectorAll`-scoped `addEventListener` registrations fanning
+   out to state-mutation/component-method-call actions in declared
+   order (a worker is just another named component -- no separate
+   mechanism, confirmed nothing additional was needed); the escape
+   hatch as a direct named import + call. Layout mode 2 (`"windowed"`)
+   is accepted by the parser (schema-complete) but `codegen.generate`
+   raises a clear `DslError` naming it not-yet-implemented rather than
+   emitting wrong output -- an additive follow-up, not a breaking
+   format change. `app_dsl/build.py`: the CLI entry point,
+   self-contained (no `desk` package import, matching
+   `_BUILD_WIDGET_SCRIPT`'s own posture). `app_dsl/README.md`:
+   the DSL's own format documentation. `tempui-custom-widgets.md`
+   gained an honest cross-reference (new tool, not a new tempui DSL
+   keyword); `TEMPUI_DOC_VERSION` bumped 31->32 with a matching
+   comment block and `_NEW_FEATURES_DOC` entry.
+
+   Real, found-while-implementing finding, recorded in `PARKINGLOT.md`
+   rather than silently worked around: the generated TypeScript uses
+   real ES modules (`import`/`export`), confirmed via a real `tsc`
+   compile; `build_widget.py`'s own `DefineWidget` packaging model
+   concatenates *global, non-module* scripts (confirmed directly --
+   `shared-components/document-editor-base/document-editor-base.ts`
+   has zero `import`/`export` statements, for exactly this reason).
+   So "dual transpilation target" is proven this pass for the
+   **standalone** build only -- feeding `app_dsl`'s output into
+   `build_widget.py`'s packaging pipeline for a **Desk-widget** build
+   isn't wired up yet (two plausible fixes noted, neither
+   investigated: a non-module codegen output mode, or a real bundling
+   step). `tempui-custom-widgets.md`'s cross-reference states this
+   plainly rather than implying a working integration that doesn't
+   exist yet.
+
+   New verify coverage, real (no mocking, real `tsc`/`node`):
+   `tests/verify/verify_app_dsl_parse.py` (34 checks: a representative
+   multi-component/nested-split/fan-out definition round-trips
+   exactly; every class of bad input rejected with a message naming
+   the specific problem). `tests/verify/verify_app_dsl_codegen.py` (9
+   checks: a representative definition's generated output, alongside
+   real hand-written component fixtures, compiles with a real `tsc`,
+   then *runs* under real `node` against a minimal hand-written
+   DOM-stand-in -- confirmed a real dispatched event correctly
+   mutated the generated state slot and correctly fanned out to a
+   second action's real method call on a different component, not
+   just that the generated text merely compiles; the windowed-layout
+   not-implemented error and the no-layout case are also covered).
+   `tests/verify/verify_app_dsl_escape_hatch.py` (5 checks: the same
+   real-compile-and-run approach confirms a hand-written handler
+   module is actually imported and actually invoked with the
+   DSL-declared argument). `tests/verify/verify_sync_app_dsl_tool.py`
+   (9 checks: a real `TempUiManager`-independent direct call mirrors
+   a fresh copy, excludes a real `__pycache__`, and fully replaces a
+   stale pre-existing copy rather than leaving it alone).
+   `tests/verify/verify_app_dsl_tempui_doc.py` (6 checks: doc-version/
+   cross-reference/changelog content, including that the cross
+   -reference is honest about the standalone-only scope). Full
+   `tests/verify/` regression suite passes (105 scripts total, 0
+   failures).
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
