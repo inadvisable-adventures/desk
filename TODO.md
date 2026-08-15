@@ -6517,6 +6517,7 @@ d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
    (likely a new seedable script alongside `scripts/todo_item_ids.py`/
    the generated `build_widget.py`, given its scope) all need a real
    plan before implementation starts.
+   [planned: app-structure-dsl.md]
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
