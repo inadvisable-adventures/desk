@@ -6600,6 +6600,41 @@ d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
    `tests/verify/` regression suite passes (105 scripts total, 0
    failures).
 
+1e032f3. `app_dsl`'s generated TypeScript uses real ES modules
+   (`import`/`export`), which `.desk_temp/build_widget.py`'s own
+   `DefineWidget` packaging model can't consume -- it concatenates
+   *global, non-module* scripts (confirmed both directly, and via a
+   real `tsc` probe: a file using `export`/`import` always gets
+   CommonJS-style `exports`/`require` boilerplate in its compiled
+   output regardless of the `module` compiler option, including
+   `"module": "None"` -- there is no way to get plain global-script
+   output from a file containing ES module syntax). From
+   `PARKINGLOT.md`'s entry on this (filed while completing TODO
+   `48e3b39`). Confirmed the fix directly against
+   `shared-components/document-editor-base/document-editor-base.ts`
+   -- the closest existing precedent for real-source, `DefineWidget`
+   -concatenated multi-file content -- which has zero `import`/
+   `export` statements anywhere, for exactly this reason.
+   Suggested fix: a second `codegen.py` output mode (`mode="global"`,
+   alongside today's `mode="module"` default) that emits the same
+   registry/state/layout/event-wiring code with no `import`/`export`
+   at all -- global `class`/`let`/`function`/`const` declarations,
+   matching `document-editor-base.ts`'s own convention exactly. This
+   mode's own necessary constraint (not a limitation to work around,
+   a documented fact of the packaging model it targets): component
+   and handler source files must *also* avoid ES module syntax when
+   used with this mode, and a component's globally-declared class name
+   must match codegen's own deterministic tag-to-class-name derivation
+   exactly (already used internally --
+   `codegen._class_name_for_tag`), since there's no `import ... as
+   Alias` step left to rename it. `build.py`'s CLI needs a `--mode`
+   flag (default `module`, unchanged); `README.md` needs the new
+   mode's format/constraints documented. Not designed further --
+   whether `ComponentEntry`/`HandlerRef` need an explicit class-name
+   /global-name override field (vs. relying purely on the naming
+   convention) is worth a real decision before implementing, not
+   assumed.
+
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
    single-line `QLineEdit`) a multi-line box that wraps text instead,
