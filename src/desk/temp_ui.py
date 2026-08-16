@@ -223,7 +223,14 @@ APP_DSL_DIRNAME = "app_dsl"
 # wiring/layout/event-table code, generalized from a hand-written SPA
 # structure. Standalone-build output only so far -- see the doc's own
 # note and PARKINGLOT.md for the open Desk-widget-target gap.
-TEMPUI_DOC_VERSION = 32
+#
+# TODO 1e032f3: bumped 32 -> 33 -- app_dsl gained a second codegen
+# output mode, `--mode=global` (plain global scripts, no
+# `import`/`export` at all), so its output can now actually feed into
+# this same "Authoring from real source" section's `build_widget.py`
+# pipeline for a Desk-widget build -- closing the gap the version 32
+# bump above left open. Doc note updated accordingly.
+TEMPUI_DOC_VERSION = 33
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -697,10 +704,14 @@ multi-pane layout, an event-wiring table between them, shared
 app-level state) rather than one self-contained custom element,
 `.desk_temp/app_dsl/` is a separate, real (if smaller-scoped so far)
 tool for exactly that -- see `app_dsl/README.md` (same directory) for
-the DSL format. As of this writing it generates real TypeScript ES
-modules for a **standalone** build; feeding that output into
-`build_widget.py`'s own global-script-concatenation packaging model
-for a Desk-widget build isn't wired up yet (see `PARKINGLOT.md`).
+the DSL format. It supports two output modes: `--mode=module` (real ES
+modules, for a standalone build outside Desk) and `--mode=global`
+(plain global scripts, no `import`/`export` at all -- for feeding into
+this `build_widget.py` pipeline above, the same concatenation
+convention "Authoring from real source" already uses for a multi-file
+`DefineWidget` source). `--mode=global` requires your component/
+handler source to also avoid module syntax -- see `app_dsl/README.md`
+for the full constraint.
 
 ## Invoking a defined widget
 
@@ -1129,6 +1140,16 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 33
+- `app_dsl`'s `build.py` gained a `--mode=global` output mode
+  (alongside the existing, still-default `--mode=module`) -- plain
+  global scripts, no `import`/`export` at all, for feeding into
+  `build_widget.py`'s own `DefineWidget` packaging pipeline (which
+  needs non-module scripts to concatenate). Requires your own
+  component/handler source to also avoid module syntax when used --
+  see `app_dsl/README.md`. Closes the gap Version 32's own entry
+  below left open.
 
 ## Version 32
 - New `.desk_temp/app_dsl/` tool -- a schema + parser + codegen tool

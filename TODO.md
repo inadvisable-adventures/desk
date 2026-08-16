@@ -6630,7 +6630,77 @@ d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
    Alias` step left to rename it. `build.py`'s CLI needs a `--mode`
    flag (default `module`, unchanged); `README.md` needs the new
    mode's format/constraints documented.
-   [planned: app-dsl-global-codegen-mode.md]
+   [planned: app-dsl-global-codegen-mode.md (COMPLETED)]
+
+   COMPLETED: `schema.py`'s `ComponentEntry` gained an optional
+   `class_name: str | None = None` (parsed by `parse.py`'s
+   `_parse_components` via a new `_optional_str` helper). `codegen.py`
+   gained `mode: str = "module"` on `generate(...)`, threaded through
+   every emit function: `_emit_registry` (module: imports +
+   `customElements.define`; global: only `customElements.define(tag,
+   <resolved class name>)` lines, no imports -- `_resolved_class_name`
+   uses the override if set, else the existing
+   `_class_name_for_tag` derivation), `_emit_state`/`_emit_layout`/
+   `_emit_event_wiring` (conditionally include/omit the `export `
+   prefix on their own top-level declarations only -- the internal
+   per-node layout helpers already had no `export` in either mode),
+   `_emit_handler_imports` (global mode returns `[]`, nothing to
+   import), and a new `_escape_target_identifier` helper for
+   `_emit_action`'s escape-hatch branch: module mode still uses the
+   DSL's own local handler key (correct, since the generated import
+   already aliased it there); global mode resolves and emits
+   `definition.handlers[key].export` directly instead, since there's
+   no import/alias step to do that renaming. `build.py` gained a
+   `--mode=module|global` CLI flag (simple manual parsing, no
+   argparse, matching this script's own existing minimal style).
+   `README.md`: documented both modes, the `class_name` override, and
+   that `--mode=global` requires component/handler source to also
+   avoid module syntax (the `tsconfig.json` `"files"`-ordering
+   responsibility stays with the caller, same as any other multi-file
+   `DefineWidget` source already requires).
+
+   Confirmed via a real `tsc` probe before implementing (not assumed):
+   a file using `export`/`import` always gets CommonJS-style
+   `exports`/`require` boilerplate in its compiled output, regardless
+   of the `module` compiler option -- including `"module": "None"`,
+   which still emitted `Object.defineProperty(exports, ...)`/
+   `exports.default = ...` for a plain `export default class` with no
+   imports of its own. Confirms there was no cheaper fix than a real
+   second, module-free codegen mode. `tempui-custom-widgets.md`'s
+   cross-reference (added under TODO `48e3b39`, honestly scoped to
+   "standalone only" at the time) now documents both modes accurately;
+   `TEMPUI_DOC_VERSION` bumped 32->33 with a matching comment block
+   and `_NEW_FEATURES_DOC` entry. The `PARKINGLOT.md` entry this item
+   was filed from is removed -- moved to `TODO.md` and completed, per
+   this project's own "move them to TODO.md when ready to act on them"
+   convention, not left behind as a stale duplicate.
+
+   New/extended verify coverage, real (no mocking, real `tsc`/`node`):
+   `tests/verify/verify_app_dsl_codegen.py` (+11 checks, 20 total):
+   `mode="global"` emits zero `import`/`export` and respects the
+   `class_name` override; the real regression check for this item --
+   module-free component fixtures + generated global-mode output
+   compile with a real `tsc`, the *compiled* `.js` files are confirmed
+   to contain no `exports`/`require` anywhere (the actual bug),
+   textually concatenated (mirroring `build_widget.py`'s own
+   `_concatenate_compiled_js`), and run via real `node`'s
+   `vm.runInThisContext` -- the same "no module wrapper, no `require()`
+   available" execution model a real concatenated `<script>` tag uses,
+   not just plain `node script.js` (which still has CommonJS module
+   machinery ambiently available even for code that doesn't use it) --
+   confirming a dispatched event still correctly mutates state and
+   fans out to a real method call using the `class_name` override.
+   `tests/verify/verify_app_dsl_escape_hatch.py` (+6 checks, 11
+   total): the same real compile-concatenate-run approach confirms
+   global mode calls the handler's real export name directly (a
+   deliberately-different DSL-local-key-vs-real-export-name fixture
+   catches the exact bug an incorrect identifier resolution would
+   cause). `tests/verify/verify_app_dsl_parse.py` (+3 checks, 37
+   total): `class_name` parses, defaults to `None`, rejects an empty
+   value. `tests/verify/verify_app_dsl_tempui_doc.py` (revised): doc
+   -version/cross-reference/changelog content for both versions 32 and
+   33. Full `tests/verify/` regression suite passes (105 scripts
+   total, 0 failures).
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a

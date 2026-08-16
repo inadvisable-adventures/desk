@@ -1,4 +1,4 @@
-# app_dsl global-script codegen mode (TODO `1e032f3`)
+# app_dsl global-script codegen mode (TODO `1e032f3`) (COMPLETED)
 
 ## Summary
 

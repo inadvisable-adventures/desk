@@ -54,6 +54,15 @@ def _optional_float(d: dict, key: str, where: str) -> float | None:
     return float(value)
 
 
+def _optional_str(d: dict, key: str, where: str) -> str | None:
+    value = d.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise DslError(f"{where}.{key} must be a non-empty string if present")
+    return value
+
+
 def _parse_components(raw) -> list[ComponentEntry]:
     entries = []
     seen_tags = set()
@@ -62,10 +71,11 @@ def _parse_components(raw) -> list[ComponentEntry]:
         d = _require_dict(item, where)
         tag = _require_str(d, "tag", where)
         source = _require_str(d, "source", where)
+        class_name = _optional_str(d, "class_name", where)
         if tag in seen_tags:
             raise DslError(f"{where}: duplicate component tag {tag!r}")
         seen_tags.add(tag)
-        entries.append(ComponentEntry(tag=tag, source=source))
+        entries.append(ComponentEntry(tag=tag, source=source, class_name=class_name))
     return entries
 
 

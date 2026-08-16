@@ -17,17 +17,41 @@ same way the rest of `.desk_temp/` is).
 ## Usage
 
 ```
-python3 .desk_temp/app_dsl/build.py <definition.json> <components_dir> <out_dir>
+python3 .desk_temp/app_dsl/build.py <definition.json> <components_dir> <out_dir> [--mode=module|global]
 ```
 
 Writes `app-wiring.ts` (and `app-layout.css`, for a `"split"` layout)
-into `<out_dir>`, importing your components from `<components_dir>`.
-The generated files are real, ordinary TypeScript/CSS -- feed them
-into whatever build you already have (a project's own `tsc`/bundler
-for a standalone build, or Desk's own `build_widget.py` pipeline to
-package as a `kind: "html"` widget). Nothing about the generated
-output is Desk-specific unless your own escape-hatch handler code
-makes it so.
+into `<out_dir>`. The generated files are real, ordinary TypeScript/CSS
+-- nothing about the generated output is Desk-specific unless your own
+escape-hatch handler code makes it so. Which build pipeline can
+actually consume the output depends on `--mode`:
+
+- **`--mode=module`** (the default) -- real ES modules (`import`/
+  `export`). Your component source uses ordinary `export default
+  class Foo extends HTMLElement { ... }`. Feed the output into a
+  project's own `tsc`/bundler for a **standalone build** -- no Desk
+  involvement at all.
+- **`--mode=global`** -- no `import`/`export` anywhere; plain global
+  `class`/`let`/`function`/`const` declarations instead. This is what
+  `.desk_temp/build_widget.py`'s own `DefineWidget` packaging model
+  needs -- it concatenates *non-module* scripts into one `<script>`
+  tag (confirmed directly: a file using `export`/`import` always gets
+  CommonJS-style `exports`/`require` boilerplate in its compiled
+  output, regardless of the `module` compiler option -- there's no way
+  to get plain global-script output from a file containing ES module
+  syntax). Using this mode means your own **component and handler
+  source files must also avoid `import`/`export`** -- plain global
+  classes/functions, the same convention
+  `shared-components/document-editor-base/document-editor-base.ts`
+  already uses for exactly this reason. Your build's own
+  `tsconfig.json` `"files"` array is what orders component files ahead
+  of the generated `app-wiring.ts` (the same convention
+  `build_widget.py` already uses for a multi-file `DefineWidget`
+  source, e.g. a shared base class before a subclass) -- this tool
+  doesn't (and can't) control that ordering itself.
+
+Both modes accept the exact same DSL definition -- `--mode` only
+changes *how* the same wiring gets emitted, never what it does.
 
 ## The DSL definition (`definition.json`)
 
@@ -39,14 +63,29 @@ hatch).
 
 ```json
 "components": [
-  { "tag": "map-panel", "source": "map-panel.ts" }
+  { "tag": "map-panel", "source": "map-panel.ts" },
+  { "tag": "timeline-view", "source": "timeline-view.ts", "class_name": "MyTimelineClass" }
 ]
 ```
 
 `tag` is the custom element's tag name; `source` is its path, relative
-to `<components_dir>`. The source file must `export default` a class
-extending `HTMLElement` -- it does **not** need to call
-`customElements.define` itself; codegen does that for you.
+to `<components_dir>`. The source file must declare a class extending
+`HTMLElement` -- it does **not** need to call `customElements.define`
+itself; codegen does that for you. In `--mode=module` (the default),
+`export default class Foo extends HTMLElement { ... }`; in
+`--mode=global`, drop the `export default` -- just `class Foo extends
+HTMLElement { ... }` as a plain global declaration.
+
+`class_name` is optional and only matters for `--mode=global`: since
+there's no `import` step left to rename anything, the generated code
+needs to know your component's *real* declared class name to reference
+it directly. Left unset, it's assumed to follow a simple derivation
+from `tag` (each hyphen-separated part capitalized, concatenated, plus
+an `Element` suffix -- `"map-panel"` -> `"MapPanelElement"`, matching
+the example above); set it explicitly if your class isn't named that.
+`--mode=module` never needs this field at all (the generated `import
+... from "..."` picks whatever local name it wants, regardless of your
+class's real name).
 
 ### `layout`
 
@@ -141,11 +180,15 @@ actions call into. No derived/computed state in this pass.
 
 For anything that doesn't reduce to the above (a cross-cutting
 invariant, a small bit of bespoke logic). Reference it from an action
-via `{"call": "escape:onWeirdCase", "method": "unused", "args": [...]}`
--- codegen imports the named export and calls it directly, positionally,
-with the same `args` convention as a component method call. The
-handler module itself is hand-written, ordinary TypeScript -- never
-generated, never overwritten.
+via `{"call": "escape:onWeirdCase", "method": "unused", "args": [...]}`.
+`export` names the handler's real export/global function name
+(imported in `--mode=module`, called directly by that name in
+`--mode=global` -- the DSL's own local key, `"onWeirdCase"` here, is
+never itself an identifier codegen emits, only a way to refer to the
+entry from an action). The handler module itself is hand-written,
+ordinary TypeScript -- never generated, never overwritten, and (like
+components) must avoid `import`/`export` if you're using
+`--mode=global`.
 
 ## What's not in this pass
 

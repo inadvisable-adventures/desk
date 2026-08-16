@@ -10,7 +10,15 @@ is mirrored fresh into .desk_temp/app_dsl/ on every Desk-project open
 (TODO 48e3b39), not seeded once and left to go stale.
 
 Usage:
-    python3 .desk_temp/app_dsl/build.py <definition.json> <components_dir> <out_dir>
+    python3 .desk_temp/app_dsl/build.py <definition.json> <components_dir> <out_dir> [--mode=module|global]
+
+`--mode` defaults to `module` (real ES modules, for a standalone
+build). `--mode=global` emits module-free, global-script code instead
+-- for build_widget.py's own DefineWidget packaging pipeline, which
+concatenates non-module scripts. See codegen.py's own module
+docstring and README.md for what each mode actually means and its
+constraints (mode=global specifically requires your own component/
+handler source to also avoid import/export).
 
 Writes the generated files into <out_dir> and prints each path
 written, one per line.
@@ -18,16 +26,28 @@ written, one per line.
 import sys
 from pathlib import Path
 
-from codegen import generate
+from codegen import VALID_MODES, generate
 from parse import parse_app_definition
 from schema import DslError
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 3:
+    mode = "module"
+    positional = []
+    for arg in argv:
+        if arg.startswith("--mode="):
+            mode = arg[len("--mode=") :]
+        else:
+            positional.append(arg)
+
+    if len(positional) != 3:
         print(__doc__)
         return 1
-    definition_path, components_dir, out_dir = (Path(a) for a in argv)
+    if mode not in VALID_MODES:
+        print(f"error: --mode must be one of {VALID_MODES}, got {mode!r}", file=sys.stderr)
+        return 1
+
+    definition_path, components_dir, out_dir = (Path(a) for a in positional)
     if not definition_path.is_file():
         print(f"{definition_path} not found", file=sys.stderr)
         return 1
@@ -37,7 +57,7 @@ def main(argv: list[str]) -> int:
 
     try:
         definition = parse_app_definition(definition_path.read_text())
-        outputs = generate(definition, str(components_dir), str(out_dir))
+        outputs = generate(definition, str(components_dir), str(out_dir), mode=mode)
     except DslError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

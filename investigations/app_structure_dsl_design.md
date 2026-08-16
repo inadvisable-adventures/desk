@@ -372,14 +372,23 @@ record -- filed and implemented as TODO `48e3b39`
 (`plans/app-structure-dsl.md`, COMPLETED). Layout mode 1, the
 event-wiring table, state slots, and the escape hatch are real,
 tested code (`app_dsl/` at this repo's root); layout mode 2 and the
-eject feature remain deferred, as designed above. One real
-architectural gap found while implementing, not anticipated in the
-design discussion above: the generated code uses real ES modules,
-which aren't yet compatible with `build_widget.py`'s own
-global-script-concatenation packaging model -- see `PARKINGLOT.md`
-for the open follow-up. The rest of this section's own open threads
-are otherwise unaffected by that -- this is a discussion record for
-everything else below.
+eject feature remain deferred, as designed above. The rest of this
+section's own open threads are otherwise unaffected -- this is a
+discussion record for everything else below.
+
+**Update 2**: the ES-modules-vs-`build_widget.py` packaging gap found
+while implementing TODO `48e3b39` is also now resolved -- TODO
+`1e032f3` (`plans/app-dsl-global-codegen-mode.md`, COMPLETED) added a
+second, module-free codegen mode (`--mode=global`) matching
+`document-editor-base.ts`'s own global-script convention, confirmed
+via a real compile+concatenate+`vm.runInThisContext` round trip (the
+same execution model a real concatenated `<script>` tag uses). The
+app-structure DSL's "dual transpilation target" goal is now actually
+proven for both targets, not just the standalone one -- with the
+documented tradeoff that a Desk-widget-targeting project's component/
+handler source must avoid ES module syntax (no automatic sharing of
+component source between the two targets without a real bundler,
+which was deliberately not pursued here).
 
 Open threads, not yet started:
 
@@ -394,8 +403,3 @@ Open threads, not yet started:
 2. **The shared, project-scoped state store** (`desk.state.*`,
    including the semantic-edits refinement) is fully designed at a
    discussion level but not yet filed as a TODO or implemented.
-3. The ES-modules-vs-`build_widget.py` packaging gap noted above
-   needs a real decision (a non-module codegen mode, or a bundling
-   step) before the app-structure DSL's own "dual transpilation
-   target" goal is actually proven for a Desk-widget build, not just
-   a standalone one.

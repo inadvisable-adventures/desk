@@ -242,6 +242,33 @@ def test_rejects_unknown_escape_handler():
         check("unknown escape-hatch handler reference rejected", "notDeclared" in str(e))
 
 
+def test_component_class_name_override_parses():
+    definition_dict = {
+        "components": [
+            {"tag": "map-panel", "source": "map-panel.ts"},
+            {"tag": "timeline-view", "source": "timeline-view.ts", "class_name": "MyCustomTimelineClass"},
+        ],
+        "events": [],
+        "state": [],
+    }
+    definition = parse_app_definition(json.dumps(definition_dict))
+    check("component with no class_name defaults to None", definition.components[0].class_name is None)
+    check("component with an explicit class_name round-trips it", definition.components[1].class_name == "MyCustomTimelineClass")
+
+
+def test_component_class_name_rejects_bad_value():
+    definition_dict = {
+        "components": [{"tag": "map-panel", "source": "map-panel.ts", "class_name": ""}],
+        "events": [],
+        "state": [],
+    }
+    try:
+        parse_app_definition(json.dumps(definition_dict))
+        check("empty class_name rejected", False)
+    except DslError as e:
+        check("empty class_name rejected", "class_name" in str(e))
+
+
 test_representative_definition_round_trips()
 test_multi_chunk_like_repeated_parse_is_stable()
 test_rejects_not_json()
@@ -256,6 +283,8 @@ test_rejects_duplicate_component_tag()
 test_windowed_layout_parses_at_schema_level()
 test_escape_hatch_handlers_parse_and_validate()
 test_rejects_unknown_escape_handler()
+test_component_class_name_override_parses()
+test_component_class_name_rejects_bad_value()
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

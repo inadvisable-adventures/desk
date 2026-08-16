@@ -19,10 +19,17 @@ class ComponentEntry:
     """One entry in the DSL's component registry -- `tag` is the
     custom element's own tag name (e.g. "map-panel"), `source` is
     where its plain, Desk-unaware TypeScript source lives, relative to
-    the components directory build.py is invoked with."""
+    the components directory build.py is invoked with. `class_name` is
+    only used by codegen's "global" mode (TODO 1e032f3), where there's
+    no `import ... as Alias` step to rename the component's own
+    declared class to whatever codegen expects -- None (the default)
+    falls back to codegen's own deterministic tag-to-class-name
+    derivation ("map-panel" -> "MapPanelElement"); set it explicitly
+    if your component's real class name doesn't happen to match that."""
 
     tag: str
     source: str
+    class_name: str | None = None
 
 
 @dataclass
