@@ -6629,11 +6629,8 @@ d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
    `codegen._class_name_for_tag`), since there's no `import ... as
    Alias` step left to rename it. `build.py`'s CLI needs a `--mode`
    flag (default `module`, unchanged); `README.md` needs the new
-   mode's format/constraints documented. Not designed further --
-   whether `ComponentEntry`/`HandlerRef` need an explicit class-name
-   /global-name override field (vs. relying purely on the naming
-   convention) is worth a real decision before implementing, not
-   assumed.
+   mode's format/constraints documented.
+   [planned: app-dsl-global-codegen-mode.md]
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
