@@ -187,6 +187,40 @@ block for the "persist the DSL file to disk" half of the editor widget
 (if it's authored as `kind: "html"`), but the actual dual-view sync
 problem is untouched by anything already built.
 
+**A second real-world data point, found later**:
+`../FEEDBACK/FEEDBACK-DESK-domain-analysis-as-builtin-widget-2026-08-27-1236.md`
+-- the *same* `necro-4x` widget `document-editor-base` was extracted
+from (`DomainAnalysisElement`) has kept generalizing since. Across
+~15 follow-up iterations, its own tagging categories went from a
+closed TypeScript union, to nine hardcoded members, to a fully
+dynamic `CategoryDef[]` stored *in the edited document itself* (a
+`## Category Definitions` markdown table, addable at runtime with no
+code change), plus multi-domain support (a title field, a
+known-domains picker). Nothing in the widget's own code mentions
+`necro-4x` anymore -- it's now a general "build a lightweight entity/
+relationship model of any domain by tagging free text" tool, the data
+format and its own schema both living entirely in the edited markdown
+file, not the code. That's a real, independent instance of exactly
+the "structured, evolving, in-document schema + a UI over it" shape
+the editor-widget design above is reaching for -- a second concrete
+argument (world-timelines' `query-editor.ts` being the first) that
+building the raw-text+structured-UI sync mechanism as a genuinely
+generic, reusable base is worth it, not over-engineering for one DSL.
+
+That FEEDBACK item's own suggested fix is a **separate, narrower ask**
+worth tracking on its own, not folded into the DSL/editor-widget work
+above: promote Domain Analysis itself (or a reviewed/trimmed version
+of it) to a genuine Desk built-in widget, same tier as Sheet/Markdown/
+Image Viewer/Editor -- explicitly *not* "just copy the file in," since
+real, `necro-4x`-shaped features (a hover-drag affordance, nested
+list/tag segments, a proposed-statements review queue, a self-refining
+guidance section) would need a real review to decide what's generic
+core vs. what's reference-design-only. This is about promoting one
+already-built widget, not about DSL tooling/codegen -- a different
+piece of work from `app_dsl`/the editor widget above, even though both
+stories are instances of the same broader pattern (something
+project-specific generalizing into reusable Desk infrastructure).
+
 ## Sibling: widget-extraction-communication-gaps
 
 `world-timelines` has 9 components (`world-map`, `timeline`,
@@ -403,3 +437,11 @@ Open threads, not yet started:
 2. **The shared, project-scoped state store** (`desk.state.*`,
    including the semantic-edits refinement) is fully designed at a
    discussion level but not yet filed as a TODO or implemented.
+3. **Promoting `necro-4x`'s Domain Analysis widget to a genuine Desk
+   built-in** (see the new data point folded into the "Editor widget"
+   section above) is a real, separate, not-yet-scoped ask -- a design/
+   code review against Desk's own built-in bar, a decision on what's
+   generic core vs. `necro-4x`-specific, and (per the FEEDBACK item's
+   own point 2) picking up `set_file`/`OpenWithWidget` tempui support
+   and the `document-editor-base` auto-load/auto-save pattern along
+   the way if adopted. Not filed as a TODO yet.
