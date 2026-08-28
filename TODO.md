@@ -6702,6 +6702,108 @@ d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
    33. Full `tests/verify/` regression suite passes (105 scripts
    total, 0 failures).
 
+f68383f. A shared, capability-gated, project-scoped state store --
+   `desk.state.get(key)` / `set(key, value, edit?)` / `getHistory(key,
+   limit)`, closing gaps 1-4 and 6 of
+   `../FEEDBACK/FEEDBACK-DESK-widget-extraction-communication-gaps-2026-08-03-1634.md`
+   (gap 7 already fixed by TODO `a5f66cc`) and sharpened by
+   `../FEEDBACK/FEEDBACK-DESK-shared-state-with-semantic-edits-2026-08-10-2141.md`'s
+   own concrete two-widget case. Full design discussion, already had
+   -- see `investigations/app_structure_dsl_design.md`'s "Shared state
+   store design"/"Semantic edits" sections for the complete record;
+   this item is the "go implement it" step for the **non-validated**
+   core of that design, not a fresh design pass. Summary of what's in
+   scope for this item:
+   - **Bridge API**: `get`/`set`/`getHistory`, gated by a single new
+     `state` capability (covers both reads and writes, matching every
+     other Bridge namespace's own one-capability-per-namespace
+     precedent).
+   - **`set(key, value, edit?)`**: `edit` is an optional, opaque-to
+     -Desk structured record describing what produced the change (not
+     interpreted by Desk -- just stored and relayed, the same way
+     `desk.events` payloads already are).
+   - **Change notifications reuse `desk.events`**, not a new
+     transport -- `set()` auto-publishes a well-known event (`{key,
+     value, edit}` payload) rather than inventing a second delivery
+     mechanism.
+   - **`getHistory(key, limit)`**: a fixed-size-N FIFO queue per key
+     (always exactly the N most recent `(value, edit)` pairs, oldest
+     evicted as new ones arrive), returned latest-first. N is a fixed,
+     small default, not per-key configurable in this pass.
+   - **Persistence**: a new `Desk.state` field (`src/desk/desks.py`),
+     read/written by `load_desk`/`save_desk`/`desk_state_dict` the
+     same way `Desk.custom_widgets`/`Desk.file_type_registry` already
+     are -- no new persistence mechanism, and the history persists
+     alongside the value for the same reason the value itself does (a
+     reload shouldn't show a value with no explanation of how it got
+     there).
+   Explicitly out of scope for this item, filed separately as TODO
+   `6e1c2fe` (blocked on this one): schema declaration/validation
+   (validated vs. non-validated state), conflict resolution, built-in
+   -widget and top-level schema files, and the schema/state
+   -management widget -- a real, separate, large layer on top of this
+   primitive, not needed for this item's own get/set/history/events
+   core to be genuinely useful on its own (per the
+   `shared-state-with-semantic-edits` FEEDBACK item's own concrete
+   case: get/set/history alone already closes 3 of its 4 hand-rolled
+   pain points without any schema concept at all).
+
+6e1c2fe. The state store's (TODO `f68383f`) schema validation layer --
+   **blocked on `f68383f` landing first**. Full design discussion,
+   already had -- see `investigations/app_structure_dsl_design.md`'s
+   "Validated vs. non-validated state, and schema lifecycle" and
+   "Bookkeeping and call sites" sections for the complete record.
+   Summary:
+   - Every state key is validated (a schema -- a TypeScript type
+     expression stored as a string, a pragmatic constrained subset for
+     this pass -- is currently registered for it) or non-validated (no
+     schema at all; access is a purely call-site-local type hint with
+     best-effort coercion, nothing persisted or cross-checked).
+   - A schema can be declared in a widget's own manifest, or
+     "top-level" in a standalone schema file (two watched locations:
+     ephemeral `.desk_temp/schemas/`, and a real, git-tracked
+     `./desk-schemas/` that Desk never creates eagerly, only watches
+     for and picks up immediately once it exists).
+   - Conflict resolution is first-loaded-while-still-active wins; a
+     genuinely conflicting later widget hard-fails to load entirely
+     (no placement, not even a normal placement notification) --
+     instead, a distinct clickable notification explains the conflict,
+     and the same message is appended to a new, well-known, optional
+     manifest field, `desk_widget_loading_errors: string[]`, on the
+     failing widget's own manifest.
+   - Enforcement lifetime differs by source: a tempui-placed widget
+     instance's schema is active only while at least one placed
+     instance references it (dormant, not deleted, once the last one
+     is removed -- a later instance can keep using the dormant schema
+     if unchanged, or replace it if declaring a different one); a
+     built-in widget's schema (validated at `discover_widgets` time)
+     or a top-level file's schema is permanently enforced from
+     discovery/registration onward. Built-in-vs-built-in conflicts
+     resolve by `discover_widgets`' own existing alphabetical
+     directory-sort order, surfaced the same notification+manifest
+     -field way, just fired once at Desk startup/switch instead of at
+     a click-to-place moment.
+   - Instance-list maintenance for the dormancy check is lazy only --
+     pruned the next time some other widget's load triggers the
+     maintenance pass on that same schema, not eagerly on
+     `close_widget`.
+   - **New built-in schema/state-management widget**: view every
+     currently-registered schema (widget-declared and top-level), its
+     enforcement status, current values, and history; where a
+     top-level schema file actually gets authored. Whenever any schema
+     is registered, Desk must guarantee an instance of this widget is
+     already placed, or place one if not, so validated state is never
+     invisible the moment it starts existing -- worth checking against
+     the real UX before assuming safe, given `DefineWidget`'s own
+     auto-placement experiment (TODO `5ff02d2`) was tried and reverted
+     (TODO `dafbaab`) for a differently-shaped (per-kind, not
+     singleton) case.
+   Not designed further than the investigation doc's own level of
+   detail yet -- the exact `StateEntry`/schema-registry dataclasses,
+   Bridge API route shapes for schema-aware `get`/`set`, and the new
+   file-watcher wiring for the two schema-file locations all need a
+   real plan before implementation starts.
+
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
    single-line `QLineEdit`) a multi-line box that wraps text instead,
