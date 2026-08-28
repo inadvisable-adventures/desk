@@ -398,6 +398,116 @@ re-deriving "what command produced this transition" from a diff.
   after Desk restarts shouldn't see a value with no explanation of how
   it got there).
 
+### Validated vs. non-validated state, and schema lifecycle
+
+Resolved in a follow-up round of clarifying questions (this file's own
+earlier draft had "per-key JSON Schema declared in the widget
+manifest" without saying whose manifest, or what happens on
+conflict -- both now answered):
+
+**Every state key is either validated or non-validated, decided by
+whether a schema is currently registered for it, not declared per
+access:**
+
+- **Validated**: a schema (a TypeScript type expression, stored as a
+  string -- e.g. `"string | null"`) is currently registered for the
+  key. A schema can be declared two ways, both optional -- **schema
+  declaration is never required to use a key at all** (see the
+  undeclared-access case below):
+  1. **In a widget's own manifest**, for a widget that reads/writes
+     that key.
+  2. **"Top-level"**, in a schema's own standalone file, independent
+     of any widget's manifest -- for state that should have a
+     canonical schema without tying its lifecycle to any one widget's
+     placement (see enforcement lifetime, below). Same schema syntax
+     either way.
+  - **Conflict resolution**: first-loaded-while-still-active wins. A
+    widget attempting to load with a schema that conflicts with an
+    already-active one for the same key **does not load at all** --
+    no placement, not even a normal placement notification. Instead,
+    a distinct, clickable notification appears (the same UI shape as
+    every other tempui-style notification -- Job/Scratch/Question)
+    that explains the validation conflict when clicked, **and** the
+    same error message is appended to a new, well-known, optional
+    manifest field, `desk_widget_loading_errors: string[]`, on the
+    failing widget's own manifest -- so the conflict is discoverable
+    both in-the-moment (the notification) and later, just by reading
+    that widget's own definition, without needing to have seen the
+    notification live.
+  - **Enforcement lifetime differs by how the widget got there**:
+    - A **tempui-DSL-placed widget instance** (`DefineWidget`-sourced,
+      or any tempui-registered kind) keeps its declared schema
+      enforced only while at least one **placed widget instance**
+      referencing it still exists on the canvas ("placed widget
+      instances," not "active widgets" -- the DSL's own established
+      instance-tracking vocabulary). Removing the last such instance
+      makes the schema **dormant, not deleted** -- neither the schema
+      nor the underlying data is destroyed, so a later instance of the
+      *same* definition can keep using the data if its schema is
+      unchanged, and a later instance with a genuinely *different*
+      schema is allowed to replace the dormant one (only a conflict
+      against a *currently enforced* schema blocks loading -- a
+      dormant one doesn't).
+    - Before checking for a conflict at widget-load time, Desk first
+      does maintenance on the schema's own placed-instance list,
+      pruning any instance that's no longer actually placed -- this is
+      what lets a schema correctly go dormant once its last real
+      referent is gone, rather than staying wrongly "active" forever
+      because nothing ever re-checked.
+    - A **built-in widget** (a real `widgets/<id>/` directory, `kind:
+      "python"`/`"html"`, found via `discover_widgets` -- not a
+      tempui-DSL registration) declaring a schema has it validated at
+      **discovery time** and **permanently enforced** from then on,
+      regardless of whether any instance is ever placed -- no
+      placed-instance tracking or dormancy for these; the manifest
+      itself is the permanent commitment.
+    - A **top-level schema file** is enforced the same permanent way a
+      built-in widget's schema is -- it isn't tied to any widget's own
+      placement lifecycle at all, by construction.
+  - **Undeclared access to an already-validated key**: a widget can
+    read/write a key that has an active schema (from some *other*
+    widget's manifest, or a top-level file) without declaring that
+    schema itself -- its calls are checked against the key's currently
+    -active schema **at runtime**, and a mismatch is a real runtime
+    error (not a load-time failure, since nothing was declared to
+    conflict with in the first place).
+- **Non-validated**: no schema is currently registered for the key at
+  all. Access is purely call-site-local: `get(key, typeHint)` attempts
+  to coerce the raw stored value to `typeHint`; `set(key, value,
+  typeHint)` coerces `value` to `typeHint` before writing. Nothing
+  persisted or declared -- a different call elsewhere can use a
+  completely different hint (or none) against the same key with no
+  cross-checking at all. This is deliberately the loose, no-guarantees
+  end of the spectrum -- validated state is what a widget author opts
+  into when they want the real guarantee.
+- **Schema type expressions**: a pragmatic, intentionally-constrained
+  subset of TypeScript type syntax for v1 (primitives, literal unions,
+  arrays, simple object shapes -- not the full language), left open to
+  grow later if a real need for more shows up. Matches
+  `app_dsl/schema.py`'s own `StateSlot.type` convention exactly (a raw
+  TS type string), not a new, separate schema language.
+
+**New planned piece: a built-in schema/state-management widget.**
+Lets a user/agent see what validated state currently exists (both
+widget-declared and top-level schemas), their current enforcement
+status (active/dormant, and for tempui-sourced ones, which placed
+instances are keeping them active), current values, and history --
+and is where a top-level schema file would actually get authored/
+registered. **Whenever any schema is registered** (a widget's own
+manifest declaring one, or a new top-level schema file), Desk must
+guarantee an instance of this widget is already placed, or place one
+if not -- so validated state is never invisible the moment it starts
+existing. Worth noting for whoever implements this: `DefineWidget`
+itself once tried auto-placing an instance on first registration
+(TODO `5ff02d2`) and reverted it (TODO `dafbaab`) as "too confusing in
+practice" -- but that was a *per-newly-registered-custom-widget-kind*
+auto-placement (one new instance per kind, could happen often); this
+is a *singleton* dashboard widget (auto-placed at most once, the same
+instance keeps serving every subsequent schema registration), a
+different enough shape that the earlier revert's own reasoning may not
+transfer directly -- worth a real check against the actual UX, not
+just assumed safe by analogy.
+
 ## Where things were left
 
 **Update**: the app-structure DSL itself (schema/parser/codegen -- the
@@ -435,8 +545,19 @@ Open threads, not yet started:
    one-off" goal gets realized concretely (a shared TS base class
    alongside `document-editor-base`? something else?).
 2. **The shared, project-scoped state store** (`desk.state.*`,
-   including the semantic-edits refinement) is fully designed at a
-   discussion level but not yet filed as a TODO or implemented.
+   including the semantic-edits refinement and the validated/
+   non-validated schema lifecycle) is now thoroughly designed at a
+   discussion level -- including the new schema/state-management
+   widget and top-level schema files -- but not yet filed as a TODO or
+   implemented. The main remaining pre-implementation question is
+   architectural, not design: where the schema/placed-instance
+   -tracking bookkeeping actually lives server-side (a new service
+   class alongside `EventMediator`? part of `DeskWindow` directly?)
+   and how it hooks into existing widget-load/instance-removal call
+   sites (`_place_widget`, `close_widget`/`close_widget_by_instance_id`,
+   `_register_custom_widgets_from_desk_temp`, `discover_widgets`) to
+   actually maintain the active/dormant/permanent enforcement states
+   described above.
 3. **Promoting `necro-4x`'s Domain Analysis widget to a genuine Desk
    built-in** (see the new data point folded into the "Editor widget"
    section above) is a real, separate, not-yet-scoped ask -- a design/
