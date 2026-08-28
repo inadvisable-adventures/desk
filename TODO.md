@@ -6747,6 +6747,7 @@ f68383f. A shared, capability-gated, project-scoped state store --
    `shared-state-with-semantic-edits` FEEDBACK item's own concrete
    case: get/set/history alone already closes 3 of its 4 hand-rolled
    pain points without any schema concept at all).
+   [planned: shared-state-store.md]
 
 6e1c2fe. The state store's (TODO `f68383f`) schema validation layer --
    **blocked on `f68383f` landing first**. Full design discussion,
