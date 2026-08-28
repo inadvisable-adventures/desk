@@ -6748,24 +6748,39 @@ e9eddba. Add a permission-mode selector to the Claude (Desk) widget
    .set_permission_mode`, which the SDK already exposes) -- not
    designed yet.
 
-93364f9. Add a "talk to Claude about this widget" button to the widget
-   frame chrome (`src/desk/shell/widget_frame.py`'s small
-   indicator-button family -- `_TempuiPromoteButton`/
+93364f9. Add a `[chat]` button (relabeled from this item's own earlier
+   "talk to Claude about this widget" working name -- same feature,
+   restated by the user later in the same session with a tighter spec)
+   to the widget frame chrome (`src/desk/shell/widget_frame.py`'s
+   small indicator-button family -- `_TempuiPromoteButton`/
    `_StaleIndicatorButton`/`_ErrorIndicatorButton` are the existing
    precedent), dispatched centrally through `canvas.py`'s
    `_hit_test_chrome`/mouse handling the same way those are. Clicking
-   it launches a new "Claude (Desk)" widget (TODO `a596dbf`) with a
-   fresh session whose initial prompt references the specific clicked
-   widget instance (its widget kind/id, instance_id, and current
-   title) and hints at how to find that widget kind's own source on
-   disk (its `widgets/<id>/` directory -- `widget.py`/`widget.json` for
-   `kind: "python"`, `index.html`/compiled sources for `kind: "html"`)
-   so Claude can go read the real implementation rather than guessing.
-   Not designed yet -- open questions include exactly what gets
-   included in the launch prompt, whether this button appears on every
-   widget or only certain kinds, and whether it should reuse
-   `_place_discuss_claude_widget`'s existing shape (adapted for the new
-   widget kind) or needs its own placement helper.
+   it launches a new agent conversation (a "Claude (Desk)" widget,
+   TODO `a596dbf`) with a fresh session about the clicked widget,
+   whose initial prompt gives the new session notes on how to access
+   each of three things, rather than assuming which one the user
+   actually wants discussed:
+   - **The live instance** -- its widget kind/id, `instance_id`, and
+     current title/state (the same reference shape this item's own
+     original draft already specified).
+   - **The code** -- where that widget kind's own source lives on disk
+     (`widgets/<id>/` -- `widget.py`/`widget.json` for `kind:
+     "python"`, `index.html`/compiled sources for `kind: "html"`) so
+     the new session can go read the real implementation rather than
+     guessing.
+   - **The definition** -- the widget's own manifest (`widget.json`,
+     or a `DefineWidget` tempui file's own header fields), including
+     anything schema-related once the shared state store (see the
+     `desk.state.*` design discussion, `investigations/app_structure_dsl_design.md`)
+     lands -- a widget's declared state schemas are exactly the kind
+     of thing "let's discuss this widget" would want visible.
+   Not designed yet -- open questions include the exact prompt
+   wording/notes format for each of the three, whether this button
+   appears on every widget or only certain kinds, and whether it
+   should reuse `_place_discuss_claude_widget`'s existing shape
+   (adapted for the new widget kind) or needs its own placement
+   helper.
 
 0529501. An API for widgets to invoke Claude with access scoped to
    only the files that widget itself has access to, rather than a full
