@@ -508,6 +508,70 @@ different enough shape that the earlier revert's own reasoning may not
 transfer directly -- worth a real check against the actual UX, not
 just assumed safe by analogy.
 
+### Bookkeeping and call sites (implementation architecture)
+
+Resolved in a follow-up round -- the state store's bookkeeping splits
+into two pieces with genuinely different lifetimes, and each piece has
+a clear existing precedent to mirror rather than a new mechanism to
+invent:
+
+- **Data (persisted)**: the actual `(value, edit, history)` per key.
+  Exactly the same shape `Desk.custom_widgets`/`Desk.file_type_registry`
+  already are (`src/desk/desks.py`) -- a new `Desk.state:
+  dict[str, StateEntry]` field, read/written by `load_desk`/
+  `save_desk`/`desk_state_dict` the same way those two already are. No
+  new persistence mechanism.
+- **Schema registry (runtime-only, never persisted)**: which key
+  currently has an active schema, its source (a widget id or a
+  top-level file path), and (tempui-placed sources only) which placed
+  instance ids are keeping it active. This never needs its own
+  persistence -- everything that populates it is already re-walked on
+  every Desk open anyway (built-in widgets are re-discovered every
+  startup/switch; placed instances are re-created every restore), so
+  it can simply be rebuilt fresh each time, the same
+  lock-protected-runtime-class shape `EventMediator` already is
+  (constructed once per server run).
+
+**Call sites this hooks into:**
+- `discover_widgets` (`src/desk/widgets.py:65`) -- where a built-in's
+  declared schema gets validated and registered **permanently** (no
+  instance tracking at all for these). **Decided**: a built-in-vs
+  -built-in conflict is resolved by `discover_widgets`' own existing
+  alphabetical directory-sort order (first alphabetically wins,
+  nothing new to add there) -- surfaced via the same notification +
+  `desk_widget_loading_errors` treatment as any other conflict, just
+  fired once at Desk startup/switch (whenever discovery re-runs)
+  instead of at a click-to-place moment, since there's no placement
+  moment for a built-in to hang it on.
+- **A new discovery step for top-level schema files**, alongside the
+  above -- same permanent-registration treatment. **Decided**: two
+  possible locations, both watched: `.desk_temp/schemas/` (ephemeral,
+  alongside the rest of `.desk_temp`) and `./desk-schemas/` (a real,
+  git-tracked project-root convention, the same tier as `desk_widgets/`
+  -- Desk **never creates this directory eagerly**, only watches for
+  it and picks it up immediately if an agent or user creates it by
+  hand). Both need their own **new** watch registrations --
+  `TempUiManager`'s existing `.desk_temp` watch is non-recursive
+  (`recursive=False`, `temp_ui_manager.py:249`), so it does not cover
+  a `.desk_temp/schemas/` subdirectory at all today, and
+  `./desk-schemas/` is outside `.desk_temp` entirely.
+- `_place_widget` (a fresh placement) and `_load_desk_widgets`
+  (`window.py:321`, a restore) -- where a schema-declaring widget's
+  conflict check has to run *before* the instance is actually created:
+  join an existing active/matching schema, reactivate/replace a
+  dormant one, or hard-fail (no placement at all) on a genuine
+  conflict against something still active.
+- `close_widget`/`close_widget_by_instance_id` -- **Decided**: no
+  special handling needed here. Instance-list maintenance stays
+  **lazy only**, exactly as originally specified -- a closed
+  instance's id is pruned the next time some *other* widget's load
+  triggers the maintenance pass on that same schema, not eagerly at
+  close time. `WorkspaceView.clear_widgets()` (a Desk switch, not a
+  permanent close) needs nothing special either, for the same reason
+  the schema registry itself needs no persistence: switching Desks
+  discards the whole in-memory registry, which gets rebuilt fresh
+  whenever that Desk is reopened.
+
 ## Where things were left
 
 **Update**: the app-structure DSL itself (schema/parser/codegen -- the
@@ -545,19 +609,16 @@ Open threads, not yet started:
    one-off" goal gets realized concretely (a shared TS base class
    alongside `document-editor-base`? something else?).
 2. **The shared, project-scoped state store** (`desk.state.*`,
-   including the semantic-edits refinement and the validated/
-   non-validated schema lifecycle) is now thoroughly designed at a
-   discussion level -- including the new schema/state-management
-   widget and top-level schema files -- but not yet filed as a TODO or
-   implemented. The main remaining pre-implementation question is
-   architectural, not design: where the schema/placed-instance
-   -tracking bookkeeping actually lives server-side (a new service
-   class alongside `EventMediator`? part of `DeskWindow` directly?)
-   and how it hooks into existing widget-load/instance-removal call
-   sites (`_place_widget`, `close_widget`/`close_widget_by_instance_id`,
-   `_register_custom_widgets_from_desk_temp`, `discover_widgets`) to
-   actually maintain the active/dormant/permanent enforcement states
-   described above.
+   including the semantic-edits refinement, the validated/
+   non-validated schema lifecycle, and the bookkeeping/call-site
+   architecture) is now thoroughly designed at a discussion level --
+   including the new schema/state-management widget and top-level
+   schema files -- but not yet filed as a TODO or implemented. Nothing
+   structural left open; what remains is implementation-level detail
+   (exact Bridge API route shapes, the `StateEntry`/registry
+   dataclasses, the new file-watcher wiring for `.desk_temp/schemas/`/
+   `./desk-schemas/`) that a real plan would work out, not further
+   design discussion.
 3. **Promoting `necro-4x`'s Domain Analysis widget to a genuine Desk
    built-in** (see the new data point folded into the "Editor widget"
    section above) is a real, separate, not-yet-scoped ask -- a design/
