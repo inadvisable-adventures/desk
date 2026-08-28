@@ -75,6 +75,16 @@ BRIDGE_CLIENT_TEMPLATE = """
     workspace: {
       getState: () => call("GET", "/api/bridge/workspace/getState"),
     },
+    state: {
+      get: (key) => call("GET", `/api/bridge/state/get?key=${encodeURIComponent(key)}`),
+      set: (key, value, edit) => call("POST", "/api/bridge/state/set", { key, value, edit: edit ?? null }),
+      getHistory: (key, limit) =>
+        call(
+          "GET",
+          `/api/bridge/state/getHistory?key=${encodeURIComponent(key)}` +
+            (limit !== undefined ? `&limit=${limit}` : "")
+        ),
+    },
     fs: {
       readFile: (path) =>
         call("GET", `/api/bridge/fs/readFile?path=${encodeURIComponent(path)}`),

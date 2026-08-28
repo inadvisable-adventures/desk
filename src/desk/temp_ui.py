@@ -230,7 +230,15 @@ APP_DSL_DIRNAME = "app_dsl"
 # this same "Authoring from real source" section's `build_widget.py`
 # pipeline for a Desk-widget build -- closing the gap the version 32
 # bump above left open. Doc note updated accordingly.
-TEMPUI_DOC_VERSION = 33
+#
+# TODO f68383f: bumped 33 -> 34 -- new `desk.state.*` Bridge API calls
+# (capability `state`): a shared, project-scoped key/value store any
+# widget can read or write, with change notification via the existing
+# `desk.events` channel (`desk.state.changed`) and a bounded per-key
+# history. New "Shared, project-scoped state" section; capability list
+# above gained `state`. Non-validated core only -- schema declaration/
+# validation is a separate, later TODO (6e1c2fe).
+TEMPUI_DOC_VERSION = 34
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -822,6 +830,10 @@ built for genuine cross-widget signaling:
   See "Sending and receiving named messages" below.
 - `desk.workspace.getState()` (capability `workspace`) — the current
   Desk's live widget layout.
+- `desk.state.get(key)` / `.set(key, value, edit)` / `.getHistory(key,
+  limit)` (capability `state`) — a shared, project-scoped key/value
+  store any widget can read or write. See "Shared, project-scoped
+  state" below.
 - `desk.fs.readFile(path)` / `desk.fs.writeFile(path, contents)`
   (capability `fs`) — read/write an arbitrary file on disk. A relative
   `path` resolves against the current Desk's own directory (not any
@@ -916,6 +928,46 @@ through this JS API — they get it via a direct Python import instead
 (`desk.shell.event_broker.EventSubscription`), the same "REST for html
 widgets, direct Python for python widgets" split every other Bridge API
 capability already follows.
+
+## Shared, project-scoped state
+
+Desk also keeps a shared, project-scoped key/value store — every widget
+with the `state` capability can read or write any key, with no
+per-widget ownership. Use this instead of hand-rolling your own
+cross-widget persistence scheme (e.g. one widget writing to a file the
+other polls); it also gets you change notification and a short history
+for free.
+
+- `desk.state.get(key)` → `{ value, edit }` — the current value for
+  `key`, and the `edit` that was passed alongside the write that
+  produced it (see below). A key nothing has ever written to returns
+  `{ value: null, edit: null }`, not an error.
+- `desk.state.set(key, value, edit)` → `{ ok: true }` — writes `value`
+  (any JSON-serializable value) as the new current value for `key`.
+  `edit` is optional (omit or pass `null`) and is never interpreted by
+  Desk — it's stored and handed back verbatim from `get`/`getHistory`,
+  meant for widgets that want to describe *what changed* (e.g. a
+  structured patch or a human-readable description) alongside the new
+  full value, without Desk needing to understand that description's
+  format at all.
+- `desk.state.getHistory(key, limit)` → `{ history: [{ value, edit },
+  ...] }` — up to the most recent `limit` `(value, edit)` pairs written
+  to `key`, **newest first**. Desk keeps only the 50 most recent writes
+  per key (older ones are dropped as new ones arrive); asking for a
+  `limit` larger than what's kept just returns everything available,
+  never an error. Omit `limit` for the full kept history.
+
+Every `set` also publishes `desk.state.changed` with payload `{ key,
+value, edit }` over the same `desk.events` channel described above —
+subscribe to it (`desk.events.subscribe(["desk.state.changed"])`,
+capability `events`, in addition to `state`) to react to another
+widget's writes live rather than polling `get`. As with any
+`desk.events` message, you never receive your own `set` echoed back to
+you.
+
+There is no schema or type checking on state keys in this version —
+`value` is opaque JSON as far as Desk is concerned, and it's up to the
+widgets sharing a key to agree on its shape out of band.
 
 ## Inspecting another widget
 
@@ -1140,6 +1192,16 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 34
+- New `desk.state.*` Bridge API calls (capability `state`): a shared,
+  project-scoped key/value store any widget can read (`get`,
+  `getHistory`) or write (`set`), with change notification via the
+  existing `desk.events` channel (a `desk.state.changed` message on
+  every `set`) and a bounded (50 most recent per key), latest-first
+  history. See "Shared, project-scoped state" in
+  `tempui-custom-widgets.md`. No schema/type checking on state keys in
+  this version -- values are opaque JSON.
 
 ## Version 33
 - `app_dsl`'s `build.py` gained a `--mode=global` output mode
@@ -1875,7 +1937,7 @@ class CustomWidgetDefinition:
     the raw `keyword`); `html_b64` is the widget's entire
     implementation -- one self-contained, base64-encoded HTML
     document. `capabilities` (TODO f693275) are the Bridge API
-    capabilities (`"workspace"`, `"fs"`, `"widgets"`, `"events"`, ...)
+    capabilities (`"workspace"`, `"state"`, `"fs"`, `"widgets"`, `"events"`, ...)
     this widget kind is allowed to use -- same coarse, resource-level
     strings a real `widgets/<id>/widget.json`'s own `capabilities`
     list already uses; defaults to none declared, same as a manifest

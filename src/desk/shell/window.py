@@ -11,7 +11,16 @@ from PyQt6.QtCore import QPointF, Qt, QTimer
 from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QWidget
 
 from desk.custom_widgets import materialize
-from desk.desks import DESK_SUFFIX, Desk, WidgetState, desk_state_dict, load_desk, save_desk
+from desk.desks import (
+    DESK_SUFFIX,
+    Desk,
+    StateEntry,
+    StateHistoryEntry,
+    WidgetState,
+    desk_state_dict,
+    load_desk,
+    save_desk,
+)
 from desk.jobs import materialize as materialize_job
 from desk.file_type_registry import (
     FILE_TYPE_REGISTRY_UPDATED_EVENT,
@@ -127,6 +136,12 @@ TEMP_UI_WIDGET_IDS = {
 }
 
 WIDGET_SPACING = 700
+# The shared state store's (TODO f68383f) per-key history cap -- a
+# fixed, small default, not per-key configurable this pass (see
+# plans/shared-state-store.md's Key tradeoffs). Once a key's history
+# reaches this many entries, the oldest is evicted as a new one
+# arrives -- see DeskWindow.set_state.
+STATE_HISTORY_MAX_ENTRIES = 50
 # TODO fbd0554: the well-known project-convention filename this
 # codebase's own development-process.md itself names -- a plain
 # literal, not a piece of shared behavior worth its own module.
@@ -939,6 +954,53 @@ class DeskWindow(QMainWindow):
         Server. `{}` for an instance that's never pushed anything yet
         (a brand-new widget with nothing to restore), not an error."""
         return self._html_widget_local_storage.get(instance_id, {})
+
+    # -- Shared, project-scoped state store (TODO f68383f) ----------------
+
+    def get_state(self, key: str) -> dict:
+        """The Bridge API's `desk.state.get`, called via `GuiBridge`
+        from the (background-thread) Local Web Server. `{"value":
+        None, "edit": None}` for a key nothing has ever `set()`, not
+        an error -- same "empty/default for nothing-yet" convention
+        `get_html_widget_local_storage` above already uses."""
+        entry = self.current_desk.state.get(key)
+        if entry is None:
+            return {"value": None, "edit": None}
+        return {"value": entry.value, "edit": entry.edit}
+
+    def set_state(self, key: str, value: object, edit: object, instance_id: str) -> None:
+        """The Bridge API's `desk.state.set` -- updates the current
+        value/edit for `key`, appends it to that key's own bounded
+        history (evicting the oldest entry once
+        `STATE_HISTORY_MAX_ENTRIES` is exceeded), and publishes a
+        `desk.state.changed` change notification over the *existing*
+        `desk.events` mechanism (TODO 6f9c51b) rather than a new
+        transport -- `sender_instance_id=instance_id` means the widget
+        that called this never receives its own write back, the same
+        standard pub/sub default `events.publish` already has."""
+        entry = self.current_desk.state.get(key)
+        if entry is None:
+            entry = StateEntry(value=value, edit=edit)
+            self.current_desk.state[key] = entry
+        else:
+            entry.value = value
+            entry.edit = edit
+        entry.history.append(StateHistoryEntry(value=value, edit=edit))
+        del entry.history[:-STATE_HISTORY_MAX_ENTRIES]
+        self._event_mediator.publish(
+            "desk.state.changed", {"key": key, "value": value, "edit": edit}, sender_instance_id=instance_id
+        )
+
+    def get_state_history(self, key: str, limit: int) -> list[dict]:
+        """The Bridge API's `desk.state.getHistory` -- up to `limit`
+        most recent `(value, edit)` pairs for `key`, latest-first.
+        `limit` larger than what actually exists is not an error, it
+        just returns everything there is."""
+        entry = self.current_desk.state.get(key)
+        if entry is None:
+            return []
+        recent = entry.history[-limit:] if limit > 0 else []
+        return [{"value": h.value, "edit": h.edit} for h in reversed(recent)]
 
     def get_widget_info(self, widget_id: str) -> WidgetInfo | None:
         """The Bridge API's `require_caller` fallback (TODO f693275),

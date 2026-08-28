@@ -6748,6 +6748,45 @@ f68383f. A shared, capability-gated, project-scoped state store --
    case: get/set/history alone already closes 3 of its 4 hand-rolled
    pain points without any schema concept at all).
    [planned: shared-state-store.md]
+   COMPLETED: `src/desk/desks.py` -- `StateHistoryEntry`/`StateEntry`
+   dataclasses; new `Desk.state: dict[str, StateEntry]` field;
+   `load_desk`/`desk_state_dict`/`save_desk` read/write it via new
+   `_load_state_entry`/`_state_entry_dict` helpers, mirroring
+   `custom_widgets`'s own round-trip shape exactly. `src/desk/shell
+   /window.py` -- `STATE_HISTORY_MAX_ENTRIES = 50`;
+   `get_state`/`set_state`/`get_state_history` methods; `set_state`
+   appends to history with FIFO eviction
+   (`del entry.history[:-STATE_HISTORY_MAX_ENTRIES]`) and publishes
+   `desk.state.changed` (`{key, value, edit}`) via the existing
+   `EventMediator`, with the calling instance excluded from its own
+   change (standard `desk.events` sender-exclusion). `src/desk/server
+   /app.py` -- `SetStateRequest` model; three new routes,
+   `GET /api/bridge/state/get`, `POST /api/bridge/state/set`,
+   `GET /api/bridge/state/getHistory`, each gated by
+   `require_caller("state")` + `require_instance_id`, following the
+   `events_subscribe`/`events_publish` combined-dependency precedent.
+   `src/desk/server/bridge_client.py` -- `desk.state.{get, set,
+   getHistory}` added to the `window.desk` object. `src/desk
+   /temp_ui.py` -- new "Shared, project-scoped state" section and
+   capability-list bullet in `_CUSTOM_WIDGETS_DOC`
+   (`tempui-custom-widgets.md`); `TEMPUI_DOC_VERSION` bumped 33 -> 34
+   with a matching comment block and `_NEW_FEATURES_DOC` entry. New
+   `tests/verify/verify_state_store.py` (23 checks): data-model
+   round-trip through save/load (including an old `.desk` file with no
+   `state` key defaulting to `{}`), and a real Bridge-API-over-HTTP
+   round trip covering get-on-unset returning
+   `{value: None, edit: None}`, set/get round trip, `edit` defaulting
+   to `None` when omitted, a real cross-instance `desk.state.changed`
+   delivery with sender-exclusion verified, `getHistory` bounded to 50
+   entries/returned latest-first/oldest-evicted, a `limit` smaller and
+   larger than the stored history both honored correctly, and a
+   missing-`state`-capability 403 from both `get` and `set`. Full
+   `tests/verify/` regression suite passes (114 scripts total, 0
+   regressions -- the sole pre-existing failure,
+   `disabled_verify_claude_desk_widget_claude_api.py`, is an already
+   -filed, already-disabled item unrelated to this change).
+   `investigations/app_structure_dsl_design.md`'s "Where things were
+   left" updated to record this item's completion.
 
 6e1c2fe. The state store's (TODO `f68383f`) schema validation layer --
    **blocked on `f68383f` landing first**. Full design discussion,

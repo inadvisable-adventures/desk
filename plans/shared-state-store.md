@@ -1,4 +1,4 @@
-# Shared project-scoped state store: non-validated core (TODO `f68383f`)
+# Shared project-scoped state store: non-validated core (TODO `f68383f`) (COMPLETED)
 
 ## Summary
 

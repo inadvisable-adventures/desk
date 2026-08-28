@@ -598,6 +598,20 @@ handler source must avoid ES module syntax (no automatic sharing of
 component source between the two targets without a real bundler,
 which was deliberately not pursued here).
 
+**Update 3**: the shared, project-scoped state store's non-validated
+core (item 2 below) is no longer just a discussion record either --
+filed and implemented as TODO `f68383f` (`plans/shared-state-store.md`,
+COMPLETED): `desk.state.get(key)`/`set(key, value, edit)`/
+`getHistory(key, limit)`, gated by a new `state` capability, with
+change notification via a single well-known `desk.events` message
+(`desk.state.changed`) and a fixed-50-entry, latest-first, per-key
+FIFO history, persisted alongside `Desk.custom_widgets`/
+`file_type_registry`. The schema/validation layer designed alongside
+it (conflict resolution, dormant-not-deleted schemas, top-level schema
+files, the schema/state-management widget) is filed separately as TODO
+`6e1c2fe`, still blocked on this landing first, deliberately not
+started.
+
 Open threads, not yet started:
 
 1. **The editor widget's actual raw-text+structured-UI sync design**
@@ -608,17 +622,15 @@ Open threads, not yet started:
    vs. the layout tree, and how the "reusable building block, not a
    one-off" goal gets realized concretely (a shared TS base class
    alongside `document-editor-base`? something else?).
-2. **The shared, project-scoped state store** (`desk.state.*`,
-   including the semantic-edits refinement, the validated/
-   non-validated schema lifecycle, and the bookkeeping/call-site
-   architecture) is now thoroughly designed at a discussion level --
-   including the new schema/state-management widget and top-level
-   schema files -- but not yet filed as a TODO or implemented. Nothing
-   structural left open; what remains is implementation-level detail
-   (exact Bridge API route shapes, the `StateEntry`/registry
-   dataclasses, the new file-watcher wiring for `.desk_temp/schemas/`/
-   `./desk-schemas/`) that a real plan would work out, not further
-   design discussion.
+2. **The shared, project-scoped state store's schema/validation
+   layer** (TODO `6e1c2fe`, blocked on `f68383f` -- now COMPLETED, see
+   Update 3 above): conflict resolution, dormant-not-deleted schemas,
+   permanent enforcement for built-ins, the new file-watcher wiring for
+   `.desk_temp/schemas/`/`./desk-schemas/`, and the new schema/state
+   -management widget are all thoroughly designed at a discussion level
+   but not yet planned or implemented. Nothing structural left open;
+   what remains is implementation-level detail that a real plan would
+   work out, not further design discussion.
 3. **Promoting `necro-4x`'s Domain Analysis widget to a genuine Desk
    built-in** (see the new data point folded into the "Editor widget"
    section above) is a real, separate, not-yet-scoped ask -- a design/

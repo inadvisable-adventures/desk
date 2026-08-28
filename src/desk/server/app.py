@@ -156,6 +156,12 @@ class EventPublishRequest(BaseModel):
     payload: object = None
 
 
+class SetStateRequest(BaseModel):
+    key: str
+    value: object
+    edit: object = None
+
+
 class IntrospectSnapshotRequest(BaseModel):
     target_instance_id: str
 
@@ -327,6 +333,33 @@ def create_app(
     @app.get("/api/bridge/workspace/getState")
     async def workspace_get_state(widget: WidgetInfo = Depends(require_caller("workspace"))):
         return await run_on_gui(lambda: gui_bridge.window.get_state_dict())
+
+    @app.get("/api/bridge/state/get")
+    async def state_get(
+        key: str,
+        widget: WidgetInfo = Depends(require_caller("state")),
+        instance_id: str = Depends(require_instance_id),
+    ):
+        return await run_on_gui(lambda: gui_bridge.window.get_state(key))
+
+    @app.post("/api/bridge/state/set")
+    async def state_set(
+        body: SetStateRequest,
+        widget: WidgetInfo = Depends(require_caller("state")),
+        instance_id: str = Depends(require_instance_id),
+    ):
+        await run_on_gui(lambda: gui_bridge.window.set_state(body.key, body.value, body.edit, instance_id))
+        return {"ok": True}
+
+    @app.get("/api/bridge/state/getHistory")
+    async def state_get_history(
+        key: str,
+        limit: int = 50,
+        widget: WidgetInfo = Depends(require_caller("state")),
+        instance_id: str = Depends(require_instance_id),
+    ):
+        history = await run_on_gui(lambda: gui_bridge.window.get_state_history(key, limit))
+        return {"history": history}
 
     @app.get("/api/bridge/fs/readFile")
     async def fs_read_file(path: str, widget: WidgetInfo = Depends(require_caller("fs"))):
