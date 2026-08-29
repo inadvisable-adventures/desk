@@ -6835,6 +6835,7 @@ af7898b. The state store's (TODO `f68383f`) schema declaration,
    -registry dataclasses, the type-expression parser/validator, and the
    Bridge API route shape changes for schema-aware `get`/`set` all need
    working out.
+   [planned: state-store-schema-core.md]
 
 9aef267. State store top-level schema files -- **blocked on
    `af7898b` landing first** (needs its schema type language and
