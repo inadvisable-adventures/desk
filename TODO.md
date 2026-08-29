@@ -6927,6 +6927,7 @@ af7898b. The state store's (TODO `f68383f`) schema declaration,
    file's schema is permanently enforced from registration onward, the
    same as a built-in widget's (never dormant). Needs a real plan
    before implementation starts.
+   [planned: state-store-top-level-schemas.md]
 
 6330249. New built-in schema/state-management widget -- **blocked on
    `af7898b` landing first** (needs schemas to actually exist to
