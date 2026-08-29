@@ -1,4 +1,4 @@
-# State store top-level schema files (TODO `9aef267`)
+# State store top-level schema files (TODO `9aef267`) (COMPLETED)
 
 ## Summary
 

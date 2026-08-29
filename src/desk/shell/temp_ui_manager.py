@@ -7,6 +7,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from desk.file_watch import SelfWriteMemory
 from desk.git_utils import find_git_root
+from desk.shell.schema_file_watcher import SCHEMA_FILES_DIRNAME
 from desk.temp_ui import (
     DOC_FILENAME,
     TEMP_UI_DIRNAME,
@@ -152,6 +153,12 @@ class TempUiManager(QObject):
         # TODO 48e3b39: same always-fresh mirroring for the
         # app-structure DSL's own codegen tool.
         sync_app_dsl_tool(temp_dir)
+        # TODO 9aef267: an ephemeral home for top-level desk.state.*
+        # schema files -- created once, never wiped/reseeded (unlike
+        # the two syncs above, nothing here is mirrored from a
+        # canonical source; a schema file is directly authored by a
+        # user/agent, so there's nothing to overwrite).
+        (temp_dir / SCHEMA_FILES_DIRNAME).mkdir(exist_ok=True)
 
         # Must run before _notify_docs_upgraded below (TODO 7c7b676):
         # _start_watching clears self._known_files, which that method

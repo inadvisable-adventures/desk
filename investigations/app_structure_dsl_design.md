@@ -635,6 +635,19 @@ schema files (`9aef267`) and the schema/state-management widget
 (`6330249`) remain open, both blocked on this landing, which it now
 has.
 
+**Update 5**: TODO `9aef267` (top-level schema files,
+`plans/state-store-top-level-schemas.md`, COMPLETED) -- a schema can
+now also be declared independent of any widget, in a standalone JSON
+file (`{"<key>": "<type expression>", ...}`) at `.desk_temp/schemas/`
+(ephemeral, auto-created) or `./desk-schemas/` (git-tracked, never
+created by Desk itself -- polled every 2s until it exists, then a real
+live watch takes over, rather than a permanent watch over the whole
+project root just to catch its own birth). Permanently enforced,
+live-updated on edit, cleared on delete, isolated correctly across a
+desk switch (`SchemaRegistry` is one shared instance for the whole
+server run, not per-Desk). Only the schema/state-management widget
+(`6330249`) remains open, no longer blocked on anything.
+
 Open threads, not yet started:
 
 1. **The editor widget's actual raw-text+structured-UI sync design**
@@ -645,15 +658,15 @@ Open threads, not yet started:
    vs. the layout tree, and how the "reusable building block, not a
    one-off" goal gets realized concretely (a shared TS base class
    alongside `document-editor-base`? something else?).
-2. **Top-level schema files and the schema/state-management widget**
-   (TODO `9aef267`/`6330249`, both blocked on TODO `af7898b` -- now
-   COMPLETED, see Update 4 above): the new file-watcher wiring for
-   `.desk_temp/schemas/`/`./desk-schemas/`, and the dashboard widget
-   that views every registered schema and is where a top-level schema
-   file actually gets authored, are both thoroughly designed at a
-   discussion level but not yet planned or implemented. Nothing
-   structural left open; what remains is implementation-level detail
-   that a real plan would work out, not further design discussion.
+2. **The schema/state-management widget** (TODO `6330249`, no longer
+   blocked on anything now that `af7898b`/`9aef267` have both landed,
+   see Update 4/5 above): views every currently-registered schema
+   (widget-declared and top-level), its enforcement status, current
+   values, and history, and is where a top-level schema file actually
+   gets authored. Thoroughly designed at a discussion level but not yet
+   planned or implemented. Nothing structural left open; what remains
+   is implementation-level detail that a real plan would work out, not
+   further design discussion.
 3. **Promoting `necro-4x`'s Domain Analysis widget to a genuine Desk
    built-in** (see the new data point folded into the "Editor widget"
    section above) is a real, separate, not-yet-scoped ask -- a design/

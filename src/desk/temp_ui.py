@@ -248,7 +248,14 @@ APP_DSL_DIRNAME = "app_dsl"
 # "Validated vs. non-validated keys" subsection; a conflicting schema
 # declaration fails a widget's own load with a clickable notification
 # and a new `desk_widget_loading_errors` field on self.getManifest().
-TEMPUI_DOC_VERSION = 35
+#
+# TODO 9aef267: bumped 35 -> 36 -- a desk.state.* schema can now also
+# be declared "top-level," independent of any widget's manifest, in a
+# standalone JSON file at `.desk_temp/schemas/` or `./desk-schemas/`
+# (the latter never created by Desk itself, only watched for and
+# picked up once it exists). "Validated vs. non-validated keys"
+# subsection updated with the file format and both locations.
+TEMPUI_DOC_VERSION = 36
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -994,9 +1001,10 @@ you.
 A key is **validated** if some widget currently declares a schema for
 it (a `state_schema` entry in that widget's own manifest — see
 `StateSchema<TAB>key<TAB>type_expr` above for a `DefineWidget`, or the
-`"state_schema"` field of a real `widgets/<id>/widget.json`), and
-**non-validated** otherwise — this is a property of the key itself, not
-of any individual `get`/`set` call.
+`"state_schema"` field of a real `widgets/<id>/widget.json`), or if a
+**top-level schema file** declares it (see below), and **non-validated**
+otherwise — this is a property of the key itself, not of any individual
+`get`/`set` call.
 
 - A schema (`type_expr`) is a string in a small, intentionally
   -constrained subset of TypeScript type syntax: primitives (`string`,
@@ -1024,6 +1032,28 @@ of any individual `get`/`set` call.
   `self.getManifest()`'s response gains a `desk_widget_loading_errors`
   array with the same message, for as long as the conflict is still
   live.
+- **Top-level schema files** (TODO `9aef267`) declare a schema
+  independent of any widget's manifest — for state that should have a
+  canonical schema without tying its lifecycle to any one widget's own
+  placement. A schema file is a plain JSON file, `{"<key>": "<type
+  expression>", ...}` (the same syntax as a manifest's own
+  `state_schema`), placed in either of two watched locations:
+  `.desk_temp/schemas/` (ephemeral — created automatically alongside
+  the rest of `.desk_temp`, not git-tracked), or `./desk-schemas/` (a
+  real, git-tracked project-root directory Desk never creates itself —
+  create it yourself and it's picked up automatically, no restart
+  needed). Only `*.json` files are read; the filename itself carries no
+  meaning beyond that extension, so name it for what it holds (e.g.
+  `document-state.json`). A key declared this way is **permanently
+  enforced** from the moment the file is picked up — unlike a
+  tempui-placed widget's own schema, it's never tied to any widget
+  being placed and never goes dormant. Editing the file live-updates
+  its registrations; deleting it clears them. A conflicting file (or a
+  file conflicting with an already-active widget-declared schema) gets
+  the same clickable-notification treatment as a widget-vs-widget
+  conflict above, just with no `desk_widget_loading_errors`-equivalent
+  to write into (there's no manifest to attach it to) — the live
+  notification is authoritative while the conflict lasts.
 
 ## Inspecting another widget
 
@@ -1248,6 +1278,15 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 36
+- A `desk.state.*` schema can now also be declared "top-level,"
+  independent of any widget's manifest: a plain JSON file, `{"<key>":
+  "<type expression>", ...}`, at `.desk_temp/schemas/` (ephemeral,
+  auto-created) or `./desk-schemas/` (git-tracked, create it yourself
+  and it's picked up automatically). Permanently enforced from the
+  moment it's picked up, live-updated on edit, cleared on delete. See
+  "Validated vs. non-validated keys" in `tempui-custom-widgets.md`.
 
 ## Version 35
 - `desk.state.*` keys can now be validated: declare a schema for a key

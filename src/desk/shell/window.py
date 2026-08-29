@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 import shutil
 import uuid
@@ -43,6 +44,7 @@ from desk.shell.canvas import WorkspaceView
 from desk.shell.chromium_widget import ChromiumWidget
 from desk.shell.new_desk_dialog import NewDeskDialog
 from desk.shell.python_widget import PythonWidgetHost
+from desk.shell.schema_file_watcher import SCHEMA_FILES_DIRNAME, SchemaFileWatcher
 from desk.shell.temp_ui_manager import TempUiManager
 from desk.shell.widget_frame import WidgetFrame
 from desk.transforms import PROJECT_TRANSFORMS_DIRNAME, TEMP_TRANSFORMS_DIRNAME
@@ -286,6 +288,17 @@ class DeskWindow(QMainWindow):
         self._temp_ui_manager = TempUiManager()
         self._temp_ui_manager.file_added.connect(self._on_temp_ui_file_added)
         self._temp_ui_manager.file_edited.connect(self._on_temp_ui_file_edited)
+
+        # Top-level desk.state.* schema files (TODO 9aef267) --
+        # provisioned alongside .desk_temp (see _provision_temp_ui);
+        # self._known_schema_file_sources tracks which SchemaRegistry
+        # sources currently came from a file (as opposed to a built-in
+        # widget's own permanent registration, tracked separately by
+        # _refresh_builtin_schemas), so a desk switch can clear exactly
+        # those before re-provisioning for the newly-opened directory.
+        self._schema_file_watcher = SchemaFileWatcher()
+        self._schema_file_watcher.changed.connect(self._on_schema_file_changed)
+        self._known_schema_file_sources: set[str] = set()
 
         # Global QUESTIONS.md watcher (TODO a801180) -- unlike the
         # per-widget SingleFileWatcher a Questions widget instance owns
@@ -1677,8 +1690,25 @@ class DeskWindow(QMainWindow):
                 "temporary UI here?",
             )
             ask_gitignore = self._confirm_fn("Temporary UI", f"Add “{TEMP_UI_DIRNAME}” to .gitignore?")
-        self._temp_ui_manager.provision(directory, ask_create_dir, ask_gitignore)
+        temp_dir = self._temp_ui_manager.provision(directory, ask_create_dir, ask_gitignore)
         self._ensure_questions_watcher()
+        self._provision_schema_files(directory, temp_dir)
+
+    def _provision_schema_files(self, directory: Path, temp_dir: Path | None) -> None:
+        """Re-derives every top-level desk.state.* schema file's own
+        registration for the (possibly new) current Desk directory
+        (TODO 9aef267) -- called alongside _temp_ui_manager.provision
+        above. Clears every schema-file-sourced registration this
+        DeskWindow has ever made before re-scanning, since
+        SchemaRegistry is one shared instance for the whole server run,
+        not per-Desk: without this, a previous project's top-level
+        schemas would silently keep claiming keys after switching to a
+        different one."""
+        for source in self._known_schema_file_sources:
+            self._schema_registry.clear_source(source)
+        self._known_schema_file_sources.clear()
+        ephemeral_dir = temp_dir / SCHEMA_FILES_DIRNAME if temp_dir is not None else None
+        self._schema_file_watcher.provision(ephemeral_dir, directory)
 
     def _ensure_questions_watcher(self) -> None:
         """(Re)watches the nearest QUESTIONS.md for the current Desk's
@@ -2728,3 +2758,46 @@ class DeskWindow(QMainWindow):
         opener = current_context.get_popup_opener()
         if opener is not None:
             opener(f"Schema conflict: {widget_id}", message, ["OK"], "OK")
+
+    def _on_schema_file_changed(self, path: Path) -> None:
+        """A top-level desk.state.* schema file was added, edited, or
+        removed (TODO 9aef267, SchemaFileWatcher.changed) -- always
+        clears this file's own prior registrations first, then --  if
+        the file still exists -- re-derives them fresh from its
+        current content, the same "clear then re-derive" shape
+        _refresh_builtin_schemas already uses for built-in widgets.
+        A missing file (deleted, or gone after a rename) just clears."""
+        source = str(path)
+        self._schema_registry.clear_source(source)
+        self._known_schema_file_sources.discard(source)
+        if not path.is_file():
+            return
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError) as e:
+            self._notify_schema_file_error(path, f"Could not read {path.name}: {e}")
+            return
+        if not isinstance(data, dict):
+            self._notify_schema_file_error(
+                path, f"{path.name} must contain a JSON object mapping each key to its type expression"
+            )
+            return
+        registered_any = False
+        for key, type_expr in data.items():
+            if not isinstance(type_expr, str):
+                self._notify_schema_file_error(
+                    path, f"{path.name}: {key!r}'s value must be a type expression string"
+                )
+                continue
+            try:
+                self._schema_registry.register_permanent(key, type_expr, source)
+                registered_any = True
+            except (SchemaConflict, SchemaSyntaxError) as e:
+                self._notify_schema_file_error(path, str(e))
+        if registered_any:
+            self._known_schema_file_sources.add(source)
+
+    def _notify_schema_file_error(self, path: Path, message: str) -> None:
+        self.view.notify_temp_ui(
+            path, f"Schema file error: {path.name}", lambda: self._show_schema_conflict_popup(path.name, message)
+        )

@@ -7,6 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, "src")
 
 from desk.event_mediator import EventMediator  # noqa: E402
+from desk.schema_registry import SchemaRegistry  # noqa: E402
 from desk.shell.new_desk_dialog import NewDeskDialog  # noqa: E402
 from desk.shell.temp_ui_manager import TempUiManager  # noqa: E402
 from desk.temp_ui import ensure_gitignore_entry, GITIGNORE_ENTRIES, GITIGNORE_COMMENT  # noqa: E402
@@ -179,11 +180,25 @@ class _FakeWidgetInfo:
     default_size = (100, 100)
 
 
+class _FakeSchemaFileWatcher:
+    """A no-op stand-in: this file tests _provision_temp_ui's own
+    confirm-dialog/call-ordering behavior, not schema-file mechanics
+    (see verify_schema_file_watcher.py/verify_state_store_top_level_schemas.py
+    for those) -- a real SchemaFileWatcher would try to actually watch
+    this fake's made-up, non-existent .desk_temp path."""
+
+    def provision(self, ephemeral_dir, project_root):
+        pass
+
+
 class _FakeWindow:
     def __init__(self, directory):
         self.current_desk = type("D", (), {"directory": directory, "path": directory / "x.desk", "name": "x"})()
         self._widgets = {}
         self.calls = []
+        self._schema_registry = SchemaRegistry()
+        self._known_schema_file_sources = set()
+        self._schema_file_watcher = _FakeSchemaFileWatcher()
 
     def _confirm_fn(self, title, message):
         def confirm():
@@ -208,6 +223,7 @@ class _FakeWindow:
 
 
 _FakeWindow._provision_temp_ui = DeskWindow._provision_temp_ui
+_FakeWindow._provision_schema_files = DeskWindow._provision_schema_files
 _FakeWindow._ensure_questions_watcher = lambda self: self.calls.append(("ensure_questions_watcher",))
 
 

@@ -6928,6 +6928,63 @@ af7898b. The state store's (TODO `f68383f`) schema declaration,
    same as a built-in widget's (never dormant). Needs a real plan
    before implementation starts.
    [planned: state-store-top-level-schemas.md]
+   COMPLETED: `src/desk/shell/schema_file_watcher.py` (new) --
+   `SchemaFileWatcher(QObject)`, `changed` signal emitted for a
+   `.json` file added/edited/removed in either watched directory
+   (added/edited/removed alike -- the receiver decides which via
+   `path.is_file()`). `.desk_temp/schemas/` is watched directly (it
+   always already exists by the time this runs, created by
+   `TempUiManager.provision`) with an initial scan on `provision()` so
+   already-present files are picked up without waiting for a
+   filesystem event; `./desk-schemas/` is polled every 2s
+   (`QTimer`) until it exists -- a real live watch (plus the same
+   initial scan) takes over once it does, rather than a permanent
+   watch over the whole project root just to catch one directory's own
+   birth. Both paths are resolved identically to the shared
+   `desk_services.file_watcher` service's own symlink-resolved event
+   paths, confirmed directly after finding a real bug where the
+   initial scan's path and a later live-edit's path for the exact same
+   file didn't match, which would have leaked a duplicate,
+   spuriously-self-conflicting registry entry. `temp_ui_manager.py`
+   -- `TempUiManager.provision` creates `.desk_temp/schemas/` (a plain
+   `mkdir`, never wiped/reseeded) alongside its other subdirectories,
+   only when `.desk_temp` itself is actually being provisioned.
+   `window.py` -- `DeskWindow` owns a `SchemaFileWatcher`
+   (`self._schema_file_watcher`) and `self._known_schema_file_sources:
+   set[str]` (tracks which `SchemaRegistry` sources came from a file,
+   kept separate from `_refresh_builtin_schemas`' own built-in-widget
+   source tracking); `_provision_temp_ui` captures `TempUiManager
+   .provision`'s return value and calls the new
+   `_provision_schema_files`, which clears every previously-tracked
+   schema-file source first (desk-switch isolation -- `SchemaRegistry`
+   is one shared instance for the whole server run, not per-Desk) then
+   re-provisions the watcher for the current directory;
+   `_on_schema_file_changed` clears the file's own prior registrations,
+   then -- if it still exists -- parses it fresh (a plain JSON object,
+   `{"<key>": "<type expression>", ...}`, the same shape a real
+   `widget.json`'s own `state_schema` field already is) and calls
+   `SchemaRegistry.register_permanent` per key, exactly the same
+   "clear then re-derive" shape `_refresh_builtin_schemas` (TODO
+   `af7898b`) already uses for built-ins; malformed JSON, a non-object
+   top level, a non-string type-expression value, or a schema conflict
+   are all loading errors, not crashes, surfaced via the existing
+   `_show_schema_conflict_popup` click-handler (no
+   `desk_widget_loading_errors`-equivalent persisted for a bare file --
+   there's no manifest to attach it to, matching `af7898b`'s own
+   in-memory-only decision). `temp_ui.py` -- "Validated vs.
+   non-validated keys" doc subsection extended with the file format and
+   both locations; `TEMPUI_DOC_VERSION` bumped 35 -> 36. New verify
+   coverage: `verify_schema_file_watcher.py` (12 checks, real
+   directories/real watches/real polling) and
+   `verify_state_store_top_level_schemas.py` (22 checks, register/
+   conflict/edit/delete/desk-switch-isolation) -- plus a fix to
+   `verify_new_desk_flow.py`'s `_FakeWindow` (needed
+   `_schema_registry`/`_known_schema_file_sources`/a no-op schema-file
+   -watcher stand-in bound, since `_provision_temp_ui` now also calls
+   `_provision_schema_files`). Full `tests/verify/` regression suite
+   passes (120 scripts total, 0 regressions).
+   `investigations/app_structure_dsl_design.md`'s "Where things were
+   left" updated to record this item's completion.
 
 6330249. New built-in schema/state-management widget -- **blocked on
    `af7898b` landing first** (needs schemas to actually exist to
