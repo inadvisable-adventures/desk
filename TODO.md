@@ -6738,7 +6738,8 @@ f68383f. A shared, capability-gated, project-scoped state store --
      reload shouldn't show a value with no explanation of how it got
      there).
    Explicitly out of scope for this item, filed separately as TODO
-   `6e1c2fe` (blocked on this one): schema declaration/validation
+   `6e1c2fe` (blocked on this one; later split into TODO `af7898b`/
+   `9aef267`/`6330249`, see those items): schema declaration/validation
    (validated vs. non-validated state), conflict resolution, built-in
    -widget and top-level schema files, and the schema/state
    -management widget -- a real, separate, large layer on top of this
@@ -6788,22 +6789,26 @@ f68383f. A shared, capability-gated, project-scoped state store --
    `investigations/app_structure_dsl_design.md`'s "Where things were
    left" updated to record this item's completion.
 
-6e1c2fe. The state store's (TODO `f68383f`) schema validation layer --
-   **blocked on `f68383f` landing first**. Full design discussion,
+af7898b. The state store's (TODO `f68383f`) schema declaration,
+   conflict resolution, and validation core -- originally filed as a
+   single item, TODO `6e1c2fe`, split into this and the two items below
+   it for manageability once its actual implementation surface became
+   clear (a type language, three distinct widget-registration paths,
+   two new file-watcher locations, and a new built-in widget really is
+   four separable pieces of work, not one). Full design discussion,
    already had -- see `investigations/app_structure_dsl_design.md`'s
    "Validated vs. non-validated state, and schema lifecycle" and
-   "Bookkeeping and call sites" sections for the complete record.
-   Summary:
+   "Bookkeeping and call sites" sections for the complete record. This
+   item's own scope is everything **except** top-level schema files
+   (TODO `9aef267`, below) and the new schema/state-management widget
+   (TODO `6330249`, below):
    - Every state key is validated (a schema -- a TypeScript type
      expression stored as a string, a pragmatic constrained subset for
      this pass -- is currently registered for it) or non-validated (no
      schema at all; access is a purely call-site-local type hint with
      best-effort coercion, nothing persisted or cross-checked).
-   - A schema can be declared in a widget's own manifest, or
-     "top-level" in a standalone schema file (two watched locations:
-     ephemeral `.desk_temp/schemas/`, and a real, git-tracked
-     `./desk-schemas/` that Desk never creates eagerly, only watches
-     for and picks up immediately once it exists).
+   - A schema can be declared in a widget's own manifest (top-level
+     schema files are TODO `9aef267`, not this item).
    - Conflict resolution is first-loaded-while-still-active wins; a
      genuinely conflicting later widget hard-fails to load entirely
      (no placement, not even a normal placement notification) --
@@ -6816,10 +6821,9 @@ f68383f. A shared, capability-gated, project-scoped state store --
      instance references it (dormant, not deleted, once the last one
      is removed -- a later instance can keep using the dormant schema
      if unchanged, or replace it if declaring a different one); a
-     built-in widget's schema (validated at `discover_widgets` time)
-     or a top-level file's schema is permanently enforced from
-     discovery/registration onward. Built-in-vs-built-in conflicts
-     resolve by `discover_widgets`' own existing alphabetical
+     built-in widget's schema (validated at `discover_widgets` time) is
+     permanently enforced from discovery onward. Built-in-vs-built-in
+     conflicts resolve by `discover_widgets`' own existing alphabetical
      directory-sort order, surfaced the same notification+manifest
      -field way, just fired once at Desk startup/switch instead of at
      a click-to-place moment.
@@ -6827,22 +6831,47 @@ f68383f. A shared, capability-gated, project-scoped state store --
      pruned the next time some other widget's load triggers the
      maintenance pass on that same schema, not eagerly on
      `close_widget`.
-   - **New built-in schema/state-management widget**: view every
-     currently-registered schema (widget-declared and top-level), its
-     enforcement status, current values, and history; where a
-     top-level schema file actually gets authored. Whenever any schema
-     is registered, Desk must guarantee an instance of this widget is
-     already placed, or place one if not, so validated state is never
-     invisible the moment it starts existing -- worth checking against
-     the real UX before assuming safe, given `DefineWidget`'s own
-     auto-placement experiment (TODO `5ff02d2`) was tried and reverted
-     (TODO `dafbaab`) for a differently-shaped (per-kind, not
-     singleton) case.
-   Not designed further than the investigation doc's own level of
-   detail yet -- the exact `StateEntry`/schema-registry dataclasses,
-   Bridge API route shapes for schema-aware `get`/`set`, and the new
-   file-watcher wiring for the two schema-file locations all need a
-   real plan before implementation starts.
+   Needs a real plan before implementation starts -- the exact schema
+   -registry dataclasses, the type-expression parser/validator, and the
+   Bridge API route shape changes for schema-aware `get`/`set` all need
+   working out.
+
+9aef267. State store top-level schema files -- **blocked on
+   `af7898b` landing first** (needs its schema type language and
+   registry to already exist). Split out of the original TODO
+   `6e1c2fe` -- see `af7898b` above for why. Full design, already had
+   -- see `investigations/app_structure_dsl_design.md`'s "Bookkeeping
+   and call sites" section. Scope: schemas declared "top-level," in a
+   standalone schema file independent of any widget's manifest --
+   two watched locations, ephemeral `.desk_temp/schemas/` and a real,
+   git-tracked `./desk-schemas/` that Desk never creates eagerly, only
+   watches for and picks up immediately once it exists. Both need new
+   file-watcher registrations, since `TempUiManager`'s existing
+   `.desk_temp` watch is non-recursive (`temp_ui_manager.py:249`) and
+   doesn't cover a `.desk_temp/schemas/` subdirectory, and
+   `./desk-schemas/` is outside `.desk_temp` entirely. A top-level
+   file's schema is permanently enforced from registration onward, the
+   same as a built-in widget's (never dormant). Needs a real plan
+   before implementation starts.
+
+6330249. New built-in schema/state-management widget -- **blocked on
+   `af7898b` landing first** (needs schemas to actually exist to
+   display), and best done after `9aef267` too so it can show
+   top-level schemas as well as widget-declared ones, though not
+   strictly blocked on it. Split out of the original TODO `6e1c2fe` --
+   see `af7898b` above for why. Full design, already had -- see
+   `investigations/app_structure_dsl_design.md`'s "Validated vs.
+   non-validated state, and schema lifecycle" section. Scope: view
+   every currently-registered schema (widget-declared and top-level),
+   its enforcement status, current values, and history; where a
+   top-level schema file actually gets authored. Whenever any schema is
+   registered, Desk must guarantee an instance of this widget is
+   already placed, or place one if not, so validated state is never
+   invisible the moment it starts existing -- worth checking against
+   the real UX before assuming safe, given `DefineWidget`'s own
+   auto-placement experiment (TODO `5ff02d2`) was tried and reverted
+   (TODO `dafbaab`) for a differently-shaped (per-kind, not singleton)
+   case. Needs a real plan before implementation starts.
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
