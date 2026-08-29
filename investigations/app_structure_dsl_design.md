@@ -616,6 +616,25 @@ TODO `9aef267` (top-level schema files, blocked on `af7898b`), and
 TODO `6330249` (the schema/state-management widget, blocked on
 `af7898b`) -- see those items in `TODO.md` for why.
 
+**Update 4**: TODO `af7898b` (schema declaration/conflict-resolution/
+validation core, `plans/state-store-schema-core.md`, COMPLETED) -- a
+widget-declared `state_schema` (a pragmatic TypeScript-subset type
+expression per key, `src/desk/schema_types.py`) makes a `desk.state.*`
+key validated: a `set` mismatch is a real error, and `get`/`set` also
+gained an optional, non-validated-only `typeHint` for call-site-local
+best-effort coercion. Conflict resolution, permanent (built-in) vs.
+placed-instance-tracked (tempui-sourced) enforcement, and dormant
+-reactivate-or-replace all work as designed
+(`src/desk/schema_registry.py`); a conflicting widget hard-fails to
+load with a clickable notification, with the error attached
+**in-memory only** to the live `WidgetInfo` (not written back into a
+real `widget.json` on disk -- a planning-time decision to avoid a
+feedback loop with the existing `widgets_dir` hot-reload watcher and
+avoid Desk auto-editing a widget author's own source file). Top-level
+schema files (`9aef267`) and the schema/state-management widget
+(`6330249`) remain open, both blocked on this landing, which it now
+has.
+
 Open threads, not yet started:
 
 1. **The editor widget's actual raw-text+structured-UI sync design**
@@ -626,14 +645,13 @@ Open threads, not yet started:
    vs. the layout tree, and how the "reusable building block, not a
    one-off" goal gets realized concretely (a shared TS base class
    alongside `document-editor-base`? something else?).
-2. **The shared, project-scoped state store's schema/validation
-   layer** (originally TODO `6e1c2fe`, blocked on `f68383f` -- now
-   COMPLETED, see Update 3 above -- and now itself split into TODO
-   `af7898b`/`9aef267`/`6330249`): conflict resolution, dormant-not
-   -deleted schemas, permanent enforcement for built-ins, the new
-   file-watcher wiring for `.desk_temp/schemas/`/`./desk-schemas/`, and
-   the new schema/state-management widget are all thoroughly designed
-   at a discussion level but not yet planned or implemented. Nothing
+2. **Top-level schema files and the schema/state-management widget**
+   (TODO `9aef267`/`6330249`, both blocked on TODO `af7898b` -- now
+   COMPLETED, see Update 4 above): the new file-watcher wiring for
+   `.desk_temp/schemas/`/`./desk-schemas/`, and the dashboard widget
+   that views every registered schema and is where a top-level schema
+   file actually gets authored, are both thoroughly designed at a
+   discussion level but not yet planned or implemented. Nothing
    structural left open; what remains is implementation-level detail
    that a real plan would work out, not further design discussion.
 3. **Promoting `necro-4x`'s Domain Analysis widget to a genuine Desk

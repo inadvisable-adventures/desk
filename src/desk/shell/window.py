@@ -34,6 +34,8 @@ from desk.file_watch import SingleFileWatcher
 from desk.hotreload import HotReloadBroker
 from desk.questions_file import find_nearest_questions_file, parse_questions_file, unparsed_heading_count
 from desk.recent_desks import add_to_mru, prune_missing_mru_entries
+from desk.schema_registry import SchemaConflict
+from desk.schema_types import SchemaSyntaxError, coerce, parse_type_expression, validate
 from desk.server.bridge_client import DOM_SNAPSHOT_JS
 from desk.server.runner import ServerHandle
 from desk.shell import current_context
@@ -142,6 +144,13 @@ WIDGET_SPACING = 700
 # reaches this many entries, the oldest is evicted as a new one
 # arrives -- see DeskWindow.set_state.
 STATE_HISTORY_MAX_ENTRIES = 50
+# Prefix on a desk.state.* schema conflict/syntax-error message appended
+# to a WidgetInfo's own desk_widget_loading_errors (TODO af7898b) --
+# lets DeskWindow._refresh_builtin_schemas find and clear only its own
+# previously-appended messages on a fresh re-registration pass, without
+# also discarding some other, unrelated loading error a future feature
+# might append to the same list.
+SCHEMA_ERROR_PREFIX = "Schema conflict: "
 # TODO fbd0554: the well-known project-convention filename this
 # codebase's own development-process.md itself names -- a plain
 # literal, not a piece of shared behavior worth its own module.
@@ -257,6 +266,15 @@ class DeskWindow(QMainWindow):
         # same mediator. See _bind_event_mediator/_refresh_picker below.
         self._event_mediator = handle.event_mediator
 
+        # The desk.state.* schema registry (TODO af7898b) -- same
+        # "one shared, runtime-only instance for the whole app run" shape
+        # as self._event_mediator above (handle.schema_registry,
+        # constructed once in desk.server.runner.start_server). See
+        # _refresh_builtin_schemas/_place_widget/get_state/set_state
+        # below and plans/state-store-schema-core.md.
+        self._schema_registry = handle.schema_registry
+        self._refresh_builtin_schemas()
+
         # (caller_instance_id, target_instance_id) pairs the Desk user has
         # already approved for the introspect Bridge capability (TODO
         # 9767c1a) -- in-memory, per-session only, never persisted to
@@ -347,6 +365,14 @@ class DeskWindow(QMainWindow):
                     instance_id=state.instance_id,
                     restore=True,
                 )
+                if frame is None:
+                    # A desk.state.* schema conflict (TODO af7898b) --
+                    # this one saved widget is skipped for this session
+                    # (the notification already fired inside
+                    # _place_widget); it's still in desk.widgets for
+                    # next time, in case the conflict gets resolved
+                    # before the next restore.
+                    continue
                 if state.widget_id in TEMP_UI_WIDGET_IDS:
                     # A TempUI-backed widget's instance_id is always its
                     # source file's uuid (TODO a02b001, TODO 11aeb43) --
@@ -419,7 +445,7 @@ class DeskWindow(QMainWindow):
         instance_id: str | None = None,
         restore: bool = False,
         claude_extra_instructions: str = "",
-    ) -> WidgetFrame:
+    ) -> WidgetFrame | None:
         if widget_id in (CLAUDE_WIDGET_ID, CLAUDE_DESK_WIDGET_ID) and instance_id is None:
             # A claude/claude_desk widget's instance_id doubles as its
             # own session id (claude's --session-id, or the SDK's
@@ -444,6 +470,11 @@ class DeskWindow(QMainWindow):
             # before that call, not set retroactively afterward.
             if instance_id is None:
                 instance_id = uuid.uuid4().hex[:8]
+            conflict = self._check_schema_conflict(widget_id, widget, instance_id)
+            if conflict is not None:
+                self._widgets[widget_id].desk_widget_loading_errors.append(conflict)
+                self._notify_schema_conflict(widget_id, conflict)
+                return None
             chromium_widget = ChromiumWidget(
                 widget_id,
                 instance_id,
@@ -721,6 +752,13 @@ class DeskWindow(QMainWindow):
         frame = self._place_widget(
             widget_id, widget, pos or (0, 0), size or widget.default_size, instance_id=instance_id
         )
+        if frame is None:
+            # A desk.state.* schema conflict (TODO af7898b) -- the
+            # notification already fired inside _place_widget; surfaced
+            # here as a real error rather than a silent no-op, since
+            # every caller of open_widget expects a genuine instance_id
+            # back.
+            raise ValueError(f"Cannot place widget {widget_id!r}: a desk.state.* schema conflict blocked it")
         return frame.instance_id
 
     def open_widget_content(
@@ -735,10 +773,18 @@ class DeskWindow(QMainWindow):
         instance id -- for callers (e.g. the TODO widget's edit-conflict
         handling, TODO d25e557) that need to configure the new instance's
         content immediately, not just place it. Returns None for `kind:
-        "html"` widgets, or if the build failed (only the error
-        placeholder from PythonWidgetHost._rebuild exists) -- see
+        "html"` widgets, if the build failed (only the error placeholder
+        from PythonWidgetHost._rebuild exists), or if placement was
+        blocked by a desk.state.* schema conflict (TODO af7898b -- the
+        conflict notification already fired inside _place_widget, so
+        this stays a quiet no-op rather than propagating open_widget's
+        own ValueError, unlike the Bridge API's widgets.open route,
+        which wants that error surfaced) -- see
         desk.shell.current_context's widget-opener hook."""
-        instance_id = self.open_widget(widget_id, pos, size, instance_id)
+        try:
+            instance_id = self.open_widget(widget_id, pos, size, instance_id)
+        except ValueError:
+            return None
         frame = self.find_frame_by_instance_id(instance_id)
         if frame is None or not isinstance(frame.content, PythonWidgetHost):
             return None
@@ -957,18 +1003,35 @@ class DeskWindow(QMainWindow):
 
     # -- Shared, project-scoped state store (TODO f68383f) ----------------
 
-    def get_state(self, key: str) -> dict:
+    def get_state(self, key: str, type_hint: str | None = None) -> dict:
         """The Bridge API's `desk.state.get`, called via `GuiBridge`
         from the (background-thread) Local Web Server. `{"value":
         None, "edit": None}` for a key nothing has ever `set()`, not
         an error -- same "empty/default for nothing-yet" convention
-        `get_html_widget_local_storage` above already uses."""
-        entry = self.current_desk.state.get(key)
-        if entry is None:
-            return {"value": None, "edit": None}
-        return {"value": entry.value, "edit": entry.edit}
+        `get_html_widget_local_storage` above already uses.
 
-    def set_state(self, key: str, value: object, edit: object, instance_id: str) -> None:
+        `type_hint` (TODO af7898b) is meaningful only for a
+        non-validated key (no currently-active schema): the *returned*
+        value is best-effort-coerced to it (the stored value itself is
+        untouched). Ignored entirely for a validated key -- every write
+        that reached storage already passed that key's schema, so the
+        stored value is already conformant by construction. Raises
+        ValueError (mapped to a 400 by the Bridge API, see
+        desk.server.app.run_on_gui) if `type_hint` itself doesn't parse
+        as a type expression."""
+        entry = self.current_desk.state.get(key)
+        value = entry.value if entry is not None else None
+        edit = entry.edit if entry is not None else None
+        if self._schema_registry.get(key) is None and type_hint is not None:
+            try:
+                value = coerce(parse_type_expression(type_hint), value)
+            except SchemaSyntaxError as e:
+                raise ValueError(f"Invalid typeHint {type_hint!r}: {e}") from e
+        return {"value": value, "edit": edit}
+
+    def set_state(
+        self, key: str, value: object, edit: object, instance_id: str, type_hint: str | None = None
+    ) -> None:
         """The Bridge API's `desk.state.set` -- updates the current
         value/edit for `key`, appends it to that key's own bounded
         history (evicting the oldest entry once
@@ -977,7 +1040,29 @@ class DeskWindow(QMainWindow):
         `desk.events` mechanism (TODO 6f9c51b) rather than a new
         transport -- `sender_instance_id=instance_id` means the widget
         that called this never receives its own write back, the same
-        standard pub/sub default `events.publish` already has."""
+        standard pub/sub default `events.publish` already has.
+
+        `key` (TODO af7898b): if some widget currently declares a
+        schema for `key`, `value` is validated against it -- a mismatch
+        raises ValueError (mapped to a 400, nothing is stored or
+        published), and `type_hint` is ignored entirely. Otherwise
+        (`key` is non-validated), `type_hint` -- if given -- is used to
+        best-effort-coerce `value` before storing; a `type_hint` that
+        doesn't parse itself is also a ValueError. Omitting `type_hint`
+        on a non-validated key preserves TODO f68383f's original
+        behavior exactly: `value` is stored exactly as given, no
+        coercion at all."""
+        schema = self._schema_registry.get(key)
+        if schema is not None:
+            if not validate(schema.type_node, value):
+                raise ValueError(
+                    f"State key {key!r}: value does not match its active schema ({schema.type_expr!r})"
+                )
+        elif type_hint is not None:
+            try:
+                value = coerce(parse_type_expression(type_hint), value)
+            except SchemaSyntaxError as e:
+                raise ValueError(f"Invalid typeHint {type_hint!r}: {e}") from e
         entry = self.current_desk.state.get(key)
         if entry is None:
             entry = StateEntry(value=value, edit=edit)
@@ -2098,6 +2183,7 @@ class DeskWindow(QMainWindow):
             # just re-invokable via tempui.
             tempui_only=(source == "tempui"),
             content_hash=content_hash,
+            state_schema=definition.state_schema,
         )
         self._widgets[keyword] = info
         self._custom_widget_definitions[keyword] = definition
@@ -2558,4 +2644,87 @@ class DeskWindow(QMainWindow):
         }
         self._widgets = discover_widgets(self._widgets_dir)
         self._widgets.update(custom_entries)
+        self._refresh_builtin_schemas()
         self.view.set_widget_catalog(self._widgets)
+
+    def _refresh_builtin_schemas(self) -> None:
+        """Re-derives every built-in widget's permanently-enforced
+        desk.state.* schema declaration from the current self._widgets
+        catalog (TODO af7898b) -- called once in __init__ and again from
+        _on_widget_changed_refresh_catalog above, since that's the only
+        other place self._widgets is rebuilt wholesale from a fresh
+        discover_widgets scan. Every previously-registered built-in
+        schema is cleared first (via permanent_source_ids, which still
+        finds one whose widget has since been removed from disk
+        entirely, unlike walking self._widgets' current keys would), so
+        a schema a widget author just removed -- or a conflict that's
+        since been fixed on disk -- doesn't linger. Skips any id present
+        in self._custom_widget_sources: a tempui-DSL-defined custom
+        widget's schema is placement-instance-tracked, not permanent --
+        see _place_widget's own conflict gate instead."""
+        for source_id in self._schema_registry.permanent_source_ids():
+            self._schema_registry.clear_source(source_id)
+        for widget_id, widget in self._widgets.items():
+            if widget_id in self._custom_widget_sources:
+                continue
+            widget.desk_widget_loading_errors = [
+                msg for msg in widget.desk_widget_loading_errors if not msg.startswith(SCHEMA_ERROR_PREFIX)
+            ]
+            for key, type_expr in widget.state_schema.items():
+                try:
+                    self._schema_registry.register_permanent(key, type_expr, widget_id)
+                except (SchemaConflict, SchemaSyntaxError) as e:
+                    message = f"{SCHEMA_ERROR_PREFIX}{e}"
+                    widget.desk_widget_loading_errors.append(message)
+                    self._notify_schema_conflict(widget_id, message)
+
+    def _check_schema_conflict(self, widget_id: str, widget: WidgetInfo, instance_id: str) -> str | None:
+        """Returns a conflict message if placing this tempui-sourced
+        custom widget instance would conflict with an already-active
+        desk.state.* schema, or None if placement may proceed (TODO
+        af7898b). A no-op for a widget declaring no schema, or one
+        that isn't a registered custom-widget keyword at all -- a real
+        built-in's schema is already permanently registered by
+        _refresh_builtin_schemas, so re-checking it here would be
+        redundant, not wrong.
+
+        Not atomic across more than one declared key: if a widget
+        declares two keys and the first join succeeds but the second
+        conflicts, the first key's registry entry is left referencing
+        `instance_id` even though this placement is about to be
+        refused. This is self-healing, not a lasting bug -- the next
+        join/register touching that same key prunes `instance_id` via
+        the ordinary lazy-pruning maintenance pass (is_instance_placed
+        correctly reports it as never having been placed at all), the
+        same as any other instance that's no longer around."""
+        if widget_id not in self._custom_widget_sources or not widget.state_schema:
+            return None
+        for key, type_expr in widget.state_schema.items():
+            try:
+                self._schema_registry.join_or_conflict_placement(
+                    key, type_expr, widget_id, instance_id, self._is_instance_currently_placed
+                )
+            except (SchemaConflict, SchemaSyntaxError) as e:
+                return f"{SCHEMA_ERROR_PREFIX}{e}"
+        return None
+
+    def _is_instance_currently_placed(self, instance_id: str) -> bool:
+        return self.find_frame_by_instance_id(instance_id) is not None
+
+    def _notify_schema_conflict(self, widget_id: str, message: str) -> None:
+        """A clickable notification for a desk.state.* schema conflict
+        (TODO af7898b), reusing WorkspaceView.notify_temp_ui exactly as
+        real tempui files already do -- keyed by a content-free synthetic
+        Path so a widget with a live, unresolved conflict shows exactly
+        one banner no matter how many times registration/placement is
+        retried, the same dedup-by-key behavior _notify_temp_ui already
+        relies on."""
+        path = Path(f"schema-conflict:{widget_id}")
+        self.view.notify_temp_ui(
+            path, f"Schema conflict: {widget_id}", lambda: self._show_schema_conflict_popup(widget_id, message)
+        )
+
+    def _show_schema_conflict_popup(self, widget_id: str, message: str) -> None:
+        opener = current_context.get_popup_opener()
+        if opener is not None:
+            opener(f"Schema conflict: {widget_id}", message, ["OK"], "OK")

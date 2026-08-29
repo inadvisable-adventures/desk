@@ -25,6 +25,7 @@ app = QApplication.instance() or QApplication(sys.argv)
 
 from desk.desks import Desk  # noqa: E402
 from desk.hotreload import HotReloadBroker  # noqa: E402
+from desk.schema_registry import SchemaRegistry  # noqa: E402
 from desk.shell.canvas import WorkspaceView  # noqa: E402
 from desk.shell.chromium_widget import ChromiumWidget  # noqa: E402
 from desk.shell.python_widget import PythonWidgetHost  # noqa: E402
@@ -78,6 +79,7 @@ class _FakeWindow:
         self._custom_widget_sources = {}
         self._custom_widget_definitions = {}
         self._custom_widget_content_hash = {}
+        self._schema_registry = SchemaRegistry()
         self.confirm_calls = []
 
     def _confirm_widget_error_dismissed_recording(self, message):
@@ -90,6 +92,11 @@ _FakeWindow._bind_claude_widget = DeskWindow._bind_claude_widget
 _FakeWindow._bind_external_indicator = DeskWindow._bind_external_indicator
 _FakeWindow._bind_event_mediator = DeskWindow._bind_event_mediator
 _FakeWindow._bind_error_indicator = DeskWindow._bind_error_indicator
+_FakeWindow._check_schema_conflict = DeskWindow._check_schema_conflict
+_FakeWindow._is_instance_currently_placed = DeskWindow._is_instance_currently_placed
+_FakeWindow._notify_schema_conflict = DeskWindow._notify_schema_conflict
+_FakeWindow._show_schema_conflict_popup = DeskWindow._show_schema_conflict_popup
+_FakeWindow.find_frame_by_instance_id = DeskWindow.find_frame_by_instance_id
 _FakeWindow._on_widget_error_clicked = DeskWindow._on_widget_error_clicked
 
 

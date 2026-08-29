@@ -6836,6 +6836,79 @@ af7898b. The state store's (TODO `f68383f`) schema declaration,
    Bridge API route shape changes for schema-aware `get`/`set` all need
    working out.
    [planned: state-store-schema-core.md]
+   COMPLETED: `src/desk/schema_types.py` (new) -- a pragmatic TypeScript
+   -subset type-expression parser (primitives, literals, arrays, unions,
+   simple object shapes with optional members), `validate`/`coerce`
+   (coerce is best-effort, never raises) and
+   `type_expressions_equivalent` (structural, order-independent).
+   `src/desk/schema_registry.py` (new) -- `RegisteredSchema`,
+   `SchemaConflict`, `SchemaRegistry` with `register_permanent` (built
+   -ins; idempotent for the same source, first-registered-source wins
+   alphabetically since `discover_widgets`' own directory-sort order is
+   preserved by dict insertion order), `clear_source`/
+   `permanent_source_ids` (re-derives every built-in schema fresh on
+   every hot reload, so a fixed/removed conflict clears), and
+   `join_or_conflict_placement` (tempui-sourced: fresh/join-while
+   -active/conflict-while-active/dormant-reactivate-if-unchanged/dormant
+   -replace-if-different, with lazy instance-list pruning folded into
+   the same call). `src/desk/widgets.py` -- `WidgetInfo.state_schema`/
+   `.desk_widget_loading_errors` (the latter in-memory only, never
+   written to a real widget.json -- see the plan's own "Decided in this
+   planning pass" note); `_parse_manifest` reads `state_schema`.
+   `src/desk/temp_ui.py` -- `CustomWidgetDefinition.state_schema`;
+   `parse_define_widget` gained a repeatable `StateSchema<TAB>key<TAB>
+   type_expr` DSL line; `build_widget.py`'s own generated script emits
+   it from a `state_schema` field in its authoring-source `widget.json`
+   too; new "Validated vs. non-validated keys" doc subsection;
+   `TEMPUI_DOC_VERSION` bumped 34 -> 35. `src/desk/server/runner.py` --
+   `ServerHandle.schema_registry`, constructed once alongside
+   `event_mediator`. `src/desk/server/app.py` -- `SetStateRequest
+   .type_hint`; `state_get`/`state_set` thread it through;
+   `run_on_gui` maps a `ValueError` to a 400 (schema mismatch, invalid
+   `type_hint`, or a `desk.state.*`-conflict-blocked `widgets.open`);
+   `self_get_manifest` now prefers the live `gui_bridge.window
+   .get_widget_info` result over `require_caller`'s own separate,
+   always-fresh `discover_widgets` scan, so `state_schema`/
+   `desk_widget_loading_errors` are never stale for a built-in;
+   `_widget_info_dict` includes both fields. `src/desk/server
+   /bridge_client.py` -- `desk.state.get/set` gained an optional
+   `typeHint`. `src/desk/shell/window.py` -- `self._schema_registry`;
+   `_refresh_builtin_schemas` (called from `__init__` and
+   `_on_widget_changed_refresh_catalog`, skips any id in
+   `_custom_widget_sources`); `_place_widget` returns `WidgetFrame |
+   None` and gates a tempui-sourced custom widget's declared schema(s)
+   through `join_or_conflict_placement` before creating a frame,
+   appending to `desk_widget_loading_errors` and firing
+   `_notify_schema_conflict` (reuses `WorkspaceView.notify_temp_ui`,
+   keyed by a synthetic `Path("schema-conflict:<id>")`) on a refusal;
+   every real call site updated for a possible `None` (`_load_desk_widgets`
+   skips and continues; `open_widget` raises `ValueError`, caught and
+   turned into a quiet `None` by `open_widget_content` for internal
+   GUI-driven callers like `_activate_temp_ui`, left to propagate for
+   the Bridge API's `widgets.open` route); `get_state`/`set_state`
+   validate against an active schema or best-effort-coerce a non
+   -validated key's optional `type_hint`, preserving TODO `f68383f`'s
+   exact prior behavior when neither applies. New verify coverage:
+   `verify_schema_types.py` (60 checks), `verify_schema_registry.py`
+   (25 checks), `verify_state_store_schema.py` (14 checks, real Bridge
+   -API-over-HTTP), `verify_state_store_schema_placement.py` (12
+   checks, real `_place_widget`/dormancy round trip against two
+   conflicting `DefineWidget`-sourced kinds) -- plus fixes to 8
+   pre-existing scripts whose hand-rolled `_FakeGuiWindow`/`_FakeWindow`
+   test doubles had either drifted out of sync with `get_state`/
+   `set_state`'s new signature (`verify_state_store.py`, now reuses the
+   real `DeskWindow` methods instead of a duplicated copy) or needed
+   the new `_place_widget`-required methods bound
+   (`verify_custom_widget_content_hash.py`, `verify_html_job_execution.py`,
+   `verify_html_widget_local_storage.py`,
+   `verify_relocate_promoted_widget_source.py`,
+   `verify_stale_marker_click_dialog.py`, `verify_tempui_custom_widgets.py`,
+   `verify_widget_error_indicator.py`). Full `tests/verify/` regression
+   suite passes (118 scripts total, 0 regressions -- the sole failure,
+   `disabled_verify_claude_desk_widget_claude_api.py`, is an already
+   -filed, already-disabled, unrelated flaky item).
+   `investigations/app_structure_dsl_design.md`'s "Where things were
+   left" updated to record this item's completion.
 
 9aef267. State store top-level schema files -- **blocked on
    `af7898b` landing first** (needs its schema type language and

@@ -1,6 +1,6 @@
 import json
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from desk.hotreload import HotReloadBroker
@@ -35,6 +35,21 @@ class WidgetInfo:
     # internally to detect a placed instance that predates the current
     # definition (see WidgetFrame.placed_content_hash).
     content_hash: str | None = None
+    # desk.state.* schema declarations (TODO af7898b) -- key -> a
+    # TypeScript type expression string (see desk.schema_types). Read
+    # from a real widget.json's own "state_schema" key by _parse_manifest
+    # below, or from CustomWidgetDefinition.state_schema for a
+    # tempui-DSL-defined custom widget (see DeskWindow
+    # ._register_custom_widget).
+    state_schema: dict[str, str] = field(default_factory=dict)
+    # Schema conflict/syntax-error messages Desk itself has appended
+    # (TODO af7898b) -- never read from or written to a real widget.json
+    # on disk (see plans/state-store-schema-core.md's "Decided in this
+    # planning pass" note); purely in-memory, populated by
+    # DeskWindow._refresh_builtin_schemas/_place_widget, and lost the
+    # next time this WidgetInfo is freshly rebuilt (a hot reload, or the
+    # underlying conflict being resolved).
+    desk_widget_loading_errors: list[str] = field(default_factory=list)
 
 
 def _parse_manifest(manifest_path: Path) -> WidgetInfo:
@@ -59,6 +74,7 @@ def _parse_manifest(manifest_path: Path) -> WidgetInfo:
         capabilities=manifest.get("capabilities", []),
         default_size=(size["width"], size["height"]) if size else None,
         deprecated=manifest.get("deprecated", False),
+        state_schema=manifest.get("state_schema", {}),
     )
 
 

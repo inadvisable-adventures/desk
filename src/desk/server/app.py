@@ -119,6 +119,11 @@ def _widget_info_dict(widget: WidgetInfo) -> dict:
         # one, so its own JS can call self.getManifest() to check which
         # version of its definition is currently registered.
         "content_hash": widget.content_hash,
+        # TODO af7898b: desk.state.* schema declarations this widget
+        # made, and any conflict/syntax-error message Desk has appended
+        # for it -- see WidgetInfo.state_schema/desk_widget_loading_errors.
+        "state_schema": widget.state_schema,
+        "desk_widget_loading_errors": widget.desk_widget_loading_errors,
     }
 
 
@@ -160,6 +165,7 @@ class SetStateRequest(BaseModel):
     key: str
     value: object
     edit: object = None
+    type_hint: str | None = None
 
 
 class IntrospectSnapshotRequest(BaseModel):
@@ -278,6 +284,14 @@ def create_app(
             raise HTTPException(503, str(e)) from e
         except KeyError as e:
             raise HTTPException(400, f"Unknown widget id: {e}") from e
+        except ValueError as e:
+            # TODO af7898b: a desk.state.* schema mismatch/invalid
+            # typeHint (DeskWindow.get_state/set_state), or a
+            # desk.state.* schema conflict blocking widgets.open
+            # (DeskWindow.open_widget) -- both real, expected-shape
+            # rejections, not a bug, so a 400 with the message rather
+            # than a 500.
+            raise HTTPException(400, str(e)) from e
 
     def require_mediator() -> EventMediator:
         if event_mediator is None:
@@ -302,8 +316,25 @@ def create_app(
         return directory / path
 
     @app.get("/api/bridge/self/getManifest")
-    async def self_get_manifest(widget: WidgetInfo = Depends(require_caller(None))):
-        manifest = _widget_info_dict(widget)
+    async def self_get_manifest(
+        x_desk_widget_id: str = Header(...), widget: WidgetInfo = Depends(require_caller(None))
+    ):
+        # TODO af7898b: prefers the live, DeskWindow-owned WidgetInfo
+        # (which carries desk_widget_loading_errors/state_schema as
+        # DeskWindow itself last updated them) over the
+        # require_caller-injected one, which for a real built-in widget
+        # is always a fresh, separate discover_widgets(widgets_dir) scan
+        # -- see require_caller's own resolution order above -- and so
+        # would otherwise show a permanently-stale, always-empty
+        # desk_widget_loading_errors for a built-in. Falls back to the
+        # injected `widget` (pre-attach, or truly not found) unchanged.
+        live_widget = None
+        if gui_bridge is not None:
+            try:
+                live_widget = await run_on_gui(lambda: gui_bridge.window.get_widget_info(x_desk_widget_id))
+            except HTTPException:
+                live_widget = None
+        manifest = _widget_info_dict(live_widget if live_widget is not None else widget)
         # TODO c892403: lets a widget that genuinely needs to construct
         # its own project-relative path do so correctly and portably,
         # without needing the "fs" capability just to find out where it
@@ -337,10 +368,11 @@ def create_app(
     @app.get("/api/bridge/state/get")
     async def state_get(
         key: str,
+        type_hint: str | None = None,
         widget: WidgetInfo = Depends(require_caller("state")),
         instance_id: str = Depends(require_instance_id),
     ):
-        return await run_on_gui(lambda: gui_bridge.window.get_state(key))
+        return await run_on_gui(lambda: gui_bridge.window.get_state(key, type_hint))
 
     @app.post("/api/bridge/state/set")
     async def state_set(
@@ -348,7 +380,9 @@ def create_app(
         widget: WidgetInfo = Depends(require_caller("state")),
         instance_id: str = Depends(require_instance_id),
     ):
-        await run_on_gui(lambda: gui_bridge.window.set_state(body.key, body.value, body.edit, instance_id))
+        await run_on_gui(
+            lambda: gui_bridge.window.set_state(body.key, body.value, body.edit, instance_id, body.type_hint)
+        )
         return {"ok": True}
 
     @app.get("/api/bridge/state/getHistory")

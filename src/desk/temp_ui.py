@@ -238,7 +238,17 @@ APP_DSL_DIRNAME = "app_dsl"
 # history. New "Shared, project-scoped state" section; capability list
 # above gained `state`. Non-validated core only -- schema declaration/
 # validation is a separate, later TODO (6e1c2fe).
-TEMPUI_DOC_VERSION = 34
+#
+# TODO af7898b: bumped 34 -> 35 -- desk.state.* keys can now be
+# validated: a widget declares a schema for a key via a new
+# `state_schema` widget.json field (or `StateSchema<TAB>key<TAB>
+# type_expr` DefineWidget line), and every `set` to that key is checked
+# against it. `get`/`set` also gained an optional, non-validated-only
+# `typeHint` parameter for call-site-local best-effort coercion. New
+# "Validated vs. non-validated keys" subsection; a conflicting schema
+# declaration fails a widget's own load with a clickable notification
+# and a new `desk_widget_loading_errors` field on self.getManifest().
+TEMPUI_DOC_VERSION = 35
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -601,6 +611,12 @@ contain spaces:
   JS can only call the always-available `self.*` calls (see "The Desk
   Bridge API" below) — anything else (including `events.*`) fails with
   a 403 unless you declare the matching capability here.
+- `StateSchema<TAB>key<TAB>type_expr` — optional, repeatable (TODO
+  af7898b). Declares a validated schema for one `desk.state.*` key --
+  `type_expr` is a TypeScript type expression string (see "Shared,
+  project-scoped state" below for the supported subset and what
+  declaring a schema actually does). Requires the `state` capability
+  too, the same as any other `desk.state.*` access.
 - `Html<TAB>base64-chunk` — the widget's entire implementation: **one
   self-contained HTML document** (inline `<style>`/`<script>` cover
   CSS/JS — there's no separate CSS/JS file), **base64-encoded**. Split
@@ -674,7 +690,12 @@ not-yet-promoted widget's source too. Four files:
   `widget.json` is the one place a defined widget's capabilities need
   to be declared, the same way a real `kind: "python"`/`"html"`
   widget's manifest already works. Omit it entirely for a widget that
-  needs none (the default).
+  needs none (the default). Also accepts an optional `"state_schema":
+  {"<key>": "<type expression>", ...}` (TODO af7898b) declaring which
+  `desk.state.*` keys this widget kind's schema covers -- the build
+  script emits one `StateSchema<TAB>key<TAB>type_expr` line per entry,
+  the same real widget.json field a `kind: "python"`/`"html"` widget
+  declares one in. See "Shared, project-scoped state" below.
 
 Then `python3 .desk_temp/build_widget.py .desk_temp/widgets/<name>`
 compiles it (`tsc -p <dir>`), concatenates the compiled JS, substitutes
@@ -938,18 +959,21 @@ cross-widget persistence scheme (e.g. one widget writing to a file the
 other polls); it also gets you change notification and a short history
 for free.
 
-- `desk.state.get(key)` → `{ value, edit }` — the current value for
-  `key`, and the `edit` that was passed alongside the write that
-  produced it (see below). A key nothing has ever written to returns
-  `{ value: null, edit: null }`, not an error.
-- `desk.state.set(key, value, edit)` → `{ ok: true }` — writes `value`
-  (any JSON-serializable value) as the new current value for `key`.
-  `edit` is optional (omit or pass `null`) and is never interpreted by
-  Desk — it's stored and handed back verbatim from `get`/`getHistory`,
-  meant for widgets that want to describe *what changed* (e.g. a
-  structured patch or a human-readable description) alongside the new
-  full value, without Desk needing to understand that description's
-  format at all.
+- `desk.state.get(key, typeHint)` → `{ value, edit }` — the current
+  value for `key`, and the `edit` that was passed alongside the write
+  that produced it (see below). A key nothing has ever written to
+  returns `{ value: null, edit: null }`, not an error. `typeHint` is
+  optional and only meaningful for a **non-validated** key (see below)
+  — ignored entirely for a key that currently has a schema.
+- `desk.state.set(key, value, edit, typeHint)` → `{ ok: true }` —
+  writes `value` (any JSON-serializable value) as the new current value
+  for `key`. `edit` is optional (omit or pass `null`) and is never
+  interpreted by Desk — it's stored and handed back verbatim from
+  `get`/`getHistory`, meant for widgets that want to describe *what
+  changed* (e.g. a structured patch or a human-readable description)
+  alongside the new full value, without Desk needing to understand that
+  description's format at all. `typeHint` is optional, and only
+  meaningful for a non-validated key.
 - `desk.state.getHistory(key, limit)` → `{ history: [{ value, edit },
   ...] }` — up to the most recent `limit` `(value, edit)` pairs written
   to `key`, **newest first**. Desk keeps only the 50 most recent writes
@@ -965,9 +989,41 @@ widget's writes live rather than polling `get`. As with any
 `desk.events` message, you never receive your own `set` echoed back to
 you.
 
-There is no schema or type checking on state keys in this version —
-`value` is opaque JSON as far as Desk is concerned, and it's up to the
-widgets sharing a key to agree on its shape out of band.
+### Validated vs. non-validated keys (TODO af7898b)
+
+A key is **validated** if some widget currently declares a schema for
+it (a `state_schema` entry in that widget's own manifest — see
+`StateSchema<TAB>key<TAB>type_expr` above for a `DefineWidget`, or the
+`"state_schema"` field of a real `widgets/<id>/widget.json`), and
+**non-validated** otherwise — this is a property of the key itself, not
+of any individual `get`/`set` call.
+
+- A schema (`type_expr`) is a string in a small, intentionally
+  -constrained subset of TypeScript type syntax: primitives (`string`,
+  `number`, `boolean`, `null`), literal unions (`"a" | "b"`, `1 | 2`),
+  arrays (`string[]`, `number[][]`), and simple object shapes (`{ a:
+  string; b?: number }`, extra keys beyond those declared are always
+  allowed). No generics, tuples, or intersections in this version.
+- **`set` on a validated key**: `value` is checked against the active
+  schema. A mismatch is a real error (the call fails, nothing is stored
+  or published) — this holds even if *you* didn't declare the schema
+  yourself; whichever widget's manifest currently owns `key`'s schema
+  governs every write to it. `typeHint` is ignored.
+- **`set`/`get` on a non-validated key**: `typeHint` (the same small
+  type-expression syntax as a schema) is optional and purely
+  call-site-local — `set` best-effort-coerces `value` to it before
+  storing; `get` best-effort-coerces the *returned* value only (the
+  stored value itself is untouched). Coercion never fails the call —
+  a hopeless coercion just returns the value unchanged. Omitting
+  `typeHint` entirely (the common case) stores/returns exactly what was
+  given, no coercion at all.
+- **Declaring a schema that conflicts with an already-active one for
+  the same key** means your widget doesn't load at all — no placement,
+  not even a normal placement notification. Instead, a clickable
+  notification appears explaining the conflict, and
+  `self.getManifest()`'s response gains a `desk_widget_loading_errors`
+  array with the same message, for as long as the conflict is still
+  live.
 
 ## Inspecting another widget
 
@@ -1192,6 +1248,19 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 35
+- `desk.state.*` keys can now be validated: declare a schema for a key
+  via a `state_schema` field in a real `widgets/<id>/widget.json` (or a
+  `StateSchema<TAB>key<TAB>type_expr` `DefineWidget` line), and every
+  `set` to that key is checked against it. `get`/`set` also gained an
+  optional `typeHint` parameter, meaningful only for a non-validated
+  key, for call-site-local best-effort coercion. See "Validated vs.
+  non-validated keys" in `tempui-custom-widgets.md`. A widget declaring
+  a schema that conflicts with an already-active one for the same key
+  fails to load entirely (a clickable notification explains why, and
+  `self.getManifest()` gains a `desk_widget_loading_errors` array with
+  the same message).
 
 ## Version 34
 - New `desk.state.*` Bridge API calls (capability `state`): a shared,
@@ -1620,6 +1689,9 @@ def build_widget(widget_dir: Path) -> tuple[str, str]:
         f"Size\\t{manifest['width']}\\t{manifest['height']}",
     ]
     lines.extend(f"Capability\\t{cap}" for cap in manifest.get("capabilities", []))
+    lines.extend(
+        f"StateSchema\\t{key}\\t{type_expr}" for key, type_expr in manifest.get("state_schema", {}).items()
+    )
     lines.extend(f"Html\\t{chunk}" for chunk in _chunk(html_b64, HTML_CHUNK_SIZE))
     return manifest["keyword"], "\\n".join(lines) + "\\n"
 
@@ -1941,13 +2013,17 @@ class CustomWidgetDefinition:
     this widget kind is allowed to use -- same coarse, resource-level
     strings a real `widgets/<id>/widget.json`'s own `capabilities`
     list already uses; defaults to none declared, same as a manifest
-    with no `capabilities` key."""
+    with no `capabilities` key. `state_schema` (TODO af7898b) is the
+    same key -> TypeScript-type-expression-string dict a real
+    `widget.json`'s own `state_schema` field would be -- see
+    desk.schema_types and plans/state-store-schema-core.md."""
 
     keyword: str
     label: str
     html_b64: str
     default_size: tuple[int, int] | None = None
     capabilities: list[str] = field(default_factory=list)
+    state_schema: dict[str, str] = field(default_factory=dict)
 
 
 def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
@@ -1955,7 +2031,11 @@ def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
     file: `DefineWidget<TAB>keyword<TAB>label` (must be the first
     line), an optional `Size<TAB>width<TAB>height` line, zero or more
     `Capability<TAB>name` lines (TODO f693275 -- same shape as `Size`,
-    repeatable, collected in file order), and one or more
+    repeatable, collected in file order), zero or more
+    `StateSchema<TAB>key<TAB>type_expr` lines (TODO af7898b -- same
+    repeatable shape; a duplicate key keeps the last one in file order,
+    the same way a real widget.json's own state_schema dict would
+    behave for a duplicate JSON key), and one or more
     `Html<TAB>base64-chunk` lines (concatenated in file order before
     decoding -- decoding itself happens later, in
     desk.custom_widgets.materialize, not here). Returns None if the
@@ -1974,6 +2054,7 @@ def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
 
     size: tuple[int, int] | None = None
     capabilities: list[str] = []
+    state_schema: dict[str, str] = {}
     html_chunks: list[str] = []
     for line in lines[1:]:
         if line.startswith("Size\t"):
@@ -1987,6 +2068,13 @@ def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
             name = line.split("\t", 1)[1].strip()
             if name:
                 capabilities.append(name)
+        elif line.startswith("StateSchema\t"):
+            parts = line.split("\t")
+            if len(parts) >= 3:
+                key = parts[1].strip()
+                type_expr = parts[2].strip()
+                if key and type_expr:
+                    state_schema[key] = type_expr
         elif line.startswith("Html\t"):
             html_chunks.append(line.split("\t", 1)[1])
 
@@ -1998,6 +2086,7 @@ def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
         html_b64="".join(html_chunks),
         default_size=size,
         capabilities=capabilities,
+        state_schema=state_schema,
     )
 
 

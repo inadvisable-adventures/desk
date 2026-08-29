@@ -1,4 +1,4 @@
-# State store schema declaration, conflict resolution, and validation core (TODO `af7898b`)
+# State store schema declaration, conflict resolution, and validation core (TODO `af7898b`) (COMPLETED)
 
 ## Summary
 

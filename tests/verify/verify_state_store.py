@@ -11,12 +11,18 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
 
+import desk.shell.widget_frame  # noqa: E402  (imported before QApplication -- WebEngine ordering)
+import desk.shell.canvas  # noqa: E402
+from PyQt6.QtWebEngineWidgets import QWebEngineView  # noqa: E402,F401
+
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 app = QApplication.instance() or QApplication(sys.argv)
 
 from desk.desks import Desk, StateEntry, StateHistoryEntry, desk_state_dict, load_desk, save_desk  # noqa: E402
+from desk.schema_registry import SchemaRegistry  # noqa: E402
 from desk.server.runner import start_server  # noqa: E402
+from desk.shell.window import DeskWindow  # noqa: E402
 
 passed = 0
 failed = 0
@@ -74,8 +80,17 @@ class _FakeDesk:
 
 
 class _FakeGuiWindow:
+    """get_state/set_state/get_state_history are the real
+    DeskWindow methods (unbound, called against this lightweight stand
+    -in) rather than a hand-rolled copy -- TODO af7898b added a
+    `type_hint` parameter and a `self._schema_registry` reference to
+    both, so a duplicate copy here would have silently drifted out of
+    sync with the real signature (as it briefly did, causing every
+    request in this file to 500 until fixed)."""
+
     def __init__(self, directory):
         self.current_desk = _FakeDesk(directory)
+        self._schema_registry = SchemaRegistry()
 
     def get_widget_info(self, widget_id):
         from desk.widgets import WidgetInfo
@@ -86,30 +101,9 @@ class _FakeGuiWindow:
             capabilities=capabilities, default_size=None,
         )
 
-    def get_state(self, key):
-        entry = self.current_desk.state.get(key)
-        if entry is None:
-            return {"value": None, "edit": None}
-        return {"value": entry.value, "edit": entry.edit}
-
-    def set_state(self, key, value, edit, instance_id):
-        entry = self.current_desk.state.get(key)
-        if entry is None:
-            entry = StateEntry(value=value, edit=edit)
-            self.current_desk.state[key] = entry
-        else:
-            entry.value = value
-            entry.edit = edit
-        entry.history.append(StateHistoryEntry(value=value, edit=edit))
-        del entry.history[:-STATE_HISTORY_MAX_ENTRIES]
-        self._mediator.publish("desk.state.changed", {"key": key, "value": value, "edit": edit}, sender_instance_id=instance_id)
-
-    def get_state_history(self, key, limit):
-        entry = self.current_desk.state.get(key)
-        if entry is None:
-            return []
-        recent = entry.history[-limit:] if limit > 0 else []
-        return [{"value": h.value, "edit": h.edit} for h in reversed(recent)]
+    get_state = DeskWindow.get_state
+    set_state = DeskWindow.set_state
+    get_state_history = DeskWindow.get_state_history
 
 
 def _request(url, token, widget_id, instance_id, method="GET", body=None):
@@ -166,7 +160,7 @@ def test_bridge_api_state_get_set_history_and_events():
         handle = start_server(widgets_dir=widgets_dir)
         try:
             fake_window = _FakeGuiWindow(desk_dir)
-            fake_window._mediator = handle.event_mediator
+            fake_window._event_mediator = handle.event_mediator
             handle.gui_bridge.attach(fake_window)
             base = f"http://{handle.host}:{handle.port}"
             result = {}

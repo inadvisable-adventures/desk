@@ -76,8 +76,14 @@ BRIDGE_CLIENT_TEMPLATE = """
       getState: () => call("GET", "/api/bridge/workspace/getState"),
     },
     state: {
-      get: (key) => call("GET", `/api/bridge/state/get?key=${encodeURIComponent(key)}`),
-      set: (key, value, edit) => call("POST", "/api/bridge/state/set", { key, value, edit: edit ?? null }),
+      get: (key, typeHint) =>
+        call(
+          "GET",
+          `/api/bridge/state/get?key=${encodeURIComponent(key)}` +
+            (typeHint !== undefined ? `&type_hint=${encodeURIComponent(typeHint)}` : "")
+        ),
+      set: (key, value, edit, typeHint) =>
+        call("POST", "/api/bridge/state/set", { key, value, edit: edit ?? null, type_hint: typeHint ?? null }),
       getHistory: (key, limit) =>
         call(
           "GET",

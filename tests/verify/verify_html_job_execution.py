@@ -22,6 +22,7 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 app = QApplication(sys.argv)
 
 from desk.hotreload import HotReloadBroker  # noqa: E402
+from desk.schema_registry import SchemaRegistry  # noqa: E402
 from desk.server.runner import start_server  # noqa: E402
 from desk.shell.canvas import WorkspaceView  # noqa: E402
 from desk.shell.chromium_widget import ChromiumWidget  # noqa: E402
@@ -77,6 +78,7 @@ class _FakeWindowWithView:
         self._custom_widget_sources = {}
         self._custom_widget_definitions = {}
         self._custom_widget_content_hash = {}
+        self._schema_registry = SchemaRegistry()
 
     def get_state_dict(self):
         """Resolves the real /api/bridge/workspace/getState route the
@@ -90,6 +92,11 @@ _FakeWindowWithView._bind_claude_widget = DeskWindow._bind_claude_widget
 _FakeWindowWithView._bind_external_indicator = DeskWindow._bind_external_indicator
 _FakeWindowWithView._bind_event_mediator = DeskWindow._bind_event_mediator
 _FakeWindowWithView._bind_error_indicator = DeskWindow._bind_error_indicator
+_FakeWindowWithView._check_schema_conflict = DeskWindow._check_schema_conflict
+_FakeWindowWithView._is_instance_currently_placed = DeskWindow._is_instance_currently_placed
+_FakeWindowWithView._notify_schema_conflict = DeskWindow._notify_schema_conflict
+_FakeWindowWithView._show_schema_conflict_popup = DeskWindow._show_schema_conflict_popup
+_FakeWindowWithView.find_frame_by_instance_id = DeskWindow.find_frame_by_instance_id
 _FakeWindowWithView.start_html_job = DeskWindow.start_html_job
 _FakeWindowWithView.get_widget_info = DeskWindow.get_widget_info
 
