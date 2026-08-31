@@ -7007,6 +7007,75 @@ af7898b. The state store's (TODO `f68383f`) schema declaration,
    (per-kind, not singleton) case. Needs a real plan before
    implementation starts.
    [planned: state-schema-management-widget.md]
+   COMPLETED: `src/desk/schema_registry.py` --
+   `RegisteredSchema.source_kind` (`"widget"` | `"file"`, so the widget
+   knows which schemas it may edit/delete -- only file-sourced ones,
+   never a widget's own manifest-declared one); `SchemaRegistry` now
+   takes an `EventMediator` and publishes a new `desk.state
+   .schema_changed` event (no per-key payload -- a full re-fetch is
+   cheap) on every successful `register_permanent`/`clear_source`/
+   `join_or_conflict_placement`, never on a conflict; `SchemaRegistry
+   .all()` for a full snapshot. `runner.py` -- `SchemaRegistry
+   (event_mediator)`. `window.py` -- the three existing schema
+   -registration call sites pass `source_kind` explicitly and each
+   call a new `_ensure_state_manager_placed()` after a successful
+   registration (places a `state_manager` instance, centered in the
+   view, only if none is currently placed -- implemented literally as
+   "checked on every registration, not once per session," a flagged
+   judgment call, see the plan's own Design decisions); new
+   `get_state_overview` (every known key -- Desk.state's own keys union
+   SchemaRegistry's own keys -- with value/edit/schema/source/
+   enforcement info per key); `try_set_state` (same as `set_state`, but
+   returns an error message instead of raising); `write_schema_file`
+   (writes a top-level schema `.json` file directly and calls
+   `_on_schema_file_changed` synchronously for real, immediate
+   success/error feedback, rather than guessing from an async watcher
+   trigger -- creates `./desk-schemas/` on demand for the git-tracked
+   choice, since picking that location through this widget is the
+   explicit, informed user action the "never create it eagerly" rule
+   was always about avoiding *unintentional* creation of);
+   `delete_schema_key` (refuses for a widget-sourced key, edits/removes
+   the owning file for a file-sourced one). `current_context.py` --
+   five new provider hook pairs (`state_overview`, `state_history`,
+   `state_writer`, `schema_file_writer`, `schema_file_deleter`), same
+   one-hook-per-capability shape every existing pair already uses.
+   `widgets/state_manager/` (new, `kind: "python"` -- matches every
+   comparable Desk management widget, not `kind: "html"`): a
+   `QTreeWidget` overview (key/schema/source/status) plus a detail
+   panel (schema -- read-only for a widget-sourced key, editable for a
+   file-sourced or undeclared one; value -- editable JSON + optional
+   edit note; history -- read-only, latest-first) and a "New Key"
+   dialog; subscribes to `desk.state.changed`/`SCHEMA_CHANGED_EVENT`
+   via the existing `bind_event_mediator`/`EventSubscription` duck-type
+   (TODO 6f9c51b) for live updates, both just triggering a full
+   `refresh()`. `temp_ui.py` -- one cross-reference sentence in
+   "Shared, project-scoped state" pointing at this widget; no
+   `TEMPUI_DOC_VERSION` bump (the `desk.*` Bridge API surface itself is
+   unchanged). Two real bugs found and fixed during manual/automated
+   testing before this ever reached the verify suite: a just-set
+   "Saved."/error status message was immediately wiped out by the
+   follow-up `refresh()` call's own unconditional status-clear (fixed
+   by never touching the status label from `_show_detail_for` itself);
+   several pre-existing verify scripts' `_FakeWindow` test doubles
+   needed `_ensure_state_manager_placed` (real or a no-op stub) bound,
+   since `_check_schema_conflict`/`_on_schema_file_changed` now call it
+   unconditionally after a successful registration. New verify
+   coverage: `verify_schema_registry.py` extended (+10 checks, 35
+   total) for `source_kind`/`all()`/live event publishing;
+   `verify_state_manager_widget.py` (31 checks, real `DeskWindow`
+   -adjacent fake, including a real end-to-end auto-placement-guarantee
+   round trip: places once, stays a singleton, reappears after the
+   sole instance is closed and another schema registers);
+   `verify_state_manager_widget_ui.py` (18 checks, real widget
+   construction against fake `current_context` providers, including
+   real `EventMediator`-delivered live refreshes). Full `tests/verify/`
+   regression suite passes (122 scripts total, 0 regressions -- the
+   sole failure, `disabled_verify_claude_desk_widget_claude_api.py`, is
+   an already-filed, already-disabled, unrelated flaky item).
+   `investigations/app_structure_dsl_design.md`'s "Where things were
+   left" updated to record this item's completion -- closing out the
+   entire schema-validation thread (TODO `6e1c2fe`'s three-way split)
+   with nothing left blocked or open in it.
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a

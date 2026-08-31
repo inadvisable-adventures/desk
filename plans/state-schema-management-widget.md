@@ -1,4 +1,4 @@
-# Schema/state-management widget (TODO `6330249`)
+# Schema/state-management widget (TODO `6330249`) (COMPLETED)
 
 ## Summary
 

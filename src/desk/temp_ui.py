@@ -964,7 +964,10 @@ with the `state` capability can read or write any key, with no
 per-widget ownership. Use this instead of hand-rolling your own
 cross-widget persistence scheme (e.g. one widget writing to a file the
 other polls); it also gets you change notification and a short history
-for free.
+for free. The built-in **State Manager** widget (TODO `6330249`) gives
+a Desk user a live view/edit UI over every registered schema and the
+data stored under it — reach for that instead of building your own
+inspector when you just need to see or tweak what's currently there.
 
 - `desk.state.get(key, typeHint)` → `{ value, edit }` — the current
   value for `key`, and the `edit` that was passed alongside the write

@@ -80,8 +80,10 @@ def start_server(
     event_mediator = EventMediator()
     # Same "one shared instance for the whole app run" reasoning as
     # event_mediator above (TODO af7898b) -- runtime-only, never
-    # persisted, rebuilt fresh on every process start.
-    schema_registry = SchemaRegistry()
+    # persisted, rebuilt fresh on every process start. Given the same
+    # event_mediator (TODO 6330249) so it can publish
+    # desk.state.schema_changed on every successful mutation.
+    schema_registry = SchemaRegistry(event_mediator)
     app = create_app(token, widgets_dir=widgets_dir, gui_bridge=gui_bridge, event_mediator=event_mediator)
 
     config = uvicorn.Config(app, host=host, port=port, log_level="warning")

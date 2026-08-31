@@ -58,6 +58,12 @@ class _FakeWindow:
         self._schema_file_watcher = _FakeSchemaFileWatcher()
         self.view = _FakeView()
 
+    def _ensure_state_manager_placed(self):
+        """A no-op stand-in (TODO 6330249): this file tests
+        _on_schema_file_changed's own registration logic, not real
+        widget placement -- see verify_state_manager_widget.py's own
+        dedicated, real-placement auto-placement-guarantee test."""
+
 
 _FakeWindow._on_schema_file_changed = DeskWindow._on_schema_file_changed
 _FakeWindow._notify_schema_file_error = DeskWindow._notify_schema_file_error

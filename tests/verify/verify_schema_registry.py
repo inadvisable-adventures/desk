@@ -4,7 +4,8 @@ import sys
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
 
-from desk.schema_registry import SchemaConflict, SchemaRegistry  # noqa: E402
+from desk.event_mediator import EventMediator  # noqa: E402
+from desk.schema_registry import SCHEMA_CHANGED_EVENT, SchemaConflict, SchemaRegistry  # noqa: E402
 from desk.schema_types import SchemaSyntaxError  # noqa: E402
 
 passed = 0
@@ -176,6 +177,76 @@ def test_permanent_source_ids():
     check("clearing a source removes it from permanent_source_ids", registry.permanent_source_ids() == {"widget_b"})
 
 
+# ---------- TODO 6330249: source_kind, all(), and live change events ----------
+
+
+def test_source_kind_round_trips():
+    registry = SchemaRegistry()
+    registry.register_permanent("counter", "number", "builtin_widget", source_kind="widget")
+    registry.register_permanent("doc", "string", "/project/.desk_temp/schemas/doc.json", source_kind="file")
+    check("a widget-sourced schema records source_kind='widget'", registry.get("counter").source_kind == "widget")
+    check("a file-sourced schema records source_kind='file'", registry.get("doc").source_kind == "file")
+
+    registry.join_or_conflict_placement("tempui_key", "boolean", "custom_widget", "inst-1", lambda i: True)
+    check(
+        "a tempui-placed schema is always source_kind='widget'",
+        registry.get("tempui_key").source_kind == "widget",
+    )
+
+
+def test_all_returns_every_registered_schema():
+    registry = SchemaRegistry()
+    registry.register_permanent("counter", "number", "widget_a")
+    registry.join_or_conflict_placement("other", "string", "custom_widget", "inst-1", lambda i: True)
+    keys = {schema.key for schema in registry.all()}
+    check("all() returns every registered schema regardless of source", keys == {"counter", "other"})
+
+
+def test_successful_mutations_publish_schema_changed():
+    mediator = EventMediator()
+    registry = SchemaRegistry(event_mediator=mediator)
+    mediator.subscribe("listener", SCHEMA_CHANGED_EVENT)
+
+    registry.register_permanent("counter", "number", "widget_a")
+    event = mediator.poll("listener", timeout=1)
+    check("a successful register_permanent publishes SCHEMA_CHANGED_EVENT", event is not None and event.name == SCHEMA_CHANGED_EVENT)
+
+    registry.join_or_conflict_placement("other", "string", "custom_widget", "inst-1", lambda i: True)
+    event = mediator.poll("listener", timeout=1)
+    check("a successful join_or_conflict_placement publishes too", event is not None and event.name == SCHEMA_CHANGED_EVENT)
+
+    registry.clear_source("widget_a")
+    event = mediator.poll("listener", timeout=1)
+    check("clear_source publishes when it actually removes something", event is not None and event.name == SCHEMA_CHANGED_EVENT)
+
+
+def test_conflicts_do_not_publish():
+    mediator = EventMediator()
+    registry = SchemaRegistry(event_mediator=mediator)
+    registry.register_permanent("counter", "number", "widget_a")
+    mediator.subscribe("listener", SCHEMA_CHANGED_EVENT)
+
+    try:
+        registry.register_permanent("counter", "string", "widget_b")
+        check("expected a conflict to be raised", False)
+    except SchemaConflict:
+        pass
+    event = mediator.poll("listener", timeout=1)
+    check("a conflict does not publish SCHEMA_CHANGED_EVENT", event is None)
+
+    check(
+        "clear_source on a source with nothing registered does not publish",
+        mediator.poll("listener", timeout=1) is None,
+    )
+
+
+def test_registry_with_no_mediator_never_raises():
+    registry = SchemaRegistry()  # event_mediator=None, matching every existing call site
+    registry.register_permanent("counter", "number", "widget_a")  # must not raise
+    registry.clear_source("widget_a")  # must not raise
+    check("a registry with no event_mediator works exactly as before", registry.get("counter") is None)
+
+
 test_register_permanent_accepts_a_fresh_key()
 test_register_permanent_is_idempotent_for_the_same_source()
 test_register_permanent_conflicts_across_sources()
@@ -190,6 +261,11 @@ test_placement_dormant_reactivate_if_unchanged()
 test_placement_dormant_replace_if_different()
 test_placement_lazy_pruning_is_exercised()
 test_permanent_source_ids()
+test_source_kind_round_trips()
+test_all_returns_every_registered_schema()
+test_successful_mutations_publish_schema_changed()
+test_conflicts_do_not_publish()
+test_registry_with_no_mediator_never_raises()
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

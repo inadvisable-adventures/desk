@@ -44,7 +44,7 @@ from desk.shell.canvas import WorkspaceView
 from desk.shell.chromium_widget import ChromiumWidget
 from desk.shell.new_desk_dialog import NewDeskDialog
 from desk.shell.python_widget import PythonWidgetHost
-from desk.shell.schema_file_watcher import SCHEMA_FILES_DIRNAME, SchemaFileWatcher
+from desk.shell.schema_file_watcher import SCHEMA_FILES_DIRNAME, TOP_LEVEL_SCHEMAS_DIRNAME, SchemaFileWatcher
 from desk.shell.temp_ui_manager import TempUiManager
 from desk.shell.widget_frame import WidgetFrame
 from desk.transforms import PROJECT_TRANSFORMS_DIRNAME, TEMP_TRANSFORMS_DIRNAME
@@ -97,6 +97,10 @@ IMAGE_VIEWER_WIDGET_ID = "image_viewer"
 EDITOR_WIDGET_ID = "editor"
 CRASH_LOG_WIDGET_ID = "crash_log"
 JOB_RUNNER_WIDGET_ID = "job_runner"
+# TODO 6330249: the schema/state-management widget -- an ordinary
+# widget kind, just one Desk guarantees at most one placed instance of
+# (see _ensure_state_manager_placed).
+STATE_MANAGER_WIDGET_ID = "state_manager"
 # TODO 7f51230: crash logs now live in .desk_temp/DESK-CRASH-*.log --
 # matches desk.crash_handler's own filename convention.
 CRASH_LOG_GLOB = "DESK-CRASH-*.log"
@@ -361,6 +365,11 @@ class DeskWindow(QMainWindow):
         current_context.set_widget_catalog_provider(self.get_widget_catalog_dicts)
         current_context.set_hot_reload_broker(self._broker)
         current_context.set_html_job_starter(self.start_html_job)
+        current_context.set_state_overview_provider(self.get_state_overview)
+        current_context.set_state_history_provider(self.get_state_history)
+        current_context.set_state_writer(self.try_set_state)
+        current_context.set_schema_file_writer(self.write_schema_file)
+        current_context.set_schema_file_deleter(self.delete_schema_key)
         self._sync_tempui_doc()
         self._open_crash_log_widgets()
 
@@ -2702,7 +2711,8 @@ class DeskWindow(QMainWindow):
             ]
             for key, type_expr in widget.state_schema.items():
                 try:
-                    self._schema_registry.register_permanent(key, type_expr, widget_id)
+                    self._schema_registry.register_permanent(key, type_expr, widget_id, source_kind="widget")
+                    self._ensure_state_manager_placed()
                 except (SchemaConflict, SchemaSyntaxError) as e:
                     message = f"{SCHEMA_ERROR_PREFIX}{e}"
                     widget.desk_widget_loading_errors.append(message)
@@ -2734,6 +2744,7 @@ class DeskWindow(QMainWindow):
                 self._schema_registry.join_or_conflict_placement(
                     key, type_expr, widget_id, instance_id, self._is_instance_currently_placed
                 )
+                self._ensure_state_manager_placed()
             except (SchemaConflict, SchemaSyntaxError) as e:
                 return f"{SCHEMA_ERROR_PREFIX}{e}"
         return None
@@ -2759,45 +2770,179 @@ class DeskWindow(QMainWindow):
         if opener is not None:
             opener(f"Schema conflict: {widget_id}", message, ["OK"], "OK")
 
-    def _on_schema_file_changed(self, path: Path) -> None:
+    def _on_schema_file_changed(self, path: Path) -> str | None:
         """A top-level desk.state.* schema file was added, edited, or
         removed (TODO 9aef267, SchemaFileWatcher.changed) -- always
         clears this file's own prior registrations first, then --  if
         the file still exists -- re-derives them fresh from its
         current content, the same "clear then re-derive" shape
         _refresh_builtin_schemas already uses for built-in widgets.
-        A missing file (deleted, or gone after a rename) just clears."""
+        A missing file (deleted, or gone after a rename) just clears.
+        Returns the last error message encountered (also shown via a
+        notification), or None if every declared key registered
+        cleanly -- TODO 6330249's write_schema_file/delete_schema_key
+        call this directly (in addition to the file watcher's own,
+        fully-idempotent async trigger for the same write) to get
+        synchronous, accurate feedback instead of guessing."""
         source = str(path)
         self._schema_registry.clear_source(source)
         self._known_schema_file_sources.discard(source)
         if not path.is_file():
-            return
+            return None
         try:
             data = json.loads(path.read_text())
         except (OSError, json.JSONDecodeError) as e:
-            self._notify_schema_file_error(path, f"Could not read {path.name}: {e}")
-            return
+            message = f"Could not read {path.name}: {e}"
+            self._notify_schema_file_error(path, message)
+            return message
         if not isinstance(data, dict):
-            self._notify_schema_file_error(
-                path, f"{path.name} must contain a JSON object mapping each key to its type expression"
-            )
-            return
+            message = f"{path.name} must contain a JSON object mapping each key to its type expression"
+            self._notify_schema_file_error(path, message)
+            return message
         registered_any = False
+        last_error = None
         for key, type_expr in data.items():
             if not isinstance(type_expr, str):
-                self._notify_schema_file_error(
-                    path, f"{path.name}: {key!r}'s value must be a type expression string"
-                )
+                last_error = f"{path.name}: {key!r}'s value must be a type expression string"
+                self._notify_schema_file_error(path, last_error)
                 continue
             try:
-                self._schema_registry.register_permanent(key, type_expr, source)
+                self._schema_registry.register_permanent(key, type_expr, source, source_kind="file")
                 registered_any = True
             except (SchemaConflict, SchemaSyntaxError) as e:
-                self._notify_schema_file_error(path, str(e))
+                last_error = str(e)
+                self._notify_schema_file_error(path, last_error)
         if registered_any:
             self._known_schema_file_sources.add(source)
+            self._ensure_state_manager_placed()
+        return last_error
 
     def _notify_schema_file_error(self, path: Path, message: str) -> None:
         self.view.notify_temp_ui(
             path, f"Schema file error: {path.name}", lambda: self._show_schema_conflict_popup(path.name, message)
         )
+
+    def _ensure_state_manager_placed(self) -> None:
+        """Whenever any desk.state.* schema successfully registers
+        (TODO 6330249), guarantees at least one instance of the
+        schema/state-management widget is on the canvas -- placing
+        one, centered in the current view, if none is currently
+        placed. Checked on every registration, not once per session,
+        per the literal design note (see
+        plans/state-schema-management-widget.md's own flagged
+        tradeoff) -- a closed instance can reappear if a later schema
+        registers."""
+        if self._find_frame_by_widget_id(STATE_MANAGER_WIDGET_ID) is not None:
+            return
+        widget = self._widgets.get(STATE_MANAGER_WIDGET_ID)
+        if widget is None:
+            return
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        self._place_widget(STATE_MANAGER_WIDGET_ID, widget, (center.x(), center.y()), widget.default_size)
+
+    def get_state_overview(self) -> list[dict]:
+        """Every currently-known desk.state.* key (TODO 6330249) --
+        the union of Desk.state's own keys (a value has been written,
+        whether or not a schema currently governs it) and
+        SchemaRegistry's own keys (a schema is declared but nothing's
+        been written yet) -- for the schema/state-management widget's
+        overview. Sorted by key for a stable display order."""
+        schemas = {schema.key: schema for schema in self._schema_registry.all()}
+        keys = set(self.current_desk.state.keys()) | set(schemas.keys())
+        overview = []
+        for key in sorted(keys):
+            entry = self.current_desk.state.get(key)
+            schema = schemas.get(key)
+            overview.append(
+                {
+                    "key": key,
+                    "value": entry.value if entry is not None else None,
+                    "edit": entry.edit if entry is not None else None,
+                    "type_expr": schema.type_expr if schema is not None else None,
+                    "source": schema.source_widget_id if schema is not None else None,
+                    "source_kind": schema.source_kind if schema is not None else None,
+                    "permanent": schema.permanent if schema is not None else None,
+                    "placed_instance_count": len(schema.placed_instance_ids) if schema is not None else 0,
+                }
+            )
+        return overview
+
+    def try_set_state(
+        self, key: str, value: object, edit: object, instance_id: str, type_hint: str | None = None
+    ) -> str | None:
+        """Same as set_state, except it never raises -- returns an
+        error message instead of a ValueError (TODO 6330249): a widget
+        editing a value directly wants to show the message inline, not
+        catch an exception itself."""
+        try:
+            self.set_state(key, value, edit, instance_id, type_hint)
+            return None
+        except ValueError as e:
+            return str(e)
+
+    def write_schema_file(self, location: str, key: str, type_expr: str) -> str | None:
+        """Declares/updates a top-level schema for `key` (TODO
+        6330249) -- writes directly into a JSON file under the chosen
+        location (one file per key, `<key>.json`, merging into it if
+        it already exists) and relies entirely on the existing
+        SchemaFileWatcher/_on_schema_file_changed pipeline (TODO
+        9aef267) to validate and register it -- no separate
+        registration path to keep in sync. `location` is `"ephemeral"`
+        (`.desk_temp/schemas/`) or `"git_tracked"` (`./desk-schemas/`,
+        created on demand here -- picking this location through this
+        widget is exactly the explicit, informed user action the
+        original "never create it eagerly" rule was about avoiding
+        *unintentional* creation of). Returns an error message, or
+        None on success."""
+        try:
+            parse_type_expression(type_expr)
+        except SchemaSyntaxError as e:
+            return f"Invalid type expression: {e}"
+        if location == "ephemeral":
+            directory = self.current_desk.directory / TEMP_UI_DIRNAME / SCHEMA_FILES_DIRNAME
+        elif location == "git_tracked":
+            directory = self.current_desk.directory / TOP_LEVEL_SCHEMAS_DIRNAME
+        else:
+            return f"Unknown location: {location!r}"
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{key}.json"
+        data = {}
+        if path.is_file():
+            try:
+                loaded = json.loads(path.read_text())
+                if isinstance(loaded, dict):
+                    data = loaded
+            except (OSError, json.JSONDecodeError):
+                pass
+        data[key] = type_expr
+        path.write_text(json.dumps(data, indent=2))
+        return self._on_schema_file_changed(path)
+
+    def delete_schema_key(self, key: str) -> str | None:
+        """Removes a top-level schema for `key` (TODO 6330249) --
+        refuses for a widget-sourced key (there's no file to edit; the
+        widget's own manifest is the source of truth). Edits the
+        owning file in place, or removes it entirely if `key` was its
+        only entry."""
+        schema = self._schema_registry.get(key)
+        if schema is None:
+            return f"{key!r} has no registered schema"
+        if schema.source_kind != "file":
+            return (
+                f"{key!r}'s schema is declared by widget {schema.source_widget_id!r} -- "
+                "edit its own manifest to change it"
+            )
+        path = Path(schema.source_widget_id)
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError) as e:
+            return f"Could not read {path.name}: {e}"
+        if not isinstance(data, dict) or key not in data:
+            return f"{path.name} no longer declares {key!r}"
+        del data[key]
+        if data:
+            path.write_text(json.dumps(data, indent=2))
+        else:
+            path.unlink()
+        self._on_schema_file_changed(path)
+        return None

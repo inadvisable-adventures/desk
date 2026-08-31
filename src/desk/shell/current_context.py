@@ -96,6 +96,11 @@ _widget_catalog_provider: Callable[[], list[dict]] | None = None
 _hot_reload_broker: HotReloadBroker | None = None
 _popup_opener: Callable[[str, str, list[str], str | None], str | None] | None = None
 _html_job_starter: Callable[[str, JobDefinition, Callable[[str, str], None]], None] | None = None
+_state_overview_provider: Callable[[], list[dict]] | None = None
+_state_history_provider: Callable[[str, int], list[dict]] | None = None
+_state_writer: Callable[[str, object, object, str, str | None], str | None] | None = None
+_schema_file_writer: Callable[[str, str, str], str | None] | None = None
+_schema_file_deleter: Callable[[str], str | None] | None = None
 
 
 def set_current_desk_directory(directory: Path) -> None:
@@ -345,3 +350,82 @@ def set_html_job_starter(starter: Callable[[str, JobDefinition, Callable[[str, s
 
 def get_html_job_starter() -> Callable[[str, JobDefinition, Callable[[str, str], None]], None] | None:
     return _html_job_starter
+
+
+def set_state_overview_provider(provider: Callable[[], list[dict]]) -> None:
+    """TODO 6330249: lets the schema/state-management widget read
+    every currently-known desk.state.* key in one call --
+    `{"key", "value", "edit", "type_expr", "source", "source_kind",
+    "permanent", "placed_instance_count"}` per entry, `type_expr`/
+    `source`/`source_kind`/`permanent` all `None` for a non-validated
+    key. Live updates after the initial read arrive via
+    `bind_event_mediator` (TODO 6f9c51b), subscribing to
+    `desk.state.changed` and `desk.schema_registry
+    .SCHEMA_CHANGED_EVENT`, the same "read once, then react to the
+    mediator" shape
+    `get_file_type_registry_provider` above already establishes. See
+    `desk.shell.window.DeskWindow.get_state_overview`."""
+    global _state_overview_provider
+    _state_overview_provider = provider
+
+
+def get_state_overview_provider() -> Callable[[], list[dict]] | None:
+    return _state_overview_provider
+
+
+def set_state_history_provider(provider: Callable[[str, int], list[dict]]) -> None:
+    """TODO 6330249: `provider(key, limit)` -- the same `{"value",
+    "edit"}`-per-entry, latest-first shape `desk.state.getHistory`
+    already returns. See
+    `desk.shell.window.DeskWindow.get_state_history`."""
+    global _state_history_provider
+    _state_history_provider = provider
+
+
+def get_state_history_provider() -> Callable[[str, int], list[dict]] | None:
+    return _state_history_provider
+
+
+def set_state_writer(writer: Callable[[str, object, object, str, str | None], str | None]) -> None:
+    """TODO 6330249: `writer(key, value, edit, instance_id, type_hint)`
+    -- edits a desk.state.* value directly (still checked against an
+    active schema exactly as a Bridge API call would be). Returns an
+    error message instead of raising, unlike
+    `desk.shell.window.DeskWindow.set_state` itself -- a widget editing
+    a value wants to show the message inline, not catch an exception.
+    See `desk.shell.window.DeskWindow.try_set_state`."""
+    global _state_writer
+    _state_writer = writer
+
+
+def get_state_writer() -> Callable[[str, object, object, str, str | None], str | None] | None:
+    return _state_writer
+
+
+def set_schema_file_writer(writer: Callable[[str, str, str], str | None]) -> None:
+    """TODO 6330249: `writer(location, key, type_expr)` -- declares/
+    updates a top-level desk.state.* schema (`location` is
+    `"ephemeral"` or `"git_tracked"`), by writing the underlying JSON
+    file directly and relying on the existing file-watch pipeline (TODO
+    9aef267) to validate/register it. Returns an error message, or
+    `None` on success. See
+    `desk.shell.window.DeskWindow.write_schema_file`."""
+    global _schema_file_writer
+    _schema_file_writer = writer
+
+
+def get_schema_file_writer() -> Callable[[str, str, str], str | None] | None:
+    return _schema_file_writer
+
+
+def set_schema_file_deleter(deleter: Callable[[str], str | None]) -> None:
+    """TODO 6330249: `deleter(key)` -- removes a top-level desk.state.*
+    schema; refuses (returns an error message, doesn't raise) for a
+    widget-declared one, since there's no file to edit. See
+    `desk.shell.window.DeskWindow.delete_schema_key`."""
+    global _schema_file_deleter
+    _schema_file_deleter = deleter
+
+
+def get_schema_file_deleter() -> Callable[[str], str | None] | None:
+    return _schema_file_deleter

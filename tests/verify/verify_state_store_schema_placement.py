@@ -89,6 +89,8 @@ _FakeWindow._check_schema_conflict = DeskWindow._check_schema_conflict
 _FakeWindow._is_instance_currently_placed = DeskWindow._is_instance_currently_placed
 _FakeWindow._notify_schema_conflict = DeskWindow._notify_schema_conflict
 _FakeWindow._show_schema_conflict_popup = DeskWindow._show_schema_conflict_popup
+_FakeWindow._ensure_state_manager_placed = DeskWindow._ensure_state_manager_placed
+_FakeWindow._find_frame_by_widget_id = DeskWindow._find_frame_by_widget_id
 _FakeWindow.find_frame_by_instance_id = DeskWindow.find_frame_by_instance_id
 
 
