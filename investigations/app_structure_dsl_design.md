@@ -502,8 +502,11 @@ itself once tried auto-placing an instance on first registration
 (TODO `5ff02d2`) and reverted it (TODO `dafbaab`) as "too confusing in
 practice" -- but that was a *per-newly-registered-custom-widget-kind*
 auto-placement (one new instance per kind, could happen often); this
-is a *singleton* dashboard widget (auto-placed at most once, the same
-instance keeps serving every subsequent schema registration), a
+is an ordinary widget kind that's merely guaranteed to have at most one
+placed instance (auto-placed at most once, the same instance keeps
+serving every subsequent schema registration) -- not a distinct
+"dashboard" UI concept, just a normal, placeable/closeable Desk widget
+like any other, a
 different enough shape that the earlier revert's own reasoning may not
 transfer directly -- worth a real check against the actual UX, not
 just assumed safe by analogy.
@@ -660,13 +663,16 @@ Open threads, not yet started:
    alongside `document-editor-base`? something else?).
 2. **The schema/state-management widget** (TODO `6330249`, no longer
    blocked on anything now that `af7898b`/`9aef267` have both landed,
-   see Update 4/5 above): views every currently-registered schema
-   (widget-declared and top-level), its enforcement status, current
-   values, and history, and is where a top-level schema file actually
-   gets authored. Thoroughly designed at a discussion level but not yet
-   planned or implemented. Nothing structural left open; what remains
-   is implementation-level detail that a real plan would work out, not
-   further design discussion.
+   see Update 4/5 above): an ordinary Desk widget (`kind: "python"`,
+   not a distinct "dashboard" concept) to **view and edit** every
+   currently-registered schema (widget-declared and top-level) and
+   **view and edit** the data stored under those keys -- deep insight
+   into shared state, not just a read-only listing. Where a top-level
+   schema file actually gets authored/edited/deleted. Thoroughly
+   designed at a discussion level but not yet planned or implemented.
+   Nothing structural left open; what remains is implementation-level
+   detail that a real plan would work out, not further design
+   discussion.
 3. **Promoting `necro-4x`'s Domain Analysis widget to a genuine Desk
    built-in** (see the new data point folded into the "Editor widget"
    section above) is a real, separate, not-yet-scoped ask -- a design/

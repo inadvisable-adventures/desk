@@ -6986,24 +6986,27 @@ af7898b. The state store's (TODO `f68383f`) schema declaration,
    `investigations/app_structure_dsl_design.md`'s "Where things were
    left" updated to record this item's completion.
 
-6330249. New built-in schema/state-management widget -- **blocked on
-   `af7898b` landing first** (needs schemas to actually exist to
-   display), and best done after `9aef267` too so it can show
-   top-level schemas as well as widget-declared ones, though not
-   strictly blocked on it. Split out of the original TODO `6e1c2fe` --
-   see `af7898b` above for why. Full design, already had -- see
+6330249. New built-in schema/state-management widget -- an ordinary,
+   placeable/closeable Desk widget (`kind: "python"`), not a distinct
+   "dashboard" UI concept. Depends on `af7898b`/`9aef267`, both
+   COMPLETED. Split out of the original TODO `6e1c2fe` -- see `af7898b`
+   above for why. Full design, already had -- see
    `investigations/app_structure_dsl_design.md`'s "Validated vs.
-   non-validated state, and schema lifecycle" section. Scope: view
-   every currently-registered schema (widget-declared and top-level),
-   its enforcement status, current values, and history; where a
-   top-level schema file actually gets authored. Whenever any schema is
-   registered, Desk must guarantee an instance of this widget is
-   already placed, or place one if not, so validated state is never
-   invisible the moment it starts existing -- worth checking against
-   the real UX before assuming safe, given `DefineWidget`'s own
-   auto-placement experiment (TODO `5ff02d2`) was tried and reverted
-   (TODO `dafbaab`) for a differently-shaped (per-kind, not singleton)
-   case. Needs a real plan before implementation starts.
+   non-validated state, and schema lifecycle" section. Scope: **view
+   and edit** every currently-registered schema (widget-declared and
+   top-level) and **view and edit** the data stored under those keys
+   (including non-validated ones) -- a Desk user should have deep
+   insight into shared state, not just a read-only listing. Where a
+   top-level schema file actually gets authored/edited/deleted.
+   Whenever any schema is registered, Desk must guarantee an instance
+   of this widget is already placed, or place one if not, so validated
+   state is never invisible the moment it starts existing -- worth
+   checking against the real UX before assuming safe, given
+   `DefineWidget`'s own auto-placement experiment (TODO `5ff02d2`) was
+   tried and reverted (TODO `dafbaab`) for a differently-shaped
+   (per-kind, not singleton) case. Needs a real plan before
+   implementation starts.
+   [planned: state-schema-management-widget.md]
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
