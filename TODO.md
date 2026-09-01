@@ -6,6 +6,112 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+97bd090. A "Desk Proc" mechanism: a one-time script an agent can create that
+   runs with real, in-process access to Desk itself (not just a
+   `kind: "html"` widget's Bridge API) -- e.g. reveal a specific placed
+   widget instance (the same action as clicking its titlebar eye
+   button) and then take a real pixel screenshot of it, saving a PNG.
+   Prioritized to the top of this file per direct user request.
+
+   This is deliberately a close sibling of the existing `Job` mechanism
+   (TODO `d7e66f6`, `tempui-jobs.md`) -- reuses its exact "tempui file →
+   notification → placed one-shot runner widget → Start button →
+   background-thread exec" shape and its `desk_procs/`-under-`.desk_temp`
+   materialization convention (mirroring `desk.jobs`) -- but is its own,
+   separate keyword and widget kind, not a new `Job` `kind`, because:
+   - A `Job`'s `kind: "python"` already runs with unrestricted in
+     -process access ("no sandboxing" per its own docstring), but that
+     access is Qt-thread-unsafe to use directly for anything touching
+     live widgets/the canvas -- the existing Job Runner deliberately
+     never does this. A Desk Proc needs a real, documented, thread-safe
+     way to do exactly that, which a generic Job has no reason to grow.
+   - The user explicitly asked for these notifications to "appear
+     clearly different from the normal tempui placement notifications
+     and be clearly labelled as a 'Desk Proc'" -- Job notifications
+     today are just plain-text banners, visually identical to every
+     other tempui kind (`_NotificationBanner` in
+     `temp_ui_notifications.py` has no per-kind styling at all). A
+     `DeskProc` gets a visually distinct banner (a bold "DESK PROC"
+     caption + its own border color), threaded through
+     `TempUiNotificationStack.notify` → `WorkspaceView.notify_temp_ui` →
+     `DeskWindow._notify_temp_ui`.
+
+   Suggested mechanism:
+   - New tempui DSL keyword `DeskProc<TAB>summary` (first line) + one or
+     more `Script<TAB>base64-chunk` lines -- Python source only (no
+     `kind`/`Capability` lines; unlike `Job` there's no `html` variant,
+     since the whole point is direct Desk-shell access, not
+     capability-scoped Bridge API access from inside a page).
+     `desk.temp_ui`: `DESK_PROC_KEYWORD`, `DeskProcDefinition` dataclass
+     (`summary`, `script_b64`), `parse_desk_proc` (mirrors `parse_job`
+     minus the `kind`/`Capability` handling), `detect_temp_ui_kind`
+     gains a `"desk_proc"` branch, `RESERVED_TEMPUI_KEYWORDS` gains the
+     new keyword.
+   - New `src/desk/desk_proc.py`, mirroring `src/desk/jobs.py` exactly
+     (`desk_proc_dir`, `materialize`, `materialize_script_body`), own
+     cache subdir `.desk_temp/desk_procs/<id>/` (`script.py` +
+     `desk_proc_source.py` for View Code).
+   - New `current_context` hook, `set_gui_thread_caller`/
+     `get_gui_thread_caller` -- lets in-process Python code running on a
+     background thread (a Desk Proc's exec, same as a `Job`'s) safely,
+     synchronously call into GUI-thread-owned `DeskWindow` state and get
+     a real return value back. Reuses the exact primitive the Local Web
+     Server's own Bridge API already relies on for this
+     (`desk.shell.bridge.GuiBridge.call`, already thread-safe by
+     design -- see its own docstring) -- `DeskWindow.__init__` sets it
+     to `self._handle.gui_bridge.call`, the same `GuiBridge` instance
+     `src/desk/app.py` already attaches to the window at startup.
+   - New `DeskWindow` methods: `screenshot_widget_instance(instance_id,
+     path) -> bool` (resolve via the existing
+     `find_frame_by_instance_id`, `frame.grab()`, resolve `path`
+     relative to `self.current_desk.directory` like `desk.fs.*`
+     already does, `mkdir(parents=True, exist_ok=True)`, `.save(path,
+     "PNG")`) and `screenshot_desk(path) -> None` (same, but
+     `self.grab()` of the whole main window -- same `.grab()` idiom
+     `widgets/feedback/widget.py`'s `_take_screenshot` already
+     establishes). "Reveal" reuses `zoom_to_widget_by_instance_id`
+     (TODO `7505703`) unchanged -- no new method needed for that part.
+   - New `widgets/desk_proc_runner/` (`kind: "python"`), closely
+     mirroring `widgets/job_runner/` (summary label, "View Code",
+     "Start", background-thread exec, stdout/stderr capture, the same
+     persisted-status/interrupted-on-reload handling) but simpler (no
+     `kind` branch -- always the background-thread-exec path). Injects
+     a small, curated `deskproc` object into the script's exec globals
+     (not raw process access as the *documented* interaction surface,
+     though nothing stops a script from `import`-ing internals directly
+     too, same trust level as a `Job`): `deskproc.reveal_widget
+     (instance_id) -> bool`, `deskproc.screenshot_widget(instance_id,
+     path) -> bool`, `deskproc.screenshot_desk(path) -> None`,
+     `deskproc.list_widget_instances() -> list[dict]` (thin wrapper
+     over the existing `DeskWindow.get_state_dict()`, the same data
+     `desk.workspace.getState()` already exposes to `kind: "html"`
+     widgets) -- every method routes through
+     `current_context.get_gui_thread_caller()` for thread safety.
+   - Notification styling: `_NotificationBanner` gains a `banner_style`
+     param (`"default"` | `"desk_proc"`), threaded through
+     `TempUiNotificationStack.notify`/`WorkspaceView.notify_temp_ui`;
+     `"desk_proc"` renders a bold "DESK PROC" caption line (non
+     -selectable, matching this project's own labels-aren't-selectable
+     convention) above the summary, plus a distinct border color, so
+     it's visually different from every other tempui notification at a
+     glance, not just by its text.
+   - New split doc `tempui-desk-proc.md` (mirrors `tempui-jobs.md`'s
+     shape), linked from `desk-temporary-ui.md`'s intro list (nine
+     built-in file types -> ten); `TEMPUI_DOC_VERSION` bumped; a new
+     `tempui-new-features.md` entry.
+   - **Decided**: no `html`-kind variant for `DeskProc` -- if a script
+     genuinely just needs capability-scoped Bridge API access, `Job`
+     already covers that; `DeskProc` exists specifically for direct
+     -to-shell actions a sandboxed `kind: "html"` page structurally
+     cannot do.
+   - **Decided**: `deskproc.screenshot_widget`/`screenshot_desk` grab
+     the target's real on-screen pixels via Qt's own `.grab()` --
+     independent of the canvas's current zoom/pan, since `.grab()`
+     rasterizes the widget's own paint output at its authored size, not
+     whatever the `QGraphicsProxyWidget` embedding currently renders it
+     at.
+   [planned: desk-proc-mechanism.md]
+
 1239cfd. COMPLETED: Stop using counting numbers to identify TODO items — this
    item's own id (visible once this file is converted, right below)
    proves the scheme it describes. Priority/work order is now
