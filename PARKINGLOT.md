@@ -891,6 +891,20 @@ This file captures thoughts and TODO items that arise during work on other thing
   is looking at, and if so how is that authenticated/scoped) before
   picking a mechanism.
 
+  **Partially addressed by TODO `97bd090`** (the `DeskProc` tempui
+  mechanism): an agent can now write a one-shot Python script that
+  reaches into the live `DeskWindow` (via a new
+  `current_context.get_gui_thread_caller()` hook wrapping the existing
+  `GuiBridge`) to reveal/screenshot a placed widget instance or list
+  what's currently placed (`deskproc.list_widget_instances()`, backed
+  by the same `get_state_dict()` data `desk.workspace.getState()`
+  already exposes). Doesn't fully close this item: it's still
+  file-drop-and-click-Start, not a live request/response the calling
+  CLI session can await synchronously, and "force a save" specifically
+  still isn't exposed. Worth revisiting whether the broader "agent ⇄
+  Desk" channel this item envisions should generalize `DeskProc`
+  further, or stay separate.
+
 - **Two-finger trackpad scroll over a widget: still not fully clean
   after TODO `86ba292`**
 
@@ -1019,3 +1033,62 @@ This file captures thoughts and TODO items that arise during work on other thing
   the State Manager widget's (TODO `6330249`) own overview, and whether
   existing unscoped keys need a default/implicit store or stay as they
   are alongside any new scoped ones.
+
+- **A `build_job.py`/`build_desk_proc.py` authoring helper, mirroring `build_widget.py`**
+
+  Surfaced while using TODO `97bd090` (`DeskProc`) for real, right
+  after having done the same thing by hand for `Job`/`DefineWidget`
+  files earlier the same session: authoring a `Job`/`DeskProc` tempui
+  file today means hand-writing a base64-encode-and-chunk script every
+  single time (`base64.b64encode(...)`, split into `Script\t...`
+  lines, write the uuid file) -- there's no equivalent of
+  `.desk_temp/build_widget.py` (which does exactly this for
+  `DefineWidget`, from a real `.ts`/`widget.json` source directory) for
+  either one-shot-script keyword. A small script taking a summary
+  string + a `.py` (or `.html`, for a `Job`) file path and emitting a
+  ready-to-drop tempui file would remove this friction entirely, the
+  same way `build_widget.py` already does for widgets. Should probably
+  cover both `Job` and `DeskProc` (near-identical `Script<TAB>chunk`
+  encoding, just a different first line), not two separate scripts.
+
+- **No documented way for an agent running inside a Claude (Desk)
+  widget to learn its own instance id**
+
+  Surfaced using TODO `97bd090` (`DeskProc`) to screenshot "the widget
+  hosting this very conversation" -- there was no direct way to answer
+  "which placed widget instance am I": had to open the current `.desk`
+  file by hand and pattern-match the `claude_desk` entries'
+  `instance_id` against this session's own transcript-directory name
+  (which happens to be the instance id, but that's an undocumented
+  implementation detail to rely on, not a supported lookup). Worth
+  exposing this directly -- e.g. an environment variable set on the
+  child process a Claude (Desk) widget launches (see TODO `a596dbf`),
+  or a documented note in the tempui docs pointing at wherever it's
+  already discoverable -- so an agent can answer "which widget is
+  *this one*" without reverse-engineering it.
+
+- **A narrower, zero-code, single-click tempui primitive for "reveal"/"screenshot a widget," instead of routing through `DeskProc`'s general-purpose run-arbitrary-script ceremony**
+
+  Also surfaced putting TODO `97bd090` (`DeskProc`) to real use: even
+  with the mechanism built, actually using it for the two motivating
+  actions (reveal, screenshot) requires the full generality's overhead
+  -- author a Python script, base64-encode it, place a Desk Proc Runner
+  widget, and click *two* separate gates (the placement notification,
+  then Start) before anything happens, plus a *third* click (the
+  resulting `OpenImage` notification) to actually see the result. That
+  ceremony is the right tradeoff for "run arbitrary code" (the Start
+  button is a deliberate, load-bearing review gate, per the same "View
+  Code is the only review step" decision `Job` already made) but pure
+  overhead for these two specific actions, which take structured,
+  non-code arguments (an instance id, a path) and do nothing a user
+  couldn't already do by clicking the real eye button/dragging a
+  screenshot in themselves. A `RevealWidget <instance_id>`/
+  `ScreenshotWidget <instance_id> <path>` pair, shaped like `OpenImage`
+  (a single line, auto-acted-on click, no `Start` gate, no code to
+  review because there's no code) would cut authoring to a one-line
+  file and cut the click count roughly in half. `DeskProc` would still
+  exist for genuinely custom shell-interaction scripts; this would just
+  give the two most common cases their own fast path. Could also have
+  `ScreenshotWidget` accept an optional flag to chain straight into
+  placing the Image Viewer itself, rather than needing a script (or a
+  human) to separately author the follow-up `OpenImage` file.
