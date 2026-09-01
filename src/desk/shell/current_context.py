@@ -67,9 +67,22 @@ capability-scoped `kind: "html"` widget instance -- without needing to
 import `desk.shell.window` directly. A `python`-kind Job needs no such
 hook: it runs entirely in-process on a background thread, no
 `DeskWindow` involvement required. See `desk.shell.window.DeskWindow
-.start_html_job`."""
+.start_html_job`.
+
+Also holds a "GUI thread caller" hook (TODO 97bd090), same minimal
+shape again: lets in-process Python code running on a background
+thread -- a Desk Proc's own script execution, the same shape a Job's
+`python`-kind execution already established -- safely, synchronously
+call into GUI-thread-owned `DeskWindow` state and get a real return
+value back, without touching a Qt object directly from the wrong
+thread. Deliberately reuses the exact primitive the Local Web Server's
+own Bridge API already relies on for this same problem
+(`desk.shell.bridge.GuiBridge.call`, already documented as safe to call
+"from any other thread") rather than inventing a second one -- set
+once, in `DeskWindow.__init__`, to `self._handle.gui_bridge.call`."""
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from PyQt6.QtCore import QPoint
 from PyQt6.QtWidgets import QWidget
@@ -96,6 +109,7 @@ _widget_catalog_provider: Callable[[], list[dict]] | None = None
 _hot_reload_broker: HotReloadBroker | None = None
 _popup_opener: Callable[[str, str, list[str], str | None], str | None] | None = None
 _html_job_starter: Callable[[str, JobDefinition, Callable[[str, str], None]], None] | None = None
+_gui_thread_caller: Callable[[Callable[[], Any]], Any] | None = None
 _state_overview_provider: Callable[[], list[dict]] | None = None
 _state_history_provider: Callable[[str, int], list[dict]] | None = None
 _state_writer: Callable[[str, object, object, str, str | None], str | None] | None = None
@@ -352,6 +366,25 @@ def set_html_job_starter(starter: Callable[[str, JobDefinition, Callable[[str, s
 
 def get_html_job_starter() -> Callable[[str, JobDefinition, Callable[[str, str], None]], None] | None:
     return _html_job_starter
+
+
+def set_gui_thread_caller(caller: Callable[[Callable[[], Any]], Any]) -> None:
+    """TODO 97bd090: `caller(fn)` runs `fn` on the GUI thread and
+    returns its result (or re-raises what it raised) to whichever
+    thread called `caller` -- safe to call from any thread, including
+    the calling thread itself being the GUI thread. Set once, in
+    `DeskWindow.__init__`, to `self._handle.gui_bridge.call`
+    (`desk.shell.bridge.GuiBridge.call`) -- the same instance the Local
+    Web Server's own Bridge API routes already use for this exact
+    purpose (see `desk.server.app.run_on_gui`), just exposed here for
+    in-process Python code (a Desk Proc script's own background-thread
+    execution) that has no HTTP request to route through."""
+    global _gui_thread_caller
+    _gui_thread_caller = caller
+
+
+def get_gui_thread_caller() -> Callable[[Callable[[], Any]], Any] | None:
+    return _gui_thread_caller
 
 
 def set_state_overview_provider(provider: Callable[[], list[dict]]) -> None:

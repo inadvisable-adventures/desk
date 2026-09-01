@@ -6,7 +6,7 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
-97bd090. A "Desk Proc" mechanism: a one-time script an agent can create that
+97bd090. COMPLETED: A "Desk Proc" mechanism: a one-time script an agent can create that
    runs with real, in-process access to Desk itself (not just a
    `kind: "html"` widget's Bridge API) -- e.g. reveal a specific placed
    widget instance (the same action as clicking its titlebar eye
@@ -110,7 +110,70 @@ reordered or its description edited.
      rasterizes the widget's own paint output at its authored size, not
      whatever the `QGraphicsProxyWidget` embedding currently renders it
      at.
-   [planned: desk-proc-mechanism.md]
+   [planned: desk-proc-mechanism.md (COMPLETED)]
+
+   COMPLETED: `temp_ui.py` gained `DESK_PROC_KEYWORD = "DeskProc"`
+   (added to `RESERVED_TEMPUI_KEYWORDS`), a `DeskProcDefinition`
+   dataclass, and `parse_desk_proc` (mirrors `parse_job` minus
+   `kind`/`Capability`); `detect_temp_ui_kind` gained a `"desk_proc"`
+   branch. New `src/desk/desk_proc.py` mirrors `desk.jobs` under its
+   own `desk_procs/` cache subdir (`materialize`/
+   `materialize_script_body`). `current_context.py` gained
+   `set_gui_thread_caller`/`get_gui_thread_caller` -- wired in
+   `DeskWindow.__init__` to `self._handle.gui_bridge.call` (the same
+   `GuiBridge` instance the Local Web Server's own Bridge API routes
+   already use for thread-safe GUI-thread calls). `window.py` gained
+   `DESK_PROC_RUNNER_WIDGET_ID` (added to `TEMP_UI_WIDGET_IDS`),
+   `_temp_ui_widget_id_for`/`_notify_temp_ui` `"desk_proc"` branches
+   (the latter now threads a `banner_style` through to
+   `view.notify_temp_ui`), and two new methods,
+   `screenshot_widget_instance(instance_id, path) -> bool` (grabs the
+   real placed `WidgetFrame`, resolves `path` like `desk.fs.*`, saves a
+   PNG) and `screenshot_desk(path) -> bool` (grabs the Workspace Canvas
+   viewport, not the whole native window). `canvas.py`'s
+   `WorkspaceView.notify_temp_ui` and
+   `temp_ui_notifications.py`'s `_NotificationBanner`/
+   `TempUiNotificationStack.notify` gained a `banner_style` parameter
+   (`"default"` | `"desk_proc"`) -- the latter renders a distinct amber
+   border plus a bold, non-selectable "DESK PROC" caption line above
+   the summary, so a Desk Proc notification is never mistaken for an
+   ordinary tempui placement notification at a glance. New
+   `widgets/desk_proc_runner/` (`kind: "python"`, mirrors
+   `widgets/job_runner/` minus the `kind` branch), with a `DeskProcApi`
+   class exposed to the script's exec namespace as `deskproc`
+   (`reveal_widget`, `screenshot_widget`, `screenshot_desk`,
+   `list_widget_instances`), every method routing through
+   `current_context.get_gui_thread_caller()` for thread safety. New
+   split doc `tempui-desk-proc.md` (added to `SPLIT_DOC_CONTENT`,
+   linked from `DOC_TEMPLATE`'s file-type list, nine -> ten);
+   `TEMPUI_DOC_VERSION` bumped 37 -> 38 with a matching
+   `_NEW_FEATURES_DOC` entry. New verify coverage, real (no mocking):
+   `verify_desk_proc_tempui_parsing.py` (14 checks: parsing/rejection/
+   `detect_temp_ui_kind`/reserved-keyword); `verify_desk_proc_materialize.py`
+   (11 checks: real file writes, malformed-base64 tolerance, the
+   execution-entry/View-Code-copy coexistence); `verify_desk_proc_runner_widget.py`
+   (25 checks: real background-thread exec reaching done/errored with
+   captured stdout/traceback, the `deskproc` global's four methods
+   actually routing through a fake GUI thread caller, persisted-status/
+   interrupted-on-reload/View-Code, all mirroring
+   `verify_job_runner_widget.py`'s equivalent coverage);
+   `verify_desk_proc_notification_routing.py` (8 checks: widget-id
+   resolution, summary text, and `banner_style` contrasted against an
+   ordinary Question file's `"default"` style);
+   `verify_desk_proc_notification_banner.py` (10 checks: the real,
+   non-selectable "DESK PROC" caption and distinct stylesheet, real Qt
+   widget construction); `verify_desk_proc_screenshot.py` (13 checks:
+   real `WidgetFrame` placement via the same `_FakeWindow`/
+   `_place_widget`-binding harness `verify_widget_error_indicator.py`
+   already establishes, real PNG files with correct magic bytes,
+   relative/absolute path resolution, missing-parent-directory
+   creation); `verify_tempui_desk_proc_doc.py` (17 checks: doc-set
+   completeness/version bump). Fixed one now-stale assertion in the
+   pre-existing `verify_tempui_jobs_doc.py` (the file-type count
+   check) and `verify_job_notification_routing.py`'s fake
+   `notify_temp_ui` signature, both made stale by this change's own
+   `banner_style` parameter/file-type-count bump. Full
+   `tests/verify/` suite (122 scripts) passes.
 
 1239cfd. COMPLETED: Stop using counting numbers to identify TODO items — this
    item's own id (visible once this file is converted, right below)

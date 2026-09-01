@@ -438,12 +438,14 @@ class WorkspaceView(QGraphicsView):
 
         QTimer.singleShot(0, _apply)
 
-    def notify_temp_ui(self, path, text: str, on_clicked) -> None:
+    def notify_temp_ui(self, path, text: str, on_clicked, banner_style: str = "default") -> None:
         """Adds/replaces a temp-UI notification and immediately
         repositions the stack, since its size (and therefore its
         top-right-anchored x) changes with its content -- see
-        desk.shell.temp_ui_notifications.TempUiNotificationStack.notify."""
-        self.temp_ui_notifications.notify(path, text, on_clicked)
+        desk.shell.temp_ui_notifications.TempUiNotificationStack.notify.
+        `banner_style` (TODO 97bd090) is a plain passthrough -- see that
+        method's own docstring for the currently-supported values."""
+        self.temp_ui_notifications.notify(path, text, on_clicked, banner_style=banner_style)
         self._position_temp_ui_notifications()
 
     def _position_zoom_control(self) -> None:

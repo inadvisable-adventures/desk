@@ -30,7 +30,16 @@ check("TEMPUI_DOC_VERSION bumped to at least 31", TEMPUI_DOC_VERSION >= 31)
 main_doc = render_static_doc()
 check("main doc's file-type list mentions Job", "`Job`" in main_doc)
 check("main doc links tempui-jobs.md (the every-split-file-linked invariant)", "tempui-jobs.md" in main_doc)
-check("main doc's file-type count was bumped (nine, not eight)", "nine\nbuilt-in file types" in main_doc or "nine built-in file types" in main_doc)
+check(
+    # TODO 97bd090: this count moved on again (nine -> ten) when the
+    # DeskProc keyword was added -- was "nine, not eight" when this
+    # assertion was first written for the Job keyword itself; updated
+    # to check the current count rather than the historical one, same
+    # as the file-type list's own text always reflects the current
+    # count, not whichever keyword most recently bumped it.
+    "main doc's file-type count reflects the current built-in count (ten)",
+    "ten\nbuilt-in file types" in main_doc or "ten built-in file types" in main_doc,
+)
 
 check("tempui-jobs.md is registered in SPLIT_DOC_CONTENT", JOBS_DOC_FILENAME in SPLIT_DOC_CONTENT)
 jobs_doc = SPLIT_DOC_CONTENT[JOBS_DOC_FILENAME]

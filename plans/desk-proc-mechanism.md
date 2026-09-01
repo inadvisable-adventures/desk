@@ -1,4 +1,4 @@
-# Desk Proc mechanism (TODO `97bd090`)
+# Desk Proc mechanism (TODO `97bd090`) (COMPLETED)
 
 ## Summary
 

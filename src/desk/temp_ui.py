@@ -263,7 +263,16 @@ APP_DSL_DIRNAME = "app_dsl"
 # Desk's own canvas chrome. Prompted by a real bug where a kind:
 # "python" widget's own raw `QMessageBox` (the equivalent native-dialog
 # mistake on the Python side) rendered as a detached macOS window.
-TEMPUI_DOC_VERSION = 37
+#
+# TODO 97bd090: bumped 37 -> 38 for a new `DeskProc` tempui DSL
+# keyword: a one-time Python script with real, in-process access to
+# Desk's own live shell (reveal/screenshot a placed widget instance),
+# distinct from a `Job`'s capability-scoped-or-unsandboxed-but-passive
+# execution -- a `DeskProc`'s script gets a curated `deskproc.*` API for
+# safely acting on the shell from its own background thread. New split
+# doc, tempui-desk-proc.md; the main file-type list above gained a
+# matching bullet (nine built-in file types -> ten).
+TEMPUI_DOC_VERSION = 38
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -279,7 +288,7 @@ Each file is named with a bare UUID (e.g.
 `550e8400-e29b-41d4-a716-446655440000`, no extension). Desk watches
 this directory: a newly-created file shows up as a clickable
 notification in the app's upper-right corner; clicking it places a new
-widget on the canvas, centered in the current view. There are nine
+widget on the canvas, centered in the current view. There are ten
 built-in file types, distinguished by their first line's keyword:
 
 - `Question` (below) — a quick multiple-choice question, answered by
@@ -305,6 +314,10 @@ built-in file types, distinguished by their first line's keyword:
   (notably Bridge API access), without building a full `DefineWidget`/
   `widgets/<id>/` registration for it. See
   [tempui-jobs.md](./tempui-jobs.md).
+- `DeskProc` — run a one-time Python script with real, in-process
+  access to Desk's own live shell (e.g. reveal or screenshot a placed
+  widget instance), notified distinctly from every other kind above.
+  See [tempui-desk-proc.md](./tempui-desk-proc.md).
 
 Every file named above lives in this same directory.
 
@@ -1226,6 +1239,95 @@ for entry in jobs_dir.iterdir() if jobs_dir.is_dir() else []:
 ```
 """
 
+_DESK_PROC_DOC = """# TempUI DSL: DeskProc
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its shared version number -- this file
+just covers the `DeskProc` keyword.
+
+For running a **one-time Python script** with real, in-process access
+to Desk's own live shell -- reveal a specific already-placed widget
+instance (the same action as clicking its titlebar eye button), take a
+real pixel screenshot of one, or list what's currently placed --
+instead of just a `kind: "html"` widget's own capability-scoped Bridge
+API, which has no equivalent of any of that. If your script only needs
+Bridge API access (`workspace`, `fs`, `state`, ...), reach for `Job`
+(see `tempui-jobs.md`) instead -- that's the general-purpose one-time
+-script mechanism; `DeskProc` exists specifically for the subset of
+actions that require touching Desk's shell directly, which a
+sandboxed `kind: "html"` page structurally cannot do. Like `Job`, this
+is a single one-shot run, not a reusable, promotable widget *kind*.
+
+- The first line is `DeskProc<TAB>summary` -- `summary` is shown in the
+  notification and the placed Desk Proc Runner widget, never executed.
+- One or more `Script<TAB>base64-chunk` lines -- your script's entire
+  source, base64-encoded (chunk it across several `Script` lines for a
+  long script; concatenated in file order before decoding, the same
+  convention `Job`'s own `Script` lines and `DefineWidget`'s own `Html`
+  lines already use). Always a plain Python script -- there is no
+  `html`-kind variant of `DeskProc` at all. Executed directly (no
+  `desk` package import needed beyond what you'd already use in any
+  other Python code in this environment) -- there is no capability
+  scoping here, the same "no sandboxing" trust level `Job`'s own
+  `python` kind already has. "View Code is the only review step" for
+  this mechanism too.
+
+Your script's exec namespace also gets a `deskproc` global -- the
+*documented*, safe way to act on Desk's own shell from your script
+(which runs on a background thread; touching a Qt widget directly from
+there is unsafe, so use these methods rather than trying to reach into
+`desk.shell.window`/`desk.shell.canvas` yourself):
+
+- `deskproc.reveal_widget(instance_id: str) -> bool` -- zooms/pans the
+  Workspace Canvas so the given placed widget instance fills the view,
+  the same action as clicking that instance's own titlebar eye button.
+  Returns whether a matching instance was found.
+- `deskproc.screenshot_widget(instance_id: str, path: str) -> bool` --
+  saves a real PNG screenshot of that instance's own placed frame
+  (titlebar and content, exactly as it looks on the canvas) to `path`.
+  A relative `path` resolves against the current Desk's own directory,
+  same as `desk.fs.writeFile`; missing parent directories are created
+  automatically. Returns whether the instance was found and the file
+  was saved successfully.
+- `deskproc.screenshot_desk(path: str) -> bool` -- saves a real PNG
+  screenshot of the whole Workspace Canvas viewport (not any native
+  window chrome around it) to `path`, same path-resolution rules as
+  above.
+- `deskproc.list_widget_instances() -> list[dict]` -- the current
+  Desk's live placed-widget layout (instance ids, widget kind,
+  position, size) -- the same data `desk.workspace.getState()` already
+  exposes to a `kind: "html"` widget with the `workspace` capability,
+  provided here so a script has a real way to discover an instance id
+  rather than needing one handed in from outside.
+
+Clicking the resulting notification places a **Desk Proc Runner**
+widget, showing your declared summary, a "View Code" button (opens
+your script's own source in a real editor), and a "Start" button --
+**nothing runs until Start is clicked**. Once started, Start becomes
+disabled and stays that way (even across a Desk reload) -- a
+`DeskProc` is a one-shot run, not a repeatable tool; write a new
+`DeskProc` file for a second run.
+
+**This notification looks different from every other tempui kind's
+own notification on purpose** -- a distinct border color and a bold
+"DESK PROC" caption above the summary -- specifically so a Desk Proc
+(real, in-process shell access) is never mistaken at a glance for an
+ordinary tempui placement (a widget instance, a question, ...).
+
+Example (script shown decoded/unwrapped for readability -- the real
+file's `Script` line(s) would carry it base64-encoded):
+
+```
+DeskProc	Reveal and screenshot the Editor widget
+Script	<base64-encoded script text>
+```
+
+```python
+result = deskproc.screenshot_widget("some-instance-id", "screenshots/editor.png")
+print(f"screenshot saved: {result}")
+```
+"""
+
 # TODO 7462cdb: reverse-chronological changelogs for the whole tempui
 # doc set, tagged by the TEMPUI_DOC_VERSION each entry was introduced
 # in -- not DSL-keyword-triggered file types themselves (nothing writes
@@ -1294,6 +1396,20 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 38
+- A new `DeskProc` tempui DSL keyword: a one-time Python script with
+  real, in-process access to Desk's own live shell -- reveal a placed
+  widget instance (the same action as its titlebar eye button),
+  screenshot one (or the whole canvas) as a real PNG, or list what's
+  currently placed, via a curated `deskproc.*` object injected into the
+  script's own exec namespace. A close sibling of `Job` (same tempui
+  -file -> notification -> placed one-shot-runner-widget -> Start
+  -button shape), but its own keyword: no `html`-kind variant, and its
+  notification is deliberately styled differently (a distinct border
+  color plus a bold "DESK PROC" caption) so it's never mistaken for an
+  ordinary tempui placement notification at a glance. See
+  `tempui-desk-proc.md`.
 
 ## Version 37
 - `desk.popups.show(...)`'s own doc now explicitly warns against using
@@ -1842,6 +1958,7 @@ SCRATCH_DOC_FILENAME = "tempui-scratch.md"
 CUSTOM_WIDGETS_DOC_FILENAME = "tempui-custom-widgets.md"
 DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME = "tempui-discuss-parking-lot-item.md"
 JOBS_DOC_FILENAME = "tempui-jobs.md"
+DESK_PROC_DOC_FILENAME = "tempui-desk-proc.md"
 BREAKING_CHANGES_DOC_FILENAME = "tempui-breaking-changes.md"
 NEW_FEATURES_DOC_FILENAME = "tempui-new-features.md"
 BUILD_WIDGET_SCRIPT_FILENAME = "build_widget.py"
@@ -1861,6 +1978,7 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     CUSTOM_WIDGETS_DOC_FILENAME: _CUSTOM_WIDGETS_DOC,
     DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME: _DISCUSS_PARKING_LOT_ITEM_DOC,
     JOBS_DOC_FILENAME: _JOBS_DOC,
+    DESK_PROC_DOC_FILENAME: _DESK_PROC_DOC,
     BREAKING_CHANGES_DOC_FILENAME: _BREAKING_CHANGES_DOC,
     NEW_FEATURES_DOC_FILENAME: _NEW_FEATURES_DOC,
     BUILD_WIDGET_SCRIPT_FILENAME: _BUILD_WIDGET_SCRIPT,
@@ -2024,6 +2142,7 @@ MARKDOWN_KEYWORD = "Markdown"
 DEFINE_WIDGET_KEYWORD = "DefineWidget"
 DISCUSS_PARKING_LOT_ITEM_KEYWORD = "DiscussParkingLotItem"
 JOB_KEYWORD = "Job"
+DESK_PROC_KEYWORD = "DeskProc"
 UNANSWERED = "unanswered"
 
 # Every built-in DSL keyword a DefineWidget can't reuse as its own
@@ -2044,6 +2163,7 @@ RESERVED_TEMPUI_KEYWORDS = frozenset(
         DEFINE_WIDGET_KEYWORD,
         DISCUSS_PARKING_LOT_ITEM_KEYWORD,
         JOB_KEYWORD,
+        DESK_PROC_KEYWORD,
     }
 )
 
@@ -2213,13 +2333,55 @@ def parse_job(text: str) -> JobDefinition | None:
     )
 
 
+@dataclass
+class DeskProcDefinition:
+    """A tempui-DSL-defined one-shot "Desk Proc" (TODO 97bd090) -- a
+    close sibling of JobDefinition above, Scratch/Question-shaped (one
+    file, one bound widget instance). Deliberately simpler than
+    JobDefinition: no `kind`/`capabilities` at all, since a Desk Proc is
+    always a plain Python script with real, in-process access to Desk's
+    own live shell state (see current_context.get_gui_thread_caller) --
+    there is no `html`-kind variant the way a Job has one. `script_b64`
+    is the proc's entire script body, base64-encoded, same reasoning as
+    JobDefinition.script_b64 (tabs/newlines in real script content
+    can't otherwise survive this TAB-delimited-lines format)."""
+
+    summary: str
+    script_b64: str
+
+
+def parse_desk_proc(text: str) -> DeskProcDefinition | None:
+    """Extracts a DeskProcDefinition from a DeskProc temp-UI file:
+    `DeskProc<TAB>summary` (must be the first line), and one or more
+    `Script<TAB>base64-chunk` lines (concatenated in file order before
+    decoding, mirroring parse_job's own Script handling). Returns None
+    if the file doesn't start with the DeskProc keyword, or has no
+    Script content at all."""
+    lines = text.splitlines()
+    if not lines:
+        return None
+    first = lines[0].split("\t")
+    if not first or first[0] != DESK_PROC_KEYWORD:
+        return None
+    summary = first[1].strip() if len(first) > 1 else ""
+
+    script_chunks: list[str] = []
+    for line in lines[1:]:
+        if line.startswith("Script\t"):
+            script_chunks.append(line.split("\t", 1)[1])
+
+    if not script_chunks:
+        return None
+    return DeskProcDefinition(summary=summary, script_b64="".join(script_chunks))
+
+
 def detect_temp_ui_kind(text: str, custom_keywords: Collection[str] = ()) -> str:
     """"question" (the original, default type), "lightning_round",
     "open_markdown", "open_image", "scratch", "markdown_content",
-    "define_widget", "discuss_parking_lot_item", "job", or (if the
-    file's own keyword is a currently-known custom widget -- TODO
-    91b3f42) "custom:<keyword>" -- read from the first non-blank line's
-    keyword. Lets a caller
+    "define_widget", "discuss_parking_lot_item", "job", "desk_proc", or
+    (if the file's own keyword is a currently-known custom widget --
+    TODO 91b3f42) "custom:<keyword>" -- read from the first non-blank
+    line's keyword. Lets a caller
     that's seeing a temp-ui file for the first time (a notification, a
     saved Desk's widget state) know which widget kind to place without
     assuming "question". Named "markdown_content" (not "markdown") to
@@ -2249,6 +2411,8 @@ def detect_temp_ui_kind(text: str, custom_keywords: Collection[str] = ()) -> str
                 return "discuss_parking_lot_item"
             if keyword == JOB_KEYWORD:
                 return "job"
+            if keyword == DESK_PROC_KEYWORD:
+                return "desk_proc"
             if keyword in custom_keywords:
                 return f"custom:{keyword}"
             return "question"

@@ -37,8 +37,8 @@ class _FakeView:
     def __init__(self):
         self.notifications = []
 
-    def notify_temp_ui(self, path, text, on_click):
-        self.notifications.append((path, text))
+    def notify_temp_ui(self, path, text, on_click, banner_style="default"):
+        self.notifications.append((path, text, banner_style))
 
 
 class _FakeWindow:
@@ -80,8 +80,9 @@ def test_notify_temp_ui_composes_job_summary_text():
         win = _FakeWindow()
         win._notify_temp_ui(job_path)
         check("notify_temp_ui was called exactly once", len(win.view.notifications) == 1)
-        _, text = win.view.notifications[0]
+        _, text, banner_style = win.view.notifications[0]
         check("the notification text names the Job's declared summary", text == "Job: Clean up old scratch files")
+        check("a Job's own notification uses the default banner style, not desk_proc", banner_style == "default")
 
 
 def test_notify_temp_ui_falls_back_gracefully_for_a_malformed_job_file():
@@ -90,7 +91,7 @@ def test_notify_temp_ui_falls_back_gracefully_for_a_malformed_job_file():
         job_path.write_text("Job\tpython\n")  # no Script line -- parse_job returns None
         win = _FakeWindow()
         win._notify_temp_ui(job_path)
-        _, text = win.view.notifications[0]
+        _, text, _banner_style = win.view.notifications[0]
         check("a malformed Job file still gets a real (fallback) notification, not a crash", text != "")
 
 

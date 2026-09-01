@@ -66,6 +66,7 @@ from desk.temp_ui import (
     detect_temp_ui_kind,
     is_temp_ui_filename,
     parse_define_widget,
+    parse_desk_proc,
     parse_discuss_parking_lot_item,
     parse_job,
     parse_lightning_round,
@@ -99,6 +100,7 @@ IMAGE_VIEWER_WIDGET_ID = "image_viewer"
 EDITOR_WIDGET_ID = "editor"
 CRASH_LOG_WIDGET_ID = "crash_log"
 JOB_RUNNER_WIDGET_ID = "job_runner"
+DESK_PROC_RUNNER_WIDGET_ID = "desk_proc_runner"
 # TODO 6330249: the schema/state-management widget -- an ordinary
 # widget kind, just one Desk guarantees at most one placed instance of
 # (see _ensure_state_manager_placed).
@@ -143,6 +145,7 @@ TEMP_UI_WIDGET_IDS = {
     SCRATCH_WIDGET_ID,
     IMAGE_VIEWER_WIDGET_ID,
     JOB_RUNNER_WIDGET_ID,
+    DESK_PROC_RUNNER_WIDGET_ID,
 }
 
 WIDGET_SPACING = 700
@@ -367,6 +370,7 @@ class DeskWindow(QMainWindow):
         current_context.set_widget_catalog_provider(self.get_widget_catalog_dicts)
         current_context.set_hot_reload_broker(self._broker)
         current_context.set_html_job_starter(self.start_html_job)
+        current_context.set_gui_thread_caller(self._handle.gui_bridge.call)
         current_context.set_state_overview_provider(self.get_state_overview)
         current_context.set_state_history_provider(self.get_state_history)
         current_context.set_state_writer(self.try_set_state)
@@ -1389,6 +1393,50 @@ class DeskWindow(QMainWindow):
         self.view.zoom_to_widget(frame)
         return True
 
+    def _resolve_desk_relative_path(self, path: str) -> Path:
+        """Same relative-path convention `desk.fs.*` already uses (see
+        `desk.server.app._resolve_fs_path`): an absolute `path` is used
+        as-is; a relative one resolves against the current Desk's own
+        directory, not this process's ambient working directory."""
+        candidate = Path(path)
+        return candidate if candidate.is_absolute() else self.current_desk.directory / candidate
+
+    def screenshot_widget_instance(self, instance_id: str, path: str) -> bool:
+        """TODO 97bd090: saves a real PNG screenshot of a specific
+        placed widget instance's own frame (titlebar and content, same
+        as it looks on the canvas right now) to `path` -- the
+        `deskproc.screenshot_widget` half of the Desk Proc mechanism.
+        Independent of the canvas's current zoom/pan: `QWidget.grab()`
+        rasterizes the frame's own paint output at its authored size,
+        not whatever a `QGraphicsProxyWidget` embedding currently
+        renders it at. Returns whether a matching instance was found
+        and the file was saved successfully -- never raises for a
+        missing instance or a failed save."""
+        frame = self.find_frame_by_instance_id(instance_id)
+        if frame is None:
+            return False
+        pixmap = frame.grab()
+        resolved = self._resolve_desk_relative_path(path)
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        return pixmap.save(str(resolved), "PNG")
+
+    def screenshot_desk(self, path: str) -> bool:
+        """TODO 97bd090: saves a real PNG screenshot of the whole
+        Workspace Canvas viewport (`self.view`, not `self` -- no native
+        window chrome like the menu bar) to `path` -- the
+        `deskproc.screenshot_desk` half of the Desk Proc mechanism.
+        Deliberately different from `widgets/feedback/widget.py`'s own
+        `_take_screenshot` (which grabs the whole main window via
+        `current_context.get_main_window()`, useful there for a bug
+        report that might need to show dialog/window chrome) -- for a
+        Desk Proc, the canvas content is what an agent actually wants
+        to see. Same path resolution/mkdir/save shape as
+        screenshot_widget_instance above."""
+        pixmap = self.view.grab()
+        resolved = self._resolve_desk_relative_path(path)
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        return pixmap.save(str(resolved), "PNG")
+
     def _capture_desk_state(self) -> Desk:
         widget_states = []
         for frame in self.view._frames:
@@ -1851,6 +1899,7 @@ class DeskWindow(QMainWindow):
 
     def _notify_temp_ui(self, path: Path) -> None:
         text = f"New question: {path.name}"
+        kind = "question"
         try:
             content_text = path.read_text()
             kind = detect_temp_ui_kind(content_text, self._custom_widget_definitions.keys())
@@ -1882,6 +1931,10 @@ class DeskWindow(QMainWindow):
                 job_definition = parse_job(content_text)
                 if job_definition is not None and job_definition.summary:
                     text = f"Job: {job_definition.summary}"
+            elif kind == "desk_proc":
+                desk_proc_definition = parse_desk_proc(content_text)
+                if desk_proc_definition is not None and desk_proc_definition.summary:
+                    text = f"Desk Proc: {desk_proc_definition.summary}"
             elif kind.startswith("custom:"):
                 definition = self._custom_widget_definitions.get(kind.split(":", 1)[1])
                 if definition is not None:
@@ -1892,7 +1945,10 @@ class DeskWindow(QMainWindow):
                     text = doc.question
         except OSError:
             pass
-        self.view.notify_temp_ui(path, text, lambda: self._activate_temp_ui(path))
+        banner_style = "desk_proc" if kind == "desk_proc" else "default"
+        self.view.notify_temp_ui(
+            path, text, lambda: self._activate_temp_ui(path), banner_style=banner_style
+        )
 
     def _temp_ui_widget_id_for(self, path: Path) -> str:
         """Which widget kind renders this TempUI file -- read from its
@@ -1917,6 +1973,8 @@ class DeskWindow(QMainWindow):
             return CLAUDE_WIDGET_ID
         if kind == "job":
             return JOB_RUNNER_WIDGET_ID
+        if kind == "desk_proc":
+            return DESK_PROC_RUNNER_WIDGET_ID
         if kind.startswith("custom:"):
             return kind.split(":", 1)[1]
         return QUESTION_WIDGET_ID
