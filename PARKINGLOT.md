@@ -999,3 +999,23 @@ This file captures thoughts and TODO items that arise during work on other thing
   now -- figure out what's realistically available and what the
   actual shape of the risk/tradeoffs is before this becomes a planned
   TODO.
+
+- **A mechanism for carving out subsets of `desk.state.*` into
+  named/id'd stores**
+
+  Today's shared state store (TODO `f68383f`/`af7898b`/`9aef267`/
+  `6330249`) is a single flat key namespace for the whole project --
+  every key lives in one shared `Desk.state` dict, with no grouping
+  concept above the individual key. Would be useful to be able to
+  carve out a subset of keys into its own named/id'd store, for
+  modeling something like separate processes (each with its own
+  scoped state, rather than every process's keys mixed together in one
+  namespace and disambiguated only by naming convention). Not designed
+  at all yet -- open questions include what a "store" actually is
+  (a prefix convention over the existing flat namespace? a genuinely
+  separate registry/dict per store id?), how `desk.state.get`/`set`/
+  `getHistory` and schema declarations would address a specific store
+  (a new parameter? part of the key itself?), how this interacts with
+  the State Manager widget's (TODO `6330249`) own overview, and whether
+  existing unscoped keys need a default/implicit store or stay as they
+  are alongside any new scoped ones.
