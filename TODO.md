@@ -7086,6 +7086,39 @@ af7898b. The state store's (TODO `f68383f`) schema declaration,
    applying anything -- all-or-nothing, not a partial apply. Prioritized
    per direct request.
    [planned: state-store-json-import-export.md]
+   COMPLETED: `src/desk/desks.py` -- promoted the existing, previously
+   -private `_state_entry_dict`/`_load_state_entry` helpers to public
+   `state_entry_dict`/`load_state_entry` (a second module now needs
+   them) rather than reimplementing the same `StateEntry`-as-JSON shape
+   a third time. `src/desk/shell/window.py` -- `export_state_json`
+   (writes every current key's value/edit/history to a file);
+   `import_state_json` (all-or-nothing: validates every key's current
+   value against any active schema first, collecting every failure
+   into one combined error before applying anything; replaces each
+   key's entry wholesale, not routed through `set_state`'s
+   single-entry FIFO-append; a key present in the store but absent
+   from the file is left untouched; publishes `desk.state.changed` per
+   actually-changed key with a new `SYSTEM_SENDER_INSTANCE_ID` sender,
+   the same sentinel `SchemaRegistry` already uses for
+   system-triggered changes). `current_context.py` -- `state_exporter`/
+   `state_importer` provider hook pairs, the same shape every existing
+   pair already uses. `widgets/state_manager/widget.py` -- "Save
+   State..."/"Load State..." toolbar buttons (`QFileDialog`), a
+   confirmation dialog before import (it can overwrite currently-live
+   values), `refresh()` after a successful import. New
+   `tests/verify/verify_state_store_json_import_export.py` (16
+   checks): export/import round-trips value+edit+history for multiple
+   keys exactly; a schema-violating key refuses the entire import,
+   including an otherwise-valid key in the same file; a key with no
+   currently-active schema imports unchanged; a key present in the
+   target but absent from the file survives untouched; a real
+   subscribed instance receives `desk.state.changed` for each
+   imported key; malformed JSON and a non-dict top level are real,
+   non-crashing errors. Full `tests/verify/` regression suite passes
+   (123 scripts total, 0 failures -- including the usually-flaky
+   `disabled_verify_claude_desk_widget_claude_api.py`, which happened
+   to pass this run; it remains an already-filed, already-disabled
+   item regardless).
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a

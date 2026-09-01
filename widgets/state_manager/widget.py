@@ -11,12 +11,14 @@ browser; this widget never does).
 """
 
 import json
+from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -97,9 +99,15 @@ class StateManagerWidget(QWidget):
         new_key_button.clicked.connect(self._on_new_key_clicked)
         refresh_button = QPushButton("Refresh")
         refresh_button.clicked.connect(self.refresh)
+        save_state_button = QPushButton("Save State...")
+        save_state_button.clicked.connect(self._on_save_state_clicked)
+        load_state_button = QPushButton("Load State...")
+        load_state_button.clicked.connect(self._on_load_state_clicked)
         toolbar = QHBoxLayout()
         toolbar.addWidget(new_key_button)
         toolbar.addWidget(refresh_button)
+        toolbar.addWidget(save_state_button)
+        toolbar.addWidget(load_state_button)
         toolbar.addStretch(1)
 
         left = QWidget()
@@ -341,6 +349,39 @@ class StateManagerWidget(QWidget):
             error = value_writer(key, value, None, self._instance_id, None)
             if error is not None:
                 QMessageBox.warning(self, "New State Key", f"Value could not be saved: {error}")
+        self.refresh()
+
+    def _on_save_state_clicked(self) -> None:
+        exporter = current_context.get_state_exporter()
+        if exporter is None:
+            self._set_status("Not ready yet -- try again in a moment.")
+            return
+        filename, _filter = QFileDialog.getSaveFileName(self, "Save State", "state.json", "JSON (*.json)")
+        if not filename:
+            return
+        error = exporter(Path(filename))
+        self._set_status(f"Save failed: {error}" if error is not None else f"Saved to {filename}.")
+
+    def _on_load_state_clicked(self) -> None:
+        importer = current_context.get_state_importer()
+        if importer is None:
+            self._set_status("Not ready yet -- try again in a moment.")
+            return
+        filename, _filter = QFileDialog.getOpenFileName(self, "Load State", "", "JSON (*.json)")
+        if not filename:
+            return
+        confirmed = QMessageBox.question(
+            self,
+            "Load State",
+            f"Import {filename}? This can overwrite currently-live values.",
+        )
+        if confirmed != QMessageBox.StandardButton.Yes:
+            return
+        error = importer(Path(filename))
+        if error is not None:
+            self._set_status(f"Load failed: {error}")
+            return
+        self._set_status(f"Loaded from {filename}.")
         self.refresh()
 
     def bind_event_mediator(self, instance_id, mediator) -> None:

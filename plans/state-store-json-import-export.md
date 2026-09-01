@@ -1,4 +1,4 @@
-# Shared state store: save/load as JSON (TODO `297f1a6`)
+# Shared state store: save/load as JSON (TODO `297f1a6`) (COMPLETED)
 
 ## Summary
 

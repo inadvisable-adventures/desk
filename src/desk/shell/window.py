@@ -20,7 +20,9 @@ from desk.desks import (
     WidgetState,
     desk_state_dict,
     load_desk,
+    load_state_entry,
     save_desk,
+    state_entry_dict,
 )
 from desk.jobs import materialize as materialize_job
 from desk.file_type_registry import (
@@ -35,7 +37,7 @@ from desk.file_watch import SingleFileWatcher
 from desk.hotreload import HotReloadBroker
 from desk.questions_file import find_nearest_questions_file, parse_questions_file, unparsed_heading_count
 from desk.recent_desks import add_to_mru, prune_missing_mru_entries
-from desk.schema_registry import SchemaConflict
+from desk.schema_registry import SYSTEM_SENDER_INSTANCE_ID, SchemaConflict
 from desk.schema_types import SchemaSyntaxError, coerce, parse_type_expression, validate
 from desk.server.bridge_client import DOM_SNAPSHOT_JS
 from desk.server.runner import ServerHandle
@@ -370,6 +372,8 @@ class DeskWindow(QMainWindow):
         current_context.set_state_writer(self.try_set_state)
         current_context.set_schema_file_writer(self.write_schema_file)
         current_context.set_schema_file_deleter(self.delete_schema_key)
+        current_context.set_state_exporter(self.export_state_json)
+        current_context.set_state_importer(self.import_state_json)
         self._sync_tempui_doc()
         self._open_crash_log_widgets()
 
@@ -2945,4 +2949,64 @@ class DeskWindow(QMainWindow):
         else:
             path.unlink()
         self._on_schema_file_changed(path)
+        return None
+
+    def export_state_json(self, path: Path) -> str | None:
+        """Writes the entire current desk.state.* store (every key's
+        value, edit, and history) to `path` as JSON (TODO 297f1a6) --
+        a whole-store snapshot, not a per-key operation. Reuses
+        desk.desks.state_entry_dict directly, the same shape a real
+        .desk file's own "state" section already is, so this is never
+        a second, drifting definition of what a StateEntry looks like
+        on disk. Returns an error message, or None on success."""
+        data = {key: state_entry_dict(entry) for key, entry in self.current_desk.state.items()}
+        try:
+            path.write_text(json.dumps(data, indent=2))
+        except OSError as e:
+            return f"Could not write {path}: {e}"
+        return None
+
+    def import_state_json(self, path: Path) -> str | None:
+        """Restores desk.state.* from a file export_state_json wrote
+        (TODO 297f1a6) -- all-or-nothing: every key's *current* value
+        (history entries are trusted as-is, they're what genuinely
+        happened, not being newly written) is validated against any
+        currently-active schema first; if any key fails, the whole
+        import is refused with every offending key named, rather than
+        partially applying a snapshot. A key present in the current
+        store but absent from the file is left untouched -- this is a
+        restore of what the file describes, not a wipe-then-restore.
+        Each key the import actually changes publishes
+        desk.state.changed, the same live-update guarantee set_state
+        itself already gives every other write. Returns an error
+        message, or None on success."""
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError) as e:
+            return f"Could not read {path}: {e}"
+        if not isinstance(data, dict):
+            return f"{path.name} must contain a JSON object mapping each key to its state entry"
+
+        entries: dict[str, StateEntry] = {}
+        failures = []
+        for key, raw_entry in data.items():
+            if not isinstance(raw_entry, dict):
+                failures.append(f"{key!r}: not a valid state entry")
+                continue
+            entry = load_state_entry(raw_entry)
+            schema = self._schema_registry.get(key)
+            if schema is not None and not validate(schema.type_node, entry.value):
+                failures.append(f"{key!r}: value does not match its active schema ({schema.type_expr!r})")
+                continue
+            entries[key] = entry
+        if failures:
+            return "Import refused -- " + "; ".join(failures)
+
+        for key, entry in entries.items():
+            self.current_desk.state[key] = entry
+            self._event_mediator.publish(
+                "desk.state.changed",
+                {"key": key, "value": entry.value, "edit": entry.edit},
+                sender_instance_id=SYSTEM_SENDER_INSTANCE_ID,
+            )
         return None

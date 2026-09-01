@@ -101,6 +101,8 @@ _state_history_provider: Callable[[str, int], list[dict]] | None = None
 _state_writer: Callable[[str, object, object, str, str | None], str | None] | None = None
 _schema_file_writer: Callable[[str, str, str], str | None] | None = None
 _schema_file_deleter: Callable[[str], str | None] | None = None
+_state_exporter: Callable[[Path], str | None] | None = None
+_state_importer: Callable[[Path], str | None] | None = None
 
 
 def set_current_desk_directory(directory: Path) -> None:
@@ -429,3 +431,31 @@ def set_schema_file_deleter(deleter: Callable[[str], str | None]) -> None:
 
 def get_schema_file_deleter() -> Callable[[str], str | None] | None:
     return _schema_file_deleter
+
+
+def set_state_exporter(exporter: Callable[[Path], str | None]) -> None:
+    """TODO 297f1a6: `exporter(path)` -- writes the entire current
+    desk.state.* store (every key's value, edit, and history) to
+    `path` as JSON, a whole-store snapshot. Returns an error message,
+    or `None` on success. See
+    `desk.shell.window.DeskWindow.export_state_json`."""
+    global _state_exporter
+    _state_exporter = exporter
+
+
+def get_state_exporter() -> Callable[[Path], str | None] | None:
+    return _state_exporter
+
+
+def set_state_importer(importer: Callable[[Path], str | None]) -> None:
+    """TODO 297f1a6: `importer(path)` -- restores desk.state.* from a
+    file `get_state_exporter` wrote, all-or-nothing (every key's
+    current value is validated against any currently-active schema
+    before anything is applied). Returns an error message, or `None`
+    on success. See `desk.shell.window.DeskWindow.import_state_json`."""
+    global _state_importer
+    _state_importer = importer
+
+
+def get_state_importer() -> Callable[[Path], str | None] | None:
+    return _state_importer

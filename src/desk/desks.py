@@ -135,7 +135,12 @@ def _load_custom_widget(data: dict) -> CustomWidgetDefinition:
     )
 
 
-def _load_state_entry(data: dict) -> StateEntry:
+def load_state_entry(data: dict) -> StateEntry:
+    """Public (TODO 297f1a6, needed by desk.shell.window's JSON import
+    /export) -- the JSON shape a StateEntry round-trips through,
+    shared by load_desk below and the save/load-as-JSON feature so
+    there's only ever one definition of what a StateEntry looks like
+    on disk."""
     history = [StateHistoryEntry(value=h["value"], edit=h.get("edit")) for h in data.get("history", [])]
     return StateEntry(value=data.get("value"), edit=data.get("edit"), history=history)
 
@@ -145,7 +150,7 @@ def load_desk(path: Path) -> Desk:
     widgets = [WidgetState(**w) for w in data.get("widgets", [])]
     custom_widgets = [_load_custom_widget(cw) for cw in data.get("custom_widgets", [])]
     file_type_registry = [entry_from_dict(e) for e in data.get("file_type_registry", [])]
-    state = {key: _load_state_entry(entry) for key, entry in data.get("state", {}).items()}
+    state = {key: load_state_entry(entry) for key, entry in data.get("state", {}).items()}
     return Desk(
         path=path,
         widgets=widgets,
@@ -170,7 +175,8 @@ def _custom_widget_dict(cw: CustomWidgetDefinition) -> dict:
     }
 
 
-def _state_entry_dict(entry: StateEntry) -> dict:
+def state_entry_dict(entry: StateEntry) -> dict:
+    """Public (TODO 297f1a6) -- see load_state_entry above."""
     return {
         "value": entry.value,
         "edit": entry.edit,
@@ -203,7 +209,7 @@ def desk_state_dict(desk: Desk) -> dict:
         "scale": desk.scale,
         "custom_widgets": [_custom_widget_dict(cw) for cw in desk.custom_widgets],
         "file_type_registry": [entry_to_dict(e) for e in desk.file_type_registry],
-        "state": {key: _state_entry_dict(entry) for key, entry in desk.state.items()},
+        "state": {key: state_entry_dict(entry) for key, entry in desk.state.items()},
     }
 
 
