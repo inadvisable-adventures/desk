@@ -7120,6 +7120,28 @@ af7898b. The state store's (TODO `f68383f`) schema declaration,
    to pass this run; it remains an already-filed, already-disabled
    item regardless).
 
+5242aeb. Bug: widget-triggered alerts/confirmations render as detached
+   macOS windows -- notably the "Load State" confirmation and "New
+   Key" validation alerts in the new State Manager widget (TODO
+   `6330249`), which used a raw `QMessageBox` directly instead of the
+   already-existing desk-internal popups service (`desk_services
+   .popups`, TODO `359684f`), reintroducing the exact bug that service
+   was built to eliminate: a `QMessageBox` parented to widget content
+   embedded in a `QGraphicsProxyWidget` on the canvas renders as a
+   genuine top-level macOS window whose position doesn't account for
+   the canvas's own zoom/pan transform. `widgets/markdown/widget.py`'s
+   "Save As" error alert had the same, apparently pre-existing,
+   never-migrated instance. The fix mechanism already exists
+   (`current_context.get_popup_opener()` for `kind: "python"`,
+   `desk.popups.show(...)` for `kind: "html"`, both the exact same
+   codepath already) and needs no new code -- this item is fixing the
+   two widgets that bypassed it, strengthening the guidance an agent
+   actually reads before writing a widget (`design-docs/architecture.md`'s
+   Widget Model section, `temp_ui.py`'s `desk.popups.show` doc), and
+   adding a real, automated regression guard rather than relying on
+   anyone remembering to check by hand. Prioritized per direct request.
+   [planned: fix-detached-popup-windows.md]
+
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
    single-line `QLineEdit`) a multi-line box that wraps text instead,
