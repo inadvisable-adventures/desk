@@ -7196,6 +7196,37 @@ af7898b. The state store's (TODO `f68383f`) schema declaration,
    the same "past the current event dispatch" idiom this file already
    uses elsewhere. Prioritized per direct request.
    [planned: fix-popup-scene-removal-crash.md]
+   COMPLETED: `src/desk/shell/canvas.py` -- `WorkspaceView.remove_popup`
+   now calls `frame.hide()` and removes `frame` from `_popup_frames`
+   synchronously (neither mutates the scene's own item list, so
+   neither carries the reentrancy risk -- the popup still disappears
+   immediately and is instantly excluded from z-ordering/
+   `clear_widgets`'s own membership check), then defers the actual
+   `self.scene().removeItem(proxy)`/`frame.deleteLater()` via
+   `QTimer.singleShot(0, ...)`, the same "past the current event
+   dispatch" idiom this file already used for
+   `_position_desk_picker`/etc. `clear_widgets`'s own separate,
+   defensive-fallback removal path (a popup with no listener attached
+   at all) is untouched -- it was never called from inside the scene's
+   own event dispatch, so it never had this hazard. This item's own
+   verification is necessarily indirect: a real, native-event-driven
+   Qt Graphics View reentrancy crash (confirmed via an actual macOS
+   crash report) can't be reproduced by an automated, offscreen test --
+   there's no equivalent native `NSApplication`/`CFRunLoop` event
+   source to recreate the exact reentrant-dispatch timing headlessly.
+   Verification instead confirms the specific, deliberate behavior
+   change the fix makes: `tests/verify/verify_desk_internal_popups.py`
+   gained `test_scene_removal_is_deferred_not_synchronous` (+6 checks,
+   31 total in that file) -- clicking a popup's button hides it and
+   updates `_popup_frames` synchronously (already covered, confirmed
+   unchanged), but its `QGraphicsProxyWidget` is still genuinely
+   present in the scene immediately after the click, before any
+   event-loop pump; only after pumping (`processEvents()` +
+   `QCoreApplication.sendPostedEvents(..., QEvent.Type.DeferredDelete)`,
+   since a plain pump alone isn't guaranteed to run a `deleteLater()`
+   -scheduled deletion in this environment) does the proxy/frame
+   actually get torn down (`PyQt6.sip.isdeleted`). Full `tests/verify/`
+   regression suite passes (124 scripts total, 0 failures).
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a

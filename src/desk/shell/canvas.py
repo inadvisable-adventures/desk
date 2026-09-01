@@ -207,13 +207,36 @@ class WorkspaceView(QGraphicsView):
         """Removes a single popup from the canvas -- see add_popup. Not
         `remove_widget`: that removes from `_frames` and is only ever
         meant for a real placed widget (its close-button flow also does
-        DeskWindow-side Desk-state bookkeeping a popup has no part in)."""
-        proxy = frame.graphicsProxyWidget()
-        if proxy is not None:
-            self.scene().removeItem(proxy)
+        DeskWindow-side Desk-state bookkeeping a popup has no part in).
+
+        TODO 74a8b78: the actual scene-graph removal is deferred via
+        QTimer.singleShot(0, ...) -- this method is called from
+        PopupsService.resolve(), itself invoked from a popup button's
+        own `clicked` signal while QGraphicsScene is still mid-dispatch
+        of the very mouse event that caused the click. Confirmed via a
+        real macOS crash report: synchronously calling
+        self.scene().removeItem(proxy) from inside that dispatch is a
+        genuine Qt Graphics View reentrancy hazard -- a SIGBUS, not
+        just a lint-level concern (Qt's own internal object-liveness
+        bookkeeping, QSharedPointer::ExternalRefCountData::getAndRef,
+        ends up dereferencing a pointer to an item removed out from
+        under the dispatch it was still walking). `frame.hide()` and
+        the `_popup_frames` removal below stay synchronous -- neither
+        mutates the scene's own item list, so neither carries the same
+        risk, and the popup still disappears immediately and is
+        instantly excluded from z-ordering/`clear_widgets`'s own
+        membership check."""
+        frame.hide()
         if frame in self._popup_frames:
             self._popup_frames.remove(frame)
-        frame.deleteLater()
+
+        def _finish_removal() -> None:
+            proxy = frame.graphicsProxyWidget()
+            if proxy is not None and proxy.scene() is not None:
+                self.scene().removeItem(proxy)
+            frame.deleteLater()
+
+        QTimer.singleShot(0, _finish_removal)
 
     def set_widget_catalog(self, catalog: dict[str, WidgetInfo]) -> None:
         """Registers the discovered widget types offered by the right-click

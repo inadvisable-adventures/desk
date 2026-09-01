@@ -1,4 +1,4 @@
-# Bug: crash removing a popup from the scene during its own click event (TODO `74a8b78`)
+# Bug: crash removing a popup from the scene during its own click event (TODO `74a8b78`) (COMPLETED)
 
 ## Summary
 
