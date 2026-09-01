@@ -7177,6 +7177,26 @@ af7898b. The state store's (TODO `f68383f`) schema declaration,
    `tests/verify/` regression suite passes (124 scripts total, 0
    failures).
 
+74a8b78. Bug: crash (SIGBUS) removing a desk-internal popup from the
+   canvas scene during its own click event -- confirmed via a real
+   macOS crash report clicking a button inside a popup shown by
+   `PopupsService.show_blocking` (the only popup mechanism in the app --
+   `current_context.get_popup_opener()` for `kind: "python"`,
+   `desk.popups.show(...)` for `kind: "html"`, both the same codepath --
+   so this affects every alert/confirmation, not just the State Manager
+   widget that surfaced it, found while testing TODO `5242aeb`'s own
+   fix). `WorkspaceView.remove_popup` calls `self.scene().removeItem(proxy)`
+   synchronously, from inside the very click handler `QGraphicsScene`
+   is still mid-dispatch of -- a real, known Qt Graphics View
+   reentrancy hazard (Qt's internal object-liveness bookkeeping,
+   `QSharedPointer::ExternalRefCountData::getAndRef`, dereferences a
+   stale pointer). Fix: `frame.hide()` and the `_popup_frames` removal
+   stay synchronous (neither mutates the scene graph); the actual
+   `removeItem`/`deleteLater()` defers via `QTimer.singleShot(0, ...)`,
+   the same "past the current event dispatch" idiom this file already
+   uses elsewhere. Prioritized per direct request.
+   [planned: fix-popup-scene-removal-crash.md]
+
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
    single-line `QLineEdit`) a multi-line box that wraps text instead,
