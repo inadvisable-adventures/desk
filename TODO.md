@@ -7141,6 +7141,41 @@ af7898b. The state store's (TODO `f68383f`) schema declaration,
    adding a real, automated regression guard rather than relying on
    anyone remembering to check by hand. Prioritized per direct request.
    [planned: fix-detached-popup-windows.md]
+   COMPLETED: `widgets/state_manager/widget.py` -- new `_alert`/
+   `_confirm` helpers routing through `current_context
+   .get_popup_opener()`; all 5 raw `QMessageBox` call sites (4
+   `.warning`, 1 `.question`) replaced; the now-unused `QMessageBox`
+   import dropped. `widgets/markdown/widget.py` -- its one remaining
+   `_save_as` error alert fixed the same way; same import cleanup.
+   `design-docs/architecture.md` -- the Widget Model's `kind: "python"`
+   bullet gained an explicit "never use a raw `QMessageBox`/`QDialog`"
+   callout with the why and a pointer to `design-docs/widget-ux.md`'s
+   existing "Desk-Internal Popups" section. `src/desk/temp_ui.py` --
+   the existing `desk.popups.show` doc bullet gained an explicit "use
+   this, not the browser's own `alert()`/`confirm()`/`prompt()`"
+   callout; `TEMPUI_DOC_VERSION` bumped 36 -> 37 (doc-wording only, no
+   API change). New `tests/verify/verify_widgets_use_popup_service.py`
+   (3 checks) -- a real, automated regression guard: scans every
+   `widgets/*/widget.py` for a live `QMessageBox.(question|warning
+   |information|critical)(...)` call and fails if one is found, plus a
+   self-check that the scanning regex itself still matches the exact
+   offending shape and doesn't false-positive on an explanatory
+   comment. `tests/verify/verify_state_manager_widget_ui.py` extended
+   (+7 checks, 25 total): `_alert`/`_confirm` call the fake popup
+   opener with the right title/message/buttons/default, not a real
+   `QMessageBox`; declining "Load State"'s confirmation never calls the
+   importer, confirming does. Found and fixed a real, unrelated test
+   -infrastructure flake while adding this coverage: constructing
+   further widgets/mediators in the same process *after* a test that
+   builds a real `EventMediator` + `EventSubscription` could trigger
+   that earlier pair's delayed garbage-collection-triggered teardown at
+   a bad moment, aborting the process (an uncaught exception escaping a
+   Qt `destroyed` signal handler, the same class of issue LEARNINGS.md
+   already documents for `ChromiumWidget`/`QWebEngineProfile`) --
+   fixed by reordering so the `EventMediator`-holding test runs last in
+   that file, not by suppressing or working around the crash. Full
+   `tests/verify/` regression suite passes (124 scripts total, 0
+   failures).
 
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a

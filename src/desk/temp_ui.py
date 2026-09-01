@@ -255,7 +255,15 @@ APP_DSL_DIRNAME = "app_dsl"
 # (the latter never created by Desk itself, only watched for and
 # picked up once it exists). "Validated vs. non-validated keys"
 # subsection updated with the file format and both locations.
-TEMPUI_DOC_VERSION = 36
+#
+# TODO 5242aeb: bumped 36 -> 37 -- no new call, just a stronger warning
+# on the existing `desk.popups.show` bullet: use it, not the browser's
+# own `alert()`/`confirm()`/`prompt()`, for any alert/confirmation --
+# those are real, separate OS-level dialogs with no connection to
+# Desk's own canvas chrome. Prompted by a real bug where a kind:
+# "python" widget's own raw `QMessageBox` (the equivalent native-dialog
+# mistake on the Python side) rendered as a detached macOS window.
+TEMPUI_DOC_VERSION = 37
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -899,7 +907,12 @@ built for genuine cross-widget signaling:
   returns `null` if dismissed via its close button/Escape). `default`
   (optional) names which button is the pre-selected/Enter-triggered
   one. The same service a `kind: "python"` widget reaches via
-  `current_context.get_popup_opener()`.
+  `current_context.get_popup_opener()`. **Use this, not the browser's
+  own `alert()`/`confirm()`/`prompt()`**, for any alert or confirmation
+  your widget shows — those are real, separate OS-level dialogs with no
+  connection to Desk's own canvas chrome (wrong styling, no
+  zoom/pan-aware positioning, and blocking in a way that can behave
+  surprisingly inside an embedded `ChromiumWidget`).
 - `desk.transforms.run(transformId, input, config)` (capability
   `transforms`) — runs a transform (a separate entity from a widget:
   converts data of one named type into another, e.g. a Mermaid
@@ -1281,6 +1294,14 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 37
+- `desk.popups.show(...)`'s own doc now explicitly warns against using
+  the browser's raw `alert()`/`confirm()`/`prompt()` for an
+  alert/confirmation instead -- always use `desk.popups.show`, the
+  desk-internal popup. No API change, just a stronger warning after a
+  real bug where the Python-side equivalent mistake (a raw
+  `QMessageBox`) rendered as a detached macOS window.
 
 ## Version 36
 - A `desk.state.*` schema can now also be declared "top-level,"

@@ -24,7 +24,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
-    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSplitter,
@@ -321,18 +320,39 @@ class StateManagerWidget(QWidget):
         self._set_status("Schema deleted.")
         self.refresh()
 
+    def _alert(self, title: str, message: str) -> None:
+        """Desk-internal popups service (TODO 359684f), not a
+        QMessageBox parented to self -- that renders as a genuine
+        top-level macOS window whose position/size Qt computes from
+        this widget's own mapToGlobal, a computation that doesn't
+        account for the canvas's own zoom/pan transform (this widget
+        lives inside a QGraphicsProxyWidget on the canvas, not as a
+        real top-level window itself)."""
+        opener = current_context.get_popup_opener()
+        if opener is not None:
+            opener(title, message, ["OK"], "OK")
+
+    def _confirm(self, title: str, message: str) -> bool:
+        """Same reasoning as _alert above -- Yes/No, with "No" as the
+        default (matches QMessageBox.question's own implicit safety
+        default for a destructive/overwriting action)."""
+        opener = current_context.get_popup_opener()
+        if opener is None:
+            return False
+        return opener(title, message, ["Yes", "No"], "No") == "Yes"
+
     def _on_new_key_clicked(self) -> None:
         dialog = _NewKeyDialog(self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         key = dialog.key_field.text().strip()
         if not key:
-            QMessageBox.warning(self, "New State Key", "A key name is required.")
+            self._alert("New State Key", "A key name is required.")
             return
         try:
             value = json.loads(dialog.value_field.toPlainText())
         except json.JSONDecodeError as e:
-            QMessageBox.warning(self, "New State Key", f"Initial value is not valid JSON: {e}")
+            self._alert("New State Key", f"Initial value is not valid JSON: {e}")
             return
 
         type_expr = dialog.type_expr_field.text().strip()
@@ -341,14 +361,14 @@ class StateManagerWidget(QWidget):
             if writer is not None:
                 error = writer(dialog.location_field.currentData(), key, type_expr)
                 if error is not None:
-                    QMessageBox.warning(self, "New State Key", f"Schema could not be saved: {error}")
+                    self._alert("New State Key", f"Schema could not be saved: {error}")
                     return
 
         value_writer = current_context.get_state_writer()
         if value_writer is not None and self._instance_id is not None:
             error = value_writer(key, value, None, self._instance_id, None)
             if error is not None:
-                QMessageBox.warning(self, "New State Key", f"Value could not be saved: {error}")
+                self._alert("New State Key", f"Value could not be saved: {error}")
         self.refresh()
 
     def _on_save_state_clicked(self) -> None:
@@ -370,12 +390,7 @@ class StateManagerWidget(QWidget):
         filename, _filter = QFileDialog.getOpenFileName(self, "Load State", "", "JSON (*.json)")
         if not filename:
             return
-        confirmed = QMessageBox.question(
-            self,
-            "Load State",
-            f"Import {filename}? This can overwrite currently-live values.",
-        )
-        if confirmed != QMessageBox.StandardButton.Yes:
+        if not self._confirm("Load State", f"Import {filename}? This can overwrite currently-live values."):
             return
         error = importer(Path(filename))
         if error is not None:

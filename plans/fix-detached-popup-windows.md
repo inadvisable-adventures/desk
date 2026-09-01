@@ -1,4 +1,4 @@
-# Bug: widget popups render as detached macOS windows (TODO `5242aeb`)
+# Bug: widget popups render as detached macOS windows (TODO `5242aeb`) (COMPLETED)
 
 ## Summary
 

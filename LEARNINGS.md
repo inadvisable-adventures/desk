@@ -866,6 +866,33 @@ explicit `PyQt6.sip.isdeleted(profile)` guard before calling
 `deleteLater()` on it, rather than assuming the object is always still
 alive when the signal fires.
 
+TODO `5242aeb`: the exact same crash shape recurred with `EventSubscription`
+itself (`self.destroyed.connect(lambda: mediator.unsubscribe_all(instance_id))`)
+across two unrelated verify scripts sharing one process -- a script's
+own test function built a real, short-lived `EventMediator()` +
+`EventSubscription` (going out of scope at the end of that test
+function), and a *later*, unrelated test function's own widget
+construction was enough to trigger Python's garbage collector to
+finally tear the earlier pair down -- at which point the destroyed
+-lambda fired and `mediator.unsubscribe_all(...)` raised
+`AttributeError: 'EventMediator' object has no attribute '_lock'`
+(the object's own `__dict__` already partially cleared by GC), a SIGABRT
+(exit 134), not a catchable Python exception. Confirmed this is a
+test-harness-only artifact, not a production risk (the same
+"the actual running Desk application is not at risk here" conclusion
+as the `ChromiumWidget` case above): a real `EventMediator` is a
+single, process-lifetime singleton (`ServerHandle.event_mediator`),
+never garbage collected while Desk is running, so a real
+`EventSubscription` can never outlive it. The fix (in the affected
+verify script, not production code): order test functions so one that
+constructs its own real `EventMediator`/`EventSubscription` runs
+*last* in the file -- nothing constructed afterward in the same
+process to trigger a GC pass that reaps it at a bad moment. If a
+verify script needs more than one such test, each should get this same
+treatment, or the mediator/subscription should be explicitly `.stop()`'d
+and dereferenced before the next test runs, rather than left to an
+unpredictable later GC pass.
+
 ## A `QGraphicsProxyWidget`-embedded widget can silently grow itself back to fit its layout's minimum size, on a *later* event-loop turn — `QLayout::SetNoConstraint` alone doesn't stop it
 
 TODO `33d3e8d`: `WidgetFrame`'s chrome is counter-scaled (see

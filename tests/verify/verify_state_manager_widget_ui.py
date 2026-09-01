@@ -37,6 +37,9 @@ def _reset_providers():
     current_context.set_state_writer(None)
     current_context.set_schema_file_writer(None)
     current_context.set_schema_file_deleter(None)
+    current_context.set_state_exporter(None)
+    current_context.set_state_importer(None)
+    current_context.set_popup_opener(None)
 
 
 COUNTER_ENTRY = {
@@ -189,11 +192,71 @@ def test_live_events_trigger_a_refresh():
     check("SCHEMA_CHANGED_EVENT also triggers a refresh", widget._tree.topLevelItemCount() == 3)
 
 
+def test_alert_and_confirm_route_through_the_popup_opener_not_a_qmessagebox():
+    # TODO 5242aeb: this widget used to call QMessageBox.warning/
+    # .question directly, which renders as a detached macOS window
+    # (the bug this item fixes) -- _alert/_confirm must route through
+    # current_context.get_popup_opener() instead.
+    _reset_providers()
+    current_context.set_state_overview_provider(lambda: [])
+    current_context.set_state_history_provider(lambda key, limit: [])
+    calls = []
+    current_context.set_popup_opener(lambda title, message, buttons, default: calls.append(
+        (title, message, buttons, default)
+    ) or "Yes")
+    widget = state_manager_widget.build()
+
+    widget._alert("New State Key", "A key name is required.")
+    check("_alert calls the popup opener with a single OK button", calls[-1] == (
+        "New State Key", "A key name is required.", ["OK"], "OK"
+    ))
+
+    result = widget._confirm("Load State", "Import foo.json?")
+    check("_confirm calls the popup opener with Yes/No, No as default", calls[-1] == (
+        "Load State", "Import foo.json?", ["Yes", "No"], "No"
+    ))
+    check("_confirm returns True when the popup opener returns 'Yes'", result is True)
+
+    current_context.set_popup_opener(lambda title, message, buttons, default: "No")
+    check("_confirm returns False for any other answer", widget._confirm("t", "m") is False)
+
+    check("QMessageBox is no longer imported by this widget", not hasattr(state_manager_widget, "QMessageBox"))
+
+
+def test_load_state_confirmation_gates_the_importer():
+    from unittest.mock import patch
+
+    _reset_providers()
+    current_context.set_state_overview_provider(lambda: [])
+    current_context.set_state_history_provider(lambda key, limit: [])
+    import_calls = []
+    current_context.set_state_importer(lambda path: import_calls.append(path) or None)
+    widget = state_manager_widget.build()
+
+    current_context.set_popup_opener(lambda title, message, buttons, default: "No")
+    with patch("widget.QFileDialog.getOpenFileName", return_value=("/tmp/state.json", "")):
+        widget._on_load_state_clicked()
+    check("declining the confirmation does not call the importer", import_calls == [])
+
+    current_context.set_popup_opener(lambda title, message, buttons, default: "Yes")
+    with patch("widget.QFileDialog.getOpenFileName", return_value=("/tmp/state.json", "")):
+        widget._on_load_state_clicked()
+    check("confirming calls the importer with the chosen path", len(import_calls) == 1 and str(import_calls[0]) == "/tmp/state.json")
+
+
 test_tree_populates_from_overview_provider()
 test_selecting_a_row_shows_schema_value_and_history()
 test_editing_a_value_calls_the_writer_hook_with_edited_json()
 test_writer_hook_error_shows_inline_without_clearing_the_edit_box()
 test_invalid_json_in_the_value_box_is_caught_before_calling_the_writer()
+test_alert_and_confirm_route_through_the_popup_opener_not_a_qmessagebox()
+test_load_state_confirmation_gates_the_importer()
+# Runs last: constructs a real EventMediator + EventSubscription, whose
+# eventual (delayed, GC-timing-dependent) teardown was observed to
+# crash the process (SIGABRT, an uncaught exception escaping a Qt
+# `destroyed` signal handler -- see LEARNINGS.md's "uncaught Python
+# exception escaping a Qt-signal-invoked slot" entry) if further
+# widget/mediator construction happened afterward in the same process.
 test_live_events_trigger_a_refresh()
 
 _reset_providers()
