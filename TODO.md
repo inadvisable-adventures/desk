@@ -175,6 +175,116 @@ reordered or its description edited.
    `banner_style` parameter/file-type-count bump. Full
    `tests/verify/` suite (122 scripts) passes.
 
+49e3732. A `build_job.py`/`build_desk_proc.py` authoring helper, mirroring
+   `build_widget.py`. Converted from a `PARKINGLOT.md` entry surfaced
+   while using TODO `97bd090` (`DeskProc`) for real, right after having
+   done the same thing by hand for `Job`/`DefineWidget` files earlier
+   the same session. Prioritized per direct user request.
+
+   Authoring a `Job`/`DeskProc` tempui file today means hand-writing a
+   base64-encode-and-chunk script every single time
+   (`base64.b64encode(...)`, split into `Script\t...` lines, write the
+   uuid file under `.desk_temp/`) -- there's no equivalent of
+   `.desk_temp/build_widget.py` (which does exactly this for
+   `DefineWidget`, from a real `.ts`/`widget.json` source directory) for
+   either one-shot-script keyword.
+
+   Suggested mechanism: a script taking a summary string plus a `.py`
+   file path (and, for a `Job`, a `kind`/capability list, since
+   `DeskProc` has neither) and emitting a ready-to-drop tempui file
+   under `.desk_temp/`, mirroring `build_widget.py`'s own CLI shape
+   (`python3 .desk_temp/build_job.py <summary> <script.py>` or similar
+   -- exact argument shape not decided). Should cover both `Job` and
+   `DeskProc` (near-identical `Script<TAB>chunk` encoding, just a
+   different first line and, for `Job`, extra `Capability` lines) --
+   one script, not two, sharing the chunking/encoding helper. Not
+   designed in full or planned yet -- this item is intentionally left
+   unplanned per explicit instruction not to implement yet.
+
+b9d3de5. Give an in-Desk agent a documented way to learn its own
+   placed widget instance id. Converted from a `PARKINGLOT.md` entry,
+   surfaced using TODO `97bd090` (`DeskProc`) to screenshot "the widget
+   hosting this very conversation" -- there was no direct way to answer
+   "which placed widget instance am I": had to open the current `.desk`
+   file by hand and pattern-match the `claude_desk` entries'
+   `instance_id` against the session's own transcript-directory name
+   (which happens to be the instance id, but that's an undocumented
+   implementation detail to rely on, not a supported lookup).
+   Prioritized per direct user request.
+
+   **Open design question (not decided -- raised directly by the user,
+   worth a real discussion before picking one):** is the right fix a
+   deliberate kludge -- just inject the widget's own instance id
+   (and/or other ambient context) into the initial prompt a Claude
+   (Desk) widget sends its session (`CLAUDE_WIDGET_PROMPT`, TODO
+   `a596dbf`) -- or does this deserve a more formalized communication
+   channel between Desk and the agents it hosts (e.g. an MCP server
+   Desk exposes to every session it starts, giving a documented,
+   extensible request/response surface instead of one more fact baked
+   into a prompt string)? The prompt-injection kludge is trivial to
+   ship and solves this one fact, but every future "agent needs to ask
+   Desk something about itself" need would otherwise grow its own
+   one-off prompt fact rather than a real queryable channel -- which
+   connects directly to the already-parked, broader "way for agents to
+   reach into the running app" item and "two-directional tempui" item
+   (both in `PARKINGLOT.md`). Worth deciding whether this narrow need
+   is worth solving in isolation (the kludge) or should wait for/kick
+   off that broader channel design. Not designed or planned yet --
+   intentionally left unplanned per explicit instruction not to
+   implement yet.
+
+765bd2a. Design a simple pipe-chained verb DSL as a lower-ceremony
+   alternative to raw base64-encoded Python scripts for `Job` and
+   `DeskProc`. Converted from a `PARKINGLOT.md` entry (originally "a
+   narrower, zero-code, single-click primitive for reveal/screenshot a
+   widget specifically") and redirected per direct user request toward
+   a more general pipeline-DSL approach instead of dedicated
+   single-purpose keywords. Prioritized per direct user request.
+
+   Even with `Job`/`DeskProc` (TODO `d7e66f6`/`97bd090`) built, using
+   either one for a simple, structured action (reveal a widget,
+   screenshot it, list what's placed) requires the full weight of
+   "author a Python script, base64-encode it, place a Runner widget,
+   click Start" -- overhead that makes sense for genuinely arbitrary
+   code but is pure ceremony for a simple chain of already-known verbs.
+
+   Suggested direction (per explicit user guidance -- not a finished
+   design, a starting point to flesh out during actual planning):
+   - A pipeline expression chains built-in verbs with `|`, shell-style,
+     each verb taking plain arguments and (optionally) consuming the
+     previous stage's output -- e.g. something in the shape of
+     `reveal_widget abc123 | screenshot_widget abc123 shots/x.png |
+     open_image`.
+   - **Escape hatch**: a pipeline stage can instead be an inline,
+     base64-encoded, functional Python snippet (a single expression or
+     function, not a full script) for logic no built-in verb covers --
+     exact denotation not decided (e.g. a `py:<base64>` stage syntax).
+   - **Do not convert values into strings needlessly.** When stages run
+     in-process (the common case), a stage's real Python return value
+     (a `dict`, a `list`, a `bool`, raw image bytes, ...) should pass
+     directly to the next stage as itself, not be forced through a
+     string encoding/decoding round trip just because the syntax looks
+     shell-like.
+   - **Use temp files as makes sense** -- specifically when a value
+     needs to survive a process boundary, be inspected/opened by
+     something outside this pipeline (e.g. handing a screenshot's own
+     PNG bytes to the Image Viewer via a real file, the same way
+     `deskproc.screenshot_widget` already does), or is large/binary
+     enough that passing it as an in-memory string would be wasteful or
+     lossy.
+
+   Open, undecided questions to work out during actual planning: how
+   verbs are registered/discovered (a fixed built-in list, mirroring
+   `deskproc.*`'s own methods? something a widget/domain package could
+   extend?); whether a pipeline runs as one `Job`/`DeskProc` "kind" or
+   is a third, distinct tempui keyword; how a verb's own argument
+   parsing/type coercion works given "everything after a keyword is one
+   opaque value" is the DSL's existing convention elsewhere; and how
+   errors/partial failure mid-pipeline are reported (mirroring the
+   existing Runner widget's status display, or something new). Not
+   designed in full or planned yet -- intentionally left unplanned per
+   explicit instruction not to implement yet.
+
 1239cfd. COMPLETED: Stop using counting numbers to identify TODO items — this
    item's own id (visible once this file is converted, right below)
    proves the scheme it describes. Priority/work order is now
