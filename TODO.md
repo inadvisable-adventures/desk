@@ -7077,6 +7077,16 @@ af7898b. The state store's (TODO `f68383f`) schema declaration,
    entire schema-validation thread (TODO `6e1c2fe`'s three-way split)
    with nothing left blocked or open in it.
 
+297f1a6. Ability to save/load shared state (`desk.state.*`, TODO
+   `f68383f`) as JSON -- a whole-store snapshot/restore pair (every
+   key's value, edit, and history), not a per-key operation, exposed
+   through the State Manager widget (TODO `6330249`) as "Save
+   State..."/"Load State..." toolbar actions. Import validates every
+   key's current value against any currently-active schema before
+   applying anything -- all-or-nothing, not a partial apply. Prioritized
+   per direct request.
+   [planned: state-store-json-import-export.md]
+
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
    single-line `QLineEdit`) a multi-line box that wraps text instead,
