@@ -940,3 +940,38 @@ This file captures thoughts and TODO items that arise during work on other thing
   (a live, queryable Desk <-> agent channel) once TODO `b9d3de5`'s own
   discussion raised an in-process MCP server as a candidate mechanism
   -- merged and moved into `TODO.md` as TODO `a762501`.
+
+- **UX for tracking/managing concurrent forks/threads of agent work
+  within Claude (Desk)**
+
+  Surfaced directly, in real time, not hypothetically: while one
+  Claude (Desk) session was working through `TODO.md`, a *second*,
+  entirely independent session (same user, same repository -- either
+  another placed Claude (Desk)/`claude` widget instance or a separate
+  CLI session) was concurrently committing to that same file --
+  reprioritizing it and completing a different item (TODO `e9eddba`)
+  -- with neither session aware the other existed except by noticing
+  unexpected commits in `git log` after the fact. There's currently no
+  UI/UX in Desk for a user (or an agent) to see which agent sessions
+  are currently active, what each is working on, or how their work
+  might relate or conflict -- the only way anyone finds out is by
+  chance, mid-task, via git archaeology, exactly as happened here.
+
+  Worth its own UX design pass: something like a "sessions"/"threads"
+  overview (which Claude (Desk)/`claude` widgets are currently placed
+  and what each is currently doing -- perhaps surfaced through each
+  widget's own titlebar subtitle, `desk.self.setSubtitle`-style, or a
+  dedicated overview widget), and ideally a way to notice a likely
+  conflict *before* it happens rather than only after, via git log.
+  "Forks" and "threads" in this item's own title are placeholders, not
+  a settled vocabulary -- may not be the right mental model yet.
+  Connects to the already-parked "ownership/in-progress protocol"
+  process-tracking question (`TODO.md` has no claim/lock mechanism
+  today, which is exactly what let this collision happen silently) and
+  to TODO `a762501`'s own in-process MCP server -- once agents have a
+  live channel to Desk, "what other sessions are currently active"
+  (and maybe "what are they claiming/working on") is a natural
+  candidate query for that same channel, which could close part of
+  this gap as a side effect rather than needing an entirely separate
+  mechanism. Not designed at all yet -- parking as a real, freshly
+  -observed problem rather than guessing at a UI.
