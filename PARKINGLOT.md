@@ -119,6 +119,51 @@ This file captures thoughts and TODO items that arise during work on other thing
   Not decided — parking to revisit as its own design discussion, or
   the next time either symptom is hit for real.
 
+- **Editing a Claude (Desk) widget's own hosting `widget.py` mid-session destroys its own conversation, with no way for the new session to know what the old one was doing**
+
+  A live instance of this exact problem: while implementing TODO
+  `a762501`, edits landed in `widgets/claude_desk/widget.py` itself --
+  the file defining *this very widget*'s own running session -- which
+  triggered `PythonWidgetHost._rebuild`'s hot-reload (`WidgetWatcher`),
+  tearing down the old `ClaudeSession` and starting a brand-new one
+  with no memory of what the session that had just been running was
+  doing (see the "Hot reload ... doesn't fully preserve a widget's own
+  state" item just above -- this is a concrete, now-confirmed instance
+  of its second bullet, "session ... binding is lost"). The user had to
+  notice the stray uncommitted changes via `git status`/`git log` after
+  the fact and manually tell the new session what TODO item and file
+  changes to pick back up -- nothing in the new session itself carried
+  that context forward. Worth investigating a real fix rather than just
+  re-noting the loss: candidates include persisting enough of the old
+  session's own state (a summary/checkpoint, or the raw transcript)
+  somewhere `_rebuild`'s replacement widget/`ClaudeSession` could pick
+  back up from (see the widget-local-storage migration idea in the item
+  above); detecting specifically that the file just saved is the
+  widget's *own* currently-active hosting file and either deferring the
+  rebuild until the session is idle, or auto-injecting a "you were just
+  hot-reloaded because your own hosting code changed -- here's what
+  changed and, if recoverable, what you were doing" resume prompt (via
+  `--resume`/the persisted session id, see
+  `plans/claude-widget-session-resume.md`); or something else entirely.
+  Not designed -- parking to think through properly rather than
+  accepting silent context loss as permanent, especially since this
+  widget is routinely used to work on Desk's own code (including its
+  own `widget.py`), making this exact collision likely to recur.
+
+  **Recurred, repeatedly, immediately** (still implementing TODO
+  `a762501`): the user tried resuming the in-Desk session multiple
+  times to keep going, and each attempt to actually edit
+  `widgets/claude_desk/widget.py` again triggered the same
+  self-hot-reload, killing that attempt too -- confirming this isn't a
+  one-off but a real blocker for using this widget to edit its own
+  source at all. The user gave up working inside Desk for this item
+  and came back out to a non-Desk-hosted session (this one) instead,
+  specifically to avoid the loop. Sharpens the urgency here beyond "an
+  interesting edge case" -- until something in the "candidates" list
+  above ships, this widget cannot reliably be used to develop itself,
+  which (as already noted) is exactly the kind of work it's routinely
+  used for.
+
 - **`WidgetSpawnMenu._activate_item` has the same emit-then-close
   use-after-delete shape TODO c8f6fb3 just fixed in `_DeskListPopup`**
 
