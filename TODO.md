@@ -175,7 +175,7 @@ reordered or its description edited.
    `banner_style` parameter/file-type-count bump. Full
    `tests/verify/` suite (122 scripts) passes.
 
-a762501. Expose an in-process MCP server as a live, queryable Desk <-> agent
+a762501. COMPLETED: Expose an in-process MCP server as a live, queryable Desk <-> agent
    channel -- a real request/response surface for anything *dynamic*
    TODO `b9d3de5`'s static env-var fix can't answer (what's currently
    placed, live widget state, reveal/screenshot a widget right now,
@@ -262,6 +262,61 @@ a762501. Expose an in-process MCP server as a live, queryable Desk <-> agent
    own first implementation pass -- see this item's own `[planned:
    ...]` note below for the concrete scope that pass actually covers.
    [planned: desk-mcp-server.md]
+   COMPLETED: `src/desk/shell/desk_mcp_server.py` (new) -- an in-process
+   MCP server (`claude_agent_sdk.create_sdk_mcp_server`, `type: "sdk"`,
+   no subprocess/port) with seven `@tool`-decorated handlers:
+   `desk_reveal_widget`, `desk_screenshot_widget`, `desk_screenshot_desk`,
+   `desk_list_widget_instances`, `desk_save`, `desk_list_todo_items`,
+   `desk_get_next_todo_item`. Every handler checks `current_context
+   .get_main_window()` for `None` first, then marshals onto the GUI
+   thread via `await loop.run_in_executor(None, gui_thread_caller, fn)`
+   -- the same idiom `desk.server.app.run_on_gui` already uses -- rather
+   than blocking the session's own private event loop; a missing GUI
+   thread caller or main window returns a clear non-crashing "not ready
+   yet" text result instead of raising. The two TODO tools reuse
+   `desk.todo_file.find_nearest_todo_file`/`parse_todo_file` directly, so
+   they can never drift from what the real TODO widget shows, and are
+   deliberately read-only (list/get-next only, no mark-complete/reorder)
+   per this item's own note above on preserving plan-then-verify
+   discipline. `src/desk/claude_session.py` -- `_connect_and_maybe_prompt`'s
+   `ClaudeAgentOptions(...)` call gains `mcp_servers={"desk":
+   build_desk_mcp_server()}`, so every Claude (Desk) session gets the
+   channel with no extra wiring; tool calls (`mcp__desk__...`) flow
+   through the existing `_can_use_tool` hook exactly like any other tool,
+   confirmed directly against a real live session (no new approval UI
+   needed). `widgets/claude_desk/widget.py` -- `CLAUDE_WIDGET_PROMPT`
+   extended to tell the agent about the seven new tools and to prefer
+   them over the file-drop `Job`/`DeskProc` ceremony when one already
+   covers the need, and to check `desk_get_next_todo_item` rather than
+   trust a possibly-stale earlier read of `TODO.md` (the exact
+   concurrent-session collision this item's own body describes above).
+   New: `tests/verify/verify_desk_mcp_server.py` (31 checks) -- each
+   handler called directly as a plain async function against a fake
+   `current_context`/fake `DeskWindow`-shaped object (no real SDK
+   session, matching `verify_claude_desk_widget.py`'s established
+   avoid-the-real-API convention); covers the happy path for all seven
+   tools, the "not ready yet" text result with no GUI thread caller and
+   with no main window, and the TODO tools against a real temporary
+   `TODO.md` fixture (mixed `COMPLETED`/`PENDING`/plain items, the
+   next-actionable-item resolution, and the all-done/no-`TODO.md`-found
+   error cases). Full `tests/verify/` regression suite (134 scripts):
+   found and fixed one unrelated pre-existing flake along the way, per
+   this project's investigate-dont-just-note convention --
+   `verify_shared_document_editor_base.py`'s one `tempfile
+   .TemporaryDirectory()` call was missing `ignore_cleanup_errors=True`,
+   hitting the same Qt WebEngine profile-teardown race already documented
+   in `LEARNINGS.md` for TODO `a5f66cc` (`OSError: [Errno 66] Directory
+   not empty` during interpreter-exit cleanup, not a real functional
+   failure); fixed, then verified clean across 3 consecutive runs. Full
+   suite reruns clean afterward, 0 failures. As noted in the still-open
+   `PARKINGLOT.md` self-hot-reload item, this item was originally
+   implemented inside a live Claude (Desk) widget session, which kept
+   getting torn down mid-edit by its own hosting widget's hot reload
+   whenever it touched `widgets/claude_desk/widget.py`; the user
+   eventually gave up retrying that path and asked a session outside
+   Desk (this one) to reconstruct the already-complete, uncommitted work
+   from `git status`/`git diff` and the already-written plan file, verify
+   it, and finish the bookkeeping.
 
 e9eddba. COMPLETED: Add a permission-mode selector to the Claude (Desk) widget
    (`widgets/claude_desk/widget.py`). TODO `a596dbf` hardcoded

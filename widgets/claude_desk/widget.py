@@ -19,7 +19,14 @@ from desk.voice_capture import MicRecorder
 # widget directories can't import each other (see
 # plans/claude-widget-agent-sdk-integration.md). Kept in sync by hand;
 # the two widgets' session-management code isn't unified, which is an
-# accepted cost of not disturbing the existing widget.
+# accepted cost of not disturbing the existing widget. This copy has
+# now deliberately diverged from widgets/claude/widget.py's own (TODO
+# a762501): the MCP paragraph below only applies to a session started
+# through this widget (ClaudeSession wires the in-process desk MCP
+# server into every session's own ClaudeAgentOptions.mcp_servers) --
+# the original PTY-based widget spawns a real `claude` CLI subprocess
+# directly, with no equivalent wiring, so its own prompt copy should
+# NOT claim this capability exists.
 CLAUDE_WIDGET_PROMPT = (
     "You are running inside of Desk. Please read this document to "
     "understand the implications of that: {doc_path} -- it links to "
@@ -27,7 +34,17 @@ CLAUDE_WIDGET_PROMPT = (
     "detail on specific capabilities; only open one of those if you "
     "actually need that particular capability (e.g. only read "
     "tempui-lightning-round.md if you are about to run a lightning "
-    "round), not unconditionally."
+    "round), not unconditionally. You also have direct MCP tools "
+    "(mcp__desk__...) for interacting with Desk's own live shell -- "
+    "desk_reveal_widget, desk_screenshot_widget, desk_screenshot_desk, "
+    "desk_list_widget_instances, desk_save, desk_list_todo_items, and "
+    "desk_get_next_todo_item. These are a faster, lower-ceremony "
+    "alternative to the Job/DeskProc tempui file-drop mechanism for "
+    "exactly these actions -- prefer them over dropping a DeskProc "
+    "file when one of them already covers what you need. In "
+    "particular, check desk_get_next_todo_item before assuming an "
+    "earlier read of TODO.md is still current -- another session may "
+    "have reprioritized or completed items since."
 )
 
 DEVELOPMENT_PROCESS_FILENAME = "development-process.md"

@@ -1,4 +1,4 @@
-# In-process Desk MCP server (TODO `a762501`)
+# In-process Desk MCP server (TODO `a762501`) (COMPLETED)
 
 ## Summary
 

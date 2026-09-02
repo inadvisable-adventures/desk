@@ -290,7 +290,7 @@ def _read(widget, js_expr, timeout=8.0):
 
 
 def test_document_editor_base_full_lifecycle_real_browser_real_bridge_calls():
-    with tempfile.TemporaryDirectory() as d:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         build_root = Path(d) / "build"
         build_root.mkdir()
         widgets_dir = _build_test_widget_directory(build_root)
