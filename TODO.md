@@ -215,6 +215,27 @@ a762501. Expose an in-process MCP server as a live, queryable Desk <-> agent
    anything not covered by a built-in tool, not be made obsolete
    outright.
 
+   **Also add a simple TODO API** (per direct user request, added
+   after this item was first written): read-only tools --
+   `list_todo_items()`/`get_next_todo_item()` -- wrapping the already
+   -existing `desk.todo_file.parse_todo_file`/`TodoItem` (id, status,
+   description, plan) that already backs the real TODO widget, so an
+   agent can check what's already `COMPLETED`, what's `PENDING`, and
+   what the current first actionable item actually is *before* diving
+   in, rather than hand-parsing `TODO.md` itself or trusting stale
+   context from earlier in its own session. Directly motivated by a
+   real collision this same session hit: one agent session picked an
+   item to work based on a stale mental model of `TODO.md`'s order
+   while a second, independent session had already reprioritized it --
+   discovered only after the fact, via `git log` (see the new
+   `PARKINGLOT.md` item on concurrent-session UX, surfaced by the same
+   incident). Deliberately **read-only for this first pass** -- a
+   mutating tool (mark an item `COMPLETED`, reorder it) would let an
+   agent shortcut this project's own plan-then-implement-then-verify
+   discipline via a single tool call, which is a real trust/process
+   question worth its own separate decision, not a default to back
+   into here.
+
    **The harder, still-unresolved half, carried over from the
    "two-directional tempui" item verbatim**: an MCP tool call is
    fundamentally agent-initiated (the agent asks, the server answers)
