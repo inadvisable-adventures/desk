@@ -175,6 +175,72 @@ reordered or its description edited.
    `banner_style` parameter/file-type-count bump. Full
    `tests/verify/` suite (122 scripts) passes.
 
+a762501. Expose an in-process MCP server as a live, queryable Desk <-> agent
+   channel -- a real request/response surface for anything *dynamic*
+   TODO `b9d3de5`'s static env-var fix can't answer (what's currently
+   placed, live widget state, reveal/screenshot a widget right now,
+   force a save), as a parallel or eventual replacement for the
+   file-drop-and-click-Start tempui/`Job`/`DeskProc` ceremony for
+   agent-initiated actions specifically. Merges two `PARKINGLOT.md`
+   entries that turned out to be the same underlying shape (moved here,
+   removed from there) -- "a way for agents ... to reach into the
+   running app for more than just reading/writing files" and
+   "two-directional tempui: let Desk call *into* a running Claude
+   session" -- plus this session's own discussion of TODO `b9d3de5`.
+   Prioritized per direct user request (grouped with the related
+   `b9d3de5`/`765bd2a` cluster above).
+
+   **Grounding confirmed this session (2026-09-01), against the
+   actually-installed SDK**: `claude_agent_sdk.ClaudeAgentOptions.mcp_servers`
+   accepts an `McpSdkServerConfig` -- an **in-process** MCP server (no
+   subprocess, no port to manage), wired in alongside the `env=` fix at
+   the same `ClaudeSession._connect_and_maybe_prompt` call site
+   (`src/desk/claude_session.py:105`). This meaningfully lowers the
+   cost of "the formalized channel" option from the `b9d3de5`
+   discussion -- it's a Python `Server` object passed into an existing
+   options call, not a real network service to stand up/secure/manage.
+
+   Candidate first tools, all thin wrappers over methods already built
+   for TODO `97bd090` (`DeskProc`) and already safely GUI-thread
+   -marshaled via `current_context.get_gui_thread_caller()`: reveal a
+   widget (`zoom_to_widget_by_instance_id`), screenshot a widget/the
+   whole canvas (`screenshot_widget_instance`/`screenshot_desk`), list
+   currently-placed widget instances (`get_state_dict`, the same data
+   `desk.workspace.getState()` already exposes), and forcing an
+   on-demand `save_current_desk()` (the original parked item's own
+   single most-wanted capability, not yet covered by anything). Once
+   this exists, `DeskProc`'s reveal/screenshot use case becomes a
+   direct one-call tool use instead of a whole tempui-file round trip
+   -- `Job`/`DeskProc` would still matter as the escape hatch for
+   anything not covered by a built-in tool, not be made obsolete
+   outright.
+
+   **The harder, still-unresolved half, carried over from the
+   "two-directional tempui" item verbatim**: an MCP tool call is
+   fundamentally agent-initiated (the agent asks, the server answers)
+   -- it does not, by itself, give Desk a way to push a structured
+   message *into* an already-running session mid-turn (a button click,
+   another widget's event, a user's answer to a Desk-routed question)
+   the way the "two-directional" framing originally wanted. Whether MCP
+   sampling/notifications can approximate this, or whether that
+   direction needs an entirely different mechanism (a hook? the
+   existing `event_mediator.py` pub/sub, polled or awaited somehow?),
+   is not resolved -- worth treating as a distinct sub-problem within
+   this item rather than assuming the MCP server trivially covers it.
+
+   Also carried over, still open: the original item's own security/
+   trust question (should a local MCP server be able to force actions
+   in a running GUI app the user is looking at, and how is that
+   authenticated/scoped -- e.g. per-Claude-(Desk)-widget-instance only,
+   or broader); and the finer-grained-permission tangent from the
+   two-directional item (per-action/per-location `can_use_tool` rules
+   instead of one blanket `permission_mode`, e.g. `Bash(ls:*)`-style
+   specifiers `ClaudeAgentOptions.allowed_tools`/`disallowed_tools`
+   already partially support) -- related, but a separable design
+   question from the MCP channel itself. Not designed in full or
+   planned yet -- intentionally left unplanned per explicit instruction
+   not to implement yet.
+
 e9eddba. Add a permission-mode selector to the Claude (Desk) widget
    (`widgets/claude_desk/widget.py`). TODO `a596dbf` hardcoded
    `PERMISSION_MODE = "default"` (a deliberate deviation from the
@@ -303,72 +369,6 @@ b9d3de5. Give an in-Desk agent a documented way to learn its own
    the session, and trying to make it do so is the wrong tool. Not
    designed in full or planned yet -- intentionally left unplanned per
    explicit instruction not to implement yet.
-
-a762501. Expose an in-process MCP server as a live, queryable Desk <-> agent
-   channel -- a real request/response surface for anything *dynamic*
-   TODO `b9d3de5`'s static env-var fix can't answer (what's currently
-   placed, live widget state, reveal/screenshot a widget right now,
-   force a save), as a parallel or eventual replacement for the
-   file-drop-and-click-Start tempui/`Job`/`DeskProc` ceremony for
-   agent-initiated actions specifically. Merges two `PARKINGLOT.md`
-   entries that turned out to be the same underlying shape (moved here,
-   removed from there) -- "a way for agents ... to reach into the
-   running app for more than just reading/writing files" and
-   "two-directional tempui: let Desk call *into* a running Claude
-   session" -- plus this session's own discussion of TODO `b9d3de5`.
-   Prioritized per direct user request (grouped with the related
-   `b9d3de5`/`765bd2a` cluster above).
-
-   **Grounding confirmed this session (2026-09-01), against the
-   actually-installed SDK**: `claude_agent_sdk.ClaudeAgentOptions.mcp_servers`
-   accepts an `McpSdkServerConfig` -- an **in-process** MCP server (no
-   subprocess, no port to manage), wired in alongside the `env=` fix at
-   the same `ClaudeSession._connect_and_maybe_prompt` call site
-   (`src/desk/claude_session.py:105`). This meaningfully lowers the
-   cost of "the formalized channel" option from the `b9d3de5`
-   discussion -- it's a Python `Server` object passed into an existing
-   options call, not a real network service to stand up/secure/manage.
-
-   Candidate first tools, all thin wrappers over methods already built
-   for TODO `97bd090` (`DeskProc`) and already safely GUI-thread
-   -marshaled via `current_context.get_gui_thread_caller()`: reveal a
-   widget (`zoom_to_widget_by_instance_id`), screenshot a widget/the
-   whole canvas (`screenshot_widget_instance`/`screenshot_desk`), list
-   currently-placed widget instances (`get_state_dict`, the same data
-   `desk.workspace.getState()` already exposes), and forcing an
-   on-demand `save_current_desk()` (the original parked item's own
-   single most-wanted capability, not yet covered by anything). Once
-   this exists, `DeskProc`'s reveal/screenshot use case becomes a
-   direct one-call tool use instead of a whole tempui-file round trip
-   -- `Job`/`DeskProc` would still matter as the escape hatch for
-   anything not covered by a built-in tool, not be made obsolete
-   outright.
-
-   **The harder, still-unresolved half, carried over from the
-   "two-directional tempui" item verbatim**: an MCP tool call is
-   fundamentally agent-initiated (the agent asks, the server answers)
-   -- it does not, by itself, give Desk a way to push a structured
-   message *into* an already-running session mid-turn (a button click,
-   another widget's event, a user's answer to a Desk-routed question)
-   the way the "two-directional" framing originally wanted. Whether MCP
-   sampling/notifications can approximate this, or whether that
-   direction needs an entirely different mechanism (a hook? the
-   existing `event_mediator.py` pub/sub, polled or awaited somehow?),
-   is not resolved -- worth treating as a distinct sub-problem within
-   this item rather than assuming the MCP server trivially covers it.
-
-   Also carried over, still open: the original item's own security/
-   trust question (should a local MCP server be able to force actions
-   in a running GUI app the user is looking at, and how is that
-   authenticated/scoped -- e.g. per-Claude-(Desk)-widget-instance only,
-   or broader); and the finer-grained-permission tangent from the
-   two-directional item (per-action/per-location `can_use_tool` rules
-   instead of one blanket `permission_mode`, e.g. `Bash(ls:*)`-style
-   specifiers `ClaudeAgentOptions.allowed_tools`/`disallowed_tools`
-   already partially support) -- related, but a separable design
-   question from the MCP channel itself. Not designed in full or
-   planned yet -- intentionally left unplanned per explicit instruction
-   not to implement yet.
 
 765bd2a. Design the syntax and semantics of a simple pipe-chained verb
    DSL for expressing a chain of Desk actions -- deliberately scoped to
