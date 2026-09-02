@@ -241,7 +241,7 @@ a762501. Expose an in-process MCP server as a live, queryable Desk <-> agent
    planned yet -- intentionally left unplanned per explicit instruction
    not to implement yet.
 
-e9eddba. Add a permission-mode selector to the Claude (Desk) widget
+e9eddba. COMPLETED: Add a permission-mode selector to the Claude (Desk) widget
    (`widgets/claude_desk/widget.py`). TODO `a596dbf` hardcoded
    `PERMISSION_MODE = "default"` (a deliberate deviation from the
    plan's suggested `"auto"` parity default with the original Claude
