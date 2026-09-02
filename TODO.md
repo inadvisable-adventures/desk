@@ -258,9 +258,10 @@ a762501. Expose an in-process MCP server as a live, queryable Desk <-> agent
    instead of one blanket `permission_mode`, e.g. `Bash(ls:*)`-style
    specifiers `ClaudeAgentOptions.allowed_tools`/`disallowed_tools`
    already partially support) -- related, but a separable design
-   question from the MCP channel itself. Not designed in full or
-   planned yet -- intentionally left unplanned per explicit instruction
-   not to implement yet.
+   question from the MCP channel itself, not resolved by this item's
+   own first implementation pass -- see this item's own `[planned:
+   ...]` note below for the concrete scope that pass actually covers.
+   [planned: desk-mcp-server.md]
 
 e9eddba. COMPLETED: Add a permission-mode selector to the Claude (Desk) widget
    (`widgets/claude_desk/widget.py`). TODO `a596dbf` hardcoded
