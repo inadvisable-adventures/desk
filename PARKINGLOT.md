@@ -843,68 +843,6 @@ This file captures thoughts and TODO items that arise during work on other thing
   separates unrelated DSL concerns from each other) rather than one
   monolithic document covering every kind of widget at once.
 
-- **A way for agents (e.g. a CLI coding session working in this repo)
-  to reach into the running app for more than just reading/writing
-  files -- starting with forcing a save**
-
-  Surfaced when asked whether an agent working here could see a new
-  Event Recorder widget's (TODO `8d4826c`) state after it's placed on
-  the current Desk: right now the only channel into a running Desk
-  instance from outside the GUI process itself is the filesystem --
-  reading whatever's already been written to a `.desk` file,
-  `.desk_temp/`, etc. `save_current_desk()` (`src/desk/shell/window.py`)
-  only actually runs on specific structural actions (quit, Desk
-  switch, widget removal/rename, ...), not automatically after
-  ordinary widget interaction (e.g. clicking Event Recorder's "Record
-  for 5s"). So a filesystem-only agent has no way to force a fresh
-  snapshot of live widget state onto disk without asking the human
-  user to quit or switch Desks first.
-
-  The existing Bridge API (`src/desk/server/app.py`, `/api/bridge/...`)
-  already lets one *widget* call into the running app (workspace
-  state, local storage, opening/closing widgets, publishing events,
-  cross-widget introspection via `/api/bridge/introspect/snapshot`) --
-  but every endpoint is scoped to a specific widget instance/token
-  (`require_caller`/`require_instance_id`), not to an out-of-band
-  caller like a CLI agent working in the repo outside any widget.
-  Worth thinking about whether that same Bridge API could be extended
-  with a distinct "agent" caller identity, or whether a separate,
-  narrower channel makes more sense -- starting with the single most
-  obviously useful capability: forcing an on-demand
-  `save_current_desk()` so an agent doesn't have to wait for/ask for a
-  structural action to happen first.
-
-  Broader than just "force save" once started: what else should an
-  agent be able to reach into the running app for -- e.g. listing
-  currently-placed widgets and their instance ids without parsing the
-  `.desk` file by hand, reading a specific widget's *live* (not just
-  last-saved) local storage, or triggering a specific widget action
-  programmatically? Connects to the already-parked "how should Claude
-  better engage with tempui" and claude-widget items above, and to the
-  process-tracking meta-questions item's "real database/microservice
-  for work tracking" tangent -- this is the same underlying shape (a
-  real API surface for an agent to talk to Desk) applied to live app
-  state instead of task tracking.
-
-  Not designed -- needs its own security/trust discussion (should any
-  local process be able to force actions in a running GUI app the user
-  is looking at, and if so how is that authenticated/scoped) before
-  picking a mechanism.
-
-  **Partially addressed by TODO `97bd090`** (the `DeskProc` tempui
-  mechanism): an agent can now write a one-shot Python script that
-  reaches into the live `DeskWindow` (via a new
-  `current_context.get_gui_thread_caller()` hook wrapping the existing
-  `GuiBridge`) to reveal/screenshot a placed widget instance or list
-  what's currently placed (`deskproc.list_widget_instances()`, backed
-  by the same `get_state_dict()` data `desk.workspace.getState()`
-  already exposes). Doesn't fully close this item: it's still
-  file-drop-and-click-Start, not a live request/response the calling
-  CLI session can await synchronously, and "force a save" specifically
-  still isn't exposed. Worth revisiting whether the broader "agent ⇄
-  Desk" channel this item envisions should generalize `DeskProc`
-  further, or stay separate.
-
 - **Two-finger trackpad scroll over a widget: still not fully clean
   after TODO `86ba292`**
 
@@ -938,54 +876,6 @@ This file captures thoughts and TODO items that arise during work on other thing
   confusing/misleading in exactly that context (looks like the canvas
   is pannable via scroll right when TODO `78bfa41` deliberately made it
   not be, over a widget).
-
-- **Two-directional tempui: let Desk call *into* a running Claude
-  session, not just watch for files it writes out**
-
-  Surfaced during the research behind TODO `a596dbf` (a new "Claude
-  (Desk)" widget talking to the Python Agent SDK, alongside -- not
-  replacing -- the existing PTY/`pyte`-based Claude widget). Today's
-  tempui protocol (`src/desk/temp_ui.py`) is one-way only: Claude,
-  running inside a Claude widget, writes a plain-text file into
-  `.desk_temp/`, and Desk's file watcher (`TempUiManager`) notices and
-  surfaces it. There's no equivalent channel the other direction --
-  Desk (or a widget, or the user clicking something) can't currently
-  hand structured input back into a *specific running* Claude session
-  except by typing into its PTY, which the new widget won't have.
-
-  Once a Claude session is reachable via the SDK directly (TODO
-  `a596dbf`'s new widget), Desk has in-process, programmatic control of
-  that session for the first time -- meaning a real two-way channel
-  becomes possible: e.g. a custom MCP tool or a hook that lets Claude
-  *receive* a structured message from Desk mid-session (a button click,
-  another widget's event, a user answer to an `AskUserQuestion`-style
-  prompt routed through Desk's own UI instead of the terminal), rather
-  than Claude only ever being the one to initiate via a dropped file.
-
-  Not designed at all yet -- open questions include what the wire
-  format/API should look like (a Desk-authored MCP server exposed to
-  the session? a hook? something reusing the existing mediated-events
-  pub/sub in `src/desk/event_mediator.py`?), how it'd interact with
-  tempui's existing file-based DSL (replace it, or coexist?), and
-  whether it's scoped to the new "Claude (Desk)" widget alone or
-  something other widget kinds could also address. Explicitly out of
-  scope for TODO `a596dbf` itself -- that item only introduces the new
-  SDK-backed widget; this is the separate, larger follow-on idea it
-  unlocks.
-
-  Additional thought, also stemming from TODO `a596dbf`'s own
-  `can_use_tool` work: today's permission gating is coarse -- a whole
-  tool (`Write`, `Bash`, ...) is either gated or not, per the chosen
-  `permission_mode`. Might be worth getting more specific: per-action
-  (e.g. specific git subcommands/flags, not "Bash" as a monolith) and
-  per-location (e.g. writes inside the current Desk directory treated
-  differently than writes elsewhere) rules, rather than one blanket
-  mode covering every tool call a session makes. Not explored at all
-  yet -- would need to look at what `ClaudeAgentOptions.allowed_tools`/
-  `disallowed_tools`'s own rule syntax already supports (TODO `a596dbf`
-  found some of this piecemeal -- e.g. `Bash(ls:*)`-style specifiers --
-  while investigating `can_use_tool`'s shadowing behavior) versus what
-  would need real custom logic inside `can_use_tool` itself.
 
 - **Investigate ways for Claude to keep working on TODO items in the
   cloud while the user is offline**
@@ -1042,3 +932,11 @@ This file captures thoughts and TODO items that arise during work on other thing
   -- were parked here briefly and have since been converted into
   `TODO.md` as TODO `49e3732`/`b9d3de5`/`765bd2a` per direct user
   request.
+
+- **(Moved to `TODO.md`)** The two previously-separate items "a way for
+  agents ... to reach into the running app for more than just reading/
+  writing files" and "two-directional tempui: let Desk call *into* a
+  running Claude session" turned out to be the same underlying shape
+  (a live, queryable Desk <-> agent channel) once TODO `b9d3de5`'s own
+  discussion raised an in-process MCP server as a candidate mechanism
+  -- merged and moved into `TODO.md` as TODO `a762501`.

@@ -202,51 +202,136 @@ reordered or its description edited.
    unplanned per explicit instruction not to implement yet.
 
 b9d3de5. Give an in-Desk agent a documented way to learn its own
-   placed widget instance id. Converted from a `PARKINGLOT.md` entry,
-   surfaced using TODO `97bd090` (`DeskProc`) to screenshot "the widget
-   hosting this very conversation" -- there was no direct way to answer
-   "which placed widget instance am I": had to open the current `.desk`
-   file by hand and pattern-match the `claude_desk` entries'
-   `instance_id` against the session's own transcript-directory name
-   (which happens to be the instance id, but that's an undocumented
-   implementation detail to rely on, not a supported lookup).
-   Prioritized per direct user request.
+   placed widget instance id, via `ClaudeAgentOptions.env` (a static,
+   launch-time fact, not a live query). Converted from a
+   `PARKINGLOT.md` entry, surfaced using TODO `97bd090` (`DeskProc`) to
+   screenshot "the widget hosting this very conversation" -- there was
+   no direct way to answer "which placed widget instance am I": had to
+   open the current `.desk` file by hand and pattern-match the
+   `claude_desk` entries' `instance_id` against the session's own
+   transcript-directory name (which happens to be the instance id, but
+   that's an undocumented implementation detail to rely on, not a
+   supported lookup). Prioritized per direct user request.
 
-   **Open design question (not decided -- raised directly by the user,
-   worth a real discussion before picking one):** is the right fix a
-   deliberate kludge -- just inject the widget's own instance id
-   (and/or other ambient context) into the initial prompt a Claude
-   (Desk) widget sends its session (`CLAUDE_WIDGET_PROMPT`, TODO
-   `a596dbf`) -- or does this deserve a more formalized communication
-   channel between Desk and the agents it hosts (e.g. an MCP server
-   Desk exposes to every session it starts, giving a documented,
-   extensible request/response surface instead of one more fact baked
-   into a prompt string)? The prompt-injection kludge is trivial to
-   ship and solves this one fact, but every future "agent needs to ask
-   Desk something about itself" need would otherwise grow its own
-   one-off prompt fact rather than a real queryable channel -- which
-   connects directly to the already-parked, broader "way for agents to
-   reach into the running app" item and "two-directional tempui" item
-   (both in `PARKINGLOT.md`). Worth deciding whether this narrow need
-   is worth solving in isolation (the kludge) or should wait for/kick
-   off that broader channel design. Not designed or planned yet --
-   intentionally left unplanned per explicit instruction not to
-   implement yet.
+   **Decided (2026-09-01 discussion):** scoped down from the original
+   open "kludge vs. formalized channel" question to just the
+   kludge-but-a-good-one half -- an environment variable, not a
+   sentence folded into the initial prompt. Confirmed directly against
+   the installed SDK that `claude_agent_sdk.ClaudeAgentOptions` already
+   has a real `env: dict[str, str]` field, unused today
+   (`desk.claude_session.ClaudeSession._connect_and_maybe_prompt`,
+   `src/desk/claude_session.py:105`, only sets
+   `session_id`/`resume`/`model`/`permission_mode`/`cwd`/`can_use_tool`).
+   Also confirmed `DeskWindow._bind_claude_desk_widget`
+   (`src/desk/shell/window.py:479-480`) already comments that "a
+   claude/claude_desk widget's instance_id doubles as its session_id"
+   -- so the value to inject is already threaded down to
+   `ClaudeSession.start`'s own `session_id` parameter, nothing new to
+   plumb, just pass it again as `env={"DESK_WIDGET_INSTANCE_ID":
+   session_id}` (or similar) at the same call site. An env var beats a
+   prompt sentence for this specific need: zero context-token cost,
+   survives context compaction perfectly (it's not conversation
+   history), and is trivially extensible to more static self-facts
+   (Desk's own directory, the widget's kind, ...) without prompt bloat
+   or re-deriving `_doc_path()`-style plumbing per fact. Should cover
+   both Claude-hosting widget kinds -- `widgets/claude_desk/widget.py`
+   (`ClaudeAgentOptions.env`, confirmed to exist) and
+   `widgets/claude/widget.py` (the PTY-based one, which spawns a real
+   OS subprocess directly and so can just set `env` on that subprocess
+   the ordinary way) -- since the same "which instance am I" gap
+   applies to either.
 
-765bd2a. Design a simple pipe-chained verb DSL as a lower-ceremony
-   alternative to raw base64-encoded Python scripts for `Job` and
-   `DeskProc`. Converted from a `PARKINGLOT.md` entry (originally "a
+   Everything *dynamic* (list what's currently placed, live state,
+   reveal/screenshot another widget right now, force a save) is
+   explicitly **not** this item's concern -- moved to TODO `a762501`
+   (the in-process MCP server) instead, per the same discussion: a
+   static env var can't answer a question whose answer changes during
+   the session, and trying to make it do so is the wrong tool. Not
+   designed in full or planned yet -- intentionally left unplanned per
+   explicit instruction not to implement yet.
+
+a762501. Expose an in-process MCP server as a live, queryable Desk <-> agent
+   channel -- a real request/response surface for anything *dynamic*
+   TODO `b9d3de5`'s static env-var fix can't answer (what's currently
+   placed, live widget state, reveal/screenshot a widget right now,
+   force a save), as a parallel or eventual replacement for the
+   file-drop-and-click-Start tempui/`Job`/`DeskProc` ceremony for
+   agent-initiated actions specifically. Merges two `PARKINGLOT.md`
+   entries that turned out to be the same underlying shape (moved here,
+   removed from there) -- "a way for agents ... to reach into the
+   running app for more than just reading/writing files" and
+   "two-directional tempui: let Desk call *into* a running Claude
+   session" -- plus this session's own discussion of TODO `b9d3de5`.
+   Prioritized per direct user request (grouped with the related
+   `b9d3de5`/`765bd2a` cluster above).
+
+   **Grounding confirmed this session (2026-09-01), against the
+   actually-installed SDK**: `claude_agent_sdk.ClaudeAgentOptions.mcp_servers`
+   accepts an `McpSdkServerConfig` -- an **in-process** MCP server (no
+   subprocess, no port to manage), wired in alongside the `env=` fix at
+   the same `ClaudeSession._connect_and_maybe_prompt` call site
+   (`src/desk/claude_session.py:105`). This meaningfully lowers the
+   cost of "the formalized channel" option from the `b9d3de5`
+   discussion -- it's a Python `Server` object passed into an existing
+   options call, not a real network service to stand up/secure/manage.
+
+   Candidate first tools, all thin wrappers over methods already built
+   for TODO `97bd090` (`DeskProc`) and already safely GUI-thread
+   -marshaled via `current_context.get_gui_thread_caller()`: reveal a
+   widget (`zoom_to_widget_by_instance_id`), screenshot a widget/the
+   whole canvas (`screenshot_widget_instance`/`screenshot_desk`), list
+   currently-placed widget instances (`get_state_dict`, the same data
+   `desk.workspace.getState()` already exposes), and forcing an
+   on-demand `save_current_desk()` (the original parked item's own
+   single most-wanted capability, not yet covered by anything). Once
+   this exists, `DeskProc`'s reveal/screenshot use case becomes a
+   direct one-call tool use instead of a whole tempui-file round trip
+   -- `Job`/`DeskProc` would still matter as the escape hatch for
+   anything not covered by a built-in tool, not be made obsolete
+   outright.
+
+   **The harder, still-unresolved half, carried over from the
+   "two-directional tempui" item verbatim**: an MCP tool call is
+   fundamentally agent-initiated (the agent asks, the server answers)
+   -- it does not, by itself, give Desk a way to push a structured
+   message *into* an already-running session mid-turn (a button click,
+   another widget's event, a user's answer to a Desk-routed question)
+   the way the "two-directional" framing originally wanted. Whether MCP
+   sampling/notifications can approximate this, or whether that
+   direction needs an entirely different mechanism (a hook? the
+   existing `event_mediator.py` pub/sub, polled or awaited somehow?),
+   is not resolved -- worth treating as a distinct sub-problem within
+   this item rather than assuming the MCP server trivially covers it.
+
+   Also carried over, still open: the original item's own security/
+   trust question (should a local MCP server be able to force actions
+   in a running GUI app the user is looking at, and how is that
+   authenticated/scoped -- e.g. per-Claude-(Desk)-widget-instance only,
+   or broader); and the finer-grained-permission tangent from the
+   two-directional item (per-action/per-location `can_use_tool` rules
+   instead of one blanket `permission_mode`, e.g. `Bash(ls:*)`-style
+   specifiers `ClaudeAgentOptions.allowed_tools`/`disallowed_tools`
+   already partially support) -- related, but a separable design
+   question from the MCP channel itself. Not designed in full or
+   planned yet -- intentionally left unplanned per explicit instruction
+   not to implement yet.
+
+765bd2a. Design the syntax and semantics of a simple pipe-chained verb
+   DSL for expressing a chain of Desk actions -- deliberately scoped to
+   the *language itself* (grammar, verb/argument shape, how values
+   flow between stages, the escape-hatch's own denotation, error/
+   partial-failure semantics), independent of how an instance of it
+   gets delivered to Desk (a dropped `Job`/`DeskProc` tempui file's
+   `Script` line, an MCP tool argument via TODO `a762501`, or anything
+   else). Converted from a `PARKINGLOT.md` entry (originally "a
    narrower, zero-code, single-click primitive for reveal/screenshot a
-   widget specifically") and redirected per direct user request toward
-   a more general pipeline-DSL approach instead of dedicated
-   single-purpose keywords. Prioritized per direct user request.
-
-   Even with `Job`/`DeskProc` (TODO `d7e66f6`/`97bd090`) built, using
-   either one for a simple, structured action (reveal a widget,
-   screenshot it, list what's placed) requires the full weight of
-   "author a Python script, base64-encode it, place a Runner widget,
-   click Start" -- overhead that makes sense for genuinely arbitrary
-   code but is pure ceremony for a simple chain of already-known verbs.
+   widget specifically"), redirected toward a general pipeline-DSL
+   approach in an earlier discussion, then **re-scoped again in this
+   session's follow-up discussion** to explicitly decouple the DSL's
+   own design from the file-vs-MCP transport question once `a762501`
+   came up as a live parallel/alternative transport -- the DSL should
+   come out the same regardless of which transport(s) end up carrying
+   it. Prioritized per direct user request.
 
    Suggested direction (per explicit user guidance -- not a finished
    design, a starting point to flesh out during actual planning):
@@ -259,11 +344,11 @@ b9d3de5. Give an in-Desk agent a documented way to learn its own
      base64-encoded, functional Python snippet (a single expression or
      function, not a full script) for logic no built-in verb covers --
      exact denotation not decided (e.g. a `py:<base64>` stage syntax).
-   - **Do not convert values into strings needlessly.** When stages run
-     in-process (the common case), a stage's real Python return value
-     (a `dict`, a `list`, a `bool`, raw image bytes, ...) should pass
-     directly to the next stage as itself, not be forced through a
-     string encoding/decoding round trip just because the syntax looks
+   - **Do not convert values into strings needlessly.** A stage's real
+     Python return value (a `dict`, a `list`, a `bool`, raw image
+     bytes, ...) should pass directly to the next stage as itself when
+     both run in the same process, not be forced through a string
+     encoding/decoding round trip just because the syntax looks
      shell-like.
    - **Use temp files as makes sense** -- specifically when a value
      needs to survive a process boundary, be inspected/opened by
@@ -275,15 +360,19 @@ b9d3de5. Give an in-Desk agent a documented way to learn its own
 
    Open, undecided questions to work out during actual planning: how
    verbs are registered/discovered (a fixed built-in list, mirroring
-   `deskproc.*`'s own methods? something a widget/domain package could
-   extend?); whether a pipeline runs as one `Job`/`DeskProc` "kind" or
-   is a third, distinct tempui keyword; how a verb's own argument
-   parsing/type coercion works given "everything after a keyword is one
-   opaque value" is the DSL's existing convention elsewhere; and how
-   errors/partial failure mid-pipeline are reported (mirroring the
-   existing Runner widget's status display, or something new). Not
-   designed in full or planned yet -- intentionally left unplanned per
-   explicit instruction not to implement yet.
+   `deskproc.*`'s own methods, and/or the candidate MCP tools from
+   `a762501`? something a widget/domain package could extend?); how a
+   verb's own argument parsing/type coercion works given "everything
+   after a keyword is one opaque value" is the tempui DSL's existing
+   convention elsewhere (a convention this DSL need not inherit, since
+   it's explicitly not tied to being a tempui keyword anymore); and
+   what the DSL itself defines as its error/partial-failure reporting
+   *contract* (a structured per-stage result value, at minimum) --
+   independent of how any given transport chooses to surface that
+   (a Runner widget's status display, an MCP tool's return value,
+   or something else). Not designed in full or planned yet --
+   intentionally left unplanned per explicit instruction not to
+   implement yet.
 
 1239cfd. COMPLETED: Stop using counting numbers to identify TODO items — this
    item's own id (visible once this file is converted, right below)
