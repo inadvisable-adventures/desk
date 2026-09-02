@@ -175,6 +175,26 @@ reordered or its description edited.
    `banner_style` parameter/file-type-count bump. Full
    `tests/verify/` suite (122 scripts) passes.
 
+e9eddba. Add a permission-mode selector to the Claude (Desk) widget
+   (`widgets/claude_desk/widget.py`). TODO `a596dbf` hardcoded
+   `PERMISSION_MODE = "default"` (a deliberate deviation from the
+   plan's suggested `"auto"` parity default with the original Claude
+   widget, TODO `2dca4c8` -- found during verification that `"auto"`
+   gates tool calls inconsistently, while `"default"` gates reliably,
+   and this widget's whole point is a real, meaningful approval UI).
+   Making that a real, visible, user-changeable control (alongside the
+   existing model combo box) rather than a fixed constant lets someone
+   trade consistency for fewer prompts if they want to, the same
+   tradeoff `claude`'s own `--permission-mode` flag already exposes on
+   the CLI. **Resolved**: the mode changes live, mid-session, via
+   `ClaudeSDKClient.set_permission_mode` (confirmed directly in the
+   installed SDK -- documented and supported specifically for this,
+   not just settable at connect time), not only before `start_session`
+   -- restricting it to start-only would be strictly worse for no
+   benefit, given the SDK already makes live switching easy. Prioritized
+   per direct request.
+   [planned: claude-desk-permission-mode-selector.md]
+
 49e3732. A `build_job.py`/`build_desk_proc.py` authoring helper, mirroring
    `build_widget.py`. Converted from a `PARKINGLOT.md` entry surfaced
    while using TODO `97bd090` (`DeskProc`) for real, right after having
@@ -7625,22 +7645,6 @@ a4c3dec. Add an on-hover control in the Claude (Desk) widget's history
    `_prompt_input` while typing. Depends on TODO `78d6207`
    distinguishing user lines from the rest of the history to know
    which lines are reloadable.
-
-e9eddba. Add a permission-mode selector to the Claude (Desk) widget
-   (`widgets/claude_desk/widget.py`). TODO `a596dbf` hardcoded
-   `PERMISSION_MODE = "default"` (a deliberate deviation from the
-   plan's suggested `"auto"` parity default with the original Claude
-   widget, TODO `2dca4c8` -- found during verification that `"auto"`
-   gates tool calls inconsistently, while `"default"` gates reliably,
-   and this widget's whole point is a real, meaningful approval UI).
-   Making that a real, visible, user-changeable control (alongside the
-   existing model combo box) rather than a fixed constant lets someone
-   trade consistency for fewer prompts if they want to, the same
-   tradeoff `claude`'s own `--permission-mode` flag already exposes on
-   the CLI. Needs a decision on when the mode can change (only before
-   `start_session`, or live mid-session via `ClaudeSDKClient
-   .set_permission_mode`, which the SDK already exposes) -- not
-   designed yet.
 
 93364f9. Add a `[chat]` button (relabeled from this item's own earlier
    "talk to Claude about this widget" working name -- same feature,
