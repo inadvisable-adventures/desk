@@ -317,9 +317,8 @@ e9eddba. Add a permission-mode selector to the Claude (Desk) widget
    -- exact argument shape not decided). Should cover both `Job` and
    `DeskProc` (near-identical `Script<TAB>chunk` encoding, just a
    different first line and, for `Job`, extra `Capability` lines) --
-   one script, not two, sharing the chunking/encoding helper. Not
-   designed in full or planned yet -- this item is intentionally left
-   unplanned per explicit instruction not to implement yet.
+   one script, not two, sharing the chunking/encoding helper.
+   [planned: build-job-or-desk-proc-helper.md]
 
 b9d3de5. Give an in-Desk agent a documented way to learn its own
    placed widget instance id, via `ClaudeAgentOptions.env` (a static,
