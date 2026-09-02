@@ -194,6 +194,40 @@ e9eddba. Add a permission-mode selector to the Claude (Desk) widget
    benefit, given the SDK already makes live switching easy. Prioritized
    per direct request.
    [planned: claude-desk-permission-mode-selector.md]
+   COMPLETED: `src/desk/claude_session.py` -- `ClaudeSession
+   .set_permission_mode(mode)`, mirroring `send_prompt`'s exact
+   guard-then-`asyncio.run_coroutine_threadsafe(...)` shape (a no-op
+   before any session has started or after it's stopped); a private
+   `_set_permission_mode` coroutine awaits the real SDK's own
+   `ClaudeSDKClient.set_permission_mode`, surfacing a failure through
+   the existing `session_error` signal rather than a new channel.
+   `widgets/claude_desk/widget.py` -- the hardcoded `PERMISSION_MODE =
+   "default"` constant replaced with `PERMISSION_MODE_CHOICES` (the six
+   real `claude_agent_sdk.types.PermissionMode` values --
+   `default`/`acceptEdits`/`plan`/`bypassPermissions`/`dontAsk`/`auto`
+   -- with human-readable labels, the same `(label, value)` shape
+   `MODEL_CHOICES` already uses) and a new combo box next to the
+   existing model combo, defaulting to "Default" (same reasoning as
+   the constant it replaces: `can_use_tool` gates reliably under
+   `default`, inconsistently under `auto`); `start_session` reads the
+   initial mode from the combo instead of the removed constant; a new
+   `_on_permission_mode_changed` slot calls `ClaudeSession
+   .set_permission_mode` live on every change, with no extra
+   "is a session currently active" bookkeeping needed (the session's
+   own guard already no-ops correctly before/after a live connection).
+   New coverage in `tests/verify/verify_claude_desk_widget.py` (+15
+   checks, 17 total in that file, none touching the real Claude API):
+   the combo offers all six modes and defaults correctly;
+   `start_session` passes each choice's real SDK value (not its label)
+   to a fake session, for all six; changing the combo live-calls
+   `set_permission_mode` with the newly-selected value, repeatably; a
+   real `ClaudeSession.set_permission_mode` call before any session has
+   started is a genuine no-op, not a crash. Full `tests/verify/`
+   regression suite passes (131 scripts total, 0 unexpected failures --
+   the count reflects other concurrent work landed on this repo since
+   this session's prior TODO; the sole failure,
+   `disabled_verify_claude_desk_widget_claude_api.py`, is an
+   already-filed, already-disabled, unrelated flaky item).
 
 49e3732. A `build_job.py`/`build_desk_proc.py` authoring helper, mirroring
    `build_widget.py`. Converted from a `PARKINGLOT.md` entry surfaced

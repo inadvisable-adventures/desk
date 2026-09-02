@@ -125,6 +125,24 @@ class ClaudeSession(QObject):
             return
         asyncio.run_coroutine_threadsafe(self._query_and_stream(text), self._loop)
 
+    def set_permission_mode(self, mode: str) -> None:
+        """Changes permission mode live, mid-session (TODO `e9eddba`) --
+        a no-op before any session has started or after it's stopped
+        (self._loop/self._client not set yet/no longer set), same
+        guard shape as send_prompt above, so a caller (the widget's own
+        combo box) never needs its own "is a session currently live"
+        bookkeeping."""
+        if self._loop is None or self._client is None:
+            return
+        asyncio.run_coroutine_threadsafe(self._set_permission_mode(mode), self._loop)
+
+    async def _set_permission_mode(self, mode: str) -> None:
+        assert self._client is not None
+        try:
+            await self._client.set_permission_mode(mode)
+        except Exception as exc:  # noqa: BLE001 -- surfaced to the user, not swallowed
+            self.session_error.emit(str(exc))
+
     async def _query_and_stream(self, text: str) -> None:
         assert self._client is not None
         try:

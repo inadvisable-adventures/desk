@@ -99,8 +99,102 @@ def test_window_wiring():
     )
 
 
+def _load_widget_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("claude_desk_widget", REPO_ROOT / "widgets" / "claude_desk" / "widget.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class _FakeSession:
+    """A recording stand-in for desk.claude_session.ClaudeSession (TODO
+    e9eddba) -- swapped in after the real widget is built (its own
+    __init__ already constructed and wired a real ClaudeSession, but
+    that object's own .start() is never called here, so nothing about
+    swapping it out afterward leaves anything real running) so
+    start_session/the permission-mode combo can be tested without a
+    real ClaudeSDKClient/network call."""
+
+    def __init__(self):
+        self.start_calls = []
+        self.permission_mode_calls = []
+
+    def start(self, session_id, resume, model, permission_mode, cwd, initial_prompt):
+        self.start_calls.append((session_id, resume, model, permission_mode, cwd, initial_prompt))
+
+    def set_permission_mode(self, mode):
+        self.permission_mode_calls.append(mode)
+
+    def stop(self):
+        # The widget's own __init__ connects self.destroyed to
+        # self._session.stop() -- fires for any teardown, including at
+        # interpreter exit for a widget this script never explicitly
+        # closes, regardless of which session object is currently
+        # installed.
+        pass
+
+
+def test_permission_mode_combo_present_and_defaults_to_default():
+    module = _load_widget_module()
+    widget = module.build()
+    labels = [widget._permission_mode_combo.itemText(i) for i in range(widget._permission_mode_combo.count())]
+    check(
+        "the permission-mode combo offers all six real SDK modes",
+        labels == ["Default", "Accept Edits", "Plan", "Bypass Permissions", "Don't Ask", "Auto"],
+    )
+    check("the permission-mode combo defaults to Default", widget._permission_mode_combo.currentIndex() == 0)
+
+
+def test_start_session_passes_the_selected_permission_mode():
+    import uuid
+
+    module = _load_widget_module()
+    for index, (label, value) in enumerate(module.PERMISSION_MODE_CHOICES):
+        widget = module.build()
+        fake_session = _FakeSession()
+        widget._session = fake_session
+        widget._permission_mode_combo.setCurrentIndex(index)
+        widget.start_session(str(uuid.uuid4()), resume=False)
+        check(
+            f"start_session passes the real SDK value for {label!r}, not the label",
+            fake_session.start_calls and fake_session.start_calls[0][3] == value,
+        )
+
+
+def test_changing_the_combo_calls_set_permission_mode_live():
+    module = _load_widget_module()
+    widget = module.build()
+    fake_session = _FakeSession()
+    widget._session = fake_session
+
+    widget._permission_mode_combo.setCurrentIndex(1)
+    check(
+        "changing the combo calls set_permission_mode with the newly-selected value",
+        fake_session.permission_mode_calls == ["acceptEdits"],
+    )
+    widget._permission_mode_combo.setCurrentIndex(4)
+    check(
+        "a second change calls it again with the new value",
+        fake_session.permission_mode_calls == ["acceptEdits", "dontAsk"],
+    )
+
+
+def test_set_permission_mode_is_a_real_no_op_before_start():
+    from desk.claude_session import ClaudeSession
+
+    session = ClaudeSession()
+    session.set_permission_mode("acceptEdits")  # must not raise
+    check("ClaudeSession.set_permission_mode no-ops before any session has started", True)
+
+
 test_widget_json_is_well_formed()
 test_window_wiring()
+test_permission_mode_combo_present_and_defaults_to_default()
+test_start_session_passes_the_selected_permission_mode()
+test_changing_the_combo_calls_set_permission_mode_live()
+test_set_permission_mode_is_a_real_no_op_before_start()
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

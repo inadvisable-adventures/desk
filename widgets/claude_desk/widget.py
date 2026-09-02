@@ -41,21 +41,34 @@ MODEL_CHOICES = [
 DEFAULT_MODEL_INDEX = 1  # "Sonnet" -- see plan step 5: an explicit model
 # choice from the start, unlike the original widget which passes none.
 
-# Deliberately NOT "auto" -- a deviation from the plan's suggested
-# parity default with the existing widget's --permission-mode auto
-# (TODO 2dca4c8), made after a real, empirical finding during
-# verification: can_use_tool is consulted reliably under "default"
-# (confirmed across many real sessions, including a bootstrap-prompt
-# -then-Write sequence matching this widget's own real usage), but
-# under "auto" it fires inconsistently for the exact same kind of
-# request -- "auto" appears to use a looser, non-deterministic
+# TODO e9eddba: the six real claude_agent_sdk.types.PermissionMode
+# values, with human-readable labels -- same (label, value) tuple-list
+# shape MODEL_CHOICES above already uses. "Default" (index 0) stays
+# the initial selection: a deliberate deviation from the plan's
+# suggested "auto" parity default with the existing widget's own
+# --permission-mode auto (TODO 2dca4c8), made after a real, empirical
+# finding during verification: can_use_tool is consulted reliably
+# under "default" (confirmed across many real sessions, including a
+# bootstrap-prompt-then-Write sequence matching this widget's own real
+# usage), but under "auto" it fires inconsistently for the exact same
+# kind of request -- "auto" appears to use a looser, non-deterministic
 # heuristic that sometimes skips the gate entirely (matches its
 # apparent purpose: fewer prompts, at the cost of consistency). Since
 # this widget's entire point is a real, meaningful approval UI (unlike
 # the original PTY-based widget, which has none), defaulting to a mode
 # where that UI reliably triggers matters more here than matching the
-# other widget's own default.
-PERMISSION_MODE = "default"
+# other widget's own default -- a user who wants fewer prompts can
+# still pick "Auto" (or "Accept Edits"/"Bypass Permissions") themselves
+# from the dropdown.
+PERMISSION_MODE_CHOICES = [
+    ("Default", "default"),
+    ("Accept Edits", "acceptEdits"),
+    ("Plan", "plan"),
+    ("Bypass Permissions", "bypassPermissions"),
+    ("Don't Ask", "dontAsk"),
+    ("Auto", "auto"),
+]
+DEFAULT_PERMISSION_MODE_INDEX = 0  # "Default"
 
 
 def _doc_path() -> str:
@@ -135,6 +148,12 @@ class ClaudeDeskWidget(QWidget):
             self._model_combo.addItem(label)
         self._model_combo.setCurrentIndex(DEFAULT_MODEL_INDEX)
 
+        self._permission_mode_combo = QComboBox()
+        for label, _value in PERMISSION_MODE_CHOICES:
+            self._permission_mode_combo.addItem(label)
+        self._permission_mode_combo.setCurrentIndex(DEFAULT_PERMISSION_MODE_INDEX)
+        self._permission_mode_combo.currentIndexChanged.connect(self._on_permission_mode_changed)
+
         self._history = QPlainTextEdit()
         self._history.setReadOnly(True)
 
@@ -164,6 +183,7 @@ class ClaudeDeskWidget(QWidget):
         top_row.addWidget(self._status_label, stretch=1)
         top_row.addWidget(self._queue_label)
         top_row.addWidget(self._model_combo)
+        top_row.addWidget(self._permission_mode_combo)
 
         prompt_row = QHBoxLayout()
         prompt_row.addWidget(self._mic_button)
@@ -180,6 +200,7 @@ class ClaudeDeskWidget(QWidget):
 
     def start_session(self, session_id: str, resume: bool, extra_instructions: str = "") -> None:
         model = MODEL_CHOICES[self._model_combo.currentIndex()][1]
+        permission_mode = PERMISSION_MODE_CHOICES[self._permission_mode_combo.currentIndex()][1]
         cwd = current_context.get_current_desk_directory()
         if resume:
             initial_prompt = ""
@@ -206,7 +227,15 @@ class ClaudeDeskWidget(QWidget):
             # fire prematurely while that first turn is still in
             # flight.
             self._session.connected.connect(lambda: self._finish_busy_period("Idle."))
-        self._session.start(session_id, resume, model, PERMISSION_MODE, cwd, initial_prompt)
+        self._session.start(session_id, resume, model, permission_mode, cwd, initial_prompt)
+
+    def _on_permission_mode_changed(self, index: int) -> None:
+        """Changes permission mode live, mid-session (TODO e9eddba) --
+        a no-op via ClaudeSession.set_permission_mode's own guard if no
+        session has started yet (e.g. the combo box's initial
+        setCurrentIndex above, before __init__ finishes, or a
+        not-yet-connected widget)."""
+        self._session.set_permission_mode(PERMISSION_MODE_CHOICES[index][1])
 
     def _append_history(self, text: str) -> None:
         self._history.appendPlainText(text)

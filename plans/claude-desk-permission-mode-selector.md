@@ -1,4 +1,4 @@
-# Permission-mode selector for the Claude (Desk) widget (TODO `e9eddba`)
+# Permission-mode selector for the Claude (Desk) widget (TODO `e9eddba`) (COMPLETED)
 
 ## Summary
 
