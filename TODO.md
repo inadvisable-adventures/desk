@@ -295,8 +295,8 @@ e9eddba. Add a permission-mode selector to the Claude (Desk) widget
    `disabled_verify_claude_desk_widget_claude_api.py`, is an
    already-filed, already-disabled, unrelated flaky item).
 
-49e3732. A `build_job.py`/`build_desk_proc.py` authoring helper, mirroring
-   `build_widget.py`. Converted from a `PARKINGLOT.md` entry surfaced
+49e3732. COMPLETED: A `build_job.py`/`build_desk_proc.py` authoring helper,
+   mirroring `build_widget.py`. Converted from a `PARKINGLOT.md` entry surfaced
    while using TODO `97bd090` (`DeskProc`) for real, right after having
    done the same thing by hand for `Job`/`DefineWidget` files earlier
    the same session. Prioritized per direct user request.
@@ -318,7 +318,34 @@ e9eddba. Add a permission-mode selector to the Claude (Desk) widget
    `DeskProc` (near-identical `Script<TAB>chunk` encoding, just a
    different first line and, for `Job`, extra `Capability` lines) --
    one script, not two, sharing the chunking/encoding helper.
-   [planned: build-job-or-desk-proc-helper.md]
+   [planned: build-job-or-desk-proc-helper.md (COMPLETED)]
+
+   COMPLETED: `temp_ui.py` gained `_BUILD_JOB_OR_DESK_PROC_SCRIPT` (the
+   generated script's full source, mirroring `_BUILD_WIDGET_SCRIPT`'s
+   own wrapping) and `BUILD_JOB_OR_DESK_PROC_SCRIPT_FILENAME =
+   "build_job_or_desk_proc.py"`, added to `SPLIT_DOC_CONTENT`;
+   `TEMPUI_DOC_VERSION` bumped 38 -> 39 with a matching
+   `_NEW_FEATURES_DOC` entry; `DOC_TEMPLATE`'s existing
+   `build_widget.py` paragraph extended to mention it; `_JOBS_DOC`/
+   `_DESK_PROC_DOC` each gained a short cross-reference with a real
+   invocation example. The generated script itself:
+   `build_desk_proc(summary, script_path)`/`build_job(kind, summary,
+   script_path, capabilities)` do the base64-encode-and-chunk work
+   (shared `_chunk`/`_check_single_line_safe` helpers -- the latter
+   rejects a tab/newline in `summary`/a capability name with a clear
+   error instead of silently producing a tempui file that parses
+   wrong); `argparse` `desk-proc`/`job` subcommands; `main` writes
+   `.desk_temp/<uuid>` and prints the path, same shape
+   `build_widget.py`'s own `main` already has. New verify coverage,
+   real (no mocking): `verify_build_job_or_desk_proc_script.py` (26
+   checks: runs the real generated script as a real subprocess for
+   both `desk-proc` and `job` python/html, confirms the output
+   round-trips through this repo's own real `parse_desk_proc`/
+   `parse_job`, multi-chunk scripts, and all three error paths --
+   tab-in-summary, newline-in-capability, missing script file);
+   `verify_tempui_build_job_or_desk_proc_doc.py` (11 checks: doc-set
+   completeness/version bump, the generated script itself compiles).
+   Full `tests/verify/` suite (125 scripts) passes.
 
 b9d3de5. Give an in-Desk agent a documented way to learn its own
    placed widget instance id, via `ClaudeAgentOptions.env` (a static,

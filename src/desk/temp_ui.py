@@ -272,7 +272,15 @@ APP_DSL_DIRNAME = "app_dsl"
 # safely acting on the shell from its own background thread. New split
 # doc, tempui-desk-proc.md; the main file-type list above gained a
 # matching bullet (nine built-in file types -> ten).
-TEMPUI_DOC_VERSION = 38
+#
+# TODO 49e3732: bumped 38 -> 39 -- not a new DSL keyword, a new
+# authoring convenience: `.desk_temp/build_job_or_desk_proc.py`
+# (mirroring `build_widget.py`) packages a plain script into a
+# ready-to-drop `Job`/`DeskProc` tempui file, removing the hand-rolled
+# base64-encode-and-chunk step an author previously had to write from
+# scratch every time. `tempui-jobs.md`/`tempui-desk-proc.md` and this
+# file's own "There's also `build_widget.py`" paragraph now mention it.
+TEMPUI_DOC_VERSION = 39
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -331,7 +339,11 @@ read from the top down until you reach a version you already know,
 and you'll have an exact, actionable punch list instead of needing to
 re-read this whole doc set and diff it against memory. There's also
 `build_widget.py` — not a doc at all, but a ready-to-run script; see
-"Authoring from real source" in `tempui-custom-widgets.md`.
+"Authoring from real source" in `tempui-custom-widgets.md`. Likewise
+`build_job_or_desk_proc.py` — packages a plain script into a
+ready-to-drop `Job`/`DeskProc` tempui file (base64-encoding and
+chunking it for you); see either of those files' own docs for how to
+invoke it.
 
 ## Questions for the user: use QUESTIONS.md, not this DSL
 
@@ -1218,6 +1230,19 @@ that visible some other way (e.g. render its own result in the page),
 rather than relying on the Job Runner's status display as a strict
 completion signal.
 
+You don't have to hand-write the base64/`Script` line(s) below
+yourself -- `.desk_temp/build_job_or_desk_proc.py` (mirroring
+`build_widget.py`'s convenience for `DefineWidget`) builds a real `Job`
+file for you from a plain script file:
+
+```
+python3 .desk_temp/build_job_or_desk_proc.py job python "Delete .desk_temp/jobs/ entries older than 7 days" cleanup.py
+python3 .desk_temp/build_job_or_desk_proc.py job html "Talk to the Bridge API" widget.html --capability workspace
+```
+
+prints the path of the tempui file it wrote, ready to be picked up the
+same as any other `.desk_temp/` file.
+
 Example (`kind: "python"`, script shown decoded/unwrapped for
 readability -- the real file's `Script` line(s) would carry it
 base64-encoded):
@@ -1314,6 +1339,18 @@ own notification on purpose** -- a distinct border color and a bold
 (real, in-process shell access) is never mistaken at a glance for an
 ordinary tempui placement (a widget instance, a question, ...).
 
+You don't have to hand-write the base64/`Script` line(s) below
+yourself -- `.desk_temp/build_job_or_desk_proc.py` (mirroring
+`build_widget.py`'s convenience for `DefineWidget`) builds a real
+`DeskProc` file for you from a plain Python script file:
+
+```
+python3 .desk_temp/build_job_or_desk_proc.py desk-proc "Reveal and screenshot the Editor widget" reveal_and_shoot.py
+```
+
+prints the path of the tempui file it wrote, ready to be picked up the
+same as any other `.desk_temp/` file.
+
 Example (script shown decoded/unwrapped for readability -- the real
 file's `Script` line(s) would carry it base64-encoded):
 
@@ -1396,6 +1433,15 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 39
+- A new authoring convenience script,
+  `.desk_temp/build_job_or_desk_proc.py` (mirroring `build_widget.py`):
+  packages a plain script into a ready-to-drop `Job`/`DeskProc` tempui
+  file, doing the base64-encode-and-chunk work for you instead of
+  hand-writing it every time. No DSL/API change -- `Job`/`DeskProc`
+  files themselves are unchanged, this just removes the authoring
+  ceremony. See `tempui-jobs.md`/`tempui-desk-proc.md`.
 
 ## Version 38
 - A new `DeskProc` tempui DSL keyword: a one-time Python script with
@@ -1951,6 +1997,147 @@ if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
 '''
 
+# TODO 49e3732: same "generated and kept fresh, not a one-time seed"
+# reasoning as _BUILD_WIDGET_SCRIPT above -- a Job/DeskProc author was
+# hand-writing the same base64.b64encode(...)-and-chunk script from
+# scratch every time otherwise. Wrapped in triple *single* quotes for
+# the same reason: the script's own docstring uses triple double
+# quotes internally.
+_BUILD_JOB_OR_DESK_PROC_SCRIPT = '''#!/usr/bin/env python3
+"""Packages a plain script into a ready-to-drop `Job`/`DeskProc` tempui
+file under `.desk_temp/` -- see "The TempUI DSL: Job"/"The TempUI DSL:
+DeskProc" (tempui-jobs.md/tempui-desk-proc.md, this same directory) for
+the file formats this implements the base64/chunking/writing step for.
+
+This file itself lives at `.desk_temp/build_job_or_desk_proc.py`,
+generated and kept fresh there the same way `build_widget.py` (this
+same directory) is -- refreshed automatically whenever the doc set's
+shared version changes, rather than seeded once into a project and left
+to go stale. It's deliberately self-contained: no import of this app's
+own `desk` package, which the project it's generated into won't have
+installed.
+
+Usage:
+    python3 .desk_temp/build_job_or_desk_proc.py desk-proc SUMMARY SCRIPT.py
+        Builds a DeskProc file -- SCRIPT.py is always plain Python.
+
+    python3 .desk_temp/build_job_or_desk_proc.py job KIND SUMMARY SCRIPT [--capability NAME ...]
+        Builds a Job file. KIND is "python" or "html"; SCRIPT is a .py
+        file for "python", or any file (typically .html) for "html".
+        --capability is repeatable and only meaningful for an
+        html-kind Job (harmless, but ignored, for python).
+
+Writes a fresh `.desk_temp/<uuid>` tempui file and prints its path.
+"""
+import argparse
+import base64
+import sys
+import uuid
+from pathlib import Path
+
+CHUNK_SIZE = 2000
+TEMP_UI_DIRNAME = ".desk_temp"
+
+
+class BuildError(Exception):
+    """Any problem that should abort the build with a clear message --
+    caught once in main(), never elsewhere, so every failure path prints
+    one clean line instead of a traceback."""
+
+
+def _chunk(text: str, size: int) -> list:
+    return [text[i : i + size] for i in range(0, len(text), size)] or [""]
+
+
+def _read_script(path_str: str) -> str:
+    path = Path(path_str)
+    if not path.is_file():
+        raise BuildError(f"{path} not found")
+    return path.read_text()
+
+
+def _check_single_line_safe(value: str, what: str) -> None:
+    """A tempui file's first line is TAB-delimited -- a literal tab
+    inside `value` would read as an extra field boundary, and a literal
+    newline would end the line early, either way silently producing a
+    tempui file that looks fine but parses wrong. Caught here once,
+    applied to every free-text field this script accepts."""
+    if "\\t" in value or "\\n" in value:
+        raise BuildError(f"{what} can't contain a tab or newline: {value!r}")
+
+
+def build_desk_proc(summary: str, script_path: str) -> str:
+    _check_single_line_safe(summary, "summary")
+    script = _read_script(script_path)
+    script_b64 = base64.b64encode(script.encode("utf-8")).decode("ascii")
+    lines = [f"DeskProc\\t{summary}"]
+    lines.extend(f"Script\\t{chunk}" for chunk in _chunk(script_b64, CHUNK_SIZE))
+    return "\\n".join(lines) + "\\n"
+
+
+def build_job(kind: str, summary: str, script_path: str, capabilities: list) -> str:
+    if kind not in ("python", "html"):
+        raise BuildError(f"job kind must be 'python' or 'html', got {kind!r}")
+    _check_single_line_safe(summary, "summary")
+    for capability in capabilities:
+        _check_single_line_safe(capability, "capability name")
+    script = _read_script(script_path)
+    script_b64 = base64.b64encode(script.encode("utf-8")).decode("ascii")
+    lines = [f"Job\\t{kind}\\t{summary}"]
+    lines.extend(f"Capability\\t{capability}" for capability in capabilities)
+    lines.extend(f"Script\\t{chunk}" for chunk in _chunk(script_b64, CHUNK_SIZE))
+    return "\\n".join(lines) + "\\n"
+
+
+def _parse_args(argv: list) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Build a ready-to-drop Job/DeskProc tempui file under .desk_temp/."
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    desk_proc_parser = subparsers.add_parser("desk-proc", help="Build a DeskProc tempui file.")
+    desk_proc_parser.add_argument("summary", help="Shown in the notification and the placed Runner widget.")
+    desk_proc_parser.add_argument("script", help="Path to the Python script to embed.")
+
+    job_parser = subparsers.add_parser("job", help="Build a Job tempui file.")
+    job_parser.add_argument("kind", choices=("python", "html"), help="Which Job kind to build.")
+    job_parser.add_argument("summary", help="Shown in the notification and the placed Runner widget.")
+    job_parser.add_argument("script", help="Path to the script to embed (.py for python, .html for html).")
+    job_parser.add_argument(
+        "--capability",
+        action="append",
+        default=[],
+        dest="capabilities",
+        metavar="NAME",
+        help="A Bridge API capability this html-kind Job needs (repeatable). Ignored, but harmless, for python.",
+    )
+
+    return parser.parse_args(argv)
+
+
+def main(argv: list) -> int:
+    args = _parse_args(argv)
+    try:
+        if args.command == "desk-proc":
+            tempui_text = build_desk_proc(args.summary, args.script)
+        else:
+            tempui_text = build_job(args.kind, args.summary, args.script, args.capabilities)
+    except BuildError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+
+    temp_ui_dir = Path(TEMP_UI_DIRNAME)
+    temp_ui_dir.mkdir(exist_ok=True)
+    out_path = temp_ui_dir / str(uuid.uuid4())
+    out_path.write_text(tempui_text)
+    print(out_path)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
+'''
+
 LIGHTNING_ROUND_DOC_FILENAME = "tempui-lightning-round.md"
 MARKDOWN_DOC_FILENAME = "tempui-markdown.md"
 IMAGE_DOC_FILENAME = "tempui-image.md"
@@ -1962,14 +2149,17 @@ DESK_PROC_DOC_FILENAME = "tempui-desk-proc.md"
 BREAKING_CHANGES_DOC_FILENAME = "tempui-breaking-changes.md"
 NEW_FEATURES_DOC_FILENAME = "tempui-new-features.md"
 BUILD_WIDGET_SCRIPT_FILENAME = "build_widget.py"
+BUILD_JOB_OR_DESK_PROC_SCRIPT_FILENAME = "build_job_or_desk_proc.py"
 
 # filename -> its static content, for every split-out doc (TODO
 # e57ce5f) -- iterated by write_tempui_docs/ensure_docs_current so
 # adding a future split file is a one-line addition here, not a new
 # call site to remember elsewhere. Not every entry is a `.md` doc --
-# BUILD_WIDGET_SCRIPT_FILENAME (TODO 029047b) is a `.py` script, but
-# write_tempui_docs/ensure_docs_current treat every entry identically
-# (`.write_text(content)`), so it needs no special-casing here.
+# BUILD_WIDGET_SCRIPT_FILENAME (TODO 029047b)/
+# BUILD_JOB_OR_DESK_PROC_SCRIPT_FILENAME (TODO 49e3732) are `.py`
+# scripts, but write_tempui_docs/ensure_docs_current treat every entry
+# identically (`.write_text(content)`), so neither needs special-casing
+# here.
 SPLIT_DOC_CONTENT: dict[str, str] = {
     LIGHTNING_ROUND_DOC_FILENAME: _LIGHTNING_ROUND_DOC,
     MARKDOWN_DOC_FILENAME: _MARKDOWN_DOC,
@@ -1982,6 +2172,7 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     BREAKING_CHANGES_DOC_FILENAME: _BREAKING_CHANGES_DOC,
     NEW_FEATURES_DOC_FILENAME: _NEW_FEATURES_DOC,
     BUILD_WIDGET_SCRIPT_FILENAME: _BUILD_WIDGET_SCRIPT,
+    BUILD_JOB_OR_DESK_PROC_SCRIPT_FILENAME: _BUILD_JOB_OR_DESK_PROC_SCRIPT,
 }
 
 
