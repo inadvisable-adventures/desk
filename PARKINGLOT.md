@@ -119,6 +119,51 @@ This file captures thoughts and TODO items that arise during work on other thing
   Not decided — parking to revisit as its own design discussion, or
   the next time either symptom is hit for real.
 
+- **Editing a Claude (Desk) widget's own hosting `widget.py` mid-session destroys its own conversation, with no way for the new session to know what the old one was doing**
+
+  A live instance of this exact problem: while implementing TODO
+  `a762501`, edits landed in `widgets/claude_desk/widget.py` itself --
+  the file defining *this very widget*'s own running session -- which
+  triggered `PythonWidgetHost._rebuild`'s hot-reload (`WidgetWatcher`),
+  tearing down the old `ClaudeSession` and starting a brand-new one
+  with no memory of what the session that had just been running was
+  doing (see the "Hot reload ... doesn't fully preserve a widget's own
+  state" item just above -- this is a concrete, now-confirmed instance
+  of its second bullet, "session ... binding is lost"). The user had to
+  notice the stray uncommitted changes via `git status`/`git log` after
+  the fact and manually tell the new session what TODO item and file
+  changes to pick back up -- nothing in the new session itself carried
+  that context forward. Worth investigating a real fix rather than just
+  re-noting the loss: candidates include persisting enough of the old
+  session's own state (a summary/checkpoint, or the raw transcript)
+  somewhere `_rebuild`'s replacement widget/`ClaudeSession` could pick
+  back up from (see the widget-local-storage migration idea in the item
+  above); detecting specifically that the file just saved is the
+  widget's *own* currently-active hosting file and either deferring the
+  rebuild until the session is idle, or auto-injecting a "you were just
+  hot-reloaded because your own hosting code changed -- here's what
+  changed and, if recoverable, what you were doing" resume prompt (via
+  `--resume`/the persisted session id, see
+  `plans/claude-widget-session-resume.md`); or something else entirely.
+  Not designed -- parking to think through properly rather than
+  accepting silent context loss as permanent, especially since this
+  widget is routinely used to work on Desk's own code (including its
+  own `widget.py`), making this exact collision likely to recur.
+
+  **Recurred, repeatedly, immediately** (still implementing TODO
+  `a762501`): the user tried resuming the in-Desk session multiple
+  times to keep going, and each attempt to actually edit
+  `widgets/claude_desk/widget.py` again triggered the same
+  self-hot-reload, killing that attempt too -- confirming this isn't a
+  one-off but a real blocker for using this widget to edit its own
+  source at all. The user gave up working inside Desk for this item
+  and came back out to a non-Desk-hosted session (this one) instead,
+  specifically to avoid the loop. Sharpens the urgency here beyond "an
+  interesting edge case" -- until something in the "candidates" list
+  above ships, this widget cannot reliably be used to develop itself,
+  which (as already noted) is exactly the kind of work it's routinely
+  used for.
+
 - **`WidgetSpawnMenu._activate_item` has the same emit-then-close
   use-after-delete shape TODO c8f6fb3 just fixed in `_DeskListPopup`**
 
@@ -396,10 +441,24 @@ This file captures thoughts and TODO items that arise during work on other thing
 
   A cluster of related findings/suggestions from
   `DESK_FEEDBACK-2026-07-13T012144.md` (TODO `4ab5875`, investigating
-  `widgets/hex_flower`'s blank page). The root-cause fix itself (a
-  same-origin cookie, plus documenting the token requirement) is now
-  TODO `a5f66cc` -- moved out of this list; the remaining items below
-  are follow-ups sequenced after that fix lands:
+  `widgets/hex_flower`'s blank page). The root-cause fix (a same-origin
+  cookie, `TokenAuthMiddleware`/`_token_from_scope` in
+  `src/desk/server/app.py`) plus per-instance `QWebEngineProfile`
+  isolation is now TODO `a5f66cc`, **implemented and verified** (real
+  end-to-end coverage in
+  `tests/verify/verify_kind_html_auth_token_and_profile_isolation.py`
+  confirms a real multi-file widget -- `index.html` with an external
+  `<script src>` -- now loads correctly). Documenting the token
+  requirement turned out to be two separate gaps, not one: `a5f66cc`
+  only updated `design-docs/architecture.md` (Desk's own internal
+  doc); the docs actually shown to agents working *inside* other
+  projects (`tempui-*.md`, generated from `src/desk/temp_ui.py`) still
+  had a *different*, now-stale claim (that no browser storage persists
+  a widget's page across a reload) -- caught and fixed separately as
+  TODO `e42469e`. Both are done; the remaining items below are
+  follow-ups sequenced after those two land, augmented with pointers
+  found while implementing them (mostly file:line references and
+  scoping notes, not full designs):
 
   - **Reconsider `DefineWidget`'s single-inlined-file requirement,
     once the above is fixed.** Inlining everything into one
@@ -410,6 +469,78 @@ This file captures thoughts and TODO items that arise during work on other thing
     reconsidering whether `DefineWidget` could support a small set of
     named files (e.g. an HTML entry plus a script and a stylesheet)
     instead of one inlined document. Depends on the item above.
+
+    The auth gap is now closed (confirmed above), so this item's own
+    stated precondition is satisfied -- it's unblocked, not just
+    "worth reconsidering" anymore. Notes for whoever picks it up:
+    - **Authoring-time multi-file already works; it's specifically
+      the *served/runtime* artifact that's single-file.** "Authoring
+      from real source" (`_CUSTOM_WIDGETS_DOC` in `temp_ui.py`)
+      already lets an author split TypeScript across several `.ts`
+      files (a `tsconfig.json` `"files"` array controls concatenation
+      order, TODO `3fc5331`) -- `build_widget.py` compiles and
+      concatenates them into one inlined document before encoding.
+      Don't conflate that (already solved) with this item, which is
+      about the *materialized*/served widget itself being more than
+      one HTTP-fetchable file.
+    - **The concrete code that would need to change**:
+      `desk.custom_widgets.materialize()` (`src/desk/custom_widgets.py`)
+      currently does exactly one thing --
+      `(target_dir / "index.html").write_text(html)` -- decoding a
+      single `html_b64` blob to a single file. Supporting multiple
+      runtime files means teaching `CustomWidgetDefinition`
+      (`temp_ui.py:1539`, currently just
+      `keyword`/`label`/`html_b64`/`capabilities`) and the
+      `DefineWidget` DSL's own line format
+      (`_CUSTOM_WIDGETS_DOC`'s `Html<TAB>base64-chunk` lines) to carry
+      more than one named file, and `materialize()` to write all of
+      them out. The actual HTTP serving needs no new work --
+      `ServerHandle.mount_html_widget` already mounts a materialized
+      widget's directory via plain `StaticFiles(..., html=True)`, the
+      identical mechanism ordinary `widgets/<id>/` widgets use, and
+      `a5f66cc`'s cookie fix already covers sub-resource requests
+      through that same mount point.
+    - **This runs into the same "two copies that can silently
+      diverge" tension a completely separate FEEDBACK item already
+      raised.**
+      `../FEEDBACK/FEEDBACK-DESK-promoted-widget-source-of-truth-2026-08-04-1321.md`
+      (not yet triaged into `TODO.md`/here as of this note) argues
+      that a promoted widget's `.desk`-file entry should store a
+      *reference* to its source (or a content hash) plus a
+      `.desk_temp/`-cached build, rather than freezing a base64 blob
+      at promote time -- exactly the design question multi-file
+      `DefineWidget` would also need to answer (a multi-file baked
+      -blob-in-the-`.desk`-file gets worse, not better, as file count
+      grows). Worth designing together, not independently. That same
+      FEEDBACK item also documents a **confirmed, currently-live bug**
+      in `_relocate_promoted_widget_source`
+      (`src/desk/shell/window.py:2118`) -- it looks up a promoted
+      widget's source directory by the tempui DSL `keyword`
+      (CamelCase, e.g. `PdfViewer`) when the real convention names the
+      directory in kebab-case (`pdf-viewer`), so relocation silently
+      no-ops for nearly every real-source widget today. Fix that first
+      (or at least be aware of it) before building more promotion
+      -time logic on top of the same code path.
+    - **A structurally different alternative exists and may be worth
+      comparing against before committing to multi-file `DefineWidget`
+      specifically**: `desk.widgets.discover_widgets`
+      (`src/desk/widgets.py:65`) is already kind-agnostic
+      (`VALID_KINDS = ("python", "html")`) and takes a plain
+      `widgets_dir` argument -- the only reason project-level, real
+      (non-`DefineWidget`) `kind: "html"` widgets don't exist today is
+      that nothing calls `discover_widgets` against a project
+      directory (`DEFAULT_WIDGETS_DIR` in `src/desk/server/app.py:18`
+      is hardcoded to Desk's own repo root). The same
+      promoted-widget-source-of-truth FEEDBACK item proposes exactly
+      this: a second `discover_widgets(project_dir / "desk_widgets")`
+      call, making ordinary multi-file `kind: "html"` widgets
+      first-class from the start, no base64/tempui round-trip, no
+      promotion step, no relocation bug to hit. If that lands, it may
+      reduce (or eliminate) the actual need for `DefineWidget` itself
+      to grow multi-file support -- worth deciding which problem is
+      actually being solved (quick/disposable widget authoring inside
+      tempui vs. real first-class project widgets) before building
+      both.
   - **No visible signal when a `kind: "html"` widget fails to load.**
     Right now such a widget that fails for any reason (the token gap
     above, a script error, whatever) just renders as a silent blank
@@ -419,12 +550,66 @@ This file captures thoughts and TODO items that arise during work on other thing
     `javaScriptConsoleMessage` output somewhere inspectable (a log
     file, a debug panel), and/or a generic "this widget failed to
     render" placeholder shown in place of a silent blank page.
+
+    Two pieces of relevant infrastructure already exist and don't need
+    to be built from scratch, plus one confirmed gap neither one
+    closes:
+    - `_LoggingWebEnginePage` (`src/desk/shell/chromium_widget.py:38`)
+      already captures a bounded rolling buffer of every
+      `console.log`/`warn`/`error` message
+      (`console_log: deque[ConsoleLogEntry]`,
+      `get_console_log()` at line 201) -- today only pulled on-demand
+      by the `introspect` capability (TODO `9767c1a`), never surfaced
+      proactively. A "this widget failed to render" placeholder could
+      read from this directly instead of adding new capture logic.
+    - The `[ERROR]` titlebar indicator
+      (`ChromiumWidget.error_state_changed`, `_on_console_error` at
+      line 188, `WidgetFrame.set_error`) already gives *some* widgets
+      a visible failure signal today, for any `error`-level console
+      message. **Confirmed directly**
+      (`../FEEDBACK/FEEDBACK-DESK-error-indicator-empty-message-noop-2026-08-04-1305.md`,
+      surfaced during this session's own FEEDBACK review, not yet
+      implemented/fixed) that this indicator's own click handler has a
+      real bug: it infers "was there an error" from the captured
+      message string's truthiness, which is wrong precisely for the
+      case (`error_logged.emit(message or "")`, same file, lines
+      ~60-66) it was written to handle -- an error with no usable
+      text. Worth fixing that bug in the same pass as any broader work
+      on this item, since it's the same UI surface.
+    - **Neither of the above would have caught the original
+      `hex_flower` failure mode**, and won't catch the same *class* of
+      failure for any future widget with an unrelated network-level
+      problem: confirmed directly in the original investigation
+      (`DESK_FEEDBACK-2026-07-13T012144.md:52-55`) that "the browser's
+      own module loader reports failed sub-resource fetches to the
+      network layer, not to console, and nothing in Desk surfaces
+      network-level failures back to the widget or the user." A 401
+      (or any other failed sub-resource fetch) produces *zero*
+      `javaScriptConsoleMessage` calls -- `get_console_log()` would
+      come back empty and the `[ERROR]` indicator would never fire.
+      Catching this class of failure needs a different signal
+      entirely (e.g. a `QWebEngineUrlRequestInterceptor` or
+      equivalent network-level hook, not `javaScriptConsoleMessage`).
+      The auth-token case itself is now fixed (`a5f66cc`), but this
+      general gap -- silent failure with no console output at all --
+      is still real for any other cause.
   - **A known-good, minimal multi-file `kind: "html"` widget
     template.** A checked-in (or docs-referenced) minimal example of a
     working multi-file `kind: "html"` widget would give a future agent
     building something like `hex_flower` a template to diff against,
     rather than discovering gaps like the one above the hard way after
     already doing a real port of an existing project.
+
+    A real, currently-passing example of exactly this already exists
+    in this session's own new verify coverage, ready to extract rather
+    than write from scratch:
+    `tests/verify/verify_kind_html_auth_token_and_profile_isolation.py`'s
+    `_make_widget_dir` helper (line 70) and `CUSTOM_ELEMENT_JS`
+    constant (line 86) -- a minimal `index.html` with an external
+    `<script src="main.js">` defining and registering a real custom
+    element, confirmed end-to-end (via
+    `test_multi_file_widget_actually_loads`, line 133) to load and
+    populate a real `shadowRoot`.
   - **No single doc lays out what does/doesn't work yet** for a `kind:
     "html"` widget built from scratch (as opposed to a tempui
     `DefineWidget` single-file widget) -- e.g. "single self-contained
@@ -433,6 +618,23 @@ This file captures thoughts and TODO items that arise during work on other thing
     competently-built ordinary web project (exactly what happened with
     `hex_flower`) silently fails with zero diagnostic signal and no
     way for whoever built it to have known in advance.
+
+    `design-docs/architecture.md` (Desk's own internal doc, not shown
+    to agents in other projects) now has accurate, current coverage of
+    this (added by `a5f66cc`) -- but the tempui doc set (the one
+    actually shown to agents working *inside* other projects) still
+    has **no section at all** about plain, non-`DefineWidget`
+    `kind: "html"` widget authoring, confirmed directly while
+    implementing TODO `e42469e`. That's not an oversight so much as
+    there being no real audience for it yet: `DEFAULT_WIDGETS_DIR`
+    being hardcoded to Desk's own repo root (see above) means no
+    in-project agent can actually author a plain `kind: "html"` widget
+    today, only a `DefineWidget` one (always single-file). Writing
+    this doc properly probably shouldn't happen in isolation -- its
+    actual content depends on which of the two paths above
+    (multi-file `DefineWidget`, or project-level `desk_widgets/`
+    discovery) actually ships, so it likely belongs as part of
+    whichever lands first, not as a standalone doc-only task.
   - **No guidance on how to debug a blank `kind: "html"` widget.**
     Nothing currently tells a widget author how to tell their widget
     failed to load. A "how to debug a blank widget" note (start from:
@@ -442,6 +644,20 @@ This file captures thoughts and TODO items that arise during work on other thing
     -- today the failure mode is a silent blank page with no console
     output, indistinguishable from several other possible failures
     (bad HTML, a crashed script, wrong entry point, etc.).
+
+    The proposed `document.querySelector(...).shadowRoot` check is
+    exactly the technique this session's own verify coverage uses to
+    confirm real success/failure (see the template pointer above,
+    `test_multi_file_widget_actually_loads`'s `runJavaScript` call
+    against `shadowRoot.innerHTML`) -- a proven, working pattern to
+    turn directly into guidance text, not just a hypothesis. Same
+    caveat as the "no visible signal" item above applies to the
+    "failed network requests" half of this suggestion: today there's
+    no way for an agent (or Desk itself) to actually observe a failed
+    sub-resource fetch from outside the browser process -- confirmed
+    no such signal exists yet, so this guidance can only ever say
+    "check DevTools-equivalent output" once something exposes that,
+    not before.
 
 - **A way to end a claude widget's session so it can get new
   instructions — maybe an "end session" button?**
@@ -672,54 +888,6 @@ This file captures thoughts and TODO items that arise during work on other thing
   separates unrelated DSL concerns from each other) rather than one
   monolithic document covering every kind of widget at once.
 
-- **A way for agents (e.g. a CLI coding session working in this repo)
-  to reach into the running app for more than just reading/writing
-  files -- starting with forcing a save**
-
-  Surfaced when asked whether an agent working here could see a new
-  Event Recorder widget's (TODO `8d4826c`) state after it's placed on
-  the current Desk: right now the only channel into a running Desk
-  instance from outside the GUI process itself is the filesystem --
-  reading whatever's already been written to a `.desk` file,
-  `.desk_temp/`, etc. `save_current_desk()` (`src/desk/shell/window.py`)
-  only actually runs on specific structural actions (quit, Desk
-  switch, widget removal/rename, ...), not automatically after
-  ordinary widget interaction (e.g. clicking Event Recorder's "Record
-  for 5s"). So a filesystem-only agent has no way to force a fresh
-  snapshot of live widget state onto disk without asking the human
-  user to quit or switch Desks first.
-
-  The existing Bridge API (`src/desk/server/app.py`, `/api/bridge/...`)
-  already lets one *widget* call into the running app (workspace
-  state, local storage, opening/closing widgets, publishing events,
-  cross-widget introspection via `/api/bridge/introspect/snapshot`) --
-  but every endpoint is scoped to a specific widget instance/token
-  (`require_caller`/`require_instance_id`), not to an out-of-band
-  caller like a CLI agent working in the repo outside any widget.
-  Worth thinking about whether that same Bridge API could be extended
-  with a distinct "agent" caller identity, or whether a separate,
-  narrower channel makes more sense -- starting with the single most
-  obviously useful capability: forcing an on-demand
-  `save_current_desk()` so an agent doesn't have to wait for/ask for a
-  structural action to happen first.
-
-  Broader than just "force save" once started: what else should an
-  agent be able to reach into the running app for -- e.g. listing
-  currently-placed widgets and their instance ids without parsing the
-  `.desk` file by hand, reading a specific widget's *live* (not just
-  last-saved) local storage, or triggering a specific widget action
-  programmatically? Connects to the already-parked "how should Claude
-  better engage with tempui" and claude-widget items above, and to the
-  process-tracking meta-questions item's "real database/microservice
-  for work tracking" tangent -- this is the same underlying shape (a
-  real API surface for an agent to talk to Desk) applied to live app
-  state instead of task tracking.
-
-  Not designed -- needs its own security/trust discussion (should any
-  local process be able to force actions in a running GUI app the user
-  is looking at, and if so how is that authenticated/scoped) before
-  picking a mechanism.
-
 - **Two-finger trackpad scroll over a widget: still not fully clean
   after TODO `86ba292`**
 
@@ -754,69 +922,6 @@ This file captures thoughts and TODO items that arise during work on other thing
   is pannable via scroll right when TODO `78bfa41` deliberately made it
   not be, over a widget).
 
-- **Two-directional tempui: let Desk call *into* a running Claude
-  session, not just watch for files it writes out**
-
-  Surfaced during the research behind TODO `a596dbf` (a new "Claude
-  (Desk)" widget talking to the Python Agent SDK, alongside -- not
-  replacing -- the existing PTY/`pyte`-based Claude widget). Today's
-  tempui protocol (`src/desk/temp_ui.py`) is one-way only: Claude,
-  running inside a Claude widget, writes a plain-text file into
-  `.desk_temp/`, and Desk's file watcher (`TempUiManager`) notices and
-  surfaces it. There's no equivalent channel the other direction --
-  Desk (or a widget, or the user clicking something) can't currently
-  hand structured input back into a *specific running* Claude session
-  except by typing into its PTY, which the new widget won't have.
-
-  Once a Claude session is reachable via the SDK directly (TODO
-  `a596dbf`'s new widget), Desk has in-process, programmatic control of
-  that session for the first time -- meaning a real two-way channel
-  becomes possible: e.g. a custom MCP tool or a hook that lets Claude
-  *receive* a structured message from Desk mid-session (a button click,
-  another widget's event, a user answer to an `AskUserQuestion`-style
-  prompt routed through Desk's own UI instead of the terminal), rather
-  than Claude only ever being the one to initiate via a dropped file.
-
-  Not designed at all yet -- open questions include what the wire
-  format/API should look like (a Desk-authored MCP server exposed to
-  the session? a hook? something reusing the existing mediated-events
-  pub/sub in `src/desk/event_mediator.py`?), how it'd interact with
-  tempui's existing file-based DSL (replace it, or coexist?), and
-  whether it's scoped to the new "Claude (Desk)" widget alone or
-  something other widget kinds could also address. Explicitly out of
-  scope for TODO `a596dbf` itself -- that item only introduces the new
-  SDK-backed widget; this is the separate, larger follow-on idea it
-  unlocks.
-
-  Additional thought, also stemming from TODO `a596dbf`'s own
-  `can_use_tool` work: today's permission gating is coarse -- a whole
-  tool (`Write`, `Bash`, ...) is either gated or not, per the chosen
-  `permission_mode`. Might be worth getting more specific: per-action
-  (e.g. specific git subcommands/flags, not "Bash" as a monolith) and
-  per-location (e.g. writes inside the current Desk directory treated
-  differently than writes elsewhere) rules, rather than one blanket
-  mode covering every tool call a session makes. Not explored at all
-  yet -- would need to look at what `ClaudeAgentOptions.allowed_tools`/
-  `disallowed_tools`'s own rule syntax already supports (TODO `a596dbf`
-  found some of this piecemeal -- e.g. `Bash(ls:*)`-style specifiers --
-  while investigating `can_use_tool`'s shadowing behavior) versus what
-  would need real custom logic inside `can_use_tool` itself.
-
-- **Research offline text-to-speech (TTS) options**
-
-  The reverse direction of the already-shipped local speech-to-text
-  work (TODOs `f9d2dc7`/`1cd0ca2`/`b32fb81`, `mlx-whisper`-based): no
-  research done yet into what a local/offline TTS engine for this
-  project would even look like -- candidate libraries, model sizes and
-  license terms, voice quality, and whether anything comparable to
-  `mlx-whisper`'s Apple Silicon-optimized story exists for TTS
-  specifically (vs. a general cross-platform option), all still open.
-  No concrete use case driving this yet either (unlike the STT work,
-  which had the Voice Input widget as a clear target) -- surfaced
-  purely as "the natural counterpart to what we already have," not in
-  response to a specific need. Purely a research item: figure out real
-  options and their tradeoffs before this becomes a planned TODO.
-
 - **Investigate ways for Claude to keep working on TODO items in the
   cloud while the user is offline**
 
@@ -843,3 +948,75 @@ This file captures thoughts and TODO items that arise during work on other thing
   now -- figure out what's realistically available and what the
   actual shape of the risk/tradeoffs is before this becomes a planned
   TODO.
+
+- **A mechanism for carving out subsets of `desk.state.*` into
+  named/id'd stores**
+
+  Today's shared state store (TODO `f68383f`/`af7898b`/`9aef267`/
+  `6330249`) is a single flat key namespace for the whole project --
+  every key lives in one shared `Desk.state` dict, with no grouping
+  concept above the individual key. Would be useful to be able to
+  carve out a subset of keys into its own named/id'd store, for
+  modeling something like separate processes (each with its own
+  scoped state, rather than every process's keys mixed together in one
+  namespace and disambiguated only by naming convention). Not designed
+  at all yet -- open questions include what a "store" actually is
+  (a prefix convention over the existing flat namespace? a genuinely
+  separate registry/dict per store id?), how `desk.state.get`/`set`/
+  `getHistory` and schema declarations would address a specific store
+  (a new parameter? part of the key itself?), how this interacts with
+  the State Manager widget's (TODO `6330249`) own overview, and whether
+  existing unscoped keys need a default/implicit store or stay as they
+  are alongside any new scoped ones.
+
+- **(Moved to `TODO.md`)** Three follow-on friction points found while
+  first using `DeskProc` (TODO `97bd090`) for real -- a
+  `build_job.py`/`build_desk_proc.py` authoring helper, a documented
+  way for an in-Desk agent to learn its own instance id, and a
+  lower-ceremony pipe-chained-verb DSL for `Job`/`DeskProc` authoring
+  -- were parked here briefly and have since been converted into
+  `TODO.md` as TODO `49e3732`/`b9d3de5`/`765bd2a` per direct user
+  request.
+
+- **(Moved to `TODO.md`)** The two previously-separate items "a way for
+  agents ... to reach into the running app for more than just reading/
+  writing files" and "two-directional tempui: let Desk call *into* a
+  running Claude session" turned out to be the same underlying shape
+  (a live, queryable Desk <-> agent channel) once TODO `b9d3de5`'s own
+  discussion raised an in-process MCP server as a candidate mechanism
+  -- merged and moved into `TODO.md` as TODO `a762501`.
+
+- **UX for tracking/managing concurrent forks/threads of agent work
+  within Claude (Desk)**
+
+  Surfaced directly, in real time, not hypothetically: while one
+  Claude (Desk) session was working through `TODO.md`, a *second*,
+  entirely independent session (same user, same repository -- either
+  another placed Claude (Desk)/`claude` widget instance or a separate
+  CLI session) was concurrently committing to that same file --
+  reprioritizing it and completing a different item (TODO `e9eddba`)
+  -- with neither session aware the other existed except by noticing
+  unexpected commits in `git log` after the fact. There's currently no
+  UI/UX in Desk for a user (or an agent) to see which agent sessions
+  are currently active, what each is working on, or how their work
+  might relate or conflict -- the only way anyone finds out is by
+  chance, mid-task, via git archaeology, exactly as happened here.
+
+  Worth its own UX design pass: something like a "sessions"/"threads"
+  overview (which Claude (Desk)/`claude` widgets are currently placed
+  and what each is currently doing -- perhaps surfaced through each
+  widget's own titlebar subtitle, `desk.self.setSubtitle`-style, or a
+  dedicated overview widget), and ideally a way to notice a likely
+  conflict *before* it happens rather than only after, via git log.
+  "Forks" and "threads" in this item's own title are placeholders, not
+  a settled vocabulary -- may not be the right mental model yet.
+  Connects to the already-parked "ownership/in-progress protocol"
+  process-tracking question (`TODO.md` has no claim/lock mechanism
+  today, which is exactly what let this collision happen silently) and
+  to TODO `a762501`'s own in-process MCP server -- once agents have a
+  live channel to Desk, "what other sessions are currently active"
+  (and maybe "what are they claiming/working on") is a natural
+  candidate query for that same channel, which could close part of
+  this gap as a side effect rather than needing an entirely separate
+  mechanism. Not designed at all yet -- parking as a real, freshly
+  -observed problem rather than guessing at a UI.

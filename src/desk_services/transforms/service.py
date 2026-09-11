@@ -177,6 +177,21 @@ class TransformsService:
     def __init__(self) -> None:
         self._transforms: dict[str, TransformInfo] = {}
         self._python_modules: dict[str, ModuleType] = {}
+        # TODO 7c11fe0: each Python transform's source mtime as of the
+        # moment self._python_modules[id] was last (re)loaded -- lets
+        # _run_python notice an edited-on-disk transform and reload it,
+        # the same self-healing property _resolve_js_entry's own mtime
+        # check already gives the JS/TS path (source_path.stat()
+        # .st_mtime > compiled_entry.stat().st_mtime, above).
+        self._python_module_mtimes: dict[str, float] = {}
+        # TODO 7c11fe0: the args of the last real discover() call --
+        # lets _require retry discovery once on a lookup miss (a
+        # transform added to disk after Desk already started/switched
+        # Desks is otherwise invisible until something else happens to
+        # trigger a fresh discover()) without every call site needing
+        # to pass these through just for that.
+        self._desk_temp_dir: Path | None = None
+        self._project_dir: Path | None = None
         self._js_relay = _JsRelay()
         self._js_relay.finished.connect(lambda on_result, output, error: on_result(output, error))
 
@@ -187,19 +202,39 @@ class TransformsService:
         transform_id against, and returns (transforms, errors) for a
         caller (the Transform Manager widget) that wants to display
         the current picture directly."""
+        self._desk_temp_dir = desk_temp_dir
+        self._project_dir = project_dir
         self._transforms, errors = discover_transforms_with_errors(desk_temp_dir, project_dir)
         return self._transforms, errors
 
     def _require(self, transform_id: str) -> TransformInfo:
         info = self._transforms.get(transform_id)
         if info is None:
+            # TODO 7c11fe0: one retry -- covers the common "just added
+            # this transform while Desk was already open" case, which
+            # nothing else prompts a fresh discover() for. Still raises
+            # below if the id is genuinely unknown (a real typo), just
+            # after one extra, cheap discover() call.
+            self.discover(self._desk_temp_dir, self._project_dir)
+            info = self._transforms.get(transform_id)
+        if info is None:
             raise TransformError(f"Unknown transform: {transform_id!r} (call discover() first)")
         return info
 
     def _run_python(self, info: TransformInfo, action: str, input_data: str, config: dict | None) -> str:
+        source_mtime = (info.path / info.entry).stat().st_mtime
         module = self._python_modules.get(info.id)
+        if module is not None and self._python_module_mtimes.get(info.id) != source_mtime:
+            # TODO 7c11fe0: the cached module is stale -- the source
+            # file's mtime has moved since it was loaded (edited on
+            # disk while Desk was already open). Drop it so the reload
+            # branch below picks up the new content instead of
+            # silently keeping running the old, already-imported code.
+            module = None
+            self._python_modules.pop(info.id, None)
         if module is None:
             module = _load_transform_module(info.id, info.path, info.entry)
+            self._python_module_mtimes[info.id] = source_mtime
             self._python_modules[info.id] = module
         func = getattr(module, action, None)
         if func is None:

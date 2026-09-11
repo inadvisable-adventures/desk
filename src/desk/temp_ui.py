@@ -37,6 +37,15 @@ PROMOTED_WIDGET_SRC_DIRNAME = "desk_widgets"
 # instead.
 SHARED_COMPONENTS_DIRNAME = "shared-components"
 
+# TODO 48e3b39: the app-structure DSL's own schema/parser/codegen
+# tool (see app_dsl/README.md at this repo's own root) -- mirrored
+# into every project's own .desk_temp/app_dsl/ the same always-fresh
+# way SHARED_COMPONENTS_DIRNAME is (sync_app_dsl_tool below), for the
+# same reason: real, multi-file, actively-developed Python source,
+# not a single script small/stable enough to embed as one string
+# constant the way _BUILD_WIDGET_SCRIPT is.
+APP_DSL_DIRNAME = "app_dsl"
+
 # desk-temporary-ui.md's *static* main content (DOC_TEMPLATE below) is
 # only ever written once, the first time a directory's .desk_temp is
 # provisioned -- an older Desk directory otherwise keeps whatever
@@ -174,7 +183,104 @@ SHARED_COMPONENTS_DIRNAME = "shared-components"
 # setLocalStorage (its data lives in the portable .desk file, unlike
 # the newer per-instance storage, which is .desk_temp-scoped and
 # deleted with the widget instance).
-TEMPUI_DOC_VERSION = 27
+#
+# TODO 1b7e500: bumped 27 -> 28 -- "Questions for the user"'s described
+# QUESTIONS.md heading format ("## <short summary>") never matched
+# what questions_file.py's actual parser requires (a leading literal
+# "TODO", backtick-wrapped id(s)) -- corrected to state the real
+# required shape and that an entry must reference at least one TODO.md
+# item id (this mechanism was always scoped to TODO-blocking
+# questions, not general free-standing ones, but the doc never said
+# so). A heading in the old, documented-but-never-actually-accepted
+# shape still silently fails to parse as before -- this bump fixes the
+# doc, not the parser's own strictness.
+#
+# TODO e86a31b: bumped 28 -> 29 -- the generated .desk_temp/build_widget.py
+# now (a) warns to stderr if a stale scripts/build_widget.py sibling
+# also exists in the project (from before TODO 029047b moved this
+# mechanism here), since such a copy can silently defeat a fix already
+# shipped here (e.g. TODO 31db3f6's capabilities emission) with
+# nothing telling the project so; (b) deletes any other DefineWidget
+# file for the same keyword immediately after a successful build,
+# instead of accumulating one leftover file per rebuild forever.
+#
+# TODO 3cd90cf: bumped 29 -> 30 -- new `desk.self.setSubtitle(text)`
+# Bridge API call, documented in the "self.*" list above: lets a
+# widget instance put its own state into its own titlebar, alongside
+# getManifest/getLocalStorage/setLocalStorage.
+#
+# TODO d7e66f6: bumped 30 -> 31 -- new `Job` tempui DSL keyword: run a
+# one-time script with real widget-context capabilities (notably
+# Bridge API access for a `kind: "html"` Job) without building a full
+# `DefineWidget`/`widgets/<id>/` registration. New split doc,
+# tempui-jobs.md; the main file-type list above gained a matching
+# bullet (eight built-in file types -> nine).
+#
+# TODO 48e3b39: bumped 31 -> 32 -- new `.desk_temp/app_dsl/` tool (not
+# a new tempui DSL keyword -- a separate, real-source codegen tool,
+# same "Authoring from real source" section as build_widget.py):
+# schema + parser + codegen for a multi-component widget's own
+# wiring/layout/event-table code, generalized from a hand-written SPA
+# structure. Standalone-build output only so far -- see the doc's own
+# note and PARKINGLOT.md for the open Desk-widget-target gap.
+#
+# TODO 1e032f3: bumped 32 -> 33 -- app_dsl gained a second codegen
+# output mode, `--mode=global` (plain global scripts, no
+# `import`/`export` at all), so its output can now actually feed into
+# this same "Authoring from real source" section's `build_widget.py`
+# pipeline for a Desk-widget build -- closing the gap the version 32
+# bump above left open. Doc note updated accordingly.
+#
+# TODO f68383f: bumped 33 -> 34 -- new `desk.state.*` Bridge API calls
+# (capability `state`): a shared, project-scoped key/value store any
+# widget can read or write, with change notification via the existing
+# `desk.events` channel (`desk.state.changed`) and a bounded per-key
+# history. New "Shared, project-scoped state" section; capability list
+# above gained `state`. Non-validated core only -- schema declaration/
+# validation is a separate, later TODO (6e1c2fe).
+#
+# TODO af7898b: bumped 34 -> 35 -- desk.state.* keys can now be
+# validated: a widget declares a schema for a key via a new
+# `state_schema` widget.json field (or `StateSchema<TAB>key<TAB>
+# type_expr` DefineWidget line), and every `set` to that key is checked
+# against it. `get`/`set` also gained an optional, non-validated-only
+# `typeHint` parameter for call-site-local best-effort coercion. New
+# "Validated vs. non-validated keys" subsection; a conflicting schema
+# declaration fails a widget's own load with a clickable notification
+# and a new `desk_widget_loading_errors` field on self.getManifest().
+#
+# TODO 9aef267: bumped 35 -> 36 -- a desk.state.* schema can now also
+# be declared "top-level," independent of any widget's manifest, in a
+# standalone JSON file at `.desk_temp/schemas/` or `./desk-schemas/`
+# (the latter never created by Desk itself, only watched for and
+# picked up once it exists). "Validated vs. non-validated keys"
+# subsection updated with the file format and both locations.
+#
+# TODO 5242aeb: bumped 36 -> 37 -- no new call, just a stronger warning
+# on the existing `desk.popups.show` bullet: use it, not the browser's
+# own `alert()`/`confirm()`/`prompt()`, for any alert/confirmation --
+# those are real, separate OS-level dialogs with no connection to
+# Desk's own canvas chrome. Prompted by a real bug where a kind:
+# "python" widget's own raw `QMessageBox` (the equivalent native-dialog
+# mistake on the Python side) rendered as a detached macOS window.
+#
+# TODO 97bd090: bumped 37 -> 38 for a new `DeskProc` tempui DSL
+# keyword: a one-time Python script with real, in-process access to
+# Desk's own live shell (reveal/screenshot a placed widget instance),
+# distinct from a `Job`'s capability-scoped-or-unsandboxed-but-passive
+# execution -- a `DeskProc`'s script gets a curated `deskproc.*` API for
+# safely acting on the shell from its own background thread. New split
+# doc, tempui-desk-proc.md; the main file-type list above gained a
+# matching bullet (nine built-in file types -> ten).
+#
+# TODO 49e3732: bumped 38 -> 39 -- not a new DSL keyword, a new
+# authoring convenience: `.desk_temp/build_job_or_desk_proc.py`
+# (mirroring `build_widget.py`) packages a plain script into a
+# ready-to-drop `Job`/`DeskProc` tempui file, removing the hand-rolled
+# base64-encode-and-chunk step an author previously had to write from
+# scratch every time. `tempui-jobs.md`/`tempui-desk-proc.md` and this
+# file's own "There's also `build_widget.py`" paragraph now mention it.
+TEMPUI_DOC_VERSION = 39
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -190,7 +296,7 @@ Each file is named with a bare UUID (e.g.
 `550e8400-e29b-41d4-a716-446655440000`, no extension). Desk watches
 this directory: a newly-created file shows up as a clickable
 notification in the app's upper-right corner; clicking it places a new
-widget on the canvas, centered in the current view. There are eight
+widget on the canvas, centered in the current view. There are ten
 built-in file types, distinguished by their first line's keyword:
 
 - `Question` (below) — a quick multiple-choice question, answered by
@@ -212,6 +318,14 @@ built-in file types, distinguished by their first line's keyword:
 - `DiscussParkingLotItem` — have Desk start a brand-new `claude`
   session to discuss one `PARKINGLOT.md` item. See
   [tempui-discuss-parking-lot-item.md](./tempui-discuss-parking-lot-item.md).
+- `Job` — run a one-time script with real widget-context capabilities
+  (notably Bridge API access), without building a full `DefineWidget`/
+  `widgets/<id>/` registration for it. See
+  [tempui-jobs.md](./tempui-jobs.md).
+- `DeskProc` — run a one-time Python script with real, in-process
+  access to Desk's own live shell (e.g. reveal or screenshot a placed
+  widget instance), notified distinctly from every other kind above.
+  See [tempui-desk-proc.md](./tempui-desk-proc.md).
 
 Every file named above lives in this same directory.
 
@@ -225,20 +339,39 @@ read from the top down until you reach a version you already know,
 and you'll have an exact, actionable punch list instead of needing to
 re-read this whole doc set and diff it against memory. There's also
 `build_widget.py` — not a doc at all, but a ready-to-run script; see
-"Authoring from real source" in `tempui-custom-widgets.md`.
+"Authoring from real source" in `tempui-custom-widgets.md`. Likewise
+`build_job_or_desk_proc.py` — packages a plain script into a
+ready-to-drop `Job`/`DeskProc` tempui file (base64-encoding and
+chunking it for you); see either of those files' own docs for how to
+invoke it.
 
 ## Questions for the user: use QUESTIONS.md, not this DSL
 
-If you have an open-ended question *for the user* — something you're
-genuinely blocked on and need their input to resolve, as opposed to a
-single quick multiple-choice decision (`Question`/`LightningRound`
-below are for that) — write it to `QUESTIONS.md` at the project root
-instead of creating a file here. Each entry is a `## <short summary>`
-heading, the question's own text below it, then a trailing
-`(Answer: )` placeholder line for the user to fill in (leave it empty;
-never write your own guess into it). If `QUESTIONS.md` doesn't exist
-yet, create it with a `# Questions with optional answers` title line
-first.
+If you have an open-ended question *for the user* that's blocking a
+specific TODO.md item -- something you're genuinely blocked on and
+need their input to resolve, as opposed to a single quick
+multiple-choice decision (`Question`/`LightningRound` below are for
+that) -- write it to `QUESTIONS.md` at the project root instead of
+creating a file here. This mechanism is specifically for questions
+tied to one or more TODO.md items -- there's no supported way to add a
+general, free-standing question with no TODO id attached.
+
+Each entry's heading **must start with the literal word `TODO`**,
+followed by one or more backtick-wrapped TODO.md item ids (separated
+by `/` if more than one), then a colon and a short summary:
+
+```
+## TODO `9743419`: What should the save-a-copy filename be?
+```
+
+A heading in any other shape (no leading `TODO`, an id that isn't
+backtick-wrapped, etc.) is not recognized at all -- it's silently
+treated as ordinary prose above the first real entry, not as a
+question, with nothing shown to the user. Below the heading: the
+question's own text, then a trailing `(Answer: )` placeholder line for
+the user to fill in (leave it empty; never write your own guess into
+it). If `QUESTIONS.md` doesn't exist yet, create it with a `#
+Questions with optional answers` title line first.
 
 Desk watches `QUESTIONS.md` the same way it watches this directory: a
 newly-added entry surfaces as a top-right notification, which either
@@ -518,6 +651,12 @@ contain spaces:
   JS can only call the always-available `self.*` calls (see "The Desk
   Bridge API" below) — anything else (including `events.*`) fails with
   a 403 unless you declare the matching capability here.
+- `StateSchema<TAB>key<TAB>type_expr` — optional, repeatable (TODO
+  af7898b). Declares a validated schema for one `desk.state.*` key --
+  `type_expr` is a TypeScript type expression string (see "Shared,
+  project-scoped state" below for the supported subset and what
+  declaring a schema actually does). Requires the `state` capability
+  too, the same as any other `desk.state.*` access.
 - `Html<TAB>base64-chunk` — the widget's entire implementation: **one
   self-contained HTML document** (inline `<style>`/`<script>` cover
   CSS/JS — there's no separate CSS/JS file), **base64-encoded**. Split
@@ -591,7 +730,12 @@ not-yet-promoted widget's source too. Four files:
   `widget.json` is the one place a defined widget's capabilities need
   to be declared, the same way a real `kind: "python"`/`"html"`
   widget's manifest already works. Omit it entirely for a widget that
-  needs none (the default).
+  needs none (the default). Also accepts an optional `"state_schema":
+  {"<key>": "<type expression>", ...}` (TODO af7898b) declaring which
+  `desk.state.*` keys this widget kind's schema covers -- the build
+  script emits one `StateSchema<TAB>key<TAB>type_expr` line per entry,
+  the same real widget.json field a `kind: "python"`/`"html"` widget
+  declares one in. See "Shared, project-scoped state" below.
 
 Then `python3 .desk_temp/build_widget.py .desk_temp/widgets/<name>`
 compiles it (`tsc -p <dir>`), concatenates the compiled JS, substitutes
@@ -623,6 +767,20 @@ suits the component. Importing a base class a widget's own file
 `extends` needs its own `tsconfig.json` `"files"` entry ahead of the
 widget's own file (see "Authoring from real source" above) so
 `build_widget.py` concatenates it first.
+
+If your widget is actually several wired-together components (a
+multi-pane layout, an event-wiring table between them, shared
+app-level state) rather than one self-contained custom element,
+`.desk_temp/app_dsl/` is a separate, real (if smaller-scoped so far)
+tool for exactly that -- see `app_dsl/README.md` (same directory) for
+the DSL format. It supports two output modes: `--mode=module` (real ES
+modules, for a standalone build outside Desk) and `--mode=global`
+(plain global scripts, no `import`/`export` at all -- for feeding into
+this `build_widget.py` pipeline above, the same concatenation
+convention "Authoring from real source" already uses for a multi-file
+`DefineWidget` source). `--mode=global` requires your component/
+handler source to also avoid module syntax -- see `app_dsl/README.md`
+for the full constraint.
 
 ## Invoking a defined widget
 
@@ -699,6 +857,16 @@ All calls are `async` (they return a `Promise`):
   version of your widget's code is currently registered, and construct
   a correct project-relative path yourself if you ever need to, without
   declaring the `fs` capability just to find out where you are).
+- `desk.self.setSubtitle(text)` → `{ ok: true }` — puts your own
+  instance's state into its own titlebar, next to its kind's static
+  label (e.g. `"My Widget — some-document.md"`). Every instance of
+  your widget's kind otherwise shows the identical label, so this is
+  how one particular instance shows *which* thing it's currently
+  pointed at. Call it again whenever that changes; pass `null` (or an
+  empty string) to clear it back to the bare label. Not persisted —
+  call it again after restoring your own state (e.g. right after
+  `getLocalStorage`) on every fresh page load, the same way you'd
+  re-render your own content.
 
 If you're porting an existing web app/component into a `DefineWidget`
 widget, it likely already has its own persistence mechanism (custom
@@ -723,6 +891,10 @@ built for genuine cross-widget signaling:
   See "Sending and receiving named messages" below.
 - `desk.workspace.getState()` (capability `workspace`) — the current
   Desk's live widget layout.
+- `desk.state.get(key)` / `.set(key, value, edit)` / `.getHistory(key,
+  limit)` (capability `state`) — a shared, project-scoped key/value
+  store any widget can read or write. See "Shared, project-scoped
+  state" below.
 - `desk.fs.readFile(path)` / `desk.fs.writeFile(path, contents)`
   (capability `fs`) — read/write an arbitrary file on disk. A relative
   `path` resolves against the current Desk's own directory (not any
@@ -760,7 +932,12 @@ built for genuine cross-widget signaling:
   returns `null` if dismissed via its close button/Escape). `default`
   (optional) names which button is the pre-selected/Enter-triggered
   one. The same service a `kind: "python"` widget reaches via
-  `current_context.get_popup_opener()`.
+  `current_context.get_popup_opener()`. **Use this, not the browser's
+  own `alert()`/`confirm()`/`prompt()`**, for any alert or confirmation
+  your widget shows — those are real, separate OS-level dialogs with no
+  connection to Desk's own canvas chrome (wrong styling, no
+  zoom/pan-aware positioning, and blocking in a way that can behave
+  surprisingly inside an embedded `ChromiumWidget`).
 - `desk.transforms.run(transformId, input, config)` (capability
   `transforms`) — runs a transform (a separate entity from a widget:
   converts data of one named type into another, e.g. a Mermaid
@@ -817,6 +994,107 @@ through this JS API — they get it via a direct Python import instead
 (`desk.shell.event_broker.EventSubscription`), the same "REST for html
 widgets, direct Python for python widgets" split every other Bridge API
 capability already follows.
+
+## Shared, project-scoped state
+
+Desk also keeps a shared, project-scoped key/value store — every widget
+with the `state` capability can read or write any key, with no
+per-widget ownership. Use this instead of hand-rolling your own
+cross-widget persistence scheme (e.g. one widget writing to a file the
+other polls); it also gets you change notification and a short history
+for free. The built-in **State Manager** widget (TODO `6330249`) gives
+a Desk user a live view/edit UI over every registered schema and the
+data stored under it — reach for that instead of building your own
+inspector when you just need to see or tweak what's currently there.
+
+- `desk.state.get(key, typeHint)` → `{ value, edit }` — the current
+  value for `key`, and the `edit` that was passed alongside the write
+  that produced it (see below). A key nothing has ever written to
+  returns `{ value: null, edit: null }`, not an error. `typeHint` is
+  optional and only meaningful for a **non-validated** key (see below)
+  — ignored entirely for a key that currently has a schema.
+- `desk.state.set(key, value, edit, typeHint)` → `{ ok: true }` —
+  writes `value` (any JSON-serializable value) as the new current value
+  for `key`. `edit` is optional (omit or pass `null`) and is never
+  interpreted by Desk — it's stored and handed back verbatim from
+  `get`/`getHistory`, meant for widgets that want to describe *what
+  changed* (e.g. a structured patch or a human-readable description)
+  alongside the new full value, without Desk needing to understand that
+  description's format at all. `typeHint` is optional, and only
+  meaningful for a non-validated key.
+- `desk.state.getHistory(key, limit)` → `{ history: [{ value, edit },
+  ...] }` — up to the most recent `limit` `(value, edit)` pairs written
+  to `key`, **newest first**. Desk keeps only the 50 most recent writes
+  per key (older ones are dropped as new ones arrive); asking for a
+  `limit` larger than what's kept just returns everything available,
+  never an error. Omit `limit` for the full kept history.
+
+Every `set` also publishes `desk.state.changed` with payload `{ key,
+value, edit }` over the same `desk.events` channel described above —
+subscribe to it (`desk.events.subscribe(["desk.state.changed"])`,
+capability `events`, in addition to `state`) to react to another
+widget's writes live rather than polling `get`. As with any
+`desk.events` message, you never receive your own `set` echoed back to
+you.
+
+### Validated vs. non-validated keys (TODO af7898b)
+
+A key is **validated** if some widget currently declares a schema for
+it (a `state_schema` entry in that widget's own manifest — see
+`StateSchema<TAB>key<TAB>type_expr` above for a `DefineWidget`, or the
+`"state_schema"` field of a real `widgets/<id>/widget.json`), or if a
+**top-level schema file** declares it (see below), and **non-validated**
+otherwise — this is a property of the key itself, not of any individual
+`get`/`set` call.
+
+- A schema (`type_expr`) is a string in a small, intentionally
+  -constrained subset of TypeScript type syntax: primitives (`string`,
+  `number`, `boolean`, `null`), literal unions (`"a" | "b"`, `1 | 2`),
+  arrays (`string[]`, `number[][]`), and simple object shapes (`{ a:
+  string; b?: number }`, extra keys beyond those declared are always
+  allowed). No generics, tuples, or intersections in this version.
+- **`set` on a validated key**: `value` is checked against the active
+  schema. A mismatch is a real error (the call fails, nothing is stored
+  or published) — this holds even if *you* didn't declare the schema
+  yourself; whichever widget's manifest currently owns `key`'s schema
+  governs every write to it. `typeHint` is ignored.
+- **`set`/`get` on a non-validated key**: `typeHint` (the same small
+  type-expression syntax as a schema) is optional and purely
+  call-site-local — `set` best-effort-coerces `value` to it before
+  storing; `get` best-effort-coerces the *returned* value only (the
+  stored value itself is untouched). Coercion never fails the call —
+  a hopeless coercion just returns the value unchanged. Omitting
+  `typeHint` entirely (the common case) stores/returns exactly what was
+  given, no coercion at all.
+- **Declaring a schema that conflicts with an already-active one for
+  the same key** means your widget doesn't load at all — no placement,
+  not even a normal placement notification. Instead, a clickable
+  notification appears explaining the conflict, and
+  `self.getManifest()`'s response gains a `desk_widget_loading_errors`
+  array with the same message, for as long as the conflict is still
+  live.
+- **Top-level schema files** (TODO `9aef267`) declare a schema
+  independent of any widget's manifest — for state that should have a
+  canonical schema without tying its lifecycle to any one widget's own
+  placement. A schema file is a plain JSON file, `{"<key>": "<type
+  expression>", ...}` (the same syntax as a manifest's own
+  `state_schema`), placed in either of two watched locations:
+  `.desk_temp/schemas/` (ephemeral — created automatically alongside
+  the rest of `.desk_temp`, not git-tracked), or `./desk-schemas/` (a
+  real, git-tracked project-root directory Desk never creates itself —
+  create it yourself and it's picked up automatically, no restart
+  needed). Only `*.json` files are read; the filename itself carries no
+  meaning beyond that extension, so name it for what it holds (e.g.
+  `document-state.json`). A key declared this way is **permanently
+  enforced** from the moment the file is picked up — unlike a
+  tempui-placed widget's own schema, it's never tied to any widget
+  being placed and never goes dormant. Editing the file live-updates
+  its registrations; deleting it clears them. A conflicting file (or a
+  file conflicting with an already-active widget-declared schema) gets
+  the same clickable-notification treatment as a widget-vs-widget
+  conflict above, just with no `desk_widget_loading_errors`-equivalent
+  to write into (there's no manifest to attach it to) — the live
+  notification is authoritative while the conflict lasts.
 
 ## Inspecting another widget
 
@@ -891,6 +1169,202 @@ and once the new session starts there's nothing more Desk does with
 this file.
 """
 
+_JOBS_DOC = """# TempUI DSL: Job
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its shared version number -- this file
+just covers the `Job` keyword.
+
+For running a **one-time script** with real widget-context
+capabilities -- notably Bridge API access, which nothing else lets you
+reach outside a real `kind: "html"` widget's own JS -- without
+building a full `DefineWidget` (a reusable, promotable widget *kind*)
+or a `widgets/<id>/` registration just for one throwaway task. If what
+you actually want is a reusable widget *kind* placeable many times, or
+something that stays running (a background service, a long,
+checkpointed pipeline), a `Job` is the wrong tool -- it's a single
+one-shot run, no more.
+
+- The first line is `Job<TAB>kind<TAB>summary` -- `kind` is `python`
+  or `html`; `summary` is shown in the notification and the placed Job
+  Runner widget, never executed.
+- Zero or more `Capability<TAB>name` lines -- only meaningful for
+  `kind: "html"` (ignored, but harmless, for `kind: "python"`): the
+  same coarse Bridge API capability names a `DefineWidget`'s own
+  `Capability` lines use (`workspace`, `fs`, `widgets`, `events`,
+  `filetypes`, `editor`, `popups`, `transforms`, `introspect` -- see
+  "The Desk Bridge API" in `tempui-custom-widgets.md` for what each
+  one actually grants). Declare only what your script actually calls
+  -- an undeclared capability's Bridge call gets a real HTTP 403, not
+  silent success.
+- One or more `Script<TAB>base64-chunk` lines -- your script's entire
+  source, base64-encoded (chunk it across several `Script` lines for a
+  long script; they're concatenated in file order before decoding,
+  the same convention `DefineWidget`'s own `Html` lines use). For
+  `kind: "html"`, this is a complete, self-contained HTML document
+  (same shape as a `DefineWidget`'s own content) -- your page's JS gets
+  `window.desk.*` injected automatically, scoped to exactly the
+  `Capability` lines you declared above. For `kind: "python"`, this is
+  a plain Python script, executed directly (no `desk` package import
+  needed beyond what you'd already use in any other Python code in
+  this environment) -- there is no capability scoping for `kind:
+  "python"` at all; it runs with the same access any other code
+  already running in this process has.
+
+Clicking the resulting notification places a **Job Runner** widget,
+showing your declared summary, a "View Code" button (opens your
+script's own source in a real editor), and a "Start" button --
+**nothing runs until Start is clicked**. Once started, Start becomes
+disabled and stays that way (even across a Desk reload) -- a `Job` is
+a one-shot run, not a repeatable tool; write a new `Job` file for a
+second run.
+
+**"Done" means the page finished loading, not that every async Bridge
+call your script's own JS kicked off has resolved.** There is no
+generic way for Desk to know an arbitrary web page's own async work
+has actually finished -- if your `kind: "html"` script fires off a
+Bridge call and returns immediately, the Job Runner widget may show
+"Done" before that call's effect is visible elsewhere. If you need to
+know a specific call actually completed, have your own script make
+that visible some other way (e.g. render its own result in the page),
+rather than relying on the Job Runner's status display as a strict
+completion signal.
+
+You don't have to hand-write the base64/`Script` line(s) below
+yourself -- `.desk_temp/build_job_or_desk_proc.py` (mirroring
+`build_widget.py`'s convenience for `DefineWidget`) builds a real `Job`
+file for you from a plain script file:
+
+```
+python3 .desk_temp/build_job_or_desk_proc.py job python "Delete .desk_temp/jobs/ entries older than 7 days" cleanup.py
+python3 .desk_temp/build_job_or_desk_proc.py job html "Talk to the Bridge API" widget.html --capability workspace
+```
+
+prints the path of the tempui file it wrote, ready to be picked up the
+same as any other `.desk_temp/` file.
+
+Example (`kind: "python"`, script shown decoded/unwrapped for
+readability -- the real file's `Script` line(s) would carry it
+base64-encoded):
+
+```
+Job	python	Delete .desk_temp/jobs/ entries older than 7 days
+Script	<base64-encoded script text>
+```
+
+```python
+import time
+from pathlib import Path
+
+cutoff = time.time() - 7 * 24 * 60 * 60
+jobs_dir = Path(".desk_temp/jobs")
+for entry in jobs_dir.iterdir() if jobs_dir.is_dir() else []:
+    if entry.stat().st_mtime < cutoff:
+        print(f"would remove {entry}")
+```
+"""
+
+_DESK_PROC_DOC = """# TempUI DSL: DeskProc
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its shared version number -- this file
+just covers the `DeskProc` keyword.
+
+For running a **one-time Python script** with real, in-process access
+to Desk's own live shell -- reveal a specific already-placed widget
+instance (the same action as clicking its titlebar eye button), take a
+real pixel screenshot of one, or list what's currently placed --
+instead of just a `kind: "html"` widget's own capability-scoped Bridge
+API, which has no equivalent of any of that. If your script only needs
+Bridge API access (`workspace`, `fs`, `state`, ...), reach for `Job`
+(see `tempui-jobs.md`) instead -- that's the general-purpose one-time
+-script mechanism; `DeskProc` exists specifically for the subset of
+actions that require touching Desk's shell directly, which a
+sandboxed `kind: "html"` page structurally cannot do. Like `Job`, this
+is a single one-shot run, not a reusable, promotable widget *kind*.
+
+- The first line is `DeskProc<TAB>summary` -- `summary` is shown in the
+  notification and the placed Desk Proc Runner widget, never executed.
+- One or more `Script<TAB>base64-chunk` lines -- your script's entire
+  source, base64-encoded (chunk it across several `Script` lines for a
+  long script; concatenated in file order before decoding, the same
+  convention `Job`'s own `Script` lines and `DefineWidget`'s own `Html`
+  lines already use). Always a plain Python script -- there is no
+  `html`-kind variant of `DeskProc` at all. Executed directly (no
+  `desk` package import needed beyond what you'd already use in any
+  other Python code in this environment) -- there is no capability
+  scoping here, the same "no sandboxing" trust level `Job`'s own
+  `python` kind already has. "View Code is the only review step" for
+  this mechanism too.
+
+Your script's exec namespace also gets a `deskproc` global -- the
+*documented*, safe way to act on Desk's own shell from your script
+(which runs on a background thread; touching a Qt widget directly from
+there is unsafe, so use these methods rather than trying to reach into
+`desk.shell.window`/`desk.shell.canvas` yourself):
+
+- `deskproc.reveal_widget(instance_id: str) -> bool` -- zooms/pans the
+  Workspace Canvas so the given placed widget instance fills the view,
+  the same action as clicking that instance's own titlebar eye button.
+  Returns whether a matching instance was found.
+- `deskproc.screenshot_widget(instance_id: str, path: str) -> bool` --
+  saves a real PNG screenshot of that instance's own placed frame
+  (titlebar and content, exactly as it looks on the canvas) to `path`.
+  A relative `path` resolves against the current Desk's own directory,
+  same as `desk.fs.writeFile`; missing parent directories are created
+  automatically. Returns whether the instance was found and the file
+  was saved successfully.
+- `deskproc.screenshot_desk(path: str) -> bool` -- saves a real PNG
+  screenshot of the whole Workspace Canvas viewport (not any native
+  window chrome around it) to `path`, same path-resolution rules as
+  above.
+- `deskproc.list_widget_instances() -> list[dict]` -- the current
+  Desk's live placed-widget layout (instance ids, widget kind,
+  position, size) -- the same data `desk.workspace.getState()` already
+  exposes to a `kind: "html"` widget with the `workspace` capability,
+  provided here so a script has a real way to discover an instance id
+  rather than needing one handed in from outside.
+
+Clicking the resulting notification places a **Desk Proc Runner**
+widget, showing your declared summary, a "View Code" button (opens
+your script's own source in a real editor), and a "Start" button --
+**nothing runs until Start is clicked**. Once started, Start becomes
+disabled and stays that way (even across a Desk reload) -- a
+`DeskProc` is a one-shot run, not a repeatable tool; write a new
+`DeskProc` file for a second run.
+
+**This notification looks different from every other tempui kind's
+own notification on purpose** -- a distinct border color and a bold
+"DESK PROC" caption above the summary -- specifically so a Desk Proc
+(real, in-process shell access) is never mistaken at a glance for an
+ordinary tempui placement (a widget instance, a question, ...).
+
+You don't have to hand-write the base64/`Script` line(s) below
+yourself -- `.desk_temp/build_job_or_desk_proc.py` (mirroring
+`build_widget.py`'s convenience for `DefineWidget`) builds a real
+`DeskProc` file for you from a plain Python script file:
+
+```
+python3 .desk_temp/build_job_or_desk_proc.py desk-proc "Reveal and screenshot the Editor widget" reveal_and_shoot.py
+```
+
+prints the path of the tempui file it wrote, ready to be picked up the
+same as any other `.desk_temp/` file.
+
+Example (script shown decoded/unwrapped for readability -- the real
+file's `Script` line(s) would carry it base64-encoded):
+
+```
+DeskProc	Reveal and screenshot the Editor widget
+Script	<base64-encoded script text>
+```
+
+```python
+result = deskproc.screenshot_widget("some-instance-id", "screenshots/editor.png")
+print(f"screenshot saved: {result}")
+```
+"""
+
 # TODO 7462cdb: reverse-chronological changelogs for the whole tempui
 # doc set, tagged by the TEMPUI_DOC_VERSION each entry was introduced
 # in -- not DSL-keyword-triggered file types themselves (nothing writes
@@ -959,6 +1433,138 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 39
+- A new authoring convenience script,
+  `.desk_temp/build_job_or_desk_proc.py` (mirroring `build_widget.py`):
+  packages a plain script into a ready-to-drop `Job`/`DeskProc` tempui
+  file, doing the base64-encode-and-chunk work for you instead of
+  hand-writing it every time. No DSL/API change -- `Job`/`DeskProc`
+  files themselves are unchanged, this just removes the authoring
+  ceremony. See `tempui-jobs.md`/`tempui-desk-proc.md`.
+
+## Version 38
+- A new `DeskProc` tempui DSL keyword: a one-time Python script with
+  real, in-process access to Desk's own live shell -- reveal a placed
+  widget instance (the same action as its titlebar eye button),
+  screenshot one (or the whole canvas) as a real PNG, or list what's
+  currently placed, via a curated `deskproc.*` object injected into the
+  script's own exec namespace. A close sibling of `Job` (same tempui
+  -file -> notification -> placed one-shot-runner-widget -> Start
+  -button shape), but its own keyword: no `html`-kind variant, and its
+  notification is deliberately styled differently (a distinct border
+  color plus a bold "DESK PROC" caption) so it's never mistaken for an
+  ordinary tempui placement notification at a glance. See
+  `tempui-desk-proc.md`.
+
+## Version 37
+- `desk.popups.show(...)`'s own doc now explicitly warns against using
+  the browser's raw `alert()`/`confirm()`/`prompt()` for an
+  alert/confirmation instead -- always use `desk.popups.show`, the
+  desk-internal popup. No API change, just a stronger warning after a
+  real bug where the Python-side equivalent mistake (a raw
+  `QMessageBox`) rendered as a detached macOS window.
+
+## Version 36
+- A `desk.state.*` schema can now also be declared "top-level,"
+  independent of any widget's manifest: a plain JSON file, `{"<key>":
+  "<type expression>", ...}`, at `.desk_temp/schemas/` (ephemeral,
+  auto-created) or `./desk-schemas/` (git-tracked, create it yourself
+  and it's picked up automatically). Permanently enforced from the
+  moment it's picked up, live-updated on edit, cleared on delete. See
+  "Validated vs. non-validated keys" in `tempui-custom-widgets.md`.
+
+## Version 35
+- `desk.state.*` keys can now be validated: declare a schema for a key
+  via a `state_schema` field in a real `widgets/<id>/widget.json` (or a
+  `StateSchema<TAB>key<TAB>type_expr` `DefineWidget` line), and every
+  `set` to that key is checked against it. `get`/`set` also gained an
+  optional `typeHint` parameter, meaningful only for a non-validated
+  key, for call-site-local best-effort coercion. See "Validated vs.
+  non-validated keys" in `tempui-custom-widgets.md`. A widget declaring
+  a schema that conflicts with an already-active one for the same key
+  fails to load entirely (a clickable notification explains why, and
+  `self.getManifest()` gains a `desk_widget_loading_errors` array with
+  the same message).
+
+## Version 34
+- New `desk.state.*` Bridge API calls (capability `state`): a shared,
+  project-scoped key/value store any widget can read (`get`,
+  `getHistory`) or write (`set`), with change notification via the
+  existing `desk.events` channel (a `desk.state.changed` message on
+  every `set`) and a bounded (50 most recent per key), latest-first
+  history. See "Shared, project-scoped state" in
+  `tempui-custom-widgets.md`. No schema/type checking on state keys in
+  this version -- values are opaque JSON.
+
+## Version 33
+- `app_dsl`'s `build.py` gained a `--mode=global` output mode
+  (alongside the existing, still-default `--mode=module`) -- plain
+  global scripts, no `import`/`export` at all, for feeding into
+  `build_widget.py`'s own `DefineWidget` packaging pipeline (which
+  needs non-module scripts to concatenate). Requires your own
+  component/handler source to also avoid module syntax when used --
+  see `app_dsl/README.md`. Closes the gap Version 32's own entry
+  below left open.
+
+## Version 32
+- New `.desk_temp/app_dsl/` tool -- a schema + parser + codegen tool
+  for a multi-component widget's own wiring/layout/event-table code
+  (generalized from a hand-written SPA structure), not a new tempui
+  DSL keyword. See `app_dsl/README.md` for the DSL format. Generates
+  real TypeScript ES modules for a standalone build; a Desk-widget
+  build target isn't wired into `build_widget.py`'s own packaging
+  pipeline yet (see `PARKINGLOT.md`).
+
+## Version 31
+- New `Job` tempui DSL keyword -- run a one-time script with real
+  widget-context capabilities (notably Bridge API access for a
+  `kind: "html"` Job, previously unreachable outside a real
+  `kind: "html"` widget's own JS) without building a full
+  `DefineWidget`/`widgets/<id>/` registration for it. See
+  `tempui-jobs.md` for the file format, the capability list, and an
+  important caveat about what "Done" actually means for a `kind:
+  "html"` Job.
+
+## Version 30
+- New `desk.self.setSubtitle(text)` Bridge API call -- lets a widget
+  instance put its own state (e.g. which document it's editing) into
+  its own titlebar, alongside the existing `getManifest`/
+  `getLocalStorage`/`setLocalStorage`. `text` composes with the
+  titlebar's kind label as `"<label> — <text>"`, before the
+  `[EXTERNAL]` suffix; `null`/empty clears it back to the bare label.
+  Needs no capability declaration (same as `getLocalStorage`/
+  `setLocalStorage`) and isn't persisted -- call it again on every
+  fresh page load once your own state is restored.
+
+## Version 29
+- `.desk_temp/build_widget.py` now warns to stderr, at the start of
+  every run, if a `scripts/build_widget.py` also exists in the
+  project -- a copy from before this mechanism moved to `.desk_temp/`
+  (TODO `029047b`) can silently defeat a fix already shipped here
+  (e.g. capabilities emission, Version 22) with nothing telling the
+  project the copy being run might be the stale one. Not an error --
+  the build still proceeds either way.
+- `.desk_temp/build_widget.py` also now deletes any other
+  `DefineWidget` file for the same widget keyword immediately after a
+  successful build, instead of leaving one leftover file behind per
+  rebuild forever (a real, if narrow, risk: a startup/Desk-switch
+  re-scan of `.desk_temp` is alphabetical, not chronological, so
+  several stale same-keyword files left behind could make an old one
+  "win" again).
+
+## Version 28
+- "Questions for the user" corrected: the documented `QUESTIONS.md`
+  heading format (`## <short summary>`) never actually matched what
+  the real parser requires. The real, required shape starts with a
+  literal `TODO`, followed by one or more backtick-wrapped TODO.md
+  item ids, then a colon and summary -- see
+  `desk-temporary-ui.md`'s own "Questions for the user" section (same
+  directory) for a full example. This mechanism has always been
+  scoped to questions blocking a specific TODO.md item, not general
+  free-standing ones -- a heading in any other shape (including the
+  old documented example) is silently not recognized as a question at
+  all.
 
 ## Version 27
 - "The Desk Bridge API" section's storage guidance corrected:
@@ -1290,7 +1896,10 @@ def _chunk(text: str, size: int) -> list[str]:
     return [text[i : i + size] for i in range(0, len(text), size)] or [""]
 
 
-def build_widget(widget_dir: Path) -> str:
+def build_widget(widget_dir: Path) -> tuple[str, str]:
+    """Returns (keyword, tempui_text) -- the keyword is needed by
+    main() below to find and clean up any other DefineWidget file for
+    this same widget kind, not just to build a fresh one."""
     manifest = _read_manifest(widget_dir)
     tsconfig = _read_tsconfig(widget_dir)
     out_dir = _read_out_dir(widget_dir, tsconfig)
@@ -1305,8 +1914,57 @@ def build_widget(widget_dir: Path) -> str:
         f"Size\\t{manifest['width']}\\t{manifest['height']}",
     ]
     lines.extend(f"Capability\\t{cap}" for cap in manifest.get("capabilities", []))
+    lines.extend(
+        f"StateSchema\\t{key}\\t{type_expr}" for key, type_expr in manifest.get("state_schema", {}).items()
+    )
     lines.extend(f"Html\\t{chunk}" for chunk in _chunk(html_b64, HTML_CHUNK_SIZE))
-    return "\\n".join(lines) + "\\n"
+    return manifest["keyword"], "\\n".join(lines) + "\\n"
+
+
+# TODO e86a31b: the historical, pre-029047b seeded location -- a
+# project that adopted Desk before that TODO moved this mechanism to
+# .desk_temp/build_widget.py (this file) can still have a stale copy
+# sitting there, silently defeating any fix landed here since (e.g.
+# TODO 31db3f6's capabilities emission) without anything today telling
+# them so. Checked by path only, not content/version -- this file
+# doesn't know anything about a copy it didn't write, just its own
+# canonical location and whether something else also claims that name.
+STALE_SIBLING_SCRIPT_PATH = Path("scripts/build_widget.py")
+
+
+def _warn_if_stale_sibling_exists() -> None:
+    if STALE_SIBLING_SCRIPT_PATH.is_file():
+        print(
+            f"warning: {STALE_SIBLING_SCRIPT_PATH} also exists in this project and is not "
+            f"kept up to date -- if you're not sure which one you just ran, it was probably "
+            f"the wrong one. Use .desk_temp/build_widget.py (this file) instead.",
+            file=sys.stderr,
+        )
+
+
+def _delete_other_builds_for_keyword(temp_ui_dir: Path, keyword: str, keep: Path) -> None:
+    """TODO e86a31b: an un-promoted widget rebuilt many times
+    accumulates one leftover DefineWidget file per rebuild forever --
+    harmless during one continuously-running Desk session (the
+    most-recently-registered file always wins), but
+    _register_custom_widgets_from_desk_temp re-scans .desk_temp in
+    alphabetical (not chronological) order at startup/Desk-switch, so
+    several stale same-keyword files left behind risk an old one
+    "winning" again with no relationship to which was actually built
+    most recently. Deletes every other file in temp_ui_dir whose first
+    line is this same keyword's own DefineWidget line -- cheap (a
+    handful of files at most), and only ever run right after a
+    successful build."""
+    marker = f"DefineWidget\\t{keyword}\\t"
+    for candidate in temp_ui_dir.iterdir():
+        if candidate == keep or not candidate.is_file():
+            continue
+        try:
+            first_line = candidate.open(encoding="utf-8").readline()
+        except (OSError, UnicodeDecodeError):
+            continue
+        if first_line.startswith(marker):
+            candidate.unlink()
 
 
 def main(argv: list[str]) -> int:
@@ -1318,8 +1976,152 @@ def main(argv: list[str]) -> int:
         print(f"{widget_dir} is not a directory", file=sys.stderr)
         return 1
 
+    _warn_if_stale_sibling_exists()
+
     try:
-        tempui_text = build_widget(widget_dir)
+        keyword, tempui_text = build_widget(widget_dir)
+    except BuildError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+
+    temp_ui_dir = Path(TEMP_UI_DIRNAME)
+    temp_ui_dir.mkdir(exist_ok=True)
+    out_path = temp_ui_dir / str(uuid.uuid4())
+    out_path.write_text(tempui_text)
+    _delete_other_builds_for_keyword(temp_ui_dir, keyword, keep=out_path)
+    print(out_path)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
+'''
+
+# TODO 49e3732: same "generated and kept fresh, not a one-time seed"
+# reasoning as _BUILD_WIDGET_SCRIPT above -- a Job/DeskProc author was
+# hand-writing the same base64.b64encode(...)-and-chunk script from
+# scratch every time otherwise. Wrapped in triple *single* quotes for
+# the same reason: the script's own docstring uses triple double
+# quotes internally.
+_BUILD_JOB_OR_DESK_PROC_SCRIPT = '''#!/usr/bin/env python3
+"""Packages a plain script into a ready-to-drop `Job`/`DeskProc` tempui
+file under `.desk_temp/` -- see "The TempUI DSL: Job"/"The TempUI DSL:
+DeskProc" (tempui-jobs.md/tempui-desk-proc.md, this same directory) for
+the file formats this implements the base64/chunking/writing step for.
+
+This file itself lives at `.desk_temp/build_job_or_desk_proc.py`,
+generated and kept fresh there the same way `build_widget.py` (this
+same directory) is -- refreshed automatically whenever the doc set's
+shared version changes, rather than seeded once into a project and left
+to go stale. It's deliberately self-contained: no import of this app's
+own `desk` package, which the project it's generated into won't have
+installed.
+
+Usage:
+    python3 .desk_temp/build_job_or_desk_proc.py desk-proc SUMMARY SCRIPT.py
+        Builds a DeskProc file -- SCRIPT.py is always plain Python.
+
+    python3 .desk_temp/build_job_or_desk_proc.py job KIND SUMMARY SCRIPT [--capability NAME ...]
+        Builds a Job file. KIND is "python" or "html"; SCRIPT is a .py
+        file for "python", or any file (typically .html) for "html".
+        --capability is repeatable and only meaningful for an
+        html-kind Job (harmless, but ignored, for python).
+
+Writes a fresh `.desk_temp/<uuid>` tempui file and prints its path.
+"""
+import argparse
+import base64
+import sys
+import uuid
+from pathlib import Path
+
+CHUNK_SIZE = 2000
+TEMP_UI_DIRNAME = ".desk_temp"
+
+
+class BuildError(Exception):
+    """Any problem that should abort the build with a clear message --
+    caught once in main(), never elsewhere, so every failure path prints
+    one clean line instead of a traceback."""
+
+
+def _chunk(text: str, size: int) -> list:
+    return [text[i : i + size] for i in range(0, len(text), size)] or [""]
+
+
+def _read_script(path_str: str) -> str:
+    path = Path(path_str)
+    if not path.is_file():
+        raise BuildError(f"{path} not found")
+    return path.read_text()
+
+
+def _check_single_line_safe(value: str, what: str) -> None:
+    """A tempui file's first line is TAB-delimited -- a literal tab
+    inside `value` would read as an extra field boundary, and a literal
+    newline would end the line early, either way silently producing a
+    tempui file that looks fine but parses wrong. Caught here once,
+    applied to every free-text field this script accepts."""
+    if "\\t" in value or "\\n" in value:
+        raise BuildError(f"{what} can't contain a tab or newline: {value!r}")
+
+
+def build_desk_proc(summary: str, script_path: str) -> str:
+    _check_single_line_safe(summary, "summary")
+    script = _read_script(script_path)
+    script_b64 = base64.b64encode(script.encode("utf-8")).decode("ascii")
+    lines = [f"DeskProc\\t{summary}"]
+    lines.extend(f"Script\\t{chunk}" for chunk in _chunk(script_b64, CHUNK_SIZE))
+    return "\\n".join(lines) + "\\n"
+
+
+def build_job(kind: str, summary: str, script_path: str, capabilities: list) -> str:
+    if kind not in ("python", "html"):
+        raise BuildError(f"job kind must be 'python' or 'html', got {kind!r}")
+    _check_single_line_safe(summary, "summary")
+    for capability in capabilities:
+        _check_single_line_safe(capability, "capability name")
+    script = _read_script(script_path)
+    script_b64 = base64.b64encode(script.encode("utf-8")).decode("ascii")
+    lines = [f"Job\\t{kind}\\t{summary}"]
+    lines.extend(f"Capability\\t{capability}" for capability in capabilities)
+    lines.extend(f"Script\\t{chunk}" for chunk in _chunk(script_b64, CHUNK_SIZE))
+    return "\\n".join(lines) + "\\n"
+
+
+def _parse_args(argv: list) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Build a ready-to-drop Job/DeskProc tempui file under .desk_temp/."
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    desk_proc_parser = subparsers.add_parser("desk-proc", help="Build a DeskProc tempui file.")
+    desk_proc_parser.add_argument("summary", help="Shown in the notification and the placed Runner widget.")
+    desk_proc_parser.add_argument("script", help="Path to the Python script to embed.")
+
+    job_parser = subparsers.add_parser("job", help="Build a Job tempui file.")
+    job_parser.add_argument("kind", choices=("python", "html"), help="Which Job kind to build.")
+    job_parser.add_argument("summary", help="Shown in the notification and the placed Runner widget.")
+    job_parser.add_argument("script", help="Path to the script to embed (.py for python, .html for html).")
+    job_parser.add_argument(
+        "--capability",
+        action="append",
+        default=[],
+        dest="capabilities",
+        metavar="NAME",
+        help="A Bridge API capability this html-kind Job needs (repeatable). Ignored, but harmless, for python.",
+    )
+
+    return parser.parse_args(argv)
+
+
+def main(argv: list) -> int:
+    args = _parse_args(argv)
+    try:
+        if args.command == "desk-proc":
+            tempui_text = build_desk_proc(args.summary, args.script)
+        else:
+            tempui_text = build_job(args.kind, args.summary, args.script, args.capabilities)
     except BuildError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
@@ -1342,17 +2144,22 @@ IMAGE_DOC_FILENAME = "tempui-image.md"
 SCRATCH_DOC_FILENAME = "tempui-scratch.md"
 CUSTOM_WIDGETS_DOC_FILENAME = "tempui-custom-widgets.md"
 DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME = "tempui-discuss-parking-lot-item.md"
+JOBS_DOC_FILENAME = "tempui-jobs.md"
+DESK_PROC_DOC_FILENAME = "tempui-desk-proc.md"
 BREAKING_CHANGES_DOC_FILENAME = "tempui-breaking-changes.md"
 NEW_FEATURES_DOC_FILENAME = "tempui-new-features.md"
 BUILD_WIDGET_SCRIPT_FILENAME = "build_widget.py"
+BUILD_JOB_OR_DESK_PROC_SCRIPT_FILENAME = "build_job_or_desk_proc.py"
 
 # filename -> its static content, for every split-out doc (TODO
 # e57ce5f) -- iterated by write_tempui_docs/ensure_docs_current so
 # adding a future split file is a one-line addition here, not a new
 # call site to remember elsewhere. Not every entry is a `.md` doc --
-# BUILD_WIDGET_SCRIPT_FILENAME (TODO 029047b) is a `.py` script, but
-# write_tempui_docs/ensure_docs_current treat every entry identically
-# (`.write_text(content)`), so it needs no special-casing here.
+# BUILD_WIDGET_SCRIPT_FILENAME (TODO 029047b)/
+# BUILD_JOB_OR_DESK_PROC_SCRIPT_FILENAME (TODO 49e3732) are `.py`
+# scripts, but write_tempui_docs/ensure_docs_current treat every entry
+# identically (`.write_text(content)`), so neither needs special-casing
+# here.
 SPLIT_DOC_CONTENT: dict[str, str] = {
     LIGHTNING_ROUND_DOC_FILENAME: _LIGHTNING_ROUND_DOC,
     MARKDOWN_DOC_FILENAME: _MARKDOWN_DOC,
@@ -1360,9 +2167,12 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     SCRATCH_DOC_FILENAME: _SCRATCH_DOC,
     CUSTOM_WIDGETS_DOC_FILENAME: _CUSTOM_WIDGETS_DOC,
     DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME: _DISCUSS_PARKING_LOT_ITEM_DOC,
+    JOBS_DOC_FILENAME: _JOBS_DOC,
+    DESK_PROC_DOC_FILENAME: _DESK_PROC_DOC,
     BREAKING_CHANGES_DOC_FILENAME: _BREAKING_CHANGES_DOC,
     NEW_FEATURES_DOC_FILENAME: _NEW_FEATURES_DOC,
     BUILD_WIDGET_SCRIPT_FILENAME: _BUILD_WIDGET_SCRIPT,
+    BUILD_JOB_OR_DESK_PROC_SCRIPT_FILENAME: _BUILD_JOB_OR_DESK_PROC_SCRIPT,
 }
 
 
@@ -1484,6 +2294,30 @@ def sync_shared_components(temp_dir: Path) -> None:
     shutil.copytree(source, destination)
 
 
+def _repo_app_dsl_dir() -> Path:
+    """This installed `desk` package's own app_dsl/ directory (TODO
+    48e3b39) -- mirrors _repo_shared_components_dir's exact shape and
+    reasoning above."""
+    return Path(__file__).resolve().parents[2] / APP_DSL_DIRNAME
+
+
+def sync_app_dsl_tool(temp_dir: Path) -> None:
+    """Mirrors this repo's own app_dsl/ into `temp_dir/app_dsl`, always
+    fresh (TODO 48e3b39) -- mirrors sync_shared_components's exact
+    shape/reasoning above (unconditional full copy, no "only if
+    missing/stale" check; a no-op if this checkout has no app_dsl/ of
+    its own). `__pycache__` is excluded -- a stale local bytecode
+    cache from running this repo's own scripts has no business being
+    mirrored into a project's `.desk_temp/`."""
+    source = _repo_app_dsl_dir()
+    if not source.is_dir():
+        return
+    destination = temp_dir / APP_DSL_DIRNAME
+    if destination.exists():
+        shutil.rmtree(destination)
+    shutil.copytree(source, destination, ignore=shutil.ignore_patterns("__pycache__"))
+
+
 @dataclass
 class TempUiDocument:
     question: str | None = None
@@ -1498,6 +2332,8 @@ SCRATCH_KEYWORD = "Scratch"
 MARKDOWN_KEYWORD = "Markdown"
 DEFINE_WIDGET_KEYWORD = "DefineWidget"
 DISCUSS_PARKING_LOT_ITEM_KEYWORD = "DiscussParkingLotItem"
+JOB_KEYWORD = "Job"
+DESK_PROC_KEYWORD = "DeskProc"
 UNANSWERED = "unanswered"
 
 # Every built-in DSL keyword a DefineWidget can't reuse as its own
@@ -1517,6 +2353,8 @@ RESERVED_TEMPUI_KEYWORDS = frozenset(
         MARKDOWN_KEYWORD,
         DEFINE_WIDGET_KEYWORD,
         DISCUSS_PARKING_LOT_ITEM_KEYWORD,
+        JOB_KEYWORD,
+        DESK_PROC_KEYWORD,
     }
 )
 
@@ -1545,17 +2383,21 @@ class CustomWidgetDefinition:
     the raw `keyword`); `html_b64` is the widget's entire
     implementation -- one self-contained, base64-encoded HTML
     document. `capabilities` (TODO f693275) are the Bridge API
-    capabilities (`"workspace"`, `"fs"`, `"widgets"`, `"events"`, ...)
+    capabilities (`"workspace"`, `"state"`, `"fs"`, `"widgets"`, `"events"`, ...)
     this widget kind is allowed to use -- same coarse, resource-level
     strings a real `widgets/<id>/widget.json`'s own `capabilities`
     list already uses; defaults to none declared, same as a manifest
-    with no `capabilities` key."""
+    with no `capabilities` key. `state_schema` (TODO af7898b) is the
+    same key -> TypeScript-type-expression-string dict a real
+    `widget.json`'s own `state_schema` field would be -- see
+    desk.schema_types and plans/state-store-schema-core.md."""
 
     keyword: str
     label: str
     html_b64: str
     default_size: tuple[int, int] | None = None
     capabilities: list[str] = field(default_factory=list)
+    state_schema: dict[str, str] = field(default_factory=dict)
 
 
 def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
@@ -1563,7 +2405,11 @@ def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
     file: `DefineWidget<TAB>keyword<TAB>label` (must be the first
     line), an optional `Size<TAB>width<TAB>height` line, zero or more
     `Capability<TAB>name` lines (TODO f693275 -- same shape as `Size`,
-    repeatable, collected in file order), and one or more
+    repeatable, collected in file order), zero or more
+    `StateSchema<TAB>key<TAB>type_expr` lines (TODO af7898b -- same
+    repeatable shape; a duplicate key keeps the last one in file order,
+    the same way a real widget.json's own state_schema dict would
+    behave for a duplicate JSON key), and one or more
     `Html<TAB>base64-chunk` lines (concatenated in file order before
     decoding -- decoding itself happens later, in
     desk.custom_widgets.materialize, not here). Returns None if the
@@ -1582,6 +2428,7 @@ def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
 
     size: tuple[int, int] | None = None
     capabilities: list[str] = []
+    state_schema: dict[str, str] = {}
     html_chunks: list[str] = []
     for line in lines[1:]:
         if line.startswith("Size\t"):
@@ -1595,6 +2442,13 @@ def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
             name = line.split("\t", 1)[1].strip()
             if name:
                 capabilities.append(name)
+        elif line.startswith("StateSchema\t"):
+            parts = line.split("\t")
+            if len(parts) >= 3:
+                key = parts[1].strip()
+                type_expr = parts[2].strip()
+                if key and type_expr:
+                    state_schema[key] = type_expr
         elif line.startswith("Html\t"):
             html_chunks.append(line.split("\t", 1)[1])
 
@@ -1606,16 +2460,119 @@ def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
         html_b64="".join(html_chunks),
         default_size=size,
         capabilities=capabilities,
+        state_schema=state_schema,
     )
+
+
+@dataclass
+class JobDefinition:
+    """A tempui-DSL-defined one-shot agent Job (TODO d7e66f6) --
+    Scratch/Question-shaped (one file, one bound widget instance), not
+    DefineWidget's two-step type-then-instance shape: nothing else
+    invokes a Job, this *is* the invocation. `kind` is `"python"` or
+    `"html"`; `capabilities` (meaningful for `kind == "html"` only,
+    always collected regardless -- harmless to ignore for `"python"`)
+    are the same coarse Bridge API capability strings a real
+    `widgets/<id>/widget.json` or a `DefineWidget`'s own `Capability`
+    lines already use. `script_b64` is the job's entire script body,
+    base64-encoded (tabs/newlines in real script content can't
+    otherwise survive this TAB-delimited-lines format)."""
+
+    kind: str
+    summary: str
+    script_b64: str
+    capabilities: list[str] = field(default_factory=list)
+
+
+def parse_job(text: str) -> JobDefinition | None:
+    """Extracts a JobDefinition from a Job temp-UI file:
+    `Job<TAB>kind<TAB>summary` (must be the first line, `kind` one of
+    "python"/"html"), zero or more `Capability<TAB>name` lines (same
+    shape as parse_define_widget's), and one or more
+    `Script<TAB>base64-chunk` lines (concatenated in file order before
+    decoding, mirroring Html's own chunking). Returns None if the file
+    doesn't start with the Job keyword, has no valid kind, or has no
+    Script content at all."""
+    lines = text.splitlines()
+    if not lines:
+        return None
+    first = lines[0].split("\t")
+    if not first or first[0] != JOB_KEYWORD:
+        return None
+    kind = first[1].strip() if len(first) > 1 else ""
+    if kind not in ("python", "html"):
+        return None
+    summary = first[2].strip() if len(first) > 2 else ""
+
+    capabilities: list[str] = []
+    script_chunks: list[str] = []
+    for line in lines[1:]:
+        if line.startswith("Capability\t"):
+            name = line.split("\t", 1)[1].strip()
+            if name:
+                capabilities.append(name)
+        elif line.startswith("Script\t"):
+            script_chunks.append(line.split("\t", 1)[1])
+
+    if not script_chunks:
+        return None
+    return JobDefinition(
+        kind=kind,
+        summary=summary,
+        script_b64="".join(script_chunks),
+        capabilities=capabilities,
+    )
+
+
+@dataclass
+class DeskProcDefinition:
+    """A tempui-DSL-defined one-shot "Desk Proc" (TODO 97bd090) -- a
+    close sibling of JobDefinition above, Scratch/Question-shaped (one
+    file, one bound widget instance). Deliberately simpler than
+    JobDefinition: no `kind`/`capabilities` at all, since a Desk Proc is
+    always a plain Python script with real, in-process access to Desk's
+    own live shell state (see current_context.get_gui_thread_caller) --
+    there is no `html`-kind variant the way a Job has one. `script_b64`
+    is the proc's entire script body, base64-encoded, same reasoning as
+    JobDefinition.script_b64 (tabs/newlines in real script content
+    can't otherwise survive this TAB-delimited-lines format)."""
+
+    summary: str
+    script_b64: str
+
+
+def parse_desk_proc(text: str) -> DeskProcDefinition | None:
+    """Extracts a DeskProcDefinition from a DeskProc temp-UI file:
+    `DeskProc<TAB>summary` (must be the first line), and one or more
+    `Script<TAB>base64-chunk` lines (concatenated in file order before
+    decoding, mirroring parse_job's own Script handling). Returns None
+    if the file doesn't start with the DeskProc keyword, or has no
+    Script content at all."""
+    lines = text.splitlines()
+    if not lines:
+        return None
+    first = lines[0].split("\t")
+    if not first or first[0] != DESK_PROC_KEYWORD:
+        return None
+    summary = first[1].strip() if len(first) > 1 else ""
+
+    script_chunks: list[str] = []
+    for line in lines[1:]:
+        if line.startswith("Script\t"):
+            script_chunks.append(line.split("\t", 1)[1])
+
+    if not script_chunks:
+        return None
+    return DeskProcDefinition(summary=summary, script_b64="".join(script_chunks))
 
 
 def detect_temp_ui_kind(text: str, custom_keywords: Collection[str] = ()) -> str:
     """"question" (the original, default type), "lightning_round",
     "open_markdown", "open_image", "scratch", "markdown_content",
-    "define_widget", "discuss_parking_lot_item", or (if the file's own
-    keyword is a currently-known custom widget -- TODO 91b3f42)
-    "custom:<keyword>" -- read from the first non-blank line's
-    keyword. Lets a caller
+    "define_widget", "discuss_parking_lot_item", "job", "desk_proc", or
+    (if the file's own keyword is a currently-known custom widget --
+    TODO 91b3f42) "custom:<keyword>" -- read from the first non-blank
+    line's keyword. Lets a caller
     that's seeing a temp-ui file for the first time (a notification, a
     saved Desk's widget state) know which widget kind to place without
     assuming "question". Named "markdown_content" (not "markdown") to
@@ -1643,6 +2600,10 @@ def detect_temp_ui_kind(text: str, custom_keywords: Collection[str] = ()) -> str
                 return "define_widget"
             if keyword == DISCUSS_PARKING_LOT_ITEM_KEYWORD:
                 return "discuss_parking_lot_item"
+            if keyword == JOB_KEYWORD:
+                return "job"
+            if keyword == DESK_PROC_KEYWORD:
+                return "desk_proc"
             if keyword in custom_keywords:
                 return f"custom:{keyword}"
             return "question"

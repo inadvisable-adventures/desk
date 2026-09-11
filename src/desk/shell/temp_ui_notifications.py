@@ -15,34 +15,71 @@ QLabel {
 }
 """
 
+# TODO 97bd090: a Desk Proc notification (real, in-process access to
+# Desk's own shell -- reveal/screenshot a placed widget) must never be
+# mistaken at a glance for an ordinary tempui placement notification
+# (a widget instance, a question, ...), per direct user request --
+# a distinct border color here, plus a bold caption line added in
+# _NotificationBanner below (a color change alone wouldn't be
+# structurally different enough).
+DESK_PROC_BANNER_STYLE = """
+QFrame {
+    background-color: rgba(40, 42, 46, 230);
+    border: 1px solid #e0a030;
+    border-radius: 6px;
+}
+QLabel {
+    color: #e8e8e8;
+}
+"""
+_BANNER_STYLES = {"default": BANNER_STYLE, "desk_proc": DESK_PROC_BANNER_STYLE}
+DESK_PROC_CAPTION_TEXT = "DESK PROC"
+
 
 class _NotificationBanner(QFrame):
     """A single dismissable, clickable notification -- purely visual and
-    "dumb": TempUiNotificationStack decides what a click/dismiss means."""
+    "dumb": TempUiNotificationStack decides what a click/dismiss means.
+    `banner_style` (TODO 97bd090) is `"default"` or `"desk_proc"` --
+    the latter renders a distinct border color plus a bold "DESK PROC"
+    caption above `text`, so a Desk Proc notification reads as clearly
+    different from every other tempui kind's own notification even
+    before the text itself is read."""
 
     clicked = pyqtSignal()
     dismissed = pyqtSignal()
 
-    def __init__(self, text: str, parent=None) -> None:
+    def __init__(self, text: str, banner_style: str = "default", parent=None) -> None:
         super().__init__(parent)
-        self.setStyleSheet(BANNER_STYLE)
+        self.setStyleSheet(_BANNER_STYLES.get(banner_style, BANNER_STYLE))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 6, 6, 6)
-        layout.setSpacing(6)
+        outer_layout = QHBoxLayout(self)
+        outer_layout.setContentsMargins(8, 6, 6, 6)
+        outer_layout.setSpacing(6)
+
+        text_column = QVBoxLayout()
+        text_column.setSpacing(2)
+        if banner_style == "desk_proc":
+            caption = QLabel(DESK_PROC_CAPTION_TEXT)
+            caption_font = caption.font()
+            caption_font.setBold(True)
+            caption.setFont(caption_font)
+            caption.setStyleSheet("color: #e0a030;")
+            caption.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+            text_column.addWidget(caption)
 
         label = QLabel(text)
         label.setWordWrap(True)
         label.setMaximumWidth(260)
         label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
-        layout.addWidget(label, stretch=1)
+        text_column.addWidget(label)
+        outer_layout.addLayout(text_column, stretch=1)
 
         close_button = QPushButton("✕")
         close_button.setFlat(True)
         close_button.setFixedSize(18, 18)
         close_button.clicked.connect(self.dismissed.emit)
-        layout.addWidget(close_button)
+        outer_layout.addWidget(close_button)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -68,10 +105,12 @@ class TempUiNotificationStack(QWidget):
         layout.setSpacing(6)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
 
-    def notify(self, path: Path, text: str, on_clicked: Callable[[], None]) -> None:
+    def notify(
+        self, path: Path, text: str, on_clicked: Callable[[], None], banner_style: str = "default"
+    ) -> None:
         self._remove_banner(path)
 
-        banner = _NotificationBanner(text, self)
+        banner = _NotificationBanner(text, banner_style, self)
         banner.clicked.connect(lambda: self._handle_click(path, on_clicked))
         banner.dismissed.connect(lambda: self._remove_banner(path))
         self.layout().addWidget(banner)

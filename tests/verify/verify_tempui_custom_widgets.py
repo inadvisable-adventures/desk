@@ -23,6 +23,7 @@ from desk.temp_ui import (  # noqa: E402
 from desk.custom_widgets import materialize, materialized_widget_dir  # noqa: E402
 from desk.desks import Desk, save_desk, load_desk  # noqa: E402
 from desk.event_mediator import EventMediator  # noqa: E402
+from desk.schema_registry import SchemaRegistry  # noqa: E402
 from desk.widgets import WidgetInfo  # noqa: E402
 from desk.server.runner import start_server  # noqa: E402
 
@@ -287,6 +288,7 @@ class _FakeWindow:
         self._custom_widget_sources = {}
         self._custom_widget_source_paths = {}
         self._custom_widget_content_hash = {}
+        self._schema_registry = SchemaRegistry()
         self.saved = []
         self.confirmed_messages = []
         self.info_messages = []
@@ -548,6 +550,11 @@ _FakeWindowWithView._bind_claude_widget = DeskWindow._bind_claude_widget
 _FakeWindowWithView._bind_external_indicator = DeskWindow._bind_external_indicator
 _FakeWindowWithView._bind_event_mediator = DeskWindow._bind_event_mediator
 _FakeWindowWithView._bind_error_indicator = DeskWindow._bind_error_indicator
+_FakeWindowWithView._check_schema_conflict = DeskWindow._check_schema_conflict
+_FakeWindowWithView._is_instance_currently_placed = DeskWindow._is_instance_currently_placed
+_FakeWindowWithView._notify_schema_conflict = DeskWindow._notify_schema_conflict
+_FakeWindowWithView._show_schema_conflict_popup = DeskWindow._show_schema_conflict_popup
+_FakeWindowWithView.find_frame_by_instance_id = DeskWindow.find_frame_by_instance_id
 
 
 def test_place_widget_shows_tempui_button_only_for_custom_widgets():
@@ -601,6 +608,9 @@ def test_place_widget_shows_tempui_button_only_for_custom_widgets():
 
 
 _FakeWindow._on_widget_changed_refresh_catalog = DeskWindow._on_widget_changed_refresh_catalog
+_FakeWindow._refresh_builtin_schemas = DeskWindow._refresh_builtin_schemas
+_FakeWindow._notify_schema_conflict = DeskWindow._notify_schema_conflict
+_FakeWindow._show_schema_conflict_popup = DeskWindow._show_schema_conflict_popup
 
 
 def test_on_widget_changed_refresh_catalog_preserves_custom_entries():

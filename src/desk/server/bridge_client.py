@@ -32,7 +32,13 @@ BRIDGE_CLIENT_TEMPLATE = """
     const response = await fetch(path, options);
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`Desk Bridge ${path} failed (${response.status}): ${text}`);
+      const err = new Error(`Desk Bridge ${path} failed (${response.status}): ${text}`);
+      // TODO e86a31b: a structured property, not just embedded in the
+      // message string -- lets calling code branch on e.g. err.status
+      // === 403 (a capability rejection) vs. err.status === 400 (a
+      // genuine not-found) without regex/substring-matching free text.
+      err.status = response.status;
+      throw err;
     }
     return response.json();
   }
@@ -68,6 +74,22 @@ BRIDGE_CLIENT_TEMPLATE = """
   window.desk = {
     workspace: {
       getState: () => call("GET", "/api/bridge/workspace/getState"),
+    },
+    state: {
+      get: (key, typeHint) =>
+        call(
+          "GET",
+          `/api/bridge/state/get?key=${encodeURIComponent(key)}` +
+            (typeHint !== undefined ? `&type_hint=${encodeURIComponent(typeHint)}` : "")
+        ),
+      set: (key, value, edit, typeHint) =>
+        call("POST", "/api/bridge/state/set", { key, value, edit: edit ?? null, type_hint: typeHint ?? null }),
+      getHistory: (key, limit) =>
+        call(
+          "GET",
+          `/api/bridge/state/getHistory?key=${encodeURIComponent(key)}` +
+            (limit !== undefined ? `&limit=${limit}` : "")
+        ),
     },
     fs: {
       readFile: (path) =>
@@ -114,6 +136,7 @@ BRIDGE_CLIENT_TEMPLATE = """
       getManifest: () => call("GET", "/api/bridge/self/getManifest"),
       getLocalStorage: () => call("GET", "/api/bridge/self/getLocalStorage"),
       setLocalStorage: (data) => call("POST", "/api/bridge/self/setLocalStorage", { data }),
+      setSubtitle: (text) => call("POST", "/api/bridge/self/setSubtitle", { text: text ?? null }),
     },
   };
 })();

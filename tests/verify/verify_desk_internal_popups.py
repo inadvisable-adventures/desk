@@ -120,6 +120,53 @@ def test_show_blocking_resolves_on_button_click():
     check("the popup is removed from the canvas after resolving", len(view._popup_frames) == 0)
 
 
+def test_scene_removal_is_deferred_not_synchronous():
+    # TODO 74a8b78: removeItem must not happen synchronously inside the
+    # click handler -- a real, confirmed Qt Graphics View reentrancy
+    # crash (SIGBUS) when it did, since this runs from inside
+    # QGraphicsScene's own still-unwinding mouse-event dispatch for the
+    # very click that triggered it.
+    from PyQt6 import sip
+
+    view = make_view()
+    service = PopupsService()
+    service.attach_view(view)
+
+    results = []
+    service.show("Confirm", "Are you sure?", ["Yes", "No"], "No", results.append)
+    frame = view._popup_frames[0]
+    proxy = frame.graphicsProxyWidget()
+
+    yes_button = None
+    for button in frame.content.findChildren(QPushButton):
+        if button.text() == "Yes":
+            yes_button = button
+    yes_button.click()
+
+    check("resolves and updates bookkeeping synchronously", results == ["Yes"] and frame not in view._popup_frames)
+    check("the frame is hidden immediately", not frame.isVisible())
+    check(
+        "the proxy is still in the scene immediately after the click -- removal is deferred, not synchronous",
+        proxy.scene() is not None,
+    )
+    check("the frame is not yet deleted immediately after the click", not sip.isdeleted(frame))
+
+    # See LEARNINGS.md: a plain processEvents() loop alone isn't
+    # guaranteed to run a deleteLater()-scheduled deletion in this
+    # environment -- DeferredDelete events must be drained explicitly.
+    from PyQt6.QtCore import QCoreApplication, QEvent
+
+    app.processEvents()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+    # The proxy is torn down as part of the frame's own deletion (the
+    # two are tightly coupled) -- sip.isdeleted, not proxy.scene(),
+    # since calling any method on an already-deleted wrapped object
+    # raises rather than returning a normal value.
+    check("after a pump, the proxy has actually been torn down", sip.isdeleted(proxy))
+    check("after a pump, the frame itself is deleted", sip.isdeleted(frame))
+
+
 def test_close_button_resolves_none_and_does_not_touch_normal_close_flow():
     view = make_view()
     service = PopupsService()
@@ -185,6 +232,7 @@ test_popup_is_always_frontmost()
 test_popup_not_in_normal_frame_pool()
 test_popup_rescales_with_zoom()
 test_show_blocking_resolves_on_button_click()
+test_scene_removal_is_deferred_not_synchronous()
 test_close_button_resolves_none_and_does_not_touch_normal_close_flow()
 test_clear_widgets_resolves_any_open_popup()
 test_popup_never_persisted_in_desk_state_frames()

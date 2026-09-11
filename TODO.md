@@ -6,6 +6,531 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+97bd090. COMPLETED: A "Desk Proc" mechanism: a one-time script an agent can create that
+   runs with real, in-process access to Desk itself (not just a
+   `kind: "html"` widget's Bridge API) -- e.g. reveal a specific placed
+   widget instance (the same action as clicking its titlebar eye
+   button) and then take a real pixel screenshot of it, saving a PNG.
+   Prioritized to the top of this file per direct user request.
+
+   This is deliberately a close sibling of the existing `Job` mechanism
+   (TODO `d7e66f6`, `tempui-jobs.md`) -- reuses its exact "tempui file →
+   notification → placed one-shot runner widget → Start button →
+   background-thread exec" shape and its `desk_procs/`-under-`.desk_temp`
+   materialization convention (mirroring `desk.jobs`) -- but is its own,
+   separate keyword and widget kind, not a new `Job` `kind`, because:
+   - A `Job`'s `kind: "python"` already runs with unrestricted in
+     -process access ("no sandboxing" per its own docstring), but that
+     access is Qt-thread-unsafe to use directly for anything touching
+     live widgets/the canvas -- the existing Job Runner deliberately
+     never does this. A Desk Proc needs a real, documented, thread-safe
+     way to do exactly that, which a generic Job has no reason to grow.
+   - The user explicitly asked for these notifications to "appear
+     clearly different from the normal tempui placement notifications
+     and be clearly labelled as a 'Desk Proc'" -- Job notifications
+     today are just plain-text banners, visually identical to every
+     other tempui kind (`_NotificationBanner` in
+     `temp_ui_notifications.py` has no per-kind styling at all). A
+     `DeskProc` gets a visually distinct banner (a bold "DESK PROC"
+     caption + its own border color), threaded through
+     `TempUiNotificationStack.notify` → `WorkspaceView.notify_temp_ui` →
+     `DeskWindow._notify_temp_ui`.
+
+   Suggested mechanism:
+   - New tempui DSL keyword `DeskProc<TAB>summary` (first line) + one or
+     more `Script<TAB>base64-chunk` lines -- Python source only (no
+     `kind`/`Capability` lines; unlike `Job` there's no `html` variant,
+     since the whole point is direct Desk-shell access, not
+     capability-scoped Bridge API access from inside a page).
+     `desk.temp_ui`: `DESK_PROC_KEYWORD`, `DeskProcDefinition` dataclass
+     (`summary`, `script_b64`), `parse_desk_proc` (mirrors `parse_job`
+     minus the `kind`/`Capability` handling), `detect_temp_ui_kind`
+     gains a `"desk_proc"` branch, `RESERVED_TEMPUI_KEYWORDS` gains the
+     new keyword.
+   - New `src/desk/desk_proc.py`, mirroring `src/desk/jobs.py` exactly
+     (`desk_proc_dir`, `materialize`, `materialize_script_body`), own
+     cache subdir `.desk_temp/desk_procs/<id>/` (`script.py` +
+     `desk_proc_source.py` for View Code).
+   - New `current_context` hook, `set_gui_thread_caller`/
+     `get_gui_thread_caller` -- lets in-process Python code running on a
+     background thread (a Desk Proc's exec, same as a `Job`'s) safely,
+     synchronously call into GUI-thread-owned `DeskWindow` state and get
+     a real return value back. Reuses the exact primitive the Local Web
+     Server's own Bridge API already relies on for this
+     (`desk.shell.bridge.GuiBridge.call`, already thread-safe by
+     design -- see its own docstring) -- `DeskWindow.__init__` sets it
+     to `self._handle.gui_bridge.call`, the same `GuiBridge` instance
+     `src/desk/app.py` already attaches to the window at startup.
+   - New `DeskWindow` methods: `screenshot_widget_instance(instance_id,
+     path) -> bool` (resolve via the existing
+     `find_frame_by_instance_id`, `frame.grab()`, resolve `path`
+     relative to `self.current_desk.directory` like `desk.fs.*`
+     already does, `mkdir(parents=True, exist_ok=True)`, `.save(path,
+     "PNG")`) and `screenshot_desk(path) -> None` (same, but
+     `self.grab()` of the whole main window -- same `.grab()` idiom
+     `widgets/feedback/widget.py`'s `_take_screenshot` already
+     establishes). "Reveal" reuses `zoom_to_widget_by_instance_id`
+     (TODO `7505703`) unchanged -- no new method needed for that part.
+   - New `widgets/desk_proc_runner/` (`kind: "python"`), closely
+     mirroring `widgets/job_runner/` (summary label, "View Code",
+     "Start", background-thread exec, stdout/stderr capture, the same
+     persisted-status/interrupted-on-reload handling) but simpler (no
+     `kind` branch -- always the background-thread-exec path). Injects
+     a small, curated `deskproc` object into the script's exec globals
+     (not raw process access as the *documented* interaction surface,
+     though nothing stops a script from `import`-ing internals directly
+     too, same trust level as a `Job`): `deskproc.reveal_widget
+     (instance_id) -> bool`, `deskproc.screenshot_widget(instance_id,
+     path) -> bool`, `deskproc.screenshot_desk(path) -> None`,
+     `deskproc.list_widget_instances() -> list[dict]` (thin wrapper
+     over the existing `DeskWindow.get_state_dict()`, the same data
+     `desk.workspace.getState()` already exposes to `kind: "html"`
+     widgets) -- every method routes through
+     `current_context.get_gui_thread_caller()` for thread safety.
+   - Notification styling: `_NotificationBanner` gains a `banner_style`
+     param (`"default"` | `"desk_proc"`), threaded through
+     `TempUiNotificationStack.notify`/`WorkspaceView.notify_temp_ui`;
+     `"desk_proc"` renders a bold "DESK PROC" caption line (non
+     -selectable, matching this project's own labels-aren't-selectable
+     convention) above the summary, plus a distinct border color, so
+     it's visually different from every other tempui notification at a
+     glance, not just by its text.
+   - New split doc `tempui-desk-proc.md` (mirrors `tempui-jobs.md`'s
+     shape), linked from `desk-temporary-ui.md`'s intro list (nine
+     built-in file types -> ten); `TEMPUI_DOC_VERSION` bumped; a new
+     `tempui-new-features.md` entry.
+   - **Decided**: no `html`-kind variant for `DeskProc` -- if a script
+     genuinely just needs capability-scoped Bridge API access, `Job`
+     already covers that; `DeskProc` exists specifically for direct
+     -to-shell actions a sandboxed `kind: "html"` page structurally
+     cannot do.
+   - **Decided**: `deskproc.screenshot_widget`/`screenshot_desk` grab
+     the target's real on-screen pixels via Qt's own `.grab()` --
+     independent of the canvas's current zoom/pan, since `.grab()`
+     rasterizes the widget's own paint output at its authored size, not
+     whatever the `QGraphicsProxyWidget` embedding currently renders it
+     at.
+   [planned: desk-proc-mechanism.md (COMPLETED)]
+
+   COMPLETED: `temp_ui.py` gained `DESK_PROC_KEYWORD = "DeskProc"`
+   (added to `RESERVED_TEMPUI_KEYWORDS`), a `DeskProcDefinition`
+   dataclass, and `parse_desk_proc` (mirrors `parse_job` minus
+   `kind`/`Capability`); `detect_temp_ui_kind` gained a `"desk_proc"`
+   branch. New `src/desk/desk_proc.py` mirrors `desk.jobs` under its
+   own `desk_procs/` cache subdir (`materialize`/
+   `materialize_script_body`). `current_context.py` gained
+   `set_gui_thread_caller`/`get_gui_thread_caller` -- wired in
+   `DeskWindow.__init__` to `self._handle.gui_bridge.call` (the same
+   `GuiBridge` instance the Local Web Server's own Bridge API routes
+   already use for thread-safe GUI-thread calls). `window.py` gained
+   `DESK_PROC_RUNNER_WIDGET_ID` (added to `TEMP_UI_WIDGET_IDS`),
+   `_temp_ui_widget_id_for`/`_notify_temp_ui` `"desk_proc"` branches
+   (the latter now threads a `banner_style` through to
+   `view.notify_temp_ui`), and two new methods,
+   `screenshot_widget_instance(instance_id, path) -> bool` (grabs the
+   real placed `WidgetFrame`, resolves `path` like `desk.fs.*`, saves a
+   PNG) and `screenshot_desk(path) -> bool` (grabs the Workspace Canvas
+   viewport, not the whole native window). `canvas.py`'s
+   `WorkspaceView.notify_temp_ui` and
+   `temp_ui_notifications.py`'s `_NotificationBanner`/
+   `TempUiNotificationStack.notify` gained a `banner_style` parameter
+   (`"default"` | `"desk_proc"`) -- the latter renders a distinct amber
+   border plus a bold, non-selectable "DESK PROC" caption line above
+   the summary, so a Desk Proc notification is never mistaken for an
+   ordinary tempui placement notification at a glance. New
+   `widgets/desk_proc_runner/` (`kind: "python"`, mirrors
+   `widgets/job_runner/` minus the `kind` branch), with a `DeskProcApi`
+   class exposed to the script's exec namespace as `deskproc`
+   (`reveal_widget`, `screenshot_widget`, `screenshot_desk`,
+   `list_widget_instances`), every method routing through
+   `current_context.get_gui_thread_caller()` for thread safety. New
+   split doc `tempui-desk-proc.md` (added to `SPLIT_DOC_CONTENT`,
+   linked from `DOC_TEMPLATE`'s file-type list, nine -> ten);
+   `TEMPUI_DOC_VERSION` bumped 37 -> 38 with a matching
+   `_NEW_FEATURES_DOC` entry. New verify coverage, real (no mocking):
+   `verify_desk_proc_tempui_parsing.py` (14 checks: parsing/rejection/
+   `detect_temp_ui_kind`/reserved-keyword); `verify_desk_proc_materialize.py`
+   (11 checks: real file writes, malformed-base64 tolerance, the
+   execution-entry/View-Code-copy coexistence); `verify_desk_proc_runner_widget.py`
+   (25 checks: real background-thread exec reaching done/errored with
+   captured stdout/traceback, the `deskproc` global's four methods
+   actually routing through a fake GUI thread caller, persisted-status/
+   interrupted-on-reload/View-Code, all mirroring
+   `verify_job_runner_widget.py`'s equivalent coverage);
+   `verify_desk_proc_notification_routing.py` (8 checks: widget-id
+   resolution, summary text, and `banner_style` contrasted against an
+   ordinary Question file's `"default"` style);
+   `verify_desk_proc_notification_banner.py` (10 checks: the real,
+   non-selectable "DESK PROC" caption and distinct stylesheet, real Qt
+   widget construction); `verify_desk_proc_screenshot.py` (13 checks:
+   real `WidgetFrame` placement via the same `_FakeWindow`/
+   `_place_widget`-binding harness `verify_widget_error_indicator.py`
+   already establishes, real PNG files with correct magic bytes,
+   relative/absolute path resolution, missing-parent-directory
+   creation); `verify_tempui_desk_proc_doc.py` (17 checks: doc-set
+   completeness/version bump). Fixed one now-stale assertion in the
+   pre-existing `verify_tempui_jobs_doc.py` (the file-type count
+   check) and `verify_job_notification_routing.py`'s fake
+   `notify_temp_ui` signature, both made stale by this change's own
+   `banner_style` parameter/file-type-count bump. Full
+   `tests/verify/` suite (122 scripts) passes.
+
+a762501. COMPLETED: Expose an in-process MCP server as a live, queryable Desk <-> agent
+   channel -- a real request/response surface for anything *dynamic*
+   TODO `b9d3de5`'s static env-var fix can't answer (what's currently
+   placed, live widget state, reveal/screenshot a widget right now,
+   force a save), as a parallel or eventual replacement for the
+   file-drop-and-click-Start tempui/`Job`/`DeskProc` ceremony for
+   agent-initiated actions specifically. Merges two `PARKINGLOT.md`
+   entries that turned out to be the same underlying shape (moved here,
+   removed from there) -- "a way for agents ... to reach into the
+   running app for more than just reading/writing files" and
+   "two-directional tempui: let Desk call *into* a running Claude
+   session" -- plus this session's own discussion of TODO `b9d3de5`.
+   Prioritized per direct user request (grouped with the related
+   `b9d3de5`/`765bd2a` cluster above).
+
+   **Grounding confirmed this session (2026-09-01), against the
+   actually-installed SDK**: `claude_agent_sdk.ClaudeAgentOptions.mcp_servers`
+   accepts an `McpSdkServerConfig` -- an **in-process** MCP server (no
+   subprocess, no port to manage), wired in alongside the `env=` fix at
+   the same `ClaudeSession._connect_and_maybe_prompt` call site
+   (`src/desk/claude_session.py:105`). This meaningfully lowers the
+   cost of "the formalized channel" option from the `b9d3de5`
+   discussion -- it's a Python `Server` object passed into an existing
+   options call, not a real network service to stand up/secure/manage.
+
+   Candidate first tools, all thin wrappers over methods already built
+   for TODO `97bd090` (`DeskProc`) and already safely GUI-thread
+   -marshaled via `current_context.get_gui_thread_caller()`: reveal a
+   widget (`zoom_to_widget_by_instance_id`), screenshot a widget/the
+   whole canvas (`screenshot_widget_instance`/`screenshot_desk`), list
+   currently-placed widget instances (`get_state_dict`, the same data
+   `desk.workspace.getState()` already exposes), and forcing an
+   on-demand `save_current_desk()` (the original parked item's own
+   single most-wanted capability, not yet covered by anything). Once
+   this exists, `DeskProc`'s reveal/screenshot use case becomes a
+   direct one-call tool use instead of a whole tempui-file round trip
+   -- `Job`/`DeskProc` would still matter as the escape hatch for
+   anything not covered by a built-in tool, not be made obsolete
+   outright.
+
+   **Also add a simple TODO API** (per direct user request, added
+   after this item was first written): read-only tools --
+   `list_todo_items()`/`get_next_todo_item()` -- wrapping the already
+   -existing `desk.todo_file.parse_todo_file`/`TodoItem` (id, status,
+   description, plan) that already backs the real TODO widget, so an
+   agent can check what's already `COMPLETED`, what's `PENDING`, and
+   what the current first actionable item actually is *before* diving
+   in, rather than hand-parsing `TODO.md` itself or trusting stale
+   context from earlier in its own session. Directly motivated by a
+   real collision this same session hit: one agent session picked an
+   item to work based on a stale mental model of `TODO.md`'s order
+   while a second, independent session had already reprioritized it --
+   discovered only after the fact, via `git log` (see the new
+   `PARKINGLOT.md` item on concurrent-session UX, surfaced by the same
+   incident). Deliberately **read-only for this first pass** -- a
+   mutating tool (mark an item `COMPLETED`, reorder it) would let an
+   agent shortcut this project's own plan-then-implement-then-verify
+   discipline via a single tool call, which is a real trust/process
+   question worth its own separate decision, not a default to back
+   into here.
+
+   **The harder, still-unresolved half, carried over from the
+   "two-directional tempui" item verbatim**: an MCP tool call is
+   fundamentally agent-initiated (the agent asks, the server answers)
+   -- it does not, by itself, give Desk a way to push a structured
+   message *into* an already-running session mid-turn (a button click,
+   another widget's event, a user's answer to a Desk-routed question)
+   the way the "two-directional" framing originally wanted. Whether MCP
+   sampling/notifications can approximate this, or whether that
+   direction needs an entirely different mechanism (a hook? the
+   existing `event_mediator.py` pub/sub, polled or awaited somehow?),
+   is not resolved -- worth treating as a distinct sub-problem within
+   this item rather than assuming the MCP server trivially covers it.
+
+   Also carried over, still open: the original item's own security/
+   trust question (should a local MCP server be able to force actions
+   in a running GUI app the user is looking at, and how is that
+   authenticated/scoped -- e.g. per-Claude-(Desk)-widget-instance only,
+   or broader); and the finer-grained-permission tangent from the
+   two-directional item (per-action/per-location `can_use_tool` rules
+   instead of one blanket `permission_mode`, e.g. `Bash(ls:*)`-style
+   specifiers `ClaudeAgentOptions.allowed_tools`/`disallowed_tools`
+   already partially support) -- related, but a separable design
+   question from the MCP channel itself, not resolved by this item's
+   own first implementation pass -- see this item's own `[planned:
+   ...]` note below for the concrete scope that pass actually covers.
+   [planned: desk-mcp-server.md]
+   COMPLETED: `src/desk/shell/desk_mcp_server.py` (new) -- an in-process
+   MCP server (`claude_agent_sdk.create_sdk_mcp_server`, `type: "sdk"`,
+   no subprocess/port) with seven `@tool`-decorated handlers:
+   `desk_reveal_widget`, `desk_screenshot_widget`, `desk_screenshot_desk`,
+   `desk_list_widget_instances`, `desk_save`, `desk_list_todo_items`,
+   `desk_get_next_todo_item`. Every handler checks `current_context
+   .get_main_window()` for `None` first, then marshals onto the GUI
+   thread via `await loop.run_in_executor(None, gui_thread_caller, fn)`
+   -- the same idiom `desk.server.app.run_on_gui` already uses -- rather
+   than blocking the session's own private event loop; a missing GUI
+   thread caller or main window returns a clear non-crashing "not ready
+   yet" text result instead of raising. The two TODO tools reuse
+   `desk.todo_file.find_nearest_todo_file`/`parse_todo_file` directly, so
+   they can never drift from what the real TODO widget shows, and are
+   deliberately read-only (list/get-next only, no mark-complete/reorder)
+   per this item's own note above on preserving plan-then-verify
+   discipline. `src/desk/claude_session.py` -- `_connect_and_maybe_prompt`'s
+   `ClaudeAgentOptions(...)` call gains `mcp_servers={"desk":
+   build_desk_mcp_server()}`, so every Claude (Desk) session gets the
+   channel with no extra wiring; tool calls (`mcp__desk__...`) flow
+   through the existing `_can_use_tool` hook exactly like any other tool,
+   confirmed directly against a real live session (no new approval UI
+   needed). `widgets/claude_desk/widget.py` -- `CLAUDE_WIDGET_PROMPT`
+   extended to tell the agent about the seven new tools and to prefer
+   them over the file-drop `Job`/`DeskProc` ceremony when one already
+   covers the need, and to check `desk_get_next_todo_item` rather than
+   trust a possibly-stale earlier read of `TODO.md` (the exact
+   concurrent-session collision this item's own body describes above).
+   New: `tests/verify/verify_desk_mcp_server.py` (31 checks) -- each
+   handler called directly as a plain async function against a fake
+   `current_context`/fake `DeskWindow`-shaped object (no real SDK
+   session, matching `verify_claude_desk_widget.py`'s established
+   avoid-the-real-API convention); covers the happy path for all seven
+   tools, the "not ready yet" text result with no GUI thread caller and
+   with no main window, and the TODO tools against a real temporary
+   `TODO.md` fixture (mixed `COMPLETED`/`PENDING`/plain items, the
+   next-actionable-item resolution, and the all-done/no-`TODO.md`-found
+   error cases). Full `tests/verify/` regression suite (134 scripts):
+   found and fixed one unrelated pre-existing flake along the way, per
+   this project's investigate-dont-just-note convention --
+   `verify_shared_document_editor_base.py`'s one `tempfile
+   .TemporaryDirectory()` call was missing `ignore_cleanup_errors=True`,
+   hitting the same Qt WebEngine profile-teardown race already documented
+   in `LEARNINGS.md` for TODO `a5f66cc` (`OSError: [Errno 66] Directory
+   not empty` during interpreter-exit cleanup, not a real functional
+   failure); fixed, then verified clean across 3 consecutive runs. Full
+   suite reruns clean afterward, 0 failures. As noted in the still-open
+   `PARKINGLOT.md` self-hot-reload item, this item was originally
+   implemented inside a live Claude (Desk) widget session, which kept
+   getting torn down mid-edit by its own hosting widget's hot reload
+   whenever it touched `widgets/claude_desk/widget.py`; the user
+   eventually gave up retrying that path and asked a session outside
+   Desk (this one) to reconstruct the already-complete, uncommitted work
+   from `git status`/`git diff` and the already-written plan file, verify
+   it, and finish the bookkeeping.
+
+e9eddba. COMPLETED: Add a permission-mode selector to the Claude (Desk) widget
+   (`widgets/claude_desk/widget.py`). TODO `a596dbf` hardcoded
+   `PERMISSION_MODE = "default"` (a deliberate deviation from the
+   plan's suggested `"auto"` parity default with the original Claude
+   widget, TODO `2dca4c8` -- found during verification that `"auto"`
+   gates tool calls inconsistently, while `"default"` gates reliably,
+   and this widget's whole point is a real, meaningful approval UI).
+   Making that a real, visible, user-changeable control (alongside the
+   existing model combo box) rather than a fixed constant lets someone
+   trade consistency for fewer prompts if they want to, the same
+   tradeoff `claude`'s own `--permission-mode` flag already exposes on
+   the CLI. **Resolved**: the mode changes live, mid-session, via
+   `ClaudeSDKClient.set_permission_mode` (confirmed directly in the
+   installed SDK -- documented and supported specifically for this,
+   not just settable at connect time), not only before `start_session`
+   -- restricting it to start-only would be strictly worse for no
+   benefit, given the SDK already makes live switching easy. Prioritized
+   per direct request.
+   [planned: claude-desk-permission-mode-selector.md]
+   COMPLETED: `src/desk/claude_session.py` -- `ClaudeSession
+   .set_permission_mode(mode)`, mirroring `send_prompt`'s exact
+   guard-then-`asyncio.run_coroutine_threadsafe(...)` shape (a no-op
+   before any session has started or after it's stopped); a private
+   `_set_permission_mode` coroutine awaits the real SDK's own
+   `ClaudeSDKClient.set_permission_mode`, surfacing a failure through
+   the existing `session_error` signal rather than a new channel.
+   `widgets/claude_desk/widget.py` -- the hardcoded `PERMISSION_MODE =
+   "default"` constant replaced with `PERMISSION_MODE_CHOICES` (the six
+   real `claude_agent_sdk.types.PermissionMode` values --
+   `default`/`acceptEdits`/`plan`/`bypassPermissions`/`dontAsk`/`auto`
+   -- with human-readable labels, the same `(label, value)` shape
+   `MODEL_CHOICES` already uses) and a new combo box next to the
+   existing model combo, defaulting to "Default" (same reasoning as
+   the constant it replaces: `can_use_tool` gates reliably under
+   `default`, inconsistently under `auto`); `start_session` reads the
+   initial mode from the combo instead of the removed constant; a new
+   `_on_permission_mode_changed` slot calls `ClaudeSession
+   .set_permission_mode` live on every change, with no extra
+   "is a session currently active" bookkeeping needed (the session's
+   own guard already no-ops correctly before/after a live connection).
+   New coverage in `tests/verify/verify_claude_desk_widget.py` (+15
+   checks, 17 total in that file, none touching the real Claude API):
+   the combo offers all six modes and defaults correctly;
+   `start_session` passes each choice's real SDK value (not its label)
+   to a fake session, for all six; changing the combo live-calls
+   `set_permission_mode` with the newly-selected value, repeatably; a
+   real `ClaudeSession.set_permission_mode` call before any session has
+   started is a genuine no-op, not a crash. Full `tests/verify/`
+   regression suite passes (131 scripts total, 0 unexpected failures --
+   the count reflects other concurrent work landed on this repo since
+   this session's prior TODO; the sole failure,
+   `disabled_verify_claude_desk_widget_claude_api.py`, is an
+   already-filed, already-disabled, unrelated flaky item).
+
+49e3732. COMPLETED: A `build_job.py`/`build_desk_proc.py` authoring helper,
+   mirroring `build_widget.py`. Converted from a `PARKINGLOT.md` entry surfaced
+   while using TODO `97bd090` (`DeskProc`) for real, right after having
+   done the same thing by hand for `Job`/`DefineWidget` files earlier
+   the same session. Prioritized per direct user request.
+
+   Authoring a `Job`/`DeskProc` tempui file today means hand-writing a
+   base64-encode-and-chunk script every single time
+   (`base64.b64encode(...)`, split into `Script\t...` lines, write the
+   uuid file under `.desk_temp/`) -- there's no equivalent of
+   `.desk_temp/build_widget.py` (which does exactly this for
+   `DefineWidget`, from a real `.ts`/`widget.json` source directory) for
+   either one-shot-script keyword.
+
+   Suggested mechanism: a script taking a summary string plus a `.py`
+   file path (and, for a `Job`, a `kind`/capability list, since
+   `DeskProc` has neither) and emitting a ready-to-drop tempui file
+   under `.desk_temp/`, mirroring `build_widget.py`'s own CLI shape
+   (`python3 .desk_temp/build_job.py <summary> <script.py>` or similar
+   -- exact argument shape not decided). Should cover both `Job` and
+   `DeskProc` (near-identical `Script<TAB>chunk` encoding, just a
+   different first line and, for `Job`, extra `Capability` lines) --
+   one script, not two, sharing the chunking/encoding helper.
+   [planned: build-job-or-desk-proc-helper.md (COMPLETED)]
+
+   COMPLETED: `temp_ui.py` gained `_BUILD_JOB_OR_DESK_PROC_SCRIPT` (the
+   generated script's full source, mirroring `_BUILD_WIDGET_SCRIPT`'s
+   own wrapping) and `BUILD_JOB_OR_DESK_PROC_SCRIPT_FILENAME =
+   "build_job_or_desk_proc.py"`, added to `SPLIT_DOC_CONTENT`;
+   `TEMPUI_DOC_VERSION` bumped 38 -> 39 with a matching
+   `_NEW_FEATURES_DOC` entry; `DOC_TEMPLATE`'s existing
+   `build_widget.py` paragraph extended to mention it; `_JOBS_DOC`/
+   `_DESK_PROC_DOC` each gained a short cross-reference with a real
+   invocation example. The generated script itself:
+   `build_desk_proc(summary, script_path)`/`build_job(kind, summary,
+   script_path, capabilities)` do the base64-encode-and-chunk work
+   (shared `_chunk`/`_check_single_line_safe` helpers -- the latter
+   rejects a tab/newline in `summary`/a capability name with a clear
+   error instead of silently producing a tempui file that parses
+   wrong); `argparse` `desk-proc`/`job` subcommands; `main` writes
+   `.desk_temp/<uuid>` and prints the path, same shape
+   `build_widget.py`'s own `main` already has. New verify coverage,
+   real (no mocking): `verify_build_job_or_desk_proc_script.py` (26
+   checks: runs the real generated script as a real subprocess for
+   both `desk-proc` and `job` python/html, confirms the output
+   round-trips through this repo's own real `parse_desk_proc`/
+   `parse_job`, multi-chunk scripts, and all three error paths --
+   tab-in-summary, newline-in-capability, missing script file);
+   `verify_tempui_build_job_or_desk_proc_doc.py` (11 checks: doc-set
+   completeness/version bump, the generated script itself compiles).
+   Full `tests/verify/` suite (125 scripts) passes.
+
+b9d3de5. Give an in-Desk agent a documented way to learn its own
+   placed widget instance id, via `ClaudeAgentOptions.env` (a static,
+   launch-time fact, not a live query). Converted from a
+   `PARKINGLOT.md` entry, surfaced using TODO `97bd090` (`DeskProc`) to
+   screenshot "the widget hosting this very conversation" -- there was
+   no direct way to answer "which placed widget instance am I": had to
+   open the current `.desk` file by hand and pattern-match the
+   `claude_desk` entries' `instance_id` against the session's own
+   transcript-directory name (which happens to be the instance id, but
+   that's an undocumented implementation detail to rely on, not a
+   supported lookup). Prioritized per direct user request.
+
+   **Decided (2026-09-01 discussion):** scoped down from the original
+   open "kludge vs. formalized channel" question to just the
+   kludge-but-a-good-one half -- an environment variable, not a
+   sentence folded into the initial prompt. Confirmed directly against
+   the installed SDK that `claude_agent_sdk.ClaudeAgentOptions` already
+   has a real `env: dict[str, str]` field, unused today
+   (`desk.claude_session.ClaudeSession._connect_and_maybe_prompt`,
+   `src/desk/claude_session.py:105`, only sets
+   `session_id`/`resume`/`model`/`permission_mode`/`cwd`/`can_use_tool`).
+   Also confirmed `DeskWindow._bind_claude_desk_widget`
+   (`src/desk/shell/window.py:479-480`) already comments that "a
+   claude/claude_desk widget's instance_id doubles as its session_id"
+   -- so the value to inject is already threaded down to
+   `ClaudeSession.start`'s own `session_id` parameter, nothing new to
+   plumb, just pass it again as `env={"DESK_WIDGET_INSTANCE_ID":
+   session_id}` (or similar) at the same call site. An env var beats a
+   prompt sentence for this specific need: zero context-token cost,
+   survives context compaction perfectly (it's not conversation
+   history), and is trivially extensible to more static self-facts
+   (Desk's own directory, the widget's kind, ...) without prompt bloat
+   or re-deriving `_doc_path()`-style plumbing per fact. Should cover
+   both Claude-hosting widget kinds -- `widgets/claude_desk/widget.py`
+   (`ClaudeAgentOptions.env`, confirmed to exist) and
+   `widgets/claude/widget.py` (the PTY-based one, which spawns a real
+   OS subprocess directly and so can just set `env` on that subprocess
+   the ordinary way) -- since the same "which instance am I" gap
+   applies to either.
+
+   Everything *dynamic* (list what's currently placed, live state,
+   reveal/screenshot another widget right now, force a save) is
+   explicitly **not** this item's concern -- moved to TODO `a762501`
+   (the in-process MCP server) instead, per the same discussion: a
+   static env var can't answer a question whose answer changes during
+   the session, and trying to make it do so is the wrong tool. Not
+   designed in full or planned yet -- intentionally left unplanned per
+   explicit instruction not to implement yet.
+
+765bd2a. Design the syntax and semantics of a simple pipe-chained verb
+   DSL for expressing a chain of Desk actions -- deliberately scoped to
+   the *language itself* (grammar, verb/argument shape, how values
+   flow between stages, the escape-hatch's own denotation, error/
+   partial-failure semantics), independent of how an instance of it
+   gets delivered to Desk (a dropped `Job`/`DeskProc` tempui file's
+   `Script` line, an MCP tool argument via TODO `a762501`, or anything
+   else). Converted from a `PARKINGLOT.md` entry (originally "a
+   narrower, zero-code, single-click primitive for reveal/screenshot a
+   widget specifically"), redirected toward a general pipeline-DSL
+   approach in an earlier discussion, then **re-scoped again in this
+   session's follow-up discussion** to explicitly decouple the DSL's
+   own design from the file-vs-MCP transport question once `a762501`
+   came up as a live parallel/alternative transport -- the DSL should
+   come out the same regardless of which transport(s) end up carrying
+   it. Prioritized per direct user request.
+
+   Suggested direction (per explicit user guidance -- not a finished
+   design, a starting point to flesh out during actual planning):
+   - A pipeline expression chains built-in verbs with `|`, shell-style,
+     each verb taking plain arguments and (optionally) consuming the
+     previous stage's output -- e.g. something in the shape of
+     `reveal_widget abc123 | screenshot_widget abc123 shots/x.png |
+     open_image`.
+   - **Escape hatch**: a pipeline stage can instead be an inline,
+     base64-encoded, functional Python snippet (a single expression or
+     function, not a full script) for logic no built-in verb covers --
+     exact denotation not decided (e.g. a `py:<base64>` stage syntax).
+   - **Do not convert values into strings needlessly.** A stage's real
+     Python return value (a `dict`, a `list`, a `bool`, raw image
+     bytes, ...) should pass directly to the next stage as itself when
+     both run in the same process, not be forced through a string
+     encoding/decoding round trip just because the syntax looks
+     shell-like.
+   - **Use temp files as makes sense** -- specifically when a value
+     needs to survive a process boundary, be inspected/opened by
+     something outside this pipeline (e.g. handing a screenshot's own
+     PNG bytes to the Image Viewer via a real file, the same way
+     `deskproc.screenshot_widget` already does), or is large/binary
+     enough that passing it as an in-memory string would be wasteful or
+     lossy.
+
+   Open, undecided questions to work out during actual planning: how
+   verbs are registered/discovered (a fixed built-in list, mirroring
+   `deskproc.*`'s own methods, and/or the candidate MCP tools from
+   `a762501`? something a widget/domain package could extend?); how a
+   verb's own argument parsing/type coercion works given "everything
+   after a keyword is one opaque value" is the tempui DSL's existing
+   convention elsewhere (a convention this DSL need not inherit, since
+   it's explicitly not tied to being a tempui keyword anymore); and
+   what the DSL itself defines as its error/partial-failure reporting
+   *contract* (a structured per-stage result value, at minimum) --
+   independent of how any given transport chooses to surface that
+   (a Runner widget's status display, an MCP tool's return value,
+   or something else). Not designed in full or planned yet --
+   intentionally left unplanned per explicit instruction not to
+   implement yet.
+
 1239cfd. COMPLETED: Stop using counting numbers to identify TODO items — this
    item's own id (visible once this file is converted, right below)
    proves the scheme it describes. Priority/work order is now
@@ -6312,6 +6837,938 @@ c4d79f0. COMPLETED: Fix file-watcher deadlock: `FileWatcherService.watch()` (`sr
    `watchdog/observers/api.py:304`'s `with self._lock:`.
    [planned: file-watcher-schedule-deadlock.md]
 
+d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
+   script can run with real widget-context capabilities -- notably
+   Bridge API access, which no agent-run script can reach today --
+   without needing to build out a full tempui `DefineWidget`/
+   `widgets/<id>/` registration for a single ad-hoc task. Prompted by
+   an agent's own observation while working on Desk (this session)
+   that it's "silly" an agent can't just use `window.desk.*` for a
+   one-off Bridge API call the way a real `kind: "html"` widget's own
+   JS can. Related to, but a materially different shape from,
+   `../FEEDBACK/FEEDBACK-DESK-batch-ingestion-job-concept-2026-08-03-1634.md`
+   (see the "Notes from Desk" section added to that file for the
+   relationship) -- that item is long-running/checkpointed/resumable
+   supervised pipelines; this one is a single one-shot run with no
+   persistence/checkpoint concept at all.
+
+   Suggested mechanism, following this project's own established
+   tempui-DSL-file-drop conventions rather than inventing a new
+   delivery channel:
+   - A new tempui DSL keyword (e.g. `Job`, added to
+     `RESERVED_TEMPUI_KEYWORDS`/`detect_temp_ui_kind` in
+     `src/desk/temp_ui.py`, mirroring `DEFINE_WIDGET_KEYWORD`'s own
+     shape) declares a summary line, a `kind` (`python` or `html`),
+     zero or more `Capability<TAB>name` lines for the `html` case
+     (same shape/precedent as `DefineWidget`'s own `Capability` lines,
+     TODO `f693275`), and the script content itself -- an agent drops
+     a file into `.desk_temp` the same way any other tempui file is
+     dropped today.
+   - `TempUiManager`'s existing directory watcher already turns any
+     new `.desk_temp` file into a `file_added` signal with no new
+     plumbing needed; `DeskWindow._on_temp_ui_file_added` /
+     `_notify_temp_ui` / `_activate_temp_ui`
+     (`src/desk/shell/window.py:1553-1683`) is the exact existing
+     "new file -> notification -> click -> open a widget bound to it"
+     pipeline every other tempui kind (Scratch, Question,
+     DiscussParkingLotItem, ...) already uses -- a new "Job Runner"
+     widget kind would bind to the Job file the same way, via
+     `_bind_temp_ui_content`.
+   - The Job Runner widget itself shows: the declared summary; a
+     "View Code" button that opens the script's own text in the
+     Editor widget (mirroring `desk.editor.openOrScrap`/
+     `DeskWindow.open_editor_or_scrap`, `window.py:774`, as the
+     existing "show me this text in a real editor" precedent -- though
+     the script lives inside the tempui file's own DSL-wrapped
+     content here, not a standalone file, so this may need a
+     "materialize just the script body to a temp file first" step);
+     and a "Start" button, inert until clicked (the point being: no
+     code runs without an explicit, visible user action -- this is
+     real code execution triggered by an agent-written file, so the
+     confirm-before-running step is load-bearing, not optional chrome).
+     **Decided**: View Code is the only review step -- no separate
+     capability/risk summary or harder confirmation dialog on top of
+     Start; matches how ordinary code review already works (once the
+     source is visible, that's the review).
+   - On Start, dispatch by the declared `kind`:
+     - `html`: materialize + mount as a real, ephemeral `kind: "html"`
+       widget instance, reusing `desk.custom_widgets.materialize` and
+       the per-instance token/`QWebEngineProfile` isolation TODO
+       `a5f66cc` already built for `DefineWidget` -- the script's own
+       JS gets an authenticated `window.desk.*` Bridge API scoped to
+       exactly the `Capability` lines it declared, the same coarse
+       per-resource capability check `require_caller` already enforces
+       for every other `kind: "html"` widget (`app.py:224`); no new
+       auth/injection/capability mechanism needed, just a new source
+       of a `WidgetInfo.capabilities` list.
+     - `python`: **Decided**: simple direct-exec, not
+       `PythonWidgetHost`'s `build() -> QWidget` pattern -- run the
+       script in a fresh module namespace with the `desk` package
+       importable, capturing stdout/stderr/exceptions for the status
+       display below. Proportionate to "a one-time script," not a
+       real, persistent interactive widget.
+   - A status display in the Job Runner widget (executing / done /
+     errored) -- no progress protocol, run history, or resumability
+     (that's the sibling FEEDBACK item's own, heavier concept).
+   - **Decided**: a run Job file is kept (not deleted) after running,
+     but its Start button becomes inert/hidden once it's finished --
+     a record of what ran, not a re-runnable saved tool.
+   - **Agent-facing documentation must be updated as part of this
+     item, not left as a follow-up** -- the whole point is giving
+     agents a capability they don't know exists yet, so the tempui doc
+     set an agent actually reads (`src/desk/temp_ui.py`'s doc
+     constants, likely a new split doc file or a new section in
+     `_CUSTOM_WIDGETS_DOC`, matching the established doc-split
+     convention) needs to explain the `Job` keyword, its file format
+     (summary/`kind`/`Capability` lines/script body), and the
+     `html`/`python` execution split, with the usual
+     `TEMPUI_DOC_VERSION` bump and matching `_NEW_FEATURES_DOC` entry
+     (same convention every other tempui-DSL addition already follows
+     -- see TODO `e42469e` for what happens when a real capability
+     ships without this: agents kept not finding out it existed).
+   [planned: lightweight-agent-job-mechanism.md (COMPLETED)]
+
+   COMPLETED: `temp_ui.py` gained `JOB_KEYWORD = "Job"` (added to
+   `RESERVED_TEMPUI_KEYWORDS`), a `JobDefinition` dataclass, and
+   `parse_job` (mirrors `parse_define_widget` exactly: `Job<TAB>kind
+   <TAB>summary` first line, `Capability<TAB>name` lines, `Script<TAB>
+   base64-chunk` lines concatenated in file order); `detect_temp_ui_kind`
+   gained a `"job"` branch. New `src/desk/jobs.py` mirrors
+   `desk.custom_widgets` under its own `jobs/` cache subdir:
+   `materialize` (writes an execution-ready `index.html`/`script.py`
+   by kind) and `materialize_script_body` (View Code's own separate
+   plain-text copy, named distinctly so it never collides with the
+   execution entry). `current_context` gained one new hook,
+   `set_html_job_starter`/`get_html_job_starter` -- `python`-kind
+   execution needed no `DeskWindow` involvement at all (a pure
+   background-thread direct-exec, `git_diff/widget.py`'s own
+   `_Relay(QObject)` shape). `window.py` gained
+   `JOB_RUNNER_WIDGET_ID`, `_temp_ui_widget_id_for`/`_notify_temp_ui`
+   `"job"` branches (Job is Scratch/Question-shaped -- one file, one
+   bound instance via the *existing*, unmodified
+   `_bind_temp_ui_content` fallback branch, not `DefineWidget`'s
+   two-step shape), `JOB_RUNNER_WIDGET_ID` added to
+   `TEMP_UI_WIDGET_IDS` (restore reconnection), and
+   `start_html_job(job_id, definition, on_status)`: materializes,
+   registers a `WidgetInfo` scoped to exactly the declared
+   `Capability` lines directly into `self._widgets` (never through
+   `_register_custom_widget` -- that machinery is for a reusable,
+   promotable widget *kind*; a Job is a one-shot instance), mounts on
+   the real running server, and places a real, visible `ChromiumWidget`
+   -- `job_id` doubles as both widget id and instance id.
+   `on_status("executing"/"done"/"errored", detail)` reuses
+   `ChromiumWidget`'s own existing `loadFinished`/`error_state_changed`
+   signals, no new ones needed. New `widgets/job_runner/` (`kind:
+   "python"`): summary/kind display, View Code (materializes the
+   script body, calls `current_context.get_editor_or_scrap_opener()`),
+   Start (dispatches by kind), a status display, `get_widget_local_storage`/
+   `set_widget_local_storage` (persists `{"status", "detail"}` across
+   a Desk reload -- a restored `"executing"` status is shown as
+   `"interrupted"` with Start re-enabled, not a permanently stuck
+   widget), and `has_unsaved_local_edits` (`True` once started,
+   reusing `_refresh_live_temp_ui`'s existing Scratch-widget-established
+   opt-out mechanism so an external edit to an already-started Job's
+   file can't clobber it). `temp_ui.py` also gained a new split doc,
+   `tempui-jobs.md` (file format, the real capability-namespace list,
+   an explicit "Done means page-load-finished, not that your own async
+   Bridge calls resolved" caveat, and a worked `python`-kind example),
+   `TEMPUI_DOC_VERSION` bumped 30->31 with a matching comment block and
+   `_NEW_FEATURES_DOC` entry, and `DOC_TEMPLATE`'s file-type list
+   bumped eight->nine with a new `Job` bullet linking to the new doc.
+   New verify coverage, real (no mocking): `verify_job_tempui_parsing.py`
+   (17 checks: parse round-trip including multi-chunk `Script` lines,
+   garbage rejection, `detect_temp_ui_kind`); `verify_jobs_materialize.py`
+   (14 checks: real file writes by kind, malformed-base64 tolerance,
+   the two materialize paths coexisting in the same job directory
+   without colliding); `verify_job_runner_widget.py` (21 checks: real
+   `QWidget` construction, a real background-thread python-kind
+   execution reaching "done" with captured stdout or "errored" with a
+   real captured traceback, persisted-status round-trip including the
+   interrupted-on-restore case, View Code's real materialize-then-open
+   call, and the html-kind dispatch through the starter hook);
+   `verify_html_job_execution.py` (13 checks, real `start_server` +
+   a real, visible `ChromiumWidget`, `os._exit()` per TODO `a5f66cc`'s
+   established pattern: confirmed via a real HTTP round trip that a
+   declared `workspace` capability call succeeds while an undeclared
+   `fs` capability call gets a real 403 -- `err.status` from TODO
+   `e86a31b` made this assertion possible without string-matching);
+   `verify_job_notification_routing.py` (5 checks: the notification/
+   routing dispatch for a real Job file); `verify_tempui_jobs_doc.py`
+   (14 checks: doc-version/content, cross-referencing rather than
+   duplicating the Bridge API capability list). Full `tests/verify/`
+   regression suite passes (100 scripts total, 0 failures).
+
+48e3b39. App-structure DSL: a declarative schema + parser + dual-target
+   codegen tool for the wiring/layout code of a multi-component SPA
+   built as a single `kind: "html"` widget -- generalized from
+   `world-timelines`'s own hand-written `app-root.ts`/`main.ts` (~500
+   lines of component registration, pane/grid layout, event-delegation
+   wiring, and a Web Worker channel), not specific to it. From
+   `../FEEDBACK/FEEDBACK-DESK-app-structure-dsl-and-editor-widget-2026-08-03-1634.md`.
+   Full design discussion, already had -- see
+   `investigations/app_structure_dsl_design.md` for the complete
+   record (design principles, the layout mode designs, and the full
+   inventory scoping decisions); this item is the "go implement it"
+   step, not a fresh design pass. Summary of what's in v1, per that
+   doc:
+   - **Component registry**: an explicit `{tag, source}` list; codegen
+     emits the import + `customElements.define` boilerplate.
+   - **Layout**, three modes: n-split-panes (a tree of `hsplit`/
+     `vsplit`/`pane` nodes, named static layout variants switched at
+     runtime, per-split resize constraints), windowed (flat `window`
+     entries close to Desk's own `.desk`-file `WidgetState` shape),
+     and raw HTML/CSS/TS (no DSL involvement -- components are plain
+     custom elements by construction). A "dump current layout to
+     HTML/CSS/TS" codegen option for modes 1/2 is a one-way eject.
+   - **Event-wiring table**: `{event, from, actions}` entries, each
+     action either a state mutation or a child method call, supporting
+     fan-out to multiple actions per event. Worker channels are folded
+     into this same table (a worker is just another named component)
+     rather than a separate mechanism.
+   - **State slots**: plain typed slots with declared defaults: no
+     derived/computed state in v1.
+   - **Escape hatch**: named handler functions the generated code
+     calls out to at declared extension points -- also where the two
+     deliberately-deferred inventory items (a field<->DSL-text-line
+     bidirectional sync sub-DSL, and cache/data-source declarations)
+     live until/unless a second real use case justifies generalizing
+     them into the DSL proper.
+   - **Dual transpilation target**: every individual component stays
+     plain TypeScript+HTML+CSS, with zero Desk-awareness and zero
+     build-time overhead when built outside Desk -- all Desk
+     -integration work happens in this codegen layer, which supports
+     (at least) a standalone build (no Desk runtime dependency) and a
+     Desk-widget build (packaged the same way `build_widget.py`
+     already packages a `DefineWidget`/`widgets/<id>/` source
+     directory -- multi-file `kind: "html"` widgets now load reliably,
+     TODO `a5f66cc`).
+   Explicitly out of scope for this item, each a separate, large
+   enough piece of work to get its own TODO later: the **visual
+   layout-editing widget** (drag/resize panes or windows, assign a
+   widget by name to a slot); the **DSL editor widget** itself (raw
+   -text + structured-UI bidirectional sync, meant as a reusable
+   building block -- still needs original design per the investigation
+   doc, no prior Desk precedent exists); and the **shared,
+   project-scoped state store** (`desk.state.*`, from the sibling
+   `widget-extraction-communication-gaps` FEEDBACK item -- a Desk-core
+   Bridge API primitive, architecturally distinct from this DSL
+   tool). Not designed further than the investigation doc's own level
+   of detail yet -- exact JSON Schema field names, the codegen's
+   internal structure, and where in this repo the tool actually lives
+   (likely a new seedable script alongside `scripts/todo_item_ids.py`/
+   the generated `build_widget.py`, given its scope) all need a real
+   plan before implementation starts.
+   [planned: app-structure-dsl.md (COMPLETED)]
+
+   COMPLETED: new top-level `app_dsl/` (git-tracked, mirrored fresh
+   into every project's `.desk_temp/app_dsl/` on every open/switch --
+   `sync_app_dsl_tool`/`_repo_app_dsl_dir` in `src/desk/temp_ui.py`,
+   mirroring `sync_shared_components`'s exact always-fresh shape,
+   wired into `TempUiManager.provision` alongside it, `__pycache__`
+   excluded). `app_dsl/schema.py`: dataclasses for `ComponentEntry`,
+   `SplitLayoutNode` (recursive `hsplit`/`vsplit`/`pane`),
+   `WindowEntry`, `LayoutDefinition`, `StateMutationAction`/
+   `CallAction`, `EventWiringEntry`, `StateSlot`, `HandlerRef`,
+   `AppDefinition`, `DslError`. `app_dsl/parse.py`:
+   `parse_app_definition(json_text) -> AppDefinition` -- hand-written
+   validation (no JSON Schema library, `CLAUDE.md`), every
+   cross-reference (a layout pane's `widget`, an action's state-slot/
+   component/handler target) resolved against the declared registry/
+   state list/handlers, a clear `DslError` naming the exact bad
+   reference on failure. `app_dsl/codegen.py`:
+   `generate(definition, components_dir, out_dir) -> {filename:
+   content}` -- component registry import+`customElements.define`
+   boilerplate; state slots as `export let <name>: <type> = <default>`
+   plus a generated setter; layout mode 1 (n-split-panes) as real
+   nested-`<div>` builder functions per named variant (flexbox CSS,
+   `app-layout.css`) with `buildLayout(variant)`/
+   `DEFAULT_LAYOUT_VARIANT` exports; the event-wiring table as
+   `querySelectorAll`-scoped `addEventListener` registrations fanning
+   out to state-mutation/component-method-call actions in declared
+   order (a worker is just another named component -- no separate
+   mechanism, confirmed nothing additional was needed); the escape
+   hatch as a direct named import + call. Layout mode 2 (`"windowed"`)
+   is accepted by the parser (schema-complete) but `codegen.generate`
+   raises a clear `DslError` naming it not-yet-implemented rather than
+   emitting wrong output -- an additive follow-up, not a breaking
+   format change. `app_dsl/build.py`: the CLI entry point,
+   self-contained (no `desk` package import, matching
+   `_BUILD_WIDGET_SCRIPT`'s own posture). `app_dsl/README.md`:
+   the DSL's own format documentation. `tempui-custom-widgets.md`
+   gained an honest cross-reference (new tool, not a new tempui DSL
+   keyword); `TEMPUI_DOC_VERSION` bumped 31->32 with a matching
+   comment block and `_NEW_FEATURES_DOC` entry.
+
+   Real, found-while-implementing finding, recorded in `PARKINGLOT.md`
+   rather than silently worked around: the generated TypeScript uses
+   real ES modules (`import`/`export`), confirmed via a real `tsc`
+   compile; `build_widget.py`'s own `DefineWidget` packaging model
+   concatenates *global, non-module* scripts (confirmed directly --
+   `shared-components/document-editor-base/document-editor-base.ts`
+   has zero `import`/`export` statements, for exactly this reason).
+   So "dual transpilation target" is proven this pass for the
+   **standalone** build only -- feeding `app_dsl`'s output into
+   `build_widget.py`'s packaging pipeline for a **Desk-widget** build
+   isn't wired up yet (two plausible fixes noted, neither
+   investigated: a non-module codegen output mode, or a real bundling
+   step). `tempui-custom-widgets.md`'s cross-reference states this
+   plainly rather than implying a working integration that doesn't
+   exist yet.
+
+   New verify coverage, real (no mocking, real `tsc`/`node`):
+   `tests/verify/verify_app_dsl_parse.py` (34 checks: a representative
+   multi-component/nested-split/fan-out definition round-trips
+   exactly; every class of bad input rejected with a message naming
+   the specific problem). `tests/verify/verify_app_dsl_codegen.py` (9
+   checks: a representative definition's generated output, alongside
+   real hand-written component fixtures, compiles with a real `tsc`,
+   then *runs* under real `node` against a minimal hand-written
+   DOM-stand-in -- confirmed a real dispatched event correctly
+   mutated the generated state slot and correctly fanned out to a
+   second action's real method call on a different component, not
+   just that the generated text merely compiles; the windowed-layout
+   not-implemented error and the no-layout case are also covered).
+   `tests/verify/verify_app_dsl_escape_hatch.py` (5 checks: the same
+   real-compile-and-run approach confirms a hand-written handler
+   module is actually imported and actually invoked with the
+   DSL-declared argument). `tests/verify/verify_sync_app_dsl_tool.py`
+   (9 checks: a real `TempUiManager`-independent direct call mirrors
+   a fresh copy, excludes a real `__pycache__`, and fully replaces a
+   stale pre-existing copy rather than leaving it alone).
+   `tests/verify/verify_app_dsl_tempui_doc.py` (6 checks: doc-version/
+   cross-reference/changelog content, including that the cross
+   -reference is honest about the standalone-only scope). Full
+   `tests/verify/` regression suite passes (105 scripts total, 0
+   failures).
+
+1e032f3. `app_dsl`'s generated TypeScript uses real ES modules
+   (`import`/`export`), which `.desk_temp/build_widget.py`'s own
+   `DefineWidget` packaging model can't consume -- it concatenates
+   *global, non-module* scripts (confirmed both directly, and via a
+   real `tsc` probe: a file using `export`/`import` always gets
+   CommonJS-style `exports`/`require` boilerplate in its compiled
+   output regardless of the `module` compiler option, including
+   `"module": "None"` -- there is no way to get plain global-script
+   output from a file containing ES module syntax). From
+   `PARKINGLOT.md`'s entry on this (filed while completing TODO
+   `48e3b39`). Confirmed the fix directly against
+   `shared-components/document-editor-base/document-editor-base.ts`
+   -- the closest existing precedent for real-source, `DefineWidget`
+   -concatenated multi-file content -- which has zero `import`/
+   `export` statements anywhere, for exactly this reason.
+   Suggested fix: a second `codegen.py` output mode (`mode="global"`,
+   alongside today's `mode="module"` default) that emits the same
+   registry/state/layout/event-wiring code with no `import`/`export`
+   at all -- global `class`/`let`/`function`/`const` declarations,
+   matching `document-editor-base.ts`'s own convention exactly. This
+   mode's own necessary constraint (not a limitation to work around,
+   a documented fact of the packaging model it targets): component
+   and handler source files must *also* avoid ES module syntax when
+   used with this mode, and a component's globally-declared class name
+   must match codegen's own deterministic tag-to-class-name derivation
+   exactly (already used internally --
+   `codegen._class_name_for_tag`), since there's no `import ... as
+   Alias` step left to rename it. `build.py`'s CLI needs a `--mode`
+   flag (default `module`, unchanged); `README.md` needs the new
+   mode's format/constraints documented.
+   [planned: app-dsl-global-codegen-mode.md (COMPLETED)]
+
+   COMPLETED: `schema.py`'s `ComponentEntry` gained an optional
+   `class_name: str | None = None` (parsed by `parse.py`'s
+   `_parse_components` via a new `_optional_str` helper). `codegen.py`
+   gained `mode: str = "module"` on `generate(...)`, threaded through
+   every emit function: `_emit_registry` (module: imports +
+   `customElements.define`; global: only `customElements.define(tag,
+   <resolved class name>)` lines, no imports -- `_resolved_class_name`
+   uses the override if set, else the existing
+   `_class_name_for_tag` derivation), `_emit_state`/`_emit_layout`/
+   `_emit_event_wiring` (conditionally include/omit the `export `
+   prefix on their own top-level declarations only -- the internal
+   per-node layout helpers already had no `export` in either mode),
+   `_emit_handler_imports` (global mode returns `[]`, nothing to
+   import), and a new `_escape_target_identifier` helper for
+   `_emit_action`'s escape-hatch branch: module mode still uses the
+   DSL's own local handler key (correct, since the generated import
+   already aliased it there); global mode resolves and emits
+   `definition.handlers[key].export` directly instead, since there's
+   no import/alias step to do that renaming. `build.py` gained a
+   `--mode=module|global` CLI flag (simple manual parsing, no
+   argparse, matching this script's own existing minimal style).
+   `README.md`: documented both modes, the `class_name` override, and
+   that `--mode=global` requires component/handler source to also
+   avoid module syntax (the `tsconfig.json` `"files"`-ordering
+   responsibility stays with the caller, same as any other multi-file
+   `DefineWidget` source already requires).
+
+   Confirmed via a real `tsc` probe before implementing (not assumed):
+   a file using `export`/`import` always gets CommonJS-style
+   `exports`/`require` boilerplate in its compiled output, regardless
+   of the `module` compiler option -- including `"module": "None"`,
+   which still emitted `Object.defineProperty(exports, ...)`/
+   `exports.default = ...` for a plain `export default class` with no
+   imports of its own. Confirms there was no cheaper fix than a real
+   second, module-free codegen mode. `tempui-custom-widgets.md`'s
+   cross-reference (added under TODO `48e3b39`, honestly scoped to
+   "standalone only" at the time) now documents both modes accurately;
+   `TEMPUI_DOC_VERSION` bumped 32->33 with a matching comment block
+   and `_NEW_FEATURES_DOC` entry. The `PARKINGLOT.md` entry this item
+   was filed from is removed -- moved to `TODO.md` and completed, per
+   this project's own "move them to TODO.md when ready to act on them"
+   convention, not left behind as a stale duplicate.
+
+   New/extended verify coverage, real (no mocking, real `tsc`/`node`):
+   `tests/verify/verify_app_dsl_codegen.py` (+11 checks, 20 total):
+   `mode="global"` emits zero `import`/`export` and respects the
+   `class_name` override; the real regression check for this item --
+   module-free component fixtures + generated global-mode output
+   compile with a real `tsc`, the *compiled* `.js` files are confirmed
+   to contain no `exports`/`require` anywhere (the actual bug),
+   textually concatenated (mirroring `build_widget.py`'s own
+   `_concatenate_compiled_js`), and run via real `node`'s
+   `vm.runInThisContext` -- the same "no module wrapper, no `require()`
+   available" execution model a real concatenated `<script>` tag uses,
+   not just plain `node script.js` (which still has CommonJS module
+   machinery ambiently available even for code that doesn't use it) --
+   confirming a dispatched event still correctly mutates state and
+   fans out to a real method call using the `class_name` override.
+   `tests/verify/verify_app_dsl_escape_hatch.py` (+6 checks, 11
+   total): the same real compile-concatenate-run approach confirms
+   global mode calls the handler's real export name directly (a
+   deliberately-different DSL-local-key-vs-real-export-name fixture
+   catches the exact bug an incorrect identifier resolution would
+   cause). `tests/verify/verify_app_dsl_parse.py` (+3 checks, 37
+   total): `class_name` parses, defaults to `None`, rejects an empty
+   value. `tests/verify/verify_app_dsl_tempui_doc.py` (revised): doc
+   -version/cross-reference/changelog content for both versions 32 and
+   33. Full `tests/verify/` regression suite passes (105 scripts
+   total, 0 failures).
+
+f68383f. A shared, capability-gated, project-scoped state store --
+   `desk.state.get(key)` / `set(key, value, edit?)` / `getHistory(key,
+   limit)`, closing gaps 1-4 and 6 of
+   `../FEEDBACK/FEEDBACK-DESK-widget-extraction-communication-gaps-2026-08-03-1634.md`
+   (gap 7 already fixed by TODO `a5f66cc`) and sharpened by
+   `../FEEDBACK/FEEDBACK-DESK-shared-state-with-semantic-edits-2026-08-10-2141.md`'s
+   own concrete two-widget case. Full design discussion, already had
+   -- see `investigations/app_structure_dsl_design.md`'s "Shared state
+   store design"/"Semantic edits" sections for the complete record;
+   this item is the "go implement it" step for the **non-validated**
+   core of that design, not a fresh design pass. Summary of what's in
+   scope for this item:
+   - **Bridge API**: `get`/`set`/`getHistory`, gated by a single new
+     `state` capability (covers both reads and writes, matching every
+     other Bridge namespace's own one-capability-per-namespace
+     precedent).
+   - **`set(key, value, edit?)`**: `edit` is an optional, opaque-to
+     -Desk structured record describing what produced the change (not
+     interpreted by Desk -- just stored and relayed, the same way
+     `desk.events` payloads already are).
+   - **Change notifications reuse `desk.events`**, not a new
+     transport -- `set()` auto-publishes a well-known event (`{key,
+     value, edit}` payload) rather than inventing a second delivery
+     mechanism.
+   - **`getHistory(key, limit)`**: a fixed-size-N FIFO queue per key
+     (always exactly the N most recent `(value, edit)` pairs, oldest
+     evicted as new ones arrive), returned latest-first. N is a fixed,
+     small default, not per-key configurable in this pass.
+   - **Persistence**: a new `Desk.state` field (`src/desk/desks.py`),
+     read/written by `load_desk`/`save_desk`/`desk_state_dict` the
+     same way `Desk.custom_widgets`/`Desk.file_type_registry` already
+     are -- no new persistence mechanism, and the history persists
+     alongside the value for the same reason the value itself does (a
+     reload shouldn't show a value with no explanation of how it got
+     there).
+   Explicitly out of scope for this item, filed separately as TODO
+   `6e1c2fe` (blocked on this one; later split into TODO `af7898b`/
+   `9aef267`/`6330249`, see those items): schema declaration/validation
+   (validated vs. non-validated state), conflict resolution, built-in
+   -widget and top-level schema files, and the schema/state
+   -management widget -- a real, separate, large layer on top of this
+   primitive, not needed for this item's own get/set/history/events
+   core to be genuinely useful on its own (per the
+   `shared-state-with-semantic-edits` FEEDBACK item's own concrete
+   case: get/set/history alone already closes 3 of its 4 hand-rolled
+   pain points without any schema concept at all).
+   [planned: shared-state-store.md]
+   COMPLETED: `src/desk/desks.py` -- `StateHistoryEntry`/`StateEntry`
+   dataclasses; new `Desk.state: dict[str, StateEntry]` field;
+   `load_desk`/`desk_state_dict`/`save_desk` read/write it via new
+   `_load_state_entry`/`_state_entry_dict` helpers, mirroring
+   `custom_widgets`'s own round-trip shape exactly. `src/desk/shell
+   /window.py` -- `STATE_HISTORY_MAX_ENTRIES = 50`;
+   `get_state`/`set_state`/`get_state_history` methods; `set_state`
+   appends to history with FIFO eviction
+   (`del entry.history[:-STATE_HISTORY_MAX_ENTRIES]`) and publishes
+   `desk.state.changed` (`{key, value, edit}`) via the existing
+   `EventMediator`, with the calling instance excluded from its own
+   change (standard `desk.events` sender-exclusion). `src/desk/server
+   /app.py` -- `SetStateRequest` model; three new routes,
+   `GET /api/bridge/state/get`, `POST /api/bridge/state/set`,
+   `GET /api/bridge/state/getHistory`, each gated by
+   `require_caller("state")` + `require_instance_id`, following the
+   `events_subscribe`/`events_publish` combined-dependency precedent.
+   `src/desk/server/bridge_client.py` -- `desk.state.{get, set,
+   getHistory}` added to the `window.desk` object. `src/desk
+   /temp_ui.py` -- new "Shared, project-scoped state" section and
+   capability-list bullet in `_CUSTOM_WIDGETS_DOC`
+   (`tempui-custom-widgets.md`); `TEMPUI_DOC_VERSION` bumped 33 -> 34
+   with a matching comment block and `_NEW_FEATURES_DOC` entry. New
+   `tests/verify/verify_state_store.py` (23 checks): data-model
+   round-trip through save/load (including an old `.desk` file with no
+   `state` key defaulting to `{}`), and a real Bridge-API-over-HTTP
+   round trip covering get-on-unset returning
+   `{value: None, edit: None}`, set/get round trip, `edit` defaulting
+   to `None` when omitted, a real cross-instance `desk.state.changed`
+   delivery with sender-exclusion verified, `getHistory` bounded to 50
+   entries/returned latest-first/oldest-evicted, a `limit` smaller and
+   larger than the stored history both honored correctly, and a
+   missing-`state`-capability 403 from both `get` and `set`. Full
+   `tests/verify/` regression suite passes (114 scripts total, 0
+   regressions -- the sole pre-existing failure,
+   `disabled_verify_claude_desk_widget_claude_api.py`, is an already
+   -filed, already-disabled item unrelated to this change).
+   `investigations/app_structure_dsl_design.md`'s "Where things were
+   left" updated to record this item's completion.
+
+af7898b. The state store's (TODO `f68383f`) schema declaration,
+   conflict resolution, and validation core -- originally filed as a
+   single item, TODO `6e1c2fe`, split into this and the two items below
+   it for manageability once its actual implementation surface became
+   clear (a type language, three distinct widget-registration paths,
+   two new file-watcher locations, and a new built-in widget really is
+   four separable pieces of work, not one). Full design discussion,
+   already had -- see `investigations/app_structure_dsl_design.md`'s
+   "Validated vs. non-validated state, and schema lifecycle" and
+   "Bookkeeping and call sites" sections for the complete record. This
+   item's own scope is everything **except** top-level schema files
+   (TODO `9aef267`, below) and the new schema/state-management widget
+   (TODO `6330249`, below):
+   - Every state key is validated (a schema -- a TypeScript type
+     expression stored as a string, a pragmatic constrained subset for
+     this pass -- is currently registered for it) or non-validated (no
+     schema at all; access is a purely call-site-local type hint with
+     best-effort coercion, nothing persisted or cross-checked).
+   - A schema can be declared in a widget's own manifest (top-level
+     schema files are TODO `9aef267`, not this item).
+   - Conflict resolution is first-loaded-while-still-active wins; a
+     genuinely conflicting later widget hard-fails to load entirely
+     (no placement, not even a normal placement notification) --
+     instead, a distinct clickable notification explains the conflict,
+     and the same message is appended to a new, well-known, optional
+     manifest field, `desk_widget_loading_errors: string[]`, on the
+     failing widget's own manifest.
+   - Enforcement lifetime differs by source: a tempui-placed widget
+     instance's schema is active only while at least one placed
+     instance references it (dormant, not deleted, once the last one
+     is removed -- a later instance can keep using the dormant schema
+     if unchanged, or replace it if declaring a different one); a
+     built-in widget's schema (validated at `discover_widgets` time) is
+     permanently enforced from discovery onward. Built-in-vs-built-in
+     conflicts resolve by `discover_widgets`' own existing alphabetical
+     directory-sort order, surfaced the same notification+manifest
+     -field way, just fired once at Desk startup/switch instead of at
+     a click-to-place moment.
+   - Instance-list maintenance for the dormancy check is lazy only --
+     pruned the next time some other widget's load triggers the
+     maintenance pass on that same schema, not eagerly on
+     `close_widget`.
+   Needs a real plan before implementation starts -- the exact schema
+   -registry dataclasses, the type-expression parser/validator, and the
+   Bridge API route shape changes for schema-aware `get`/`set` all need
+   working out.
+   [planned: state-store-schema-core.md]
+   COMPLETED: `src/desk/schema_types.py` (new) -- a pragmatic TypeScript
+   -subset type-expression parser (primitives, literals, arrays, unions,
+   simple object shapes with optional members), `validate`/`coerce`
+   (coerce is best-effort, never raises) and
+   `type_expressions_equivalent` (structural, order-independent).
+   `src/desk/schema_registry.py` (new) -- `RegisteredSchema`,
+   `SchemaConflict`, `SchemaRegistry` with `register_permanent` (built
+   -ins; idempotent for the same source, first-registered-source wins
+   alphabetically since `discover_widgets`' own directory-sort order is
+   preserved by dict insertion order), `clear_source`/
+   `permanent_source_ids` (re-derives every built-in schema fresh on
+   every hot reload, so a fixed/removed conflict clears), and
+   `join_or_conflict_placement` (tempui-sourced: fresh/join-while
+   -active/conflict-while-active/dormant-reactivate-if-unchanged/dormant
+   -replace-if-different, with lazy instance-list pruning folded into
+   the same call). `src/desk/widgets.py` -- `WidgetInfo.state_schema`/
+   `.desk_widget_loading_errors` (the latter in-memory only, never
+   written to a real widget.json -- see the plan's own "Decided in this
+   planning pass" note); `_parse_manifest` reads `state_schema`.
+   `src/desk/temp_ui.py` -- `CustomWidgetDefinition.state_schema`;
+   `parse_define_widget` gained a repeatable `StateSchema<TAB>key<TAB>
+   type_expr` DSL line; `build_widget.py`'s own generated script emits
+   it from a `state_schema` field in its authoring-source `widget.json`
+   too; new "Validated vs. non-validated keys" doc subsection;
+   `TEMPUI_DOC_VERSION` bumped 34 -> 35. `src/desk/server/runner.py` --
+   `ServerHandle.schema_registry`, constructed once alongside
+   `event_mediator`. `src/desk/server/app.py` -- `SetStateRequest
+   .type_hint`; `state_get`/`state_set` thread it through;
+   `run_on_gui` maps a `ValueError` to a 400 (schema mismatch, invalid
+   `type_hint`, or a `desk.state.*`-conflict-blocked `widgets.open`);
+   `self_get_manifest` now prefers the live `gui_bridge.window
+   .get_widget_info` result over `require_caller`'s own separate,
+   always-fresh `discover_widgets` scan, so `state_schema`/
+   `desk_widget_loading_errors` are never stale for a built-in;
+   `_widget_info_dict` includes both fields. `src/desk/server
+   /bridge_client.py` -- `desk.state.get/set` gained an optional
+   `typeHint`. `src/desk/shell/window.py` -- `self._schema_registry`;
+   `_refresh_builtin_schemas` (called from `__init__` and
+   `_on_widget_changed_refresh_catalog`, skips any id in
+   `_custom_widget_sources`); `_place_widget` returns `WidgetFrame |
+   None` and gates a tempui-sourced custom widget's declared schema(s)
+   through `join_or_conflict_placement` before creating a frame,
+   appending to `desk_widget_loading_errors` and firing
+   `_notify_schema_conflict` (reuses `WorkspaceView.notify_temp_ui`,
+   keyed by a synthetic `Path("schema-conflict:<id>")`) on a refusal;
+   every real call site updated for a possible `None` (`_load_desk_widgets`
+   skips and continues; `open_widget` raises `ValueError`, caught and
+   turned into a quiet `None` by `open_widget_content` for internal
+   GUI-driven callers like `_activate_temp_ui`, left to propagate for
+   the Bridge API's `widgets.open` route); `get_state`/`set_state`
+   validate against an active schema or best-effort-coerce a non
+   -validated key's optional `type_hint`, preserving TODO `f68383f`'s
+   exact prior behavior when neither applies. New verify coverage:
+   `verify_schema_types.py` (60 checks), `verify_schema_registry.py`
+   (25 checks), `verify_state_store_schema.py` (14 checks, real Bridge
+   -API-over-HTTP), `verify_state_store_schema_placement.py` (12
+   checks, real `_place_widget`/dormancy round trip against two
+   conflicting `DefineWidget`-sourced kinds) -- plus fixes to 8
+   pre-existing scripts whose hand-rolled `_FakeGuiWindow`/`_FakeWindow`
+   test doubles had either drifted out of sync with `get_state`/
+   `set_state`'s new signature (`verify_state_store.py`, now reuses the
+   real `DeskWindow` methods instead of a duplicated copy) or needed
+   the new `_place_widget`-required methods bound
+   (`verify_custom_widget_content_hash.py`, `verify_html_job_execution.py`,
+   `verify_html_widget_local_storage.py`,
+   `verify_relocate_promoted_widget_source.py`,
+   `verify_stale_marker_click_dialog.py`, `verify_tempui_custom_widgets.py`,
+   `verify_widget_error_indicator.py`). Full `tests/verify/` regression
+   suite passes (118 scripts total, 0 regressions -- the sole failure,
+   `disabled_verify_claude_desk_widget_claude_api.py`, is an already
+   -filed, already-disabled, unrelated flaky item).
+   `investigations/app_structure_dsl_design.md`'s "Where things were
+   left" updated to record this item's completion.
+
+9aef267. State store top-level schema files -- **blocked on
+   `af7898b` landing first** (needs its schema type language and
+   registry to already exist). Split out of the original TODO
+   `6e1c2fe` -- see `af7898b` above for why. Full design, already had
+   -- see `investigations/app_structure_dsl_design.md`'s "Bookkeeping
+   and call sites" section. Scope: schemas declared "top-level," in a
+   standalone schema file independent of any widget's manifest --
+   two watched locations, ephemeral `.desk_temp/schemas/` and a real,
+   git-tracked `./desk-schemas/` that Desk never creates eagerly, only
+   watches for and picks up immediately once it exists. Both need new
+   file-watcher registrations, since `TempUiManager`'s existing
+   `.desk_temp` watch is non-recursive (`temp_ui_manager.py:249`) and
+   doesn't cover a `.desk_temp/schemas/` subdirectory, and
+   `./desk-schemas/` is outside `.desk_temp` entirely. A top-level
+   file's schema is permanently enforced from registration onward, the
+   same as a built-in widget's (never dormant). Needs a real plan
+   before implementation starts.
+   [planned: state-store-top-level-schemas.md]
+   COMPLETED: `src/desk/shell/schema_file_watcher.py` (new) --
+   `SchemaFileWatcher(QObject)`, `changed` signal emitted for a
+   `.json` file added/edited/removed in either watched directory
+   (added/edited/removed alike -- the receiver decides which via
+   `path.is_file()`). `.desk_temp/schemas/` is watched directly (it
+   always already exists by the time this runs, created by
+   `TempUiManager.provision`) with an initial scan on `provision()` so
+   already-present files are picked up without waiting for a
+   filesystem event; `./desk-schemas/` is polled every 2s
+   (`QTimer`) until it exists -- a real live watch (plus the same
+   initial scan) takes over once it does, rather than a permanent
+   watch over the whole project root just to catch one directory's own
+   birth. Both paths are resolved identically to the shared
+   `desk_services.file_watcher` service's own symlink-resolved event
+   paths, confirmed directly after finding a real bug where the
+   initial scan's path and a later live-edit's path for the exact same
+   file didn't match, which would have leaked a duplicate,
+   spuriously-self-conflicting registry entry. `temp_ui_manager.py`
+   -- `TempUiManager.provision` creates `.desk_temp/schemas/` (a plain
+   `mkdir`, never wiped/reseeded) alongside its other subdirectories,
+   only when `.desk_temp` itself is actually being provisioned.
+   `window.py` -- `DeskWindow` owns a `SchemaFileWatcher`
+   (`self._schema_file_watcher`) and `self._known_schema_file_sources:
+   set[str]` (tracks which `SchemaRegistry` sources came from a file,
+   kept separate from `_refresh_builtin_schemas`' own built-in-widget
+   source tracking); `_provision_temp_ui` captures `TempUiManager
+   .provision`'s return value and calls the new
+   `_provision_schema_files`, which clears every previously-tracked
+   schema-file source first (desk-switch isolation -- `SchemaRegistry`
+   is one shared instance for the whole server run, not per-Desk) then
+   re-provisions the watcher for the current directory;
+   `_on_schema_file_changed` clears the file's own prior registrations,
+   then -- if it still exists -- parses it fresh (a plain JSON object,
+   `{"<key>": "<type expression>", ...}`, the same shape a real
+   `widget.json`'s own `state_schema` field already is) and calls
+   `SchemaRegistry.register_permanent` per key, exactly the same
+   "clear then re-derive" shape `_refresh_builtin_schemas` (TODO
+   `af7898b`) already uses for built-ins; malformed JSON, a non-object
+   top level, a non-string type-expression value, or a schema conflict
+   are all loading errors, not crashes, surfaced via the existing
+   `_show_schema_conflict_popup` click-handler (no
+   `desk_widget_loading_errors`-equivalent persisted for a bare file --
+   there's no manifest to attach it to, matching `af7898b`'s own
+   in-memory-only decision). `temp_ui.py` -- "Validated vs.
+   non-validated keys" doc subsection extended with the file format and
+   both locations; `TEMPUI_DOC_VERSION` bumped 35 -> 36. New verify
+   coverage: `verify_schema_file_watcher.py` (12 checks, real
+   directories/real watches/real polling) and
+   `verify_state_store_top_level_schemas.py` (22 checks, register/
+   conflict/edit/delete/desk-switch-isolation) -- plus a fix to
+   `verify_new_desk_flow.py`'s `_FakeWindow` (needed
+   `_schema_registry`/`_known_schema_file_sources`/a no-op schema-file
+   -watcher stand-in bound, since `_provision_temp_ui` now also calls
+   `_provision_schema_files`). Full `tests/verify/` regression suite
+   passes (120 scripts total, 0 regressions).
+   `investigations/app_structure_dsl_design.md`'s "Where things were
+   left" updated to record this item's completion.
+
+6330249. New built-in schema/state-management widget -- an ordinary,
+   placeable/closeable Desk widget (`kind: "python"`), not a distinct
+   "dashboard" UI concept. Depends on `af7898b`/`9aef267`, both
+   COMPLETED. Split out of the original TODO `6e1c2fe` -- see `af7898b`
+   above for why. Full design, already had -- see
+   `investigations/app_structure_dsl_design.md`'s "Validated vs.
+   non-validated state, and schema lifecycle" section. Scope: **view
+   and edit** every currently-registered schema (widget-declared and
+   top-level) and **view and edit** the data stored under those keys
+   (including non-validated ones) -- a Desk user should have deep
+   insight into shared state, not just a read-only listing. Where a
+   top-level schema file actually gets authored/edited/deleted.
+   Whenever any schema is registered, Desk must guarantee an instance
+   of this widget is already placed, or place one if not, so validated
+   state is never invisible the moment it starts existing -- worth
+   checking against the real UX before assuming safe, given
+   `DefineWidget`'s own auto-placement experiment (TODO `5ff02d2`) was
+   tried and reverted (TODO `dafbaab`) for a differently-shaped
+   (per-kind, not singleton) case. Needs a real plan before
+   implementation starts.
+   [planned: state-schema-management-widget.md]
+   COMPLETED: `src/desk/schema_registry.py` --
+   `RegisteredSchema.source_kind` (`"widget"` | `"file"`, so the widget
+   knows which schemas it may edit/delete -- only file-sourced ones,
+   never a widget's own manifest-declared one); `SchemaRegistry` now
+   takes an `EventMediator` and publishes a new `desk.state
+   .schema_changed` event (no per-key payload -- a full re-fetch is
+   cheap) on every successful `register_permanent`/`clear_source`/
+   `join_or_conflict_placement`, never on a conflict; `SchemaRegistry
+   .all()` for a full snapshot. `runner.py` -- `SchemaRegistry
+   (event_mediator)`. `window.py` -- the three existing schema
+   -registration call sites pass `source_kind` explicitly and each
+   call a new `_ensure_state_manager_placed()` after a successful
+   registration (places a `state_manager` instance, centered in the
+   view, only if none is currently placed -- implemented literally as
+   "checked on every registration, not once per session," a flagged
+   judgment call, see the plan's own Design decisions); new
+   `get_state_overview` (every known key -- Desk.state's own keys union
+   SchemaRegistry's own keys -- with value/edit/schema/source/
+   enforcement info per key); `try_set_state` (same as `set_state`, but
+   returns an error message instead of raising); `write_schema_file`
+   (writes a top-level schema `.json` file directly and calls
+   `_on_schema_file_changed` synchronously for real, immediate
+   success/error feedback, rather than guessing from an async watcher
+   trigger -- creates `./desk-schemas/` on demand for the git-tracked
+   choice, since picking that location through this widget is the
+   explicit, informed user action the "never create it eagerly" rule
+   was always about avoiding *unintentional* creation of);
+   `delete_schema_key` (refuses for a widget-sourced key, edits/removes
+   the owning file for a file-sourced one). `current_context.py` --
+   five new provider hook pairs (`state_overview`, `state_history`,
+   `state_writer`, `schema_file_writer`, `schema_file_deleter`), same
+   one-hook-per-capability shape every existing pair already uses.
+   `widgets/state_manager/` (new, `kind: "python"` -- matches every
+   comparable Desk management widget, not `kind: "html"`): a
+   `QTreeWidget` overview (key/schema/source/status) plus a detail
+   panel (schema -- read-only for a widget-sourced key, editable for a
+   file-sourced or undeclared one; value -- editable JSON + optional
+   edit note; history -- read-only, latest-first) and a "New Key"
+   dialog; subscribes to `desk.state.changed`/`SCHEMA_CHANGED_EVENT`
+   via the existing `bind_event_mediator`/`EventSubscription` duck-type
+   (TODO 6f9c51b) for live updates, both just triggering a full
+   `refresh()`. `temp_ui.py` -- one cross-reference sentence in
+   "Shared, project-scoped state" pointing at this widget; no
+   `TEMPUI_DOC_VERSION` bump (the `desk.*` Bridge API surface itself is
+   unchanged). Two real bugs found and fixed during manual/automated
+   testing before this ever reached the verify suite: a just-set
+   "Saved."/error status message was immediately wiped out by the
+   follow-up `refresh()` call's own unconditional status-clear (fixed
+   by never touching the status label from `_show_detail_for` itself);
+   several pre-existing verify scripts' `_FakeWindow` test doubles
+   needed `_ensure_state_manager_placed` (real or a no-op stub) bound,
+   since `_check_schema_conflict`/`_on_schema_file_changed` now call it
+   unconditionally after a successful registration. New verify
+   coverage: `verify_schema_registry.py` extended (+10 checks, 35
+   total) for `source_kind`/`all()`/live event publishing;
+   `verify_state_manager_widget.py` (31 checks, real `DeskWindow`
+   -adjacent fake, including a real end-to-end auto-placement-guarantee
+   round trip: places once, stays a singleton, reappears after the
+   sole instance is closed and another schema registers);
+   `verify_state_manager_widget_ui.py` (18 checks, real widget
+   construction against fake `current_context` providers, including
+   real `EventMediator`-delivered live refreshes). Full `tests/verify/`
+   regression suite passes (122 scripts total, 0 regressions -- the
+   sole failure, `disabled_verify_claude_desk_widget_claude_api.py`, is
+   an already-filed, already-disabled, unrelated flaky item).
+   `investigations/app_structure_dsl_design.md`'s "Where things were
+   left" updated to record this item's completion -- closing out the
+   entire schema-validation thread (TODO `6e1c2fe`'s three-way split)
+   with nothing left blocked or open in it.
+
+297f1a6. Ability to save/load shared state (`desk.state.*`, TODO
+   `f68383f`) as JSON -- a whole-store snapshot/restore pair (every
+   key's value, edit, and history), not a per-key operation, exposed
+   through the State Manager widget (TODO `6330249`) as "Save
+   State..."/"Load State..." toolbar actions. Import validates every
+   key's current value against any currently-active schema before
+   applying anything -- all-or-nothing, not a partial apply. Prioritized
+   per direct request.
+   [planned: state-store-json-import-export.md]
+   COMPLETED: `src/desk/desks.py` -- promoted the existing, previously
+   -private `_state_entry_dict`/`_load_state_entry` helpers to public
+   `state_entry_dict`/`load_state_entry` (a second module now needs
+   them) rather than reimplementing the same `StateEntry`-as-JSON shape
+   a third time. `src/desk/shell/window.py` -- `export_state_json`
+   (writes every current key's value/edit/history to a file);
+   `import_state_json` (all-or-nothing: validates every key's current
+   value against any active schema first, collecting every failure
+   into one combined error before applying anything; replaces each
+   key's entry wholesale, not routed through `set_state`'s
+   single-entry FIFO-append; a key present in the store but absent
+   from the file is left untouched; publishes `desk.state.changed` per
+   actually-changed key with a new `SYSTEM_SENDER_INSTANCE_ID` sender,
+   the same sentinel `SchemaRegistry` already uses for
+   system-triggered changes). `current_context.py` -- `state_exporter`/
+   `state_importer` provider hook pairs, the same shape every existing
+   pair already uses. `widgets/state_manager/widget.py` -- "Save
+   State..."/"Load State..." toolbar buttons (`QFileDialog`), a
+   confirmation dialog before import (it can overwrite currently-live
+   values), `refresh()` after a successful import. New
+   `tests/verify/verify_state_store_json_import_export.py` (16
+   checks): export/import round-trips value+edit+history for multiple
+   keys exactly; a schema-violating key refuses the entire import,
+   including an otherwise-valid key in the same file; a key with no
+   currently-active schema imports unchanged; a key present in the
+   target but absent from the file survives untouched; a real
+   subscribed instance receives `desk.state.changed` for each
+   imported key; malformed JSON and a non-dict top level are real,
+   non-crashing errors. Full `tests/verify/` regression suite passes
+   (123 scripts total, 0 failures -- including the usually-flaky
+   `disabled_verify_claude_desk_widget_claude_api.py`, which happened
+   to pass this run; it remains an already-filed, already-disabled
+   item regardless).
+
+5242aeb. Bug: widget-triggered alerts/confirmations render as detached
+   macOS windows -- notably the "Load State" confirmation and "New
+   Key" validation alerts in the new State Manager widget (TODO
+   `6330249`), which used a raw `QMessageBox` directly instead of the
+   already-existing desk-internal popups service (`desk_services
+   .popups`, TODO `359684f`), reintroducing the exact bug that service
+   was built to eliminate: a `QMessageBox` parented to widget content
+   embedded in a `QGraphicsProxyWidget` on the canvas renders as a
+   genuine top-level macOS window whose position doesn't account for
+   the canvas's own zoom/pan transform. `widgets/markdown/widget.py`'s
+   "Save As" error alert had the same, apparently pre-existing,
+   never-migrated instance. The fix mechanism already exists
+   (`current_context.get_popup_opener()` for `kind: "python"`,
+   `desk.popups.show(...)` for `kind: "html"`, both the exact same
+   codepath already) and needs no new code -- this item is fixing the
+   two widgets that bypassed it, strengthening the guidance an agent
+   actually reads before writing a widget (`design-docs/architecture.md`'s
+   Widget Model section, `temp_ui.py`'s `desk.popups.show` doc), and
+   adding a real, automated regression guard rather than relying on
+   anyone remembering to check by hand. Prioritized per direct request.
+   [planned: fix-detached-popup-windows.md]
+   COMPLETED: `widgets/state_manager/widget.py` -- new `_alert`/
+   `_confirm` helpers routing through `current_context
+   .get_popup_opener()`; all 5 raw `QMessageBox` call sites (4
+   `.warning`, 1 `.question`) replaced; the now-unused `QMessageBox`
+   import dropped. `widgets/markdown/widget.py` -- its one remaining
+   `_save_as` error alert fixed the same way; same import cleanup.
+   `design-docs/architecture.md` -- the Widget Model's `kind: "python"`
+   bullet gained an explicit "never use a raw `QMessageBox`/`QDialog`"
+   callout with the why and a pointer to `design-docs/widget-ux.md`'s
+   existing "Desk-Internal Popups" section. `src/desk/temp_ui.py` --
+   the existing `desk.popups.show` doc bullet gained an explicit "use
+   this, not the browser's own `alert()`/`confirm()`/`prompt()`"
+   callout; `TEMPUI_DOC_VERSION` bumped 36 -> 37 (doc-wording only, no
+   API change). New `tests/verify/verify_widgets_use_popup_service.py`
+   (3 checks) -- a real, automated regression guard: scans every
+   `widgets/*/widget.py` for a live `QMessageBox.(question|warning
+   |information|critical)(...)` call and fails if one is found, plus a
+   self-check that the scanning regex itself still matches the exact
+   offending shape and doesn't false-positive on an explanatory
+   comment. `tests/verify/verify_state_manager_widget_ui.py` extended
+   (+7 checks, 25 total): `_alert`/`_confirm` call the fake popup
+   opener with the right title/message/buttons/default, not a real
+   `QMessageBox`; declining "Load State"'s confirmation never calls the
+   importer, confirming does. Found and fixed a real, unrelated test
+   -infrastructure flake while adding this coverage: constructing
+   further widgets/mediators in the same process *after* a test that
+   builds a real `EventMediator` + `EventSubscription` could trigger
+   that earlier pair's delayed garbage-collection-triggered teardown at
+   a bad moment, aborting the process (an uncaught exception escaping a
+   Qt `destroyed` signal handler, the same class of issue LEARNINGS.md
+   already documents for `ChromiumWidget`/`QWebEngineProfile`) --
+   fixed by reordering so the `EventMediator`-holding test runs last in
+   that file, not by suppressing or working around the crash. Full
+   `tests/verify/` regression suite passes (124 scripts total, 0
+   failures).
+
+74a8b78. Bug: crash (SIGBUS) removing a desk-internal popup from the
+   canvas scene during its own click event -- confirmed via a real
+   macOS crash report clicking a button inside a popup shown by
+   `PopupsService.show_blocking` (the only popup mechanism in the app --
+   `current_context.get_popup_opener()` for `kind: "python"`,
+   `desk.popups.show(...)` for `kind: "html"`, both the same codepath --
+   so this affects every alert/confirmation, not just the State Manager
+   widget that surfaced it, found while testing TODO `5242aeb`'s own
+   fix). `WorkspaceView.remove_popup` calls `self.scene().removeItem(proxy)`
+   synchronously, from inside the very click handler `QGraphicsScene`
+   is still mid-dispatch of -- a real, known Qt Graphics View
+   reentrancy hazard (Qt's internal object-liveness bookkeeping,
+   `QSharedPointer::ExternalRefCountData::getAndRef`, dereferences a
+   stale pointer). Fix: `frame.hide()` and the `_popup_frames` removal
+   stay synchronous (neither mutates the scene graph); the actual
+   `removeItem`/`deleteLater()` defers via `QTimer.singleShot(0, ...)`,
+   the same "past the current event dispatch" idiom this file already
+   uses elsewhere. Prioritized per direct request.
+   [planned: fix-popup-scene-removal-crash.md]
+   COMPLETED: `src/desk/shell/canvas.py` -- `WorkspaceView.remove_popup`
+   now calls `frame.hide()` and removes `frame` from `_popup_frames`
+   synchronously (neither mutates the scene's own item list, so
+   neither carries the reentrancy risk -- the popup still disappears
+   immediately and is instantly excluded from z-ordering/
+   `clear_widgets`'s own membership check), then defers the actual
+   `self.scene().removeItem(proxy)`/`frame.deleteLater()` via
+   `QTimer.singleShot(0, ...)`, the same "past the current event
+   dispatch" idiom this file already used for
+   `_position_desk_picker`/etc. `clear_widgets`'s own separate,
+   defensive-fallback removal path (a popup with no listener attached
+   at all) is untouched -- it was never called from inside the scene's
+   own event dispatch, so it never had this hazard. This item's own
+   verification is necessarily indirect: a real, native-event-driven
+   Qt Graphics View reentrancy crash (confirmed via an actual macOS
+   crash report) can't be reproduced by an automated, offscreen test --
+   there's no equivalent native `NSApplication`/`CFRunLoop` event
+   source to recreate the exact reentrant-dispatch timing headlessly.
+   Verification instead confirms the specific, deliberate behavior
+   change the fix makes: `tests/verify/verify_desk_internal_popups.py`
+   gained `test_scene_removal_is_deferred_not_synchronous` (+6 checks,
+   31 total in that file) -- clicking a popup's button hides it and
+   updates `_popup_frames` synchronously (already covered, confirmed
+   unchanged), but its `QGraphicsProxyWidget` is still genuinely
+   present in the scene immediately after the click, before any
+   event-loop pump; only after pumping (`processEvents()` +
+   `QCoreApplication.sendPostedEvents(..., QEvent.Type.DeferredDelete)`,
+   since a plain pump alone isn't guaranteed to run a `deleteLater()`
+   -scheduled deletion in this environment) does the proxy/frame
+   actually get torn down (`PyQt6.sip.isdeleted`). Full `tests/verify/`
+   regression suite passes (124 scripts total, 0 failures).
+
 8df6797. Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
    single-line `QLineEdit`) a multi-line box that wraps text instead,
@@ -6342,40 +7799,39 @@ a4c3dec. Add an on-hover control in the Claude (Desk) widget's history
    distinguishing user lines from the rest of the history to know
    which lines are reloadable.
 
-e9eddba. Add a permission-mode selector to the Claude (Desk) widget
-   (`widgets/claude_desk/widget.py`). TODO `a596dbf` hardcoded
-   `PERMISSION_MODE = "default"` (a deliberate deviation from the
-   plan's suggested `"auto"` parity default with the original Claude
-   widget, TODO `2dca4c8` -- found during verification that `"auto"`
-   gates tool calls inconsistently, while `"default"` gates reliably,
-   and this widget's whole point is a real, meaningful approval UI).
-   Making that a real, visible, user-changeable control (alongside the
-   existing model combo box) rather than a fixed constant lets someone
-   trade consistency for fewer prompts if they want to, the same
-   tradeoff `claude`'s own `--permission-mode` flag already exposes on
-   the CLI. Needs a decision on when the mode can change (only before
-   `start_session`, or live mid-session via `ClaudeSDKClient
-   .set_permission_mode`, which the SDK already exposes) -- not
-   designed yet.
-
-93364f9. Add a "talk to Claude about this widget" button to the widget
-   frame chrome (`src/desk/shell/widget_frame.py`'s small
-   indicator-button family -- `_TempuiPromoteButton`/
+93364f9. Add a `[chat]` button (relabeled from this item's own earlier
+   "talk to Claude about this widget" working name -- same feature,
+   restated by the user later in the same session with a tighter spec)
+   to the widget frame chrome (`src/desk/shell/widget_frame.py`'s
+   small indicator-button family -- `_TempuiPromoteButton`/
    `_StaleIndicatorButton`/`_ErrorIndicatorButton` are the existing
    precedent), dispatched centrally through `canvas.py`'s
    `_hit_test_chrome`/mouse handling the same way those are. Clicking
-   it launches a new "Claude (Desk)" widget (TODO `a596dbf`) with a
-   fresh session whose initial prompt references the specific clicked
-   widget instance (its widget kind/id, instance_id, and current
-   title) and hints at how to find that widget kind's own source on
-   disk (its `widgets/<id>/` directory -- `widget.py`/`widget.json` for
-   `kind: "python"`, `index.html`/compiled sources for `kind: "html"`)
-   so Claude can go read the real implementation rather than guessing.
-   Not designed yet -- open questions include exactly what gets
-   included in the launch prompt, whether this button appears on every
-   widget or only certain kinds, and whether it should reuse
-   `_place_discuss_claude_widget`'s existing shape (adapted for the new
-   widget kind) or needs its own placement helper.
+   it launches a new agent conversation (a "Claude (Desk)" widget,
+   TODO `a596dbf`) with a fresh session about the clicked widget,
+   whose initial prompt gives the new session notes on how to access
+   each of three things, rather than assuming which one the user
+   actually wants discussed:
+   - **The live instance** -- its widget kind/id, `instance_id`, and
+     current title/state (the same reference shape this item's own
+     original draft already specified).
+   - **The code** -- where that widget kind's own source lives on disk
+     (`widgets/<id>/` -- `widget.py`/`widget.json` for `kind:
+     "python"`, `index.html`/compiled sources for `kind: "html"`) so
+     the new session can go read the real implementation rather than
+     guessing.
+   - **The definition** -- the widget's own manifest (`widget.json`,
+     or a `DefineWidget` tempui file's own header fields), including
+     anything schema-related once the shared state store (see the
+     `desk.state.*` design discussion, `investigations/app_structure_dsl_design.md`)
+     lands -- a widget's declared state schemas are exactly the kind
+     of thing "let's discuss this widget" would want visible.
+   Not designed yet -- open questions include the exact prompt
+   wording/notes format for each of the three, whether this button
+   appears on every widget or only certain kinds, and whether it
+   should reuse `_place_discuss_claude_widget`'s existing shape
+   (adapted for the new widget kind) or needs its own placement
+   helper.
 
 0529501. An API for widgets to invoke Claude with access scoped to
    only the files that widget itself has access to, rather than a full
@@ -6739,3 +8195,487 @@ e42469e. COMPLETED: Fix a now-stale claim in the tempui doc set (`src/desk/temp_
    `ensure_docs_current`'s stale-doc rewrite path still working
    correctly against the new version). Full `tests/verify/`
    regression suite passes (89 scripts, 0 failures).
+
+a8e4115. COMPLETED: Add Desk's own `CLAUDE.md` a project instruction to use paths
+   relative to the current project directory rather than absolute
+   ones, matching an instruction another project's `CLAUDE.md` was
+   recently given. From
+   `../FEEDBACK/FEEDBACK-DESK-claude-md-relative-paths-2026-08-03-1604.md`.
+   Not designed/scoped beyond the one-line addition itself -- trivial.
+   [planned: claude-md-relative-paths.md]
+
+   Added the line verbatim to `CLAUDE.md`.
+
+7c11fe0. COMPLETED: `TransformsService` (`src/desk_services/transforms/service.py`)
+   never notices a transform added or changed on disk after Desk
+   startup/Desk-switch -- `_require` fails immediately with `Unknown
+   transform: ... (call discover() first)` on a lookup miss, and even
+   a manual re-`discover()` (e.g. via the Transform Manager widget's
+   Refresh button) doesn't help an *edited* Python transform, since
+   `self._python_modules` is never invalidated (the JS/TS path already
+   partially self-heals via `_resolve_js_entry`'s own mtime check,
+   `service.py:118-120`, but there's no Python equivalent). From
+   `../FEEDBACK/FEEDBACK-DESK-transform-discovery-staleness-2026-08-04-1301.md`.
+   Suggested fix: on a lookup miss, `_require` retries `discover()`
+   once (needs `desk_temp_dir`/`project_dir` stored on the service at
+   the last real `discover()` call, e.g. alongside `self._transforms`,
+   so `_require` doesn't need every call site to pass them through)
+   before raising `Unknown transform`; separately, track each Python
+   transform's source mtime at load time and drop/reload
+   `self._python_modules[info.id]` if the source's current mtime is
+   newer, mirroring `_resolve_js_entry`'s own check for the JS/TS
+   path. Not designed further yet.
+   [planned: transform-discovery-staleness.md]
+
+   Implemented as designed: `discover()` now records
+   `desk_temp_dir`/`project_dir` onto `self`; `_require` retries
+   `discover()` once on a lookup miss before raising; `_run_python`
+   stats each Python transform's source file and drops/reloads the
+   cached module whenever its mtime has moved since it was last
+   loaded, tracked in a new `self._python_module_mtimes` dict. New
+   coverage in `tests/verify/verify_transforms_service.py` (3 new
+   checks): a transform added to disk after the initial `discover()`
+   is found and runs with no explicit second `discover()` call; a
+   genuinely unknown `transform_id` still raises after the retry; an
+   edited-on-disk Python transform's new source is picked up on the
+   very next invocation, not the stale cached module. Full
+   `tests/verify/` regression suite passes (89 scripts, 0 failures).
+
+47aaf73. COMPLETED: The `[ERROR]` titlebar button can light up and then silently
+   do nothing when clicked. Root cause, confirmed directly: the click
+   handler (`DeskWindow._on_widget_error_clicked`,
+   `src/desk/shell/window.py:1970`) does `if not
+   frame.last_error_message: return` -- inferring "was there an
+   error" from the captured message string's truthiness -- but the
+   capture code (`_LoggingWebEnginePage.javaScriptConsoleMessage`,
+   `src/desk/shell/chromium_widget.py:57-68`) already has a deliberate
+   `message or ""` fallback for exactly the case where Qt hands back a
+   falsy message for a real error (an uncaught exception/rejection/
+   `console.error()` call with no usable text) -- so the click
+   handler's own gate is wrong precisely for the case that fallback
+   exists to handle: the button stays visible (lit) forever, since
+   `set_error(False)` is never reached. From
+   `../FEEDBACK/FEEDBACK-DESK-error-indicator-empty-message-noop-2026-08-04-1305.md`.
+   Suggested fix: give `WidgetFrame` (or reuse `_TitleBar`'s own
+   existing, currently-private `_has_error` bool,
+   `widget_frame.py:297`) an explicit has-error flag, independent of
+   `last_error_message`'s content; gate `_on_widget_error_clicked` on
+   that flag, not on `last_error_message` truthiness; fall back to a
+   placeholder string (e.g. `"(no error message was captured)"`) when
+   showing the dialog for an error with empty text, instead of the
+   message's emptiness silently cancelling the whole notification.
+   Only affects the `kind: "html"`/`ChromiumWidget` path -- the
+   `kind: "python"` path (`build_error_changed`) always carries
+   `traceback.format_exc()`, never empty, so it doesn't have this
+   problem. Not designed further yet.
+   [planned: error-indicator-empty-message-noop.md]
+
+   Implemented as designed: `WidgetFrame` gained a public `has_error:
+   bool` (matching `self.locked`'s own naming convention, not a
+   private-prefixed name, since `DeskWindow` reads it externally --
+   distinct from `_TitleBar`'s own, unrelated private `_has_error`
+   used purely for button-visibility styling), set unconditionally in
+   `set_error`. `_on_widget_error_clicked` now gates on `frame
+   .has_error`, and falls back to `"(no error message was captured)"`
+   when showing the dialog for an empty captured message. New coverage
+   in `tests/verify/verify_widget_error_indicator.py` (5 new checks):
+   an empty-message error still sets `has_error`/shows the button,
+   clicking it now actually shows the placeholder-text dialog instead
+   of silently doing nothing, the indicator/flag both clear correctly
+   afterward, and a full set/clear cycle keeps the flag in sync. Full
+   `tests/verify/` regression suite passes (89 scripts, 0 failures).
+
+1b7e500. COMPLETED: `desk-temporary-ui.md`'s "Questions for the user" section
+   (`src/desk/temp_ui.py:236`, "Each entry is a `## <short summary>`
+   heading...") describes a `QUESTIONS.md` heading format the real
+   parser doesn't accept -- `src/desk/questions_file.py`'s
+   `ENTRY_START_RE`/`TODO_ID_RE` (lines 20-21) require the heading to
+   **start with the literal word `TODO`** and every referenced id to
+   be **backtick-wrapped**: `## TODO \`<id>\`[/\`<id2>\`...]:
+   <summary>` (confirmed against `plans/questions-widget.md`'s own
+   original design -- entries were deliberately scoped to
+   TODO-blocking questions, not general free-standing ones -- none of
+   which the doc mentions). An entry whose heading doesn't match
+   `ENTRY_START_RE` at all doesn't partially parse -- it's silently
+   absorbed into `preamble`, genuinely invisible: `parse_questions_file`
+   returns it as zero entries, `_on_questions_file_changed`
+   (`window.py:1465`) computes an empty `new_keys` and returns before
+   ever showing the "new question" notification the doc promises, and
+   the Questions widget shows nothing either -- indistinguishable from
+   a `QUESTIONS.md` with no questions at all, at every layer, with no
+   diagnostic anywhere. From
+   `../FEEDBACK/FEEDBACK-DESK-questions-md-format-undocumented-and-brittle-2026-08-04-1347.md`.
+   Suggested fix: correct the doc to state the real required heading
+   shape and that an entry must reference at least one TODO id
+   (matching the deliberate original design -- not changing
+   `questions_file.py`'s parser to add free-standing-question support,
+   which would be a real feature addition, not a doc-accuracy fix);
+   separately, stop the failure being *totally* silent -- e.g. a small
+   helper that counts real `## ` headings that didn't match
+   `ENTRY_START_RE` in a given file, with `_on_questions_file_changed`
+   logging a low-severity warning (matching this project's own
+   `_relocate_promoted_widget_source`-style "free for the common case
+   to ignore, a real breadcrumb for the uncommon one" precedent) when
+   that count is nonzero. Not designed further yet.
+   [planned: questions-md-format-doc-and-silent-failure.md]
+
+   Implemented as designed: rewrote the doc section to state the real
+   required heading shape (a fenced-code-block example, not nested
+   backticks, after catching a real `SyntaxWarning`/leaked-backslash
+   bug in an early draft of the edit) and the TODO-id requirement
+   explicitly; bumped `TEMPUI_DOC_VERSION` 27 -> 28 with a matching
+   `_NEW_FEATURES_DOC` entry. New `questions_file.unparsed_heading_count(path)`
+   (counts `## ` headings that don't match `ENTRY_START_RE`, without
+   changing `parse_questions_file`'s own 4-call-site return signature);
+   `_on_questions_file_changed` now calls it and logs a `logger.warning`
+   naming the file and count when nonzero, leaving the well-formed case
+   completely silent as before. New
+   `tests/verify/verify_questions_md_format_fix.py` (15 checks): doc
+   content, the new-features entry, `unparsed_heading_count` against
+   well-formed/no-heading/malformed/mixed fixtures (confirmed to report
+   the real count, not just nonzero -- caught and fixed a test-fixture
+   mistake of my own along the way, an id that wasn't backtick-wrapped
+   but still matched `ENTRY_START_RE`'s literal-`TODO`-prefix check, so
+   it wasn't actually "unparsed" by this function's own documented
+   definition), and real logging capture (via this project's own
+   established `_WindowLogCapture` pattern) confirming a malformed file
+   logs exactly one warning naming the path/count and a well-formed one
+   logs nothing. Full `tests/verify/` regression suite passes (90
+   scripts, 0 failures).
+
+e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
+   can silently defeat the already-shipped capabilities-emission fix
+   already living in the auto-refreshed `.desk_temp/build_widget.py`
+   (TODO `31db3f6`) -- both compile/produce a valid `DefineWidget`
+   file with the same exit code either way, but the stale copy (from
+   before TODO `029047b` moved the mechanism to `.desk_temp/`, bumped
+   16->17) has zero mentions of `Capability` and silently drops every
+   capability a widget declares. Confirmed via `git grep`/`ls` that
+   Desk's own repo no longer seeds any `scripts/build_widget.py`
+   itself (no `_seed_build_widget_script`-shaped function exists) --
+   this is purely legacy drift in a project that adopted Desk before
+   that move, with nothing today warning it's stale/unused. From
+   `../FEEDBACK/FEEDBACK-DESK-stale-build-widget-script-defeats-capabilities-fix-2026-07-31-1445.md`.
+   Suggested fix: have the generated `.desk_temp/build_widget.py`
+   script (`_BUILD_WIDGET_SCRIPT` in `src/desk/temp_ui.py:1126`,
+   specifically its `main()` at line 1312) check, at the very start of
+   `main()`, whether a `scripts/build_widget.py` also exists in the
+   project and print a loud warning if so -- doesn't need either
+   file's own version, just its own canonical location plus the other
+   one's existence. Two smaller, related gaps from the same FEEDBACK
+   item, fixable in the same pass:
+   - `main()` (same file) writes a fresh `.desk_temp/<uuid>` file on
+     every build and never touches an earlier build's file for the
+     same keyword -- an un-promoted widget iterated on across many
+     sessions accumulates one leftover file per rebuild forever, with
+     a real (if narrow) risk: `_register_custom_widgets_from_desk_temp`
+     re-scans `.desk_temp` in alphabetical (not chronological) order
+     at startup/Desk-switch, so several stale same-keyword files left
+     behind could make an old one "win" again with no relationship to
+     which was built most recently. Since `build_widget()` already
+     knows the keyword it just built, have `main()` delete any other
+     same-keyword `DefineWidget` file in the same output directory
+     immediately after a successful build.
+   - The Bridge client's thrown `Error`
+     (`src/desk/server/bridge_client.py`'s `call()` helper) bakes the
+     HTTP status into the message string (`` `Desk Bridge ${path}
+     failed (${response.status}): ${text}` ``) instead of exposing it
+     as a structured property -- a capability rejection (403) and a
+     genuine not-found (400) are indistinguishable from a `catch`
+     block without regex/substring-matching the free-text message.
+     Attach the numeric status directly (e.g. `err.status =
+     response.status` right before throwing) so calling code can
+     branch on `err.status` without parsing the message.
+   Not designed further yet.
+   [planned: stale-build-widget-script-fix.md (COMPLETED)]
+
+   COMPLETED: confirmed `_BUILD_WIDGET_SCRIPT`'s `main()`
+   (`src/desk/temp_ui.py`) now checks a new module constant
+   `STALE_SIBLING_SCRIPT_PATH = Path("scripts/build_widget.py")` via a
+   new `_warn_if_stale_sibling_exists()`, called as the very first
+   thing in `main()` -- prints a stderr warning naming both the stale
+   path and the canonical `.desk_temp/build_widget.py` one, never
+   aborts the build. `build_widget()`'s return type changed from `str`
+   to `tuple[str, str]` (`(manifest["keyword"], tempui_text)`), so
+   `main()` now has the keyword available after a successful build; a
+   new `_delete_other_builds_for_keyword(temp_ui_dir, keyword, keep)`
+   deletes every other file in `temp_ui_dir` whose first line starts
+   with `DefineWidget\t<keyword>\t`, called right after the fresh
+   `.desk_temp/<uuid>` file is written -- tolerates `OSError`/
+   `UnicodeDecodeError` per-candidate rather than aborting the whole
+   scan. `bridge_client.py`'s `call()` helper now constructs the thrown
+   `Error` as a variable and sets `err.status = response.status` right
+   before `throw err;`, additive alongside the existing free-text
+   message. `TEMPUI_DOC_VERSION` bumped 28->29 with a matching comment
+   block and a `## Version 29` entry in `_NEW_FEATURES_DOC` describing
+   both build-script behavior changes. New
+   `tests/verify/verify_stale_build_widget_script_fix.py` (20 checks,
+   real subprocess builds via a real `tsc`, real HTTP round trip
+   through a real `start_server` instance, real `node` execution of
+   the actual rendered `bridge_client.py` template against that live
+   server): doc-version/changelog content; a real build with a stale
+   `scripts/build_widget.py` sibling present prints the warning to
+   stderr and still succeeds; a build with no sibling prints nothing
+   extra; building the same keyword three times (interleaved with a
+   different keyword's own build) leaves exactly one `DefineWidget`
+   file for the repeated keyword and leaves the unrelated keyword's
+   file untouched; a real 403 capability-rejection response round-trips
+   through the actual Bridge client JS (executed under real Node, with
+   `fetch` rebased onto the real server's origin since plain Node has
+   no page origin to resolve a relative URL against) and the caught
+   `Error` has both `.status === 403` and the status still present in
+   `.message`. Fixed one pre-existing regression along the way:
+   `tests/verify/verify_build_widget.py` still called
+   `build_widget.build_widget(...)` expecting a plain string back --
+   updated its two call sites to unpack `(keyword, text)`, plus a new
+   assertion that the returned keyword matches the manifest. Full
+   `tests/verify/` regression suite passes (92 scripts total, 0
+   failures beyond the one pre-existing `verify_build_widget.py` gap
+   just fixed).
+
+3cd90cf. Add a `desk.self.setSubtitle(text: string | null)` Bridge API
+   call (any `kind: "html"` widget) so a widget instance can put its
+   own state (e.g. which document it's editing) into its own
+   titlebar, alongside the existing `[EXTERNAL]` text suffix (the
+   `[STALE]`/`[ERROR]`/`[TEMPUI]` indicators are separate clickable
+   titlebar *buttons*, not part of the label text, so this only needs
+   to compose with `[EXTERNAL]`). From
+   `../FEEDBACK/FEEDBACK-DESK-widget-titlebar-subtitle-api-2026-08-03-1830.md`.
+   A widget's titlebar text is fixed at construction
+   (`_TitleBar.__init__`, `src/desk/shell/widget_frame.py:291`) and
+   never changes except that suffix -- no widget-authored way to
+   surface *which* particular thing an instance is showing (e.g. a
+   file-editor-shaped widget letting the user pick a document at
+   runtime has no titlebar-level option to show which one, only its
+   own in-content UI). Routing plumbing already substantially exists,
+   mirroring `getLocalStorage`/`setLocalStorage`'s own shape exactly
+   (`self`-scoped, `require_instance_id`-only, "need no broader
+   capability" per that pair's own precedent, `app.py:304-314`):
+   `DeskWindow.find_frame_by_instance_id` (`window.py:1099`) already
+   resolves an instance id to its live `WidgetFrame`. Suggested
+   pieces: `bridge_client.py`'s `self: {...}` object gets a
+   `setSubtitle` call; `app.py` gets a matching
+   `POST /api/bridge/self/setSubtitle` route (a `SetSubtitleRequest`
+   pydantic model mirroring `SetLocalStorageRequest`); `DeskWindow`
+   gets a `set_widget_subtitle(instance_id, text)` →
+   `find_frame_by_instance_id` → new `WidgetFrame.set_subtitle`/
+   `_TitleBar.set_subtitle` pair; `_TitleBar._update_label_text`
+   (`widget_frame.py:338`) composes title + subtitle + `[EXTERNAL]`.
+   `None`/empty clears it back to the bare title. Needs a
+   `TEMPUI_DOC_VERSION` bump + `_CUSTOM_WIDGETS_DOC`/`_NEW_FEATURES_DOC`
+   entries documenting the new call, matching this project's own
+   established convention. Explicitly out of scope (per the FEEDBACK
+   item's own framing): the equivalent for `kind: "python"` widgets --
+   `current_context` doesn't have an obvious existing per-instance-id
+   hook a `python`-kind widget's own code could use the same way, and
+   investigating that is real, separate work, not bundled in here.
+   [planned: widget-titlebar-subtitle-api.md (COMPLETED)]
+
+   COMPLETED: `bridge_client.py`'s `self: {...}` object gained
+   `setSubtitle: (text) => call("POST", "/api/bridge/self/setSubtitle",
+   { text: text ?? null })`. `app.py` gained
+   `class SetSubtitleRequest(BaseModel): text: str | None` and
+   `POST /api/bridge/self/setSubtitle`, gated only by
+   `require_instance_id` (no capability check), mirroring
+   `self_set_local_storage` exactly. `DeskWindow.set_widget_subtitle
+   (instance_id, text)` resolves via `find_frame_by_instance_id` and
+   silently no-ops for an unknown instance id. `_TitleBar` gained
+   `self._subtitle: str | None` and `set_subtitle`;
+   `_update_label_text` now composes `f"{title} — {subtitle}"` (only
+   when `subtitle` is truthy) before appending the existing
+   `[EXTERNAL]` suffix. `WidgetFrame.set_subtitle` thinly delegates to
+   `_titlebar.set_subtitle`, matching `set_external`/`set_stale`'s own
+   shape. `TEMPUI_DOC_VERSION` bumped 29->30 with a matching comment
+   block, a new `desk.self.setSubtitle` bullet in the Bridge API
+   section of `_CUSTOM_WIDGETS_DOC` (alongside `getManifest`/
+   `getLocalStorage`/`setLocalStorage`), and a `## Version 30` entry in
+   `_NEW_FEATURES_DOC`. New
+   `tests/verify/verify_widget_titlebar_subtitle.py` (18 checks, real
+   Qt widgets, no mocking): `_TitleBar`/`WidgetFrame` label composition
+   across every combination of subtitle/`[EXTERNAL]`, and that both
+   `None` and `""` clear the subtitle back to the bare title;
+   `DeskWindow.set_widget_subtitle` resolving the right frame among
+   several and silently no-oping for an unknown instance id; the
+   rendered Bridge client template declaring `self.setSubtitle`; doc
+   -version/content checks; a real HTTP round trip through a real
+   `start_server` instance with no `X-Desk-Widget-Id` header sent at
+   all (confirming no capability is required), whose response is
+   confirmed against the real, live titlebar label text afterward, not
+   just the HTTP response body. Full `tests/verify/` regression suite
+   passes (93 scripts total, 0 failures).
+
+7f984ec. Several small gaps found adopting Desk's shared/not-shared
+   `development-process.md` doc split (TODO `1a96c9f`/`c458012`) into
+   an existing project (`world-timelines`), each confirmed directly
+   against Desk's own current seeding code. From
+   `../FEEDBACK/FEEDBACK-DESK-new-desk-in-existing-project-source-diving-2026-08-03-1506.md`:
+   - **No breadcrumb when seeding into a project that already has its
+     own `development-process.md`.** `_seed_development_process`
+     (`src/desk/shell/window.py:1802`) copies
+     `shared_development_process.md`/
+     `specifically-not-working-on-desk-itself-development-process.md`
+     into a project whenever the destination doesn't already have that
+     *specific* filename, independently per file -- so a project with
+     its own pre-existing, pre-split `development-process.md` (which
+     is left untouched, per the function's own no-overwrite rule)
+     silently gets the two new peer files with nothing explaining what
+     they are, that the top-level file still needs a manual rewrite to
+     reference them, or where to find the how-to for the TODO-id
+     conversion (see below). Suggested fix: the same low-cost, already
+     -established mechanism the tempui-doc-drift notification (TODO
+     `7c7b676`) uses -- drop a same-directory `Scratch` tempui note
+     explaining what just got seeded and what manual step is still
+     needed, with the exact template pointer
+     (`plans/fork-development-process-doc.md`). Confirmed via `git
+     grep` that Desk has no standing check for "peer files exist but
+     the top-level file doesn't reference `shared_development_process.md`"
+     either -- worth deciding whether that's a one-time-seed note or a
+     recurring check when such a project is opened.
+   - **`how-to-convert-item-id-one-time.md` isn't seeded alongside
+     `scripts/todo_item_ids.py`.** Confirmed the file exists in Desk's
+     own repo root but `_seed_todo_item_ids_script`
+     (`window.py:1824`) doesn't copy it -- the script's own docstring
+     says it's "meant to be copied verbatim into other projects," but
+     the doc that makes running its `convert` mode *safely* possible
+     (dry-run-first, never-hand-modify-the-script discipline) doesn't
+     travel with it.
+   - **`todo_item_ids.py` (`scripts/todo_item_ids.py`) doesn't handle
+     three real reference shapes**, confirmed directly against its
+     current regexes: (a) existing `"TODO item N"` phrasing --
+     `convert`'s singular-reference replacement
+     (`re.sub(rf"\bitem\s+{number}\b", f"TODO {item_id}", text)`,
+     line 101) matches `item N` regardless of what precedes it, so
+     `"TODO item 16"` becomes `"TODO TODO <id>"`; (b) en-dash ranges
+     like `"items 6–8"` -- the plural-reference regex
+     (`r"\bitems\s+(\d+(?:/\d+)+)\b"`, line 95) only matches
+     slash-separated lists, so an en-dash range matches neither the
+     plural nor the singular pass and is silently left completely
+     unconverted; (c) a `<!-- Item format: 1. ... 2. ... -->`-shaped
+     documentation comment whose own literal `1.`/`2.` lines (if
+     written across multiple lines inside the HTML comment) collide
+     with `ITEM_START_RE` (`^(\d+)\.\s`, line 54, which has no
+     HTML-comment awareness at all) and get treated as real item
+     boundaries, corrupting the conversion if those numbers collide
+     with real items. All three need pre-normalizing by hand today
+     before running `convert` safely. Since this script is meant to be
+     copied verbatim and never locally modified, fixing these once
+     upstream (not requiring every future project to hand-discover and
+     work around them) keeps that "verbatim, never customize"
+     invariant actually meaningful.
+   - **The `../FEEDBACK/` convention isn't documented in
+     `shared_development_process.md`.** Confirmed via grep: neither
+     `development-process.md` nor `shared_development_process.md`
+     mentions it anywhere -- a newly-seeded or freshly-converted
+     project has no in-project way to learn this convention exists at
+     all. Fold a short section into `shared_development_process.md`
+     describing it.
+   [planned: new-desk-existing-project-gaps.md (COMPLETED)]
+
+   COMPLETED: `TempUiManager._notify_docs_upgraded`'s note-writing was
+   factored out into a shared `_write_scratch_note(temp_dir, title,
+   body)`; a new public `TempUiManager.notify_dev_process_peers_seeded
+   (directory)` uses it, guarded by `self._watched_directory == directory
+   / TEMP_UI_DIRNAME` (a no-op otherwise -- nowhere to write the note).
+   `DeskWindow._seed_development_process` now returns whether a
+   breadcrumb is warranted (a peer file newly seeded *and* the
+   top-level `development-process.md` already existed); `new_desk`
+   captures that and calls `notify_dev_process_peers_seeded` right
+   after `switch_desk` (not before -- `.desk_temp`/the watcher don't
+   exist yet at seed time). `_seed_todo_item_ids_script` also seeds a
+   new `HOW_TO_CONVERT_ITEM_ID_FILENAME` ("how-to-convert-item-id-one-
+   time.md") alongside the script, same no-overwrite/no-op-if-missing
+   -source posture as everything else it already does.
+   `scripts/todo_item_ids.py`: `_html_comment_line_indices` marks line
+   indices inside a (possibly multi-line) `<!-- ... -->` block;
+   `_split_items` now skips any `ITEM_START_RE` match on such a line.
+   The singular cross-reference regex now optionally consumes a
+   leading `TODO\s+` and replaces the whole match, so `"TODO item 16"`
+   and `"item 16"` both become `"TODO <id>"`, never `"TODO TODO
+   <id>"`. A new plural en-dash/hyphen-range pattern
+   (`r"\bitems\s+(\d+)\s*[-–]\s*(\d+)\b"`) expands an inclusive range
+   to slash-joined `TODO <id>` references, matching the existing
+   slash-list rendering. Found and fixed one more real bug along the
+   way, caught only by actually running the fix against a fixture: the
+   cross-reference passes' `\s+` (deliberately spanning newlines for a
+   legitimately word-wrapped reference) could still reach from ordinary
+   prose across a comment boundary into the comment's own literal
+   example text and corrupt it -- fixed with a `_mask_for_text(text)`
+   per-character mask (recomputed fresh before *each* substitution pass,
+   since a pass can change `text`'s length and desync a mask computed
+   against an earlier version of it) that makes every cross-reference
+   substitution skip any match touching a comment line, leaving the
+   match text untouched instead. `shared_development_process.md` gained
+   a new "External Feedback (`../FEEDBACK/`)" section: what the
+   directory is, that acting on a file means citing it in a new
+   `TODO.md`/`PARKINGLOT.md` entry, and the (previously undocumented,
+   confirmed via `ls ../FEEDBACK/implemented/`) convention of moving a
+   file into `../FEEDBACK/implemented/` once every entry it produced is
+   `COMPLETED`. Applied that convention retroactively to this session's
+   own six other already-`COMPLETED` items from this same batch plus
+   this TODO's own source file (`a8e4115`, `7c11fe0`, `47aaf73`,
+   `1b7e500`, `e86a31b`, `3cd90cf`, `7f984ec` -- all seven files moved
+   into `../FEEDBACK/implemented/`), so the newly-documented convention
+   doesn't start already out of sync with this session's own recent
+   history. New/extended verify coverage, real (no mocking):
+   `tests/verify/verify_dev_process_seeding.py` (extended, 3 new
+   checks) covers `_seed_development_process`'s new return value across
+   the pre-existing-top-level/brand-new/nothing-to-seed cases;
+   `tests/verify/verify_seed_todo_item_ids_script.py` (extended, 3 new
+   checks) covers the how-to-doc seeding's copy/no-op/never-overwrite
+   behavior; new
+   `tests/verify/verify_new_desk_existing_project_gaps.py` (18 checks)
+   covers a real `TempUiManager.provision` + `notify_dev_process_peers_
+   seeded` round trip (a real Scratch note actually appears in
+   `.desk_temp`, with the right content), the no-op case for an
+   unwatched directory, `new_desk`'s exact call ordering (seed, then
+   `switch_desk`, then the breadcrumb, then save) across the warranted/
+   not-warranted/`copy_development_process=False` cases, and the new
+   `shared_development_process.md` section's content; new
+   `tests/verify/verify_todo_item_ids_script_regex_fixes.py` (15
+   checks) subprocess-invokes the real script against a real fixture
+   combining all three original bug shapes plus the comment-boundary
+   corruption bug found along the way, confirming each is now handled
+   correctly in one real `convert` run. Full `tests/verify/`
+   regression suite passes (96 scripts total, 0 failures).
+676a133. COMPLETED: Investigate offline/local text-to-speech (TTS) options for this
+   project -- the reverse direction of the already-shipped local
+   speech-to-text work (TODOs `f9d2dc7`/`1cd0ca2`/`b32fb81`,
+   `mlx-whisper`-based). Candidate libraries, model sizes and license
+   terms, voice quality, and whether anything comparable to
+   `mlx-whisper`'s Apple-Silicon-optimized story exists for TTS
+   specifically (vs. a general cross-platform option) are all open.
+   No concrete use case driving this yet either (unlike the STT work,
+   which had the Voice Input widget as a clear target) -- surfaced
+   purely as "the natural counterpart to what we already have," moved
+   here from `PARKINGLOT.md`. Write up findings and recommendations in
+   `investigations/tts_options.md`. No application code changes -- a
+   pure investigation; figure out real options and their tradeoffs
+   before this becomes a planned, implementable TODO.
+   [planned: investigate-tts-options.md (COMPLETED)]
+
+   Surveyed four candidates: macOS `say`/`AVSpeechSynthesizer` (zero
+   new dependency, on-device neural voices since Sonoma, but thin
+   programmatic control and no scriptable way to fetch the better
+   voice packs); `mlx-audio` + Kokoro-82M (MIT toolkit / Apache 2.0
+   weights, ~300MB, #1 on the TTS Arena leaderboard as of Jan 2026 --
+   the real MLX-native analog to `mlx-whisper`, though a third-party
+   project rather than living in `ml-explore`'s own org the way
+   `mlx-whisper` does); Piper (ONNX/CPU, ~75MB/voice, 100+ voices/35+
+   languages, the actual general cross-platform option -- license is
+   murky, MIT on the now-archived original repo vs. GPL-3.0 on the
+   active fork, flagged as unresolved rather than papered over); Coqui
+   XTTS v2 (best quality/voice-cloning surveyed, but its weights are
+   CPML-licensed non-commercial-only with no one left to sell a
+   commercial license since Coqui Inc. shut down in Jan 2024 --
+   ruled out for anything this MIT-licensed project would ship or
+   default to). Answered the original "is there an Apple-Silicon-
+   optimized story like `mlx-whisper`" question directly: yes,
+   `mlx-audio`/Kokoro, with the third-party-provenance caveat above.
+   No recommendation committed to, per `PARKINGLOT.md`'s original
+   framing -- no concrete use case exists yet to design against;
+   findings and the shape of the tradeoff for whoever picks this up
+   are written up in `investigations/tts_options.md`.
+
+   No application code changed -- a pure investigation. Confirmed the
+   new file exists; full regression suite: 100 scripts, 0 failures
+   (unchanged, as expected).

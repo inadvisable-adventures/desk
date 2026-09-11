@@ -15,6 +15,33 @@ def _new_instance_id() -> str:
 
 
 @dataclass
+class StateHistoryEntry:
+    """One past `desk.state.set(key, value, edit)` call for a given
+    key (TODO f68383f) -- `edit` is opaque to Desk, stored and relayed
+    exactly as given, the same way `desk.events` payloads already
+    are."""
+
+    value: object
+    edit: object | None = None
+
+
+@dataclass
+class StateEntry:
+    """The current value/edit for one shared, project-scoped state
+    key, plus its own bounded history -- see
+    `desk.shell.window.DeskWindow.set_state`'s
+    `STATE_HISTORY_MAX_ENTRIES` FIFO eviction. `value`/`edit` here are
+    the *current* pair (also the most recent `history` entry) --
+    kept as top-level fields, not derived from `history[0]`, so
+    `get_state` never needs to touch history at all for the common
+    case."""
+
+    value: object
+    edit: object | None = None
+    history: list[StateHistoryEntry] = field(default_factory=list)
+
+
+@dataclass
 class WidgetState:
     widget_id: str
     x: float
@@ -65,6 +92,13 @@ class Desk:
     # current_context hook, never by touching this list directly from
     # outside desk.shell.window.DeskWindow.
     file_type_registry: list[FileTypeRegistryEntry] = field(default_factory=list)
+    # The shared, project-scoped state store (TODO f68383f,
+    # desk.state.get/set/getHistory) -- distinct from each widget
+    # instance's own per-instance WidgetState.state above; read/
+    # written entirely through the Bridge API/desk.shell.window
+    # .DeskWindow.get_state/set_state, never by touching this dict
+    # directly from outside it.
+    state: dict[str, StateEntry] = field(default_factory=dict)
 
     @property
     def name(self) -> str:
@@ -101,11 +135,22 @@ def _load_custom_widget(data: dict) -> CustomWidgetDefinition:
     )
 
 
+def load_state_entry(data: dict) -> StateEntry:
+    """Public (TODO 297f1a6, needed by desk.shell.window's JSON import
+    /export) -- the JSON shape a StateEntry round-trips through,
+    shared by load_desk below and the save/load-as-JSON feature so
+    there's only ever one definition of what a StateEntry looks like
+    on disk."""
+    history = [StateHistoryEntry(value=h["value"], edit=h.get("edit")) for h in data.get("history", [])]
+    return StateEntry(value=data.get("value"), edit=data.get("edit"), history=history)
+
+
 def load_desk(path: Path) -> Desk:
     data = json.loads(path.read_text())
     widgets = [WidgetState(**w) for w in data.get("widgets", [])]
     custom_widgets = [_load_custom_widget(cw) for cw in data.get("custom_widgets", [])]
     file_type_registry = [entry_from_dict(e) for e in data.get("file_type_registry", [])]
+    state = {key: load_state_entry(entry) for key, entry in data.get("state", {}).items()}
     return Desk(
         path=path,
         widgets=widgets,
@@ -114,6 +159,7 @@ def load_desk(path: Path) -> Desk:
         scale=data.get("scale", 1.0),
         custom_widgets=custom_widgets,
         file_type_registry=file_type_registry,
+        state=state,
     )
 
 
@@ -126,6 +172,15 @@ def _custom_widget_dict(cw: CustomWidgetDefinition) -> dict:
             {"width": cw.default_size[0], "height": cw.default_size[1]} if cw.default_size else None
         ),
         "capabilities": cw.capabilities,
+    }
+
+
+def state_entry_dict(entry: StateEntry) -> dict:
+    """Public (TODO 297f1a6) -- see load_state_entry above."""
+    return {
+        "value": entry.value,
+        "edit": entry.edit,
+        "history": [{"value": h.value, "edit": h.edit} for h in entry.history],
     }
 
 
@@ -154,6 +209,7 @@ def desk_state_dict(desk: Desk) -> dict:
         "scale": desk.scale,
         "custom_widgets": [_custom_widget_dict(cw) for cw in desk.custom_widgets],
         "file_type_registry": [entry_to_dict(e) for e in desk.file_type_registry],
+        "state": {key: state_entry_dict(entry) for key, entry in desk.state.items()},
     }
 
 

@@ -58,15 +58,38 @@ Subscribers widget zoom/pan the Workspace Canvas to a specific placed
 widget instance (by instance id) and show a human-readable label for
 one, without needing to import `desk.shell.window`/`desk.shell.canvas`
 directly -- see `desk.shell.window.DeskWindow
-.zoom_to_widget_by_instance_id`/`_display_name_for_instance`."""
+.zoom_to_widget_by_instance_id`/`_display_name_for_instance`.
+
+Also holds an "html Job starter" hook (TODO d7e66f6), same shape
+again: lets the Job Runner widget (`widgets/job_runner/widget.py`)
+start an `html`-kind Job -- materialize + mount + place a real,
+capability-scoped `kind: "html"` widget instance -- without needing to
+import `desk.shell.window` directly. A `python`-kind Job needs no such
+hook: it runs entirely in-process on a background thread, no
+`DeskWindow` involvement required. See `desk.shell.window.DeskWindow
+.start_html_job`.
+
+Also holds a "GUI thread caller" hook (TODO 97bd090), same minimal
+shape again: lets in-process Python code running on a background
+thread -- a Desk Proc's own script execution, the same shape a Job's
+`python`-kind execution already established -- safely, synchronously
+call into GUI-thread-owned `DeskWindow` state and get a real return
+value back, without touching a Qt object directly from the wrong
+thread. Deliberately reuses the exact primitive the Local Web Server's
+own Bridge API already relies on for this same problem
+(`desk.shell.bridge.GuiBridge.call`, already documented as safe to call
+"from any other thread") rather than inventing a second one -- set
+once, in `DeskWindow.__init__`, to `self._handle.gui_bridge.call`."""
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from PyQt6.QtCore import QPoint
 from PyQt6.QtWidgets import QWidget
 
 from desk.event_mediator import EventMediator
 from desk.hotreload import HotReloadBroker
+from desk.temp_ui import JobDefinition
 
 _current_directory: Path | None = None
 _widget_opener: Callable[[str], QWidget | None] | None = None
@@ -85,6 +108,15 @@ _file_type_registry_provider: Callable[[], list[dict]] | None = None
 _widget_catalog_provider: Callable[[], list[dict]] | None = None
 _hot_reload_broker: HotReloadBroker | None = None
 _popup_opener: Callable[[str, str, list[str], str | None], str | None] | None = None
+_html_job_starter: Callable[[str, JobDefinition, Callable[[str, str], None]], None] | None = None
+_gui_thread_caller: Callable[[Callable[[], Any]], Any] | None = None
+_state_overview_provider: Callable[[], list[dict]] | None = None
+_state_history_provider: Callable[[str, int], list[dict]] | None = None
+_state_writer: Callable[[str, object, object, str, str | None], str | None] | None = None
+_schema_file_writer: Callable[[str, str, str], str | None] | None = None
+_schema_file_deleter: Callable[[str], str | None] | None = None
+_state_exporter: Callable[[Path], str | None] | None = None
+_state_importer: Callable[[Path], str | None] | None = None
 
 
 def set_current_desk_directory(directory: Path) -> None:
@@ -317,3 +349,146 @@ def set_hot_reload_broker(broker: HotReloadBroker) -> None:
 
 def get_hot_reload_broker() -> HotReloadBroker | None:
     return _hot_reload_broker
+
+
+def set_html_job_starter(starter: Callable[[str, JobDefinition, Callable[[str, str], None]], None]) -> None:
+    """TODO d7e66f6: `starter(job_id, definition, on_status)` --
+    materializes, mounts, and places a real, capability-scoped
+    `kind: "html"` widget instance for an `html`-kind Job.
+    `on_status(status, detail)` is called with `("executing", "")`
+    immediately, then exactly one of `("done", "")` or
+    `("errored", message)` once the placed instance's page finishes
+    loading or logs a console error. See
+    `desk.shell.window.DeskWindow.start_html_job`."""
+    global _html_job_starter
+    _html_job_starter = starter
+
+
+def get_html_job_starter() -> Callable[[str, JobDefinition, Callable[[str, str], None]], None] | None:
+    return _html_job_starter
+
+
+def set_gui_thread_caller(caller: Callable[[Callable[[], Any]], Any]) -> None:
+    """TODO 97bd090: `caller(fn)` runs `fn` on the GUI thread and
+    returns its result (or re-raises what it raised) to whichever
+    thread called `caller` -- safe to call from any thread, including
+    the calling thread itself being the GUI thread. Set once, in
+    `DeskWindow.__init__`, to `self._handle.gui_bridge.call`
+    (`desk.shell.bridge.GuiBridge.call`) -- the same instance the Local
+    Web Server's own Bridge API routes already use for this exact
+    purpose (see `desk.server.app.run_on_gui`), just exposed here for
+    in-process Python code (a Desk Proc script's own background-thread
+    execution) that has no HTTP request to route through."""
+    global _gui_thread_caller
+    _gui_thread_caller = caller
+
+
+def get_gui_thread_caller() -> Callable[[Callable[[], Any]], Any] | None:
+    return _gui_thread_caller
+
+
+def set_state_overview_provider(provider: Callable[[], list[dict]]) -> None:
+    """TODO 6330249: lets the schema/state-management widget read
+    every currently-known desk.state.* key in one call --
+    `{"key", "value", "edit", "type_expr", "source", "source_kind",
+    "permanent", "placed_instance_count"}` per entry, `type_expr`/
+    `source`/`source_kind`/`permanent` all `None` for a non-validated
+    key. Live updates after the initial read arrive via
+    `bind_event_mediator` (TODO 6f9c51b), subscribing to
+    `desk.state.changed` and `desk.schema_registry
+    .SCHEMA_CHANGED_EVENT`, the same "read once, then react to the
+    mediator" shape
+    `get_file_type_registry_provider` above already establishes. See
+    `desk.shell.window.DeskWindow.get_state_overview`."""
+    global _state_overview_provider
+    _state_overview_provider = provider
+
+
+def get_state_overview_provider() -> Callable[[], list[dict]] | None:
+    return _state_overview_provider
+
+
+def set_state_history_provider(provider: Callable[[str, int], list[dict]]) -> None:
+    """TODO 6330249: `provider(key, limit)` -- the same `{"value",
+    "edit"}`-per-entry, latest-first shape `desk.state.getHistory`
+    already returns. See
+    `desk.shell.window.DeskWindow.get_state_history`."""
+    global _state_history_provider
+    _state_history_provider = provider
+
+
+def get_state_history_provider() -> Callable[[str, int], list[dict]] | None:
+    return _state_history_provider
+
+
+def set_state_writer(writer: Callable[[str, object, object, str, str | None], str | None]) -> None:
+    """TODO 6330249: `writer(key, value, edit, instance_id, type_hint)`
+    -- edits a desk.state.* value directly (still checked against an
+    active schema exactly as a Bridge API call would be). Returns an
+    error message instead of raising, unlike
+    `desk.shell.window.DeskWindow.set_state` itself -- a widget editing
+    a value wants to show the message inline, not catch an exception.
+    See `desk.shell.window.DeskWindow.try_set_state`."""
+    global _state_writer
+    _state_writer = writer
+
+
+def get_state_writer() -> Callable[[str, object, object, str, str | None], str | None] | None:
+    return _state_writer
+
+
+def set_schema_file_writer(writer: Callable[[str, str, str], str | None]) -> None:
+    """TODO 6330249: `writer(location, key, type_expr)` -- declares/
+    updates a top-level desk.state.* schema (`location` is
+    `"ephemeral"` or `"git_tracked"`), by writing the underlying JSON
+    file directly and relying on the existing file-watch pipeline (TODO
+    9aef267) to validate/register it. Returns an error message, or
+    `None` on success. See
+    `desk.shell.window.DeskWindow.write_schema_file`."""
+    global _schema_file_writer
+    _schema_file_writer = writer
+
+
+def get_schema_file_writer() -> Callable[[str, str, str], str | None] | None:
+    return _schema_file_writer
+
+
+def set_schema_file_deleter(deleter: Callable[[str], str | None]) -> None:
+    """TODO 6330249: `deleter(key)` -- removes a top-level desk.state.*
+    schema; refuses (returns an error message, doesn't raise) for a
+    widget-declared one, since there's no file to edit. See
+    `desk.shell.window.DeskWindow.delete_schema_key`."""
+    global _schema_file_deleter
+    _schema_file_deleter = deleter
+
+
+def get_schema_file_deleter() -> Callable[[str], str | None] | None:
+    return _schema_file_deleter
+
+
+def set_state_exporter(exporter: Callable[[Path], str | None]) -> None:
+    """TODO 297f1a6: `exporter(path)` -- writes the entire current
+    desk.state.* store (every key's value, edit, and history) to
+    `path` as JSON, a whole-store snapshot. Returns an error message,
+    or `None` on success. See
+    `desk.shell.window.DeskWindow.export_state_json`."""
+    global _state_exporter
+    _state_exporter = exporter
+
+
+def get_state_exporter() -> Callable[[Path], str | None] | None:
+    return _state_exporter
+
+
+def set_state_importer(importer: Callable[[Path], str | None]) -> None:
+    """TODO 297f1a6: `importer(path)` -- restores desk.state.* from a
+    file `get_state_exporter` wrote, all-or-nothing (every key's
+    current value is validated against any currently-active schema
+    before anything is applied). Returns an error message, or `None`
+    on success. See `desk.shell.window.DeskWindow.import_state_json`."""
+    global _state_importer
+    _state_importer = importer
+
+
+def get_state_importer() -> Callable[[Path], str | None] | None:
+    return _state_importer

@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 import shutil
 import uuid
@@ -11,7 +12,19 @@ from PyQt6.QtCore import QPointF, Qt, QTimer
 from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QWidget
 
 from desk.custom_widgets import materialize
-from desk.desks import DESK_SUFFIX, Desk, WidgetState, desk_state_dict, load_desk, save_desk
+from desk.desks import (
+    DESK_SUFFIX,
+    Desk,
+    StateEntry,
+    StateHistoryEntry,
+    WidgetState,
+    desk_state_dict,
+    load_desk,
+    load_state_entry,
+    save_desk,
+    state_entry_dict,
+)
+from desk.jobs import materialize as materialize_job
 from desk.file_type_registry import (
     FILE_TYPE_REGISTRY_UPDATED_EVENT,
     entry_from_dict,
@@ -22,8 +35,10 @@ from desk.file_type_registry import (
 )
 from desk.file_watch import SingleFileWatcher
 from desk.hotreload import HotReloadBroker
-from desk.questions_file import find_nearest_questions_file, parse_questions_file
+from desk.questions_file import find_nearest_questions_file, parse_questions_file, unparsed_heading_count
 from desk.recent_desks import add_to_mru, prune_missing_mru_entries
+from desk.schema_registry import SYSTEM_SENDER_INSTANCE_ID, SchemaConflict
+from desk.schema_types import SchemaSyntaxError, coerce, parse_type_expression, validate
 from desk.server.bridge_client import DOM_SNAPSHOT_JS
 from desk.server.runner import ServerHandle
 from desk.shell import current_context
@@ -31,6 +46,7 @@ from desk.shell.canvas import WorkspaceView
 from desk.shell.chromium_widget import ChromiumWidget
 from desk.shell.new_desk_dialog import NewDeskDialog
 from desk.shell.python_widget import PythonWidgetHost
+from desk.shell.schema_file_watcher import SCHEMA_FILES_DIRNAME, TOP_LEVEL_SCHEMAS_DIRNAME, SchemaFileWatcher
 from desk.shell.temp_ui_manager import TempUiManager
 from desk.shell.widget_frame import WidgetFrame
 from desk.transforms import PROJECT_TRANSFORMS_DIRNAME, TEMP_TRANSFORMS_DIRNAME
@@ -40,6 +56,7 @@ from desk.temp_ui import (
     CUSTOM_WIDGET_SRC_DIRNAME,
     CustomWidgetDefinition,
     DOC_FILENAME,
+    JobDefinition,
     MARKDOWN_KEYWORD,
     OPEN_IMAGE_KEYWORD,
     PROMOTED_WIDGET_SRC_DIRNAME,
@@ -49,7 +66,9 @@ from desk.temp_ui import (
     detect_temp_ui_kind,
     is_temp_ui_filename,
     parse_define_widget,
+    parse_desk_proc,
     parse_discuss_parking_lot_item,
+    parse_job,
     parse_lightning_round,
     parse_markdown_tempui,
     parse_open_image,
@@ -80,6 +99,12 @@ QUESTIONS_WIDGET_ID = "questions"
 IMAGE_VIEWER_WIDGET_ID = "image_viewer"
 EDITOR_WIDGET_ID = "editor"
 CRASH_LOG_WIDGET_ID = "crash_log"
+JOB_RUNNER_WIDGET_ID = "job_runner"
+DESK_PROC_RUNNER_WIDGET_ID = "desk_proc_runner"
+# TODO 6330249: the schema/state-management widget -- an ordinary
+# widget kind, just one Desk guarantees at most one placed instance of
+# (see _ensure_state_manager_placed).
+STATE_MANAGER_WIDGET_ID = "state_manager"
 # TODO 7f51230: crash logs now live in .desk_temp/DESK-CRASH-*.log --
 # matches desk.crash_handler's own filename convention.
 CRASH_LOG_GLOB = "DESK-CRASH-*.log"
@@ -119,9 +144,24 @@ TEMP_UI_WIDGET_IDS = {
     MARKDOWN_WIDGET_ID,
     SCRATCH_WIDGET_ID,
     IMAGE_VIEWER_WIDGET_ID,
+    JOB_RUNNER_WIDGET_ID,
+    DESK_PROC_RUNNER_WIDGET_ID,
 }
 
 WIDGET_SPACING = 700
+# The shared state store's (TODO f68383f) per-key history cap -- a
+# fixed, small default, not per-key configurable this pass (see
+# plans/shared-state-store.md's Key tradeoffs). Once a key's history
+# reaches this many entries, the oldest is evicted as a new one
+# arrives -- see DeskWindow.set_state.
+STATE_HISTORY_MAX_ENTRIES = 50
+# Prefix on a desk.state.* schema conflict/syntax-error message appended
+# to a WidgetInfo's own desk_widget_loading_errors (TODO af7898b) --
+# lets DeskWindow._refresh_builtin_schemas find and clear only its own
+# previously-appended messages on a fresh re-registration pass, without
+# also discarding some other, unrelated loading error a future feature
+# might append to the same list.
+SCHEMA_ERROR_PREFIX = "Schema conflict: "
 # TODO fbd0554: the well-known project-convention filename this
 # codebase's own development-process.md itself names -- a plain
 # literal, not a piece of shared behavior worth its own module.
@@ -135,6 +175,12 @@ DEVELOPMENT_PROCESS_FILENAME = "development-process.md"
 # longer does.
 SHARED_DEVELOPMENT_PROCESS_FILENAME = "shared_development_process.md"
 NOT_DESK_DEVELOPMENT_PROCESS_FILENAME = "specifically-not-working-on-desk-itself-development-process.md"
+# TODO 7f984ec: scripts/todo_item_ids.py's own docstring points here for
+# the one-time `convert` procedure -- seeded alongside the script (see
+# _seed_todo_item_ids_script) for the same "the thing it points to
+# should travel with it" reason SHARED_DEVELOPMENT_PROCESS_FILENAME
+# above travels with DEVELOPMENT_PROCESS_FILENAME.
+HOW_TO_CONVERT_ITEM_ID_FILENAME = "how-to-convert-item-id-one-time.md"
 # TODO cb2790d: a new Desk's default-widgets seeding looks for this exact
 # filename, same convention as the other well-known-filename constants
 # above.
@@ -231,6 +277,15 @@ class DeskWindow(QMainWindow):
         # same mediator. See _bind_event_mediator/_refresh_picker below.
         self._event_mediator = handle.event_mediator
 
+        # The desk.state.* schema registry (TODO af7898b) -- same
+        # "one shared, runtime-only instance for the whole app run" shape
+        # as self._event_mediator above (handle.schema_registry,
+        # constructed once in desk.server.runner.start_server). See
+        # _refresh_builtin_schemas/_place_widget/get_state/set_state
+        # below and plans/state-store-schema-core.md.
+        self._schema_registry = handle.schema_registry
+        self._refresh_builtin_schemas()
+
         # (caller_instance_id, target_instance_id) pairs the Desk user has
         # already approved for the introspect Bridge capability (TODO
         # 9767c1a) -- in-memory, per-session only, never persisted to
@@ -242,6 +297,17 @@ class DeskWindow(QMainWindow):
         self._temp_ui_manager = TempUiManager()
         self._temp_ui_manager.file_added.connect(self._on_temp_ui_file_added)
         self._temp_ui_manager.file_edited.connect(self._on_temp_ui_file_edited)
+
+        # Top-level desk.state.* schema files (TODO 9aef267) --
+        # provisioned alongside .desk_temp (see _provision_temp_ui);
+        # self._known_schema_file_sources tracks which SchemaRegistry
+        # sources currently came from a file (as opposed to a built-in
+        # widget's own permanent registration, tracked separately by
+        # _refresh_builtin_schemas), so a desk switch can clear exactly
+        # those before re-provisioning for the newly-opened directory.
+        self._schema_file_watcher = SchemaFileWatcher()
+        self._schema_file_watcher.changed.connect(self._on_schema_file_changed)
+        self._known_schema_file_sources: set[str] = set()
 
         # Global QUESTIONS.md watcher (TODO a801180) -- unlike the
         # per-widget SingleFileWatcher a Questions widget instance owns
@@ -303,6 +369,15 @@ class DeskWindow(QMainWindow):
         current_context.set_widget_display_name_resolver(self._display_name_for_instance)
         current_context.set_widget_catalog_provider(self.get_widget_catalog_dicts)
         current_context.set_hot_reload_broker(self._broker)
+        current_context.set_html_job_starter(self.start_html_job)
+        current_context.set_gui_thread_caller(self._handle.gui_bridge.call)
+        current_context.set_state_overview_provider(self.get_state_overview)
+        current_context.set_state_history_provider(self.get_state_history)
+        current_context.set_state_writer(self.try_set_state)
+        current_context.set_schema_file_writer(self.write_schema_file)
+        current_context.set_schema_file_deleter(self.delete_schema_key)
+        current_context.set_state_exporter(self.export_state_json)
+        current_context.set_state_importer(self.import_state_json)
         self._sync_tempui_doc()
         self._open_crash_log_widgets()
 
@@ -320,6 +395,14 @@ class DeskWindow(QMainWindow):
                     instance_id=state.instance_id,
                     restore=True,
                 )
+                if frame is None:
+                    # A desk.state.* schema conflict (TODO af7898b) --
+                    # this one saved widget is skipped for this session
+                    # (the notification already fired inside
+                    # _place_widget); it's still in desk.widgets for
+                    # next time, in case the conflict gets resolved
+                    # before the next restore.
+                    continue
                 if state.widget_id in TEMP_UI_WIDGET_IDS:
                     # A TempUI-backed widget's instance_id is always its
                     # source file's uuid (TODO a02b001, TODO 11aeb43) --
@@ -392,7 +475,7 @@ class DeskWindow(QMainWindow):
         instance_id: str | None = None,
         restore: bool = False,
         claude_extra_instructions: str = "",
-    ) -> WidgetFrame:
+    ) -> WidgetFrame | None:
         if widget_id in (CLAUDE_WIDGET_ID, CLAUDE_DESK_WIDGET_ID) and instance_id is None:
             # A claude/claude_desk widget's instance_id doubles as its
             # own session id (claude's --session-id, or the SDK's
@@ -417,6 +500,11 @@ class DeskWindow(QMainWindow):
             # before that call, not set retroactively afterward.
             if instance_id is None:
                 instance_id = uuid.uuid4().hex[:8]
+            conflict = self._check_schema_conflict(widget_id, widget, instance_id)
+            if conflict is not None:
+                self._widgets[widget_id].desk_widget_loading_errors.append(conflict)
+                self._notify_schema_conflict(widget_id, conflict)
+                return None
             chromium_widget = ChromiumWidget(
                 widget_id,
                 instance_id,
@@ -694,6 +782,13 @@ class DeskWindow(QMainWindow):
         frame = self._place_widget(
             widget_id, widget, pos or (0, 0), size or widget.default_size, instance_id=instance_id
         )
+        if frame is None:
+            # A desk.state.* schema conflict (TODO af7898b) -- the
+            # notification already fired inside _place_widget; surfaced
+            # here as a real error rather than a silent no-op, since
+            # every caller of open_widget expects a genuine instance_id
+            # back.
+            raise ValueError(f"Cannot place widget {widget_id!r}: a desk.state.* schema conflict blocked it")
         return frame.instance_id
 
     def open_widget_content(
@@ -708,10 +803,18 @@ class DeskWindow(QMainWindow):
         instance id -- for callers (e.g. the TODO widget's edit-conflict
         handling, TODO d25e557) that need to configure the new instance's
         content immediately, not just place it. Returns None for `kind:
-        "html"` widgets, or if the build failed (only the error
-        placeholder from PythonWidgetHost._rebuild exists) -- see
+        "html"` widgets, if the build failed (only the error placeholder
+        from PythonWidgetHost._rebuild exists), or if placement was
+        blocked by a desk.state.* schema conflict (TODO af7898b -- the
+        conflict notification already fired inside _place_widget, so
+        this stays a quiet no-op rather than propagating open_widget's
+        own ValueError, unlike the Bridge API's widgets.open route,
+        which wants that error surfaced) -- see
         desk.shell.current_context's widget-opener hook."""
-        instance_id = self.open_widget(widget_id, pos, size, instance_id)
+        try:
+            instance_id = self.open_widget(widget_id, pos, size, instance_id)
+        except ValueError:
+            return None
         frame = self.find_frame_by_instance_id(instance_id)
         if frame is None or not isinstance(frame.content, PythonWidgetHost):
             return None
@@ -928,6 +1031,92 @@ class DeskWindow(QMainWindow):
         (a brand-new widget with nothing to restore), not an error."""
         return self._html_widget_local_storage.get(instance_id, {})
 
+    # -- Shared, project-scoped state store (TODO f68383f) ----------------
+
+    def get_state(self, key: str, type_hint: str | None = None) -> dict:
+        """The Bridge API's `desk.state.get`, called via `GuiBridge`
+        from the (background-thread) Local Web Server. `{"value":
+        None, "edit": None}` for a key nothing has ever `set()`, not
+        an error -- same "empty/default for nothing-yet" convention
+        `get_html_widget_local_storage` above already uses.
+
+        `type_hint` (TODO af7898b) is meaningful only for a
+        non-validated key (no currently-active schema): the *returned*
+        value is best-effort-coerced to it (the stored value itself is
+        untouched). Ignored entirely for a validated key -- every write
+        that reached storage already passed that key's schema, so the
+        stored value is already conformant by construction. Raises
+        ValueError (mapped to a 400 by the Bridge API, see
+        desk.server.app.run_on_gui) if `type_hint` itself doesn't parse
+        as a type expression."""
+        entry = self.current_desk.state.get(key)
+        value = entry.value if entry is not None else None
+        edit = entry.edit if entry is not None else None
+        if self._schema_registry.get(key) is None and type_hint is not None:
+            try:
+                value = coerce(parse_type_expression(type_hint), value)
+            except SchemaSyntaxError as e:
+                raise ValueError(f"Invalid typeHint {type_hint!r}: {e}") from e
+        return {"value": value, "edit": edit}
+
+    def set_state(
+        self, key: str, value: object, edit: object, instance_id: str, type_hint: str | None = None
+    ) -> None:
+        """The Bridge API's `desk.state.set` -- updates the current
+        value/edit for `key`, appends it to that key's own bounded
+        history (evicting the oldest entry once
+        `STATE_HISTORY_MAX_ENTRIES` is exceeded), and publishes a
+        `desk.state.changed` change notification over the *existing*
+        `desk.events` mechanism (TODO 6f9c51b) rather than a new
+        transport -- `sender_instance_id=instance_id` means the widget
+        that called this never receives its own write back, the same
+        standard pub/sub default `events.publish` already has.
+
+        `key` (TODO af7898b): if some widget currently declares a
+        schema for `key`, `value` is validated against it -- a mismatch
+        raises ValueError (mapped to a 400, nothing is stored or
+        published), and `type_hint` is ignored entirely. Otherwise
+        (`key` is non-validated), `type_hint` -- if given -- is used to
+        best-effort-coerce `value` before storing; a `type_hint` that
+        doesn't parse itself is also a ValueError. Omitting `type_hint`
+        on a non-validated key preserves TODO f68383f's original
+        behavior exactly: `value` is stored exactly as given, no
+        coercion at all."""
+        schema = self._schema_registry.get(key)
+        if schema is not None:
+            if not validate(schema.type_node, value):
+                raise ValueError(
+                    f"State key {key!r}: value does not match its active schema ({schema.type_expr!r})"
+                )
+        elif type_hint is not None:
+            try:
+                value = coerce(parse_type_expression(type_hint), value)
+            except SchemaSyntaxError as e:
+                raise ValueError(f"Invalid typeHint {type_hint!r}: {e}") from e
+        entry = self.current_desk.state.get(key)
+        if entry is None:
+            entry = StateEntry(value=value, edit=edit)
+            self.current_desk.state[key] = entry
+        else:
+            entry.value = value
+            entry.edit = edit
+        entry.history.append(StateHistoryEntry(value=value, edit=edit))
+        del entry.history[:-STATE_HISTORY_MAX_ENTRIES]
+        self._event_mediator.publish(
+            "desk.state.changed", {"key": key, "value": value, "edit": edit}, sender_instance_id=instance_id
+        )
+
+    def get_state_history(self, key: str, limit: int) -> list[dict]:
+        """The Bridge API's `desk.state.getHistory` -- up to `limit`
+        most recent `(value, edit)` pairs for `key`, latest-first.
+        `limit` larger than what actually exists is not an error, it
+        just returns everything there is."""
+        entry = self.current_desk.state.get(key)
+        if entry is None:
+            return []
+        recent = entry.history[-limit:] if limit > 0 else []
+        return [{"value": h.value, "edit": h.edit} for h in reversed(recent)]
+
     def get_widget_info(self, widget_id: str) -> WidgetInfo | None:
         """The Bridge API's `require_caller` fallback (TODO f693275),
         called via `GuiBridge` from the (background-thread) Local Web
@@ -1017,6 +1206,17 @@ class DeskWindow(QMainWindow):
         disk write on every call."""
         self._html_widget_local_storage[instance_id] = data
 
+    def set_widget_subtitle(self, instance_id: str, text: str | None) -> None:
+        """The Bridge API's `self.setSubtitle` (TODO 3cd90cf), called
+        via `GuiBridge` from the (background-thread) Local Web Server.
+        A silent no-op for an unknown instance id (e.g. a request
+        racing a just-closed widget) -- same tolerance as
+        start_dom_snapshot's own unknown-target handling, not worth
+        surfacing as a Bridge-level failure to the caller."""
+        frame = self.find_frame_by_instance_id(instance_id)
+        if frame is not None:
+            frame.set_subtitle(text)
+
     def _bind_temp_ui_content(self, content, tempui_path: Path, directory: Path) -> None:
         """Wires a freshly-placed or restored TempUI-backed widget's
         content to its source tempui_path -- Question/LightningRound
@@ -1096,6 +1296,67 @@ class DeskWindow(QMainWindow):
         target = Path(raw)
         return target if target.is_absolute() else (directory / target).resolve()
 
+    # -- One-shot agent Jobs (TODO d7e66f6) -------------------------------
+
+    def start_html_job(
+        self, job_id: str, definition: JobDefinition, on_status: Callable[[str, str], None]
+    ) -> None:
+        """The `current_context` "html Job starter" hook -- materializes
+        an `html`-kind Job's script to a real index.html, mounts it on
+        the already-running Local Web Server, registers a `WidgetInfo`
+        scoped to exactly its declared `Capability` lines (never through
+        `_register_custom_widget` -- that machinery is about a reusable,
+        promotable widget *kind*; a Job is neither, it's a one-shot
+        instance), and places a real, visible `ChromiumWidget` instance
+        -- the script's own JS gets the same authenticated
+        `window.desk.*` Bridge API access an ordinary `kind: "html"`
+        widget's JS already has, scoped by the same `require_caller`
+        capability check every other `kind: "html"` widget goes
+        through; no new auth/injection mechanism needed. `job_id`
+        doubles as both the widget id and the instance id -- a Job only
+        ever has one execution/instance, unlike a `DefineWidget` keyword.
+
+        `on_status(status, detail)` is called once immediately with
+        `("executing", "")`, then exactly once more with `("done", "")`
+        or `("errored", message)` once the placed page finishes loading
+        (`QWebEngineView.loadFinished`) or logs a console error
+        (`ChromiumWidget.error_state_changed`, TODO d4d6c71) -- "done"
+        reflects page-load completion, not completion of whatever async
+        Bridge calls the script's own JS may have kicked off (see
+        tempui-jobs.md's own caveat about this)."""
+        directory = materialize_job(self.current_desk.directory / TEMP_UI_DIRNAME, job_id, definition)
+        if directory is None:
+            on_status("errored", "Failed to decode this Job's script content.")
+            return
+        info = WidgetInfo(
+            id=job_id,
+            path=directory,
+            kind="html",
+            name=definition.summary or "Job",
+            entry="index.html",
+            capabilities=definition.capabilities,
+            default_size=None,
+            tempui_only=True,
+        )
+        self._widgets[job_id] = info
+        self._handle.mount_html_widget(job_id, directory, info)
+        on_status("executing", "")
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        frame = self._place_widget(job_id, info, (center.x(), center.y()), None, instance_id=job_id)
+
+        def _on_load_finished(ok: bool) -> None:
+            if ok:
+                on_status("done", "")
+            else:
+                on_status("errored", "The job's page failed to load.")
+
+        def _on_error_state_changed(has_error: bool, message: str) -> None:
+            if has_error:
+                on_status("errored", message)
+
+        frame.content.loadFinished.connect(_on_load_finished)
+        frame.content.error_state_changed.connect(_on_error_state_changed)
+
     def find_frame_by_instance_id(self, instance_id: str) -> WidgetFrame | None:
         for frame in self.view._frames:
             if frame.instance_id == instance_id:
@@ -1131,6 +1392,50 @@ class DeskWindow(QMainWindow):
             return False
         self.view.zoom_to_widget(frame)
         return True
+
+    def _resolve_desk_relative_path(self, path: str) -> Path:
+        """Same relative-path convention `desk.fs.*` already uses (see
+        `desk.server.app._resolve_fs_path`): an absolute `path` is used
+        as-is; a relative one resolves against the current Desk's own
+        directory, not this process's ambient working directory."""
+        candidate = Path(path)
+        return candidate if candidate.is_absolute() else self.current_desk.directory / candidate
+
+    def screenshot_widget_instance(self, instance_id: str, path: str) -> bool:
+        """TODO 97bd090: saves a real PNG screenshot of a specific
+        placed widget instance's own frame (titlebar and content, same
+        as it looks on the canvas right now) to `path` -- the
+        `deskproc.screenshot_widget` half of the Desk Proc mechanism.
+        Independent of the canvas's current zoom/pan: `QWidget.grab()`
+        rasterizes the frame's own paint output at its authored size,
+        not whatever a `QGraphicsProxyWidget` embedding currently
+        renders it at. Returns whether a matching instance was found
+        and the file was saved successfully -- never raises for a
+        missing instance or a failed save."""
+        frame = self.find_frame_by_instance_id(instance_id)
+        if frame is None:
+            return False
+        pixmap = frame.grab()
+        resolved = self._resolve_desk_relative_path(path)
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        return pixmap.save(str(resolved), "PNG")
+
+    def screenshot_desk(self, path: str) -> bool:
+        """TODO 97bd090: saves a real PNG screenshot of the whole
+        Workspace Canvas viewport (`self.view`, not `self` -- no native
+        window chrome like the menu bar) to `path` -- the
+        `deskproc.screenshot_desk` half of the Desk Proc mechanism.
+        Deliberately different from `widgets/feedback/widget.py`'s own
+        `_take_screenshot` (which grabs the whole main window via
+        `current_context.get_main_window()`, useful there for a bug
+        report that might need to show dialog/window chrome) -- for a
+        Desk Proc, the canvas content is what an agent actually wants
+        to see. Same path resolution/mkdir/save shape as
+        screenshot_widget_instance above."""
+        pixmap = self.view.grab()
+        resolved = self._resolve_desk_relative_path(path)
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        return pixmap.save(str(resolved), "PNG")
 
     def _capture_desk_state(self) -> Desk:
         widget_states = []
@@ -1363,17 +1668,23 @@ class DeskWindow(QMainWindow):
         if path.exists():
             self._warn("New Desk", f"A Desk named “{name}” already exists here.")
             return
+        needs_dev_process_breadcrumb = False
         if copy_development_process:
             # Reads from the *current* (about-to-be-left) Desk's
             # directory -- must run before switch_desk below reassigns
             # self.current_desk.
-            self._seed_development_process(directory)
+            needs_dev_process_breadcrumb = self._seed_development_process(directory)
             self._seed_todo_item_ids_script(directory)
         self.switch_desk(
             path,
             confirm=lambda: True,
             provisioning=NewDeskProvisioning(create_temp_ui, create_gitignore),
         )
+        if needs_dev_process_breadcrumb:
+            # TODO 7f984ec: only now, not above -- switch_desk is what
+            # actually provisions .desk_temp and starts the tempui
+            # watcher this breadcrumb note needs to land in.
+            self._temp_ui_manager.notify_dev_process_peers_seeded(directory)
         # Re-checked immediately before the actual on-disk creation
         # (TODO 4716585): switch_desk above does real work
         # (provisioning, placing widgets) that takes real time, during
@@ -1440,8 +1751,25 @@ class DeskWindow(QMainWindow):
                 "temporary UI here?",
             )
             ask_gitignore = self._confirm_fn("Temporary UI", f"Add “{TEMP_UI_DIRNAME}” to .gitignore?")
-        self._temp_ui_manager.provision(directory, ask_create_dir, ask_gitignore)
+        temp_dir = self._temp_ui_manager.provision(directory, ask_create_dir, ask_gitignore)
         self._ensure_questions_watcher()
+        self._provision_schema_files(directory, temp_dir)
+
+    def _provision_schema_files(self, directory: Path, temp_dir: Path | None) -> None:
+        """Re-derives every top-level desk.state.* schema file's own
+        registration for the (possibly new) current Desk directory
+        (TODO 9aef267) -- called alongside _temp_ui_manager.provision
+        above. Clears every schema-file-sourced registration this
+        DeskWindow has ever made before re-scanning, since
+        SchemaRegistry is one shared instance for the whole server run,
+        not per-Desk: without this, a previous project's top-level
+        schemas would silently keep claiming keys after switching to a
+        different one."""
+        for source in self._known_schema_file_sources:
+            self._schema_registry.clear_source(source)
+        self._known_schema_file_sources.clear()
+        ephemeral_dir = temp_dir / SCHEMA_FILES_DIRNAME if temp_dir is not None else None
+        self._schema_file_watcher.provision(ephemeral_dir, directory)
 
     def _ensure_questions_watcher(self) -> None:
         """(Re)watches the nearest QUESTIONS.md for the current Desk's
@@ -1472,6 +1800,22 @@ class DeskWindow(QMainWindow):
         questions_path = self._questions_path
         if questions_path is None or not questions_path.is_file():
             return
+        # TODO 1b7e500: a "## " heading that doesn't match the required
+        # entry shape (ENTRY_START_RE) is otherwise absorbed silently
+        # into preamble -- no error, no notification, nothing shown to
+        # the user. A low-severity log line is the cheap, proportionate
+        # fix: free to ignore in the common (correctly-formatted) case,
+        # a real breadcrumb for the uncommon one, matching this
+        # project's own _relocate_promoted_widget_source precedent.
+        unparsed_count = unparsed_heading_count(questions_path)
+        if unparsed_count:
+            logger.warning(
+                "%s has %d '## ' heading(s) that don't match the required "
+                "'## TODO `<id>`: <summary>' entry format -- silently not "
+                "shown as questions",
+                questions_path,
+                unparsed_count,
+            )
         _, entries = parse_questions_file(questions_path)
         keys = {tuple(entry.todo_ids) for entry in entries}
         new_keys = keys - (self._known_question_keys or set())
@@ -1555,6 +1899,7 @@ class DeskWindow(QMainWindow):
 
     def _notify_temp_ui(self, path: Path) -> None:
         text = f"New question: {path.name}"
+        kind = "question"
         try:
             content_text = path.read_text()
             kind = detect_temp_ui_kind(content_text, self._custom_widget_definitions.keys())
@@ -1582,6 +1927,14 @@ class DeskWindow(QMainWindow):
                 parsed = parse_discuss_parking_lot_item(content_text)
                 if parsed and parsed[0]:
                     text = f"Discuss: {parsed[0]}"
+            elif kind == "job":
+                job_definition = parse_job(content_text)
+                if job_definition is not None and job_definition.summary:
+                    text = f"Job: {job_definition.summary}"
+            elif kind == "desk_proc":
+                desk_proc_definition = parse_desk_proc(content_text)
+                if desk_proc_definition is not None and desk_proc_definition.summary:
+                    text = f"Desk Proc: {desk_proc_definition.summary}"
             elif kind.startswith("custom:"):
                 definition = self._custom_widget_definitions.get(kind.split(":", 1)[1])
                 if definition is not None:
@@ -1592,7 +1945,10 @@ class DeskWindow(QMainWindow):
                     text = doc.question
         except OSError:
             pass
-        self.view.notify_temp_ui(path, text, lambda: self._activate_temp_ui(path))
+        banner_style = "desk_proc" if kind == "desk_proc" else "default"
+        self.view.notify_temp_ui(
+            path, text, lambda: self._activate_temp_ui(path), banner_style=banner_style
+        )
 
     def _temp_ui_widget_id_for(self, path: Path) -> str:
         """Which widget kind renders this TempUI file -- read from its
@@ -1615,6 +1971,10 @@ class DeskWindow(QMainWindow):
             return SCRATCH_WIDGET_ID
         if kind == "discuss_parking_lot_item":
             return CLAUDE_WIDGET_ID
+        if kind == "job":
+            return JOB_RUNNER_WIDGET_ID
+        if kind == "desk_proc":
+            return DESK_PROC_RUNNER_WIDGET_ID
         if kind.startswith("custom:"):
             return kind.split(":", 1)[1]
         return QUESTION_WIDGET_ID
@@ -1799,7 +2159,7 @@ class DeskWindow(QMainWindow):
             copy_development_process=copy_development_process,
         )
 
-    def _seed_development_process(self, directory: Path) -> None:
+    def _seed_development_process(self, directory: Path) -> bool:
         """Copies the current Desk's development-process.md, and (TODO
         1a96c9f) its shared_development_process.md/specifically-not
         -working-on-desk-itself-development-process.md peers, into
@@ -1809,7 +2169,18 @@ class DeskWindow(QMainWindow):
         already runs immediately before the write with nothing in
         between (TODO 4716585's re-check-immediately-before-create
         requirement) -- confirmed correct as-is, no change needed
-        here."""
+        here.
+
+        Returns whether `directory` already had its own
+        development-process.md while at least one *peer* file was
+        newly seeded alongside it (TODO 7f984ec) -- the specific mixed
+        case worth a breadcrumb (see new_desk's
+        notify_dev_process_peers_seeded call): a brand-new project with
+        nothing pre-existing gets all three files with nothing to
+        explain, so this is False whenever development-process.md
+        itself was also newly seeded (or nothing was seeded at all)."""
+        top_level_already_existed = (directory / DEVELOPMENT_PROCESS_FILENAME).exists()
+        peer_seeded = False
         for filename in (
             DEVELOPMENT_PROCESS_FILENAME,
             SHARED_DEVELOPMENT_PROCESS_FILENAME,
@@ -1820,6 +2191,9 @@ class DeskWindow(QMainWindow):
             if not source.is_file() or destination.exists():
                 continue
             destination.write_text(source.read_text())
+            if filename != DEVELOPMENT_PROCESS_FILENAME:
+                peer_seeded = True
+        return top_level_already_existed and peer_seeded
 
     def _seed_todo_item_ids_script(self, directory: Path) -> None:
         """Copies the current Desk's scripts/todo_item_ids.py into
@@ -1832,14 +2206,23 @@ class DeskWindow(QMainWindow):
         directory (won't exist yet in a brand-new project) and sets the
         copy executable -- explicit 0o755, not copied from the source
         file's own mode bits, since umask/source-filesystem quirks
-        shouldn't leak into the destination."""
+        shouldn't leak into the destination. Also seeds
+        how-to-convert-item-id-one-time.md alongside it (TODO 7f984ec)
+        -- the script's own docstring points there for the one-time
+        `convert` procedure, so copying the script without it leaves
+        that pointer broken in the new project the same way skipping
+        the peer docs would for development-process.md."""
         source = self.current_desk.directory / "scripts" / "todo_item_ids.py"
         destination = directory / "scripts" / "todo_item_ids.py"
-        if not source.is_file() or destination.exists():
-            return
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(source.read_text())
-        destination.chmod(0o755)
+        if source.is_file() and not destination.exists():
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_text(source.read_text())
+            destination.chmod(0o755)
+
+        how_to_source = self.current_desk.directory / HOW_TO_CONVERT_ITEM_ID_FILENAME
+        how_to_destination = directory / HOW_TO_CONVERT_ITEM_ID_FILENAME
+        if how_to_source.is_file() and not how_to_destination.exists():
+            how_to_destination.write_text(how_to_source.read_text())
 
     # -- TempUI-defined custom widgets (TODO 91b3f42) --------------------
 
@@ -1901,6 +2284,7 @@ class DeskWindow(QMainWindow):
             # just re-invokable via tempui.
             tempui_only=(source == "tempui"),
             content_hash=content_hash,
+            state_schema=definition.state_schema,
         )
         self._widgets[keyword] = info
         self._custom_widget_definitions[keyword] = definition
@@ -1972,10 +2356,16 @@ class DeskWindow(QMainWindow):
         the captured error text, then clears the indicator -- same
         "diagnosed, now handled" shape as reloading clears `[STALE]`. A
         later error on the same instance re-lights it (WidgetFrame.set_error
-        is called fresh each time one is captured)."""
-        if not frame.last_error_message:
+        is called fresh each time one is captured).
+
+        TODO 47aaf73: gates on `frame.has_error`, not
+        `frame.last_error_message` truthiness -- a real error can carry
+        an empty captured message (see chromium_widget.py's `message or
+        ""` fallback), and gating on the message itself made the button
+        light up and then silently do nothing for exactly that case."""
+        if not frame.has_error:
             return
-        self._confirm_widget_error_dismissed(frame.last_error_message)
+        self._confirm_widget_error_dismissed(frame.last_error_message or "(no error message was captured)")
         frame.set_error(False)
 
     def _confirm_widget_error_dismissed(self, message: str) -> None:
@@ -2355,4 +2745,326 @@ class DeskWindow(QMainWindow):
         }
         self._widgets = discover_widgets(self._widgets_dir)
         self._widgets.update(custom_entries)
+        self._refresh_builtin_schemas()
         self.view.set_widget_catalog(self._widgets)
+
+    def _refresh_builtin_schemas(self) -> None:
+        """Re-derives every built-in widget's permanently-enforced
+        desk.state.* schema declaration from the current self._widgets
+        catalog (TODO af7898b) -- called once in __init__ and again from
+        _on_widget_changed_refresh_catalog above, since that's the only
+        other place self._widgets is rebuilt wholesale from a fresh
+        discover_widgets scan. Every previously-registered built-in
+        schema is cleared first (via permanent_source_ids, which still
+        finds one whose widget has since been removed from disk
+        entirely, unlike walking self._widgets' current keys would), so
+        a schema a widget author just removed -- or a conflict that's
+        since been fixed on disk -- doesn't linger. Skips any id present
+        in self._custom_widget_sources: a tempui-DSL-defined custom
+        widget's schema is placement-instance-tracked, not permanent --
+        see _place_widget's own conflict gate instead."""
+        for source_id in self._schema_registry.permanent_source_ids():
+            self._schema_registry.clear_source(source_id)
+        for widget_id, widget in self._widgets.items():
+            if widget_id in self._custom_widget_sources:
+                continue
+            widget.desk_widget_loading_errors = [
+                msg for msg in widget.desk_widget_loading_errors if not msg.startswith(SCHEMA_ERROR_PREFIX)
+            ]
+            for key, type_expr in widget.state_schema.items():
+                try:
+                    self._schema_registry.register_permanent(key, type_expr, widget_id, source_kind="widget")
+                    self._ensure_state_manager_placed()
+                except (SchemaConflict, SchemaSyntaxError) as e:
+                    message = f"{SCHEMA_ERROR_PREFIX}{e}"
+                    widget.desk_widget_loading_errors.append(message)
+                    self._notify_schema_conflict(widget_id, message)
+
+    def _check_schema_conflict(self, widget_id: str, widget: WidgetInfo, instance_id: str) -> str | None:
+        """Returns a conflict message if placing this tempui-sourced
+        custom widget instance would conflict with an already-active
+        desk.state.* schema, or None if placement may proceed (TODO
+        af7898b). A no-op for a widget declaring no schema, or one
+        that isn't a registered custom-widget keyword at all -- a real
+        built-in's schema is already permanently registered by
+        _refresh_builtin_schemas, so re-checking it here would be
+        redundant, not wrong.
+
+        Not atomic across more than one declared key: if a widget
+        declares two keys and the first join succeeds but the second
+        conflicts, the first key's registry entry is left referencing
+        `instance_id` even though this placement is about to be
+        refused. This is self-healing, not a lasting bug -- the next
+        join/register touching that same key prunes `instance_id` via
+        the ordinary lazy-pruning maintenance pass (is_instance_placed
+        correctly reports it as never having been placed at all), the
+        same as any other instance that's no longer around."""
+        if widget_id not in self._custom_widget_sources or not widget.state_schema:
+            return None
+        for key, type_expr in widget.state_schema.items():
+            try:
+                self._schema_registry.join_or_conflict_placement(
+                    key, type_expr, widget_id, instance_id, self._is_instance_currently_placed
+                )
+                self._ensure_state_manager_placed()
+            except (SchemaConflict, SchemaSyntaxError) as e:
+                return f"{SCHEMA_ERROR_PREFIX}{e}"
+        return None
+
+    def _is_instance_currently_placed(self, instance_id: str) -> bool:
+        return self.find_frame_by_instance_id(instance_id) is not None
+
+    def _notify_schema_conflict(self, widget_id: str, message: str) -> None:
+        """A clickable notification for a desk.state.* schema conflict
+        (TODO af7898b), reusing WorkspaceView.notify_temp_ui exactly as
+        real tempui files already do -- keyed by a content-free synthetic
+        Path so a widget with a live, unresolved conflict shows exactly
+        one banner no matter how many times registration/placement is
+        retried, the same dedup-by-key behavior _notify_temp_ui already
+        relies on."""
+        path = Path(f"schema-conflict:{widget_id}")
+        self.view.notify_temp_ui(
+            path, f"Schema conflict: {widget_id}", lambda: self._show_schema_conflict_popup(widget_id, message)
+        )
+
+    def _show_schema_conflict_popup(self, widget_id: str, message: str) -> None:
+        opener = current_context.get_popup_opener()
+        if opener is not None:
+            opener(f"Schema conflict: {widget_id}", message, ["OK"], "OK")
+
+    def _on_schema_file_changed(self, path: Path) -> str | None:
+        """A top-level desk.state.* schema file was added, edited, or
+        removed (TODO 9aef267, SchemaFileWatcher.changed) -- always
+        clears this file's own prior registrations first, then --  if
+        the file still exists -- re-derives them fresh from its
+        current content, the same "clear then re-derive" shape
+        _refresh_builtin_schemas already uses for built-in widgets.
+        A missing file (deleted, or gone after a rename) just clears.
+        Returns the last error message encountered (also shown via a
+        notification), or None if every declared key registered
+        cleanly -- TODO 6330249's write_schema_file/delete_schema_key
+        call this directly (in addition to the file watcher's own,
+        fully-idempotent async trigger for the same write) to get
+        synchronous, accurate feedback instead of guessing."""
+        source = str(path)
+        self._schema_registry.clear_source(source)
+        self._known_schema_file_sources.discard(source)
+        if not path.is_file():
+            return None
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError) as e:
+            message = f"Could not read {path.name}: {e}"
+            self._notify_schema_file_error(path, message)
+            return message
+        if not isinstance(data, dict):
+            message = f"{path.name} must contain a JSON object mapping each key to its type expression"
+            self._notify_schema_file_error(path, message)
+            return message
+        registered_any = False
+        last_error = None
+        for key, type_expr in data.items():
+            if not isinstance(type_expr, str):
+                last_error = f"{path.name}: {key!r}'s value must be a type expression string"
+                self._notify_schema_file_error(path, last_error)
+                continue
+            try:
+                self._schema_registry.register_permanent(key, type_expr, source, source_kind="file")
+                registered_any = True
+            except (SchemaConflict, SchemaSyntaxError) as e:
+                last_error = str(e)
+                self._notify_schema_file_error(path, last_error)
+        if registered_any:
+            self._known_schema_file_sources.add(source)
+            self._ensure_state_manager_placed()
+        return last_error
+
+    def _notify_schema_file_error(self, path: Path, message: str) -> None:
+        self.view.notify_temp_ui(
+            path, f"Schema file error: {path.name}", lambda: self._show_schema_conflict_popup(path.name, message)
+        )
+
+    def _ensure_state_manager_placed(self) -> None:
+        """Whenever any desk.state.* schema successfully registers
+        (TODO 6330249), guarantees at least one instance of the
+        schema/state-management widget is on the canvas -- placing
+        one, centered in the current view, if none is currently
+        placed. Checked on every registration, not once per session,
+        per the literal design note (see
+        plans/state-schema-management-widget.md's own flagged
+        tradeoff) -- a closed instance can reappear if a later schema
+        registers."""
+        if self._find_frame_by_widget_id(STATE_MANAGER_WIDGET_ID) is not None:
+            return
+        widget = self._widgets.get(STATE_MANAGER_WIDGET_ID)
+        if widget is None:
+            return
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        self._place_widget(STATE_MANAGER_WIDGET_ID, widget, (center.x(), center.y()), widget.default_size)
+
+    def get_state_overview(self) -> list[dict]:
+        """Every currently-known desk.state.* key (TODO 6330249) --
+        the union of Desk.state's own keys (a value has been written,
+        whether or not a schema currently governs it) and
+        SchemaRegistry's own keys (a schema is declared but nothing's
+        been written yet) -- for the schema/state-management widget's
+        overview. Sorted by key for a stable display order."""
+        schemas = {schema.key: schema for schema in self._schema_registry.all()}
+        keys = set(self.current_desk.state.keys()) | set(schemas.keys())
+        overview = []
+        for key in sorted(keys):
+            entry = self.current_desk.state.get(key)
+            schema = schemas.get(key)
+            overview.append(
+                {
+                    "key": key,
+                    "value": entry.value if entry is not None else None,
+                    "edit": entry.edit if entry is not None else None,
+                    "type_expr": schema.type_expr if schema is not None else None,
+                    "source": schema.source_widget_id if schema is not None else None,
+                    "source_kind": schema.source_kind if schema is not None else None,
+                    "permanent": schema.permanent if schema is not None else None,
+                    "placed_instance_count": len(schema.placed_instance_ids) if schema is not None else 0,
+                }
+            )
+        return overview
+
+    def try_set_state(
+        self, key: str, value: object, edit: object, instance_id: str, type_hint: str | None = None
+    ) -> str | None:
+        """Same as set_state, except it never raises -- returns an
+        error message instead of a ValueError (TODO 6330249): a widget
+        editing a value directly wants to show the message inline, not
+        catch an exception itself."""
+        try:
+            self.set_state(key, value, edit, instance_id, type_hint)
+            return None
+        except ValueError as e:
+            return str(e)
+
+    def write_schema_file(self, location: str, key: str, type_expr: str) -> str | None:
+        """Declares/updates a top-level schema for `key` (TODO
+        6330249) -- writes directly into a JSON file under the chosen
+        location (one file per key, `<key>.json`, merging into it if
+        it already exists) and relies entirely on the existing
+        SchemaFileWatcher/_on_schema_file_changed pipeline (TODO
+        9aef267) to validate and register it -- no separate
+        registration path to keep in sync. `location` is `"ephemeral"`
+        (`.desk_temp/schemas/`) or `"git_tracked"` (`./desk-schemas/`,
+        created on demand here -- picking this location through this
+        widget is exactly the explicit, informed user action the
+        original "never create it eagerly" rule was about avoiding
+        *unintentional* creation of). Returns an error message, or
+        None on success."""
+        try:
+            parse_type_expression(type_expr)
+        except SchemaSyntaxError as e:
+            return f"Invalid type expression: {e}"
+        if location == "ephemeral":
+            directory = self.current_desk.directory / TEMP_UI_DIRNAME / SCHEMA_FILES_DIRNAME
+        elif location == "git_tracked":
+            directory = self.current_desk.directory / TOP_LEVEL_SCHEMAS_DIRNAME
+        else:
+            return f"Unknown location: {location!r}"
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{key}.json"
+        data = {}
+        if path.is_file():
+            try:
+                loaded = json.loads(path.read_text())
+                if isinstance(loaded, dict):
+                    data = loaded
+            except (OSError, json.JSONDecodeError):
+                pass
+        data[key] = type_expr
+        path.write_text(json.dumps(data, indent=2))
+        return self._on_schema_file_changed(path)
+
+    def delete_schema_key(self, key: str) -> str | None:
+        """Removes a top-level schema for `key` (TODO 6330249) --
+        refuses for a widget-sourced key (there's no file to edit; the
+        widget's own manifest is the source of truth). Edits the
+        owning file in place, or removes it entirely if `key` was its
+        only entry."""
+        schema = self._schema_registry.get(key)
+        if schema is None:
+            return f"{key!r} has no registered schema"
+        if schema.source_kind != "file":
+            return (
+                f"{key!r}'s schema is declared by widget {schema.source_widget_id!r} -- "
+                "edit its own manifest to change it"
+            )
+        path = Path(schema.source_widget_id)
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError) as e:
+            return f"Could not read {path.name}: {e}"
+        if not isinstance(data, dict) or key not in data:
+            return f"{path.name} no longer declares {key!r}"
+        del data[key]
+        if data:
+            path.write_text(json.dumps(data, indent=2))
+        else:
+            path.unlink()
+        self._on_schema_file_changed(path)
+        return None
+
+    def export_state_json(self, path: Path) -> str | None:
+        """Writes the entire current desk.state.* store (every key's
+        value, edit, and history) to `path` as JSON (TODO 297f1a6) --
+        a whole-store snapshot, not a per-key operation. Reuses
+        desk.desks.state_entry_dict directly, the same shape a real
+        .desk file's own "state" section already is, so this is never
+        a second, drifting definition of what a StateEntry looks like
+        on disk. Returns an error message, or None on success."""
+        data = {key: state_entry_dict(entry) for key, entry in self.current_desk.state.items()}
+        try:
+            path.write_text(json.dumps(data, indent=2))
+        except OSError as e:
+            return f"Could not write {path}: {e}"
+        return None
+
+    def import_state_json(self, path: Path) -> str | None:
+        """Restores desk.state.* from a file export_state_json wrote
+        (TODO 297f1a6) -- all-or-nothing: every key's *current* value
+        (history entries are trusted as-is, they're what genuinely
+        happened, not being newly written) is validated against any
+        currently-active schema first; if any key fails, the whole
+        import is refused with every offending key named, rather than
+        partially applying a snapshot. A key present in the current
+        store but absent from the file is left untouched -- this is a
+        restore of what the file describes, not a wipe-then-restore.
+        Each key the import actually changes publishes
+        desk.state.changed, the same live-update guarantee set_state
+        itself already gives every other write. Returns an error
+        message, or None on success."""
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError) as e:
+            return f"Could not read {path}: {e}"
+        if not isinstance(data, dict):
+            return f"{path.name} must contain a JSON object mapping each key to its state entry"
+
+        entries: dict[str, StateEntry] = {}
+        failures = []
+        for key, raw_entry in data.items():
+            if not isinstance(raw_entry, dict):
+                failures.append(f"{key!r}: not a valid state entry")
+                continue
+            entry = load_state_entry(raw_entry)
+            schema = self._schema_registry.get(key)
+            if schema is not None and not validate(schema.type_node, entry.value):
+                failures.append(f"{key!r}: value does not match its active schema ({schema.type_expr!r})")
+                continue
+            entries[key] = entry
+        if failures:
+            return "Import refused -- " + "; ".join(failures)
+
+        for key, entry in entries.items():
+            self.current_desk.state[key] = entry
+            self._event_mediator.publish(
+                "desk.state.changed",
+                {"key": key, "value": entry.value, "edit": entry.edit},
+                sender_instance_id=SYSTEM_SENDER_INSTANCE_ID,
+            )
+        return None

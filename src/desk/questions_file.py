@@ -20,6 +20,12 @@ QUESTIONS_FILENAME = "QUESTIONS.md"
 ENTRY_START_RE = re.compile(r"^## TODO\b.*$", re.MULTILINE)
 TODO_ID_RE = re.compile(r"`([0-9a-f]{7})`")
 ANSWER_START_RE = re.compile(r"^\(Answer:", re.MULTILINE)
+# TODO 1b7e500: any "## " heading, not just a real (ENTRY_START_RE
+# -matching) entry -- used only to detect content that looks like it
+# was meant as an entry but doesn't match the required shape (no
+# leading "TODO", an unwrapped id, ...), so a malformed QUESTIONS.md
+# doesn't fail completely silently. See unparsed_heading_count below.
+_ANY_HEADING_RE = re.compile(r"^## .*$", re.MULTILINE)
 
 
 @dataclass
@@ -106,6 +112,23 @@ def parse_questions_file(path: Path) -> tuple[str, list[QuestionEntry]]:
             )
         )
     return preamble, entries
+
+
+def unparsed_heading_count(path: Path) -> int:
+    """TODO `1b7e500`: how many `## ` headings in `path` look like they
+    were meant as entries but don't match the required "## TODO,
+    backtick-wrapped id" shape (ENTRY_START_RE) -- e.g. a missing
+    leading `TODO`, or an id that isn't backtick-wrapped. A non-zero
+    result means parse_questions_file silently absorbed real-looking
+    content into its preamble rather than genuinely finding nothing --
+    used by callers (DeskWindow._on_questions_file_changed) to log a
+    diagnostic instead of failing completely silently. Zero for a file
+    that either has no `## ` headings at all, or where every one of
+    them is a real, correctly-formatted entry."""
+    text = path.read_text()
+    all_headings = _ANY_HEADING_RE.findall(text)
+    real_entries = ENTRY_START_RE.findall(text)
+    return len(all_headings) - len(real_entries)
 
 
 def render_questions_file(preamble: str, entries: list[QuestionEntry]) -> str:

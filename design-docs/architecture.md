@@ -748,6 +748,19 @@ Desk widgets, regardless of implementation language, are defined by a
   Desk's own shipped example widget (`widgets/demo/`) uses, so `python -m
   desk` never needs Node/npm/tsc, and never round-trips through a browser
   for something Qt already renders natively.
+
+  **Never show an alert or confirmation with a raw `QMessageBox`/`QDialog`
+  parented to the widget's own content** (TODO `359684f`, recurred as
+  TODO `5242aeb`) — that content lives inside a `QGraphicsProxyWidget`
+  on the canvas, not as a real top-level window, so a native dialog
+  parented to it renders as a genuine detached macOS window whose
+  position Qt computes from `mapToGlobal`, a computation that doesn't
+  account for the canvas's own zoom/pan transform. Use
+  `current_context.get_popup_opener()` instead (`opener(title, message,
+  buttons, default) -> clicked_label_or_None`, blocking) — the same
+  desk-internal popups service (`desk_services.popups`) a `kind: "html"`
+  widget reaches via `desk.popups.show(...)`. See `design-docs
+  /widget-ux.md`'s "Desk-Internal Popups" section for the full story.
 - **`kind: "html"`** widgets ship their own `index.html`/TS(compiled
   JS)/CSS, for a Desk user who wants a richer, custom SPA-based widget.
   Each gets its own `ChromiumWidget` pointed at that widget's URL, served as

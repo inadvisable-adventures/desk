@@ -24,6 +24,7 @@ app = QApplication.instance() or QApplication(sys.argv)
 
 from desk.desks import Desk, WidgetState, desk_state_dict, load_desk, save_desk  # noqa: E402
 from desk.hotreload import HotReloadBroker  # noqa: E402
+from desk.schema_registry import SchemaRegistry  # noqa: E402
 from desk.server.app import _widget_info_dict  # noqa: E402
 from desk.shell.canvas import WorkspaceView  # noqa: E402
 from desk.shell.window import DeskWindow  # noqa: E402
@@ -82,11 +83,17 @@ class _FakeWindow:
         self._custom_widget_source_paths = {}
         self._custom_widget_content_hash = {}
         self._html_widget_local_storage = {}
+        self._schema_registry = SchemaRegistry()
 
 
 _FakeWindow._register_custom_widget = DeskWindow._register_custom_widget
 _FakeWindow._refresh_stale_indicators_for = DeskWindow._refresh_stale_indicators_for
 _FakeWindow._place_widget = DeskWindow._place_widget
+_FakeWindow._check_schema_conflict = DeskWindow._check_schema_conflict
+_FakeWindow._is_instance_currently_placed = DeskWindow._is_instance_currently_placed
+_FakeWindow._notify_schema_conflict = DeskWindow._notify_schema_conflict
+_FakeWindow._show_schema_conflict_popup = DeskWindow._show_schema_conflict_popup
+_FakeWindow.find_frame_by_instance_id = DeskWindow.find_frame_by_instance_id
 _FakeWindow._chromium_profile_dir = DeskWindow._chromium_profile_dir
 _FakeWindow._bind_claude_widget = DeskWindow._bind_claude_widget
 _FakeWindow._bind_external_indicator = DeskWindow._bind_external_indicator

@@ -10,7 +10,6 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -447,7 +446,13 @@ class MarkdownWidget(QWidget):
             target.write_text(self._tempui_content)
         except OSError as error:
             logger.error("Failed to save tempui content to %s", target, exc_info=True)
-            QMessageBox.warning(self, "Save As", f"Could not save: {error}")
+            # Desk-internal popups service (TODO 359684f), not a
+            # QMessageBox parented to self -- that used to render as a
+            # real top-level window whose position didn't account for
+            # the canvas's own zoom/pan transform.
+            opener = current_context.get_popup_opener()
+            if opener is not None:
+                opener("Save As", f"Could not save: {error}", ["OK"], "OK")
             return
         opener = current_context.get_widget_opener()
         if opener is None:

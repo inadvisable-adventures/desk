@@ -25,6 +25,7 @@ app = QApplication.instance() or QApplication(sys.argv)
 
 from desk.desks import Desk  # noqa: E402
 from desk.hotreload import HotReloadBroker  # noqa: E402
+from desk.schema_registry import SchemaRegistry  # noqa: E402
 from desk.shell.canvas import WorkspaceView  # noqa: E402
 from desk.shell.chromium_widget import ChromiumWidget  # noqa: E402
 from desk.shell.python_widget import PythonWidgetHost  # noqa: E402
@@ -78,6 +79,7 @@ class _FakeWindow:
         self._custom_widget_sources = {}
         self._custom_widget_definitions = {}
         self._custom_widget_content_hash = {}
+        self._schema_registry = SchemaRegistry()
         self.confirm_calls = []
 
     def _confirm_widget_error_dismissed_recording(self, message):
@@ -90,6 +92,11 @@ _FakeWindow._bind_claude_widget = DeskWindow._bind_claude_widget
 _FakeWindow._bind_external_indicator = DeskWindow._bind_external_indicator
 _FakeWindow._bind_event_mediator = DeskWindow._bind_event_mediator
 _FakeWindow._bind_error_indicator = DeskWindow._bind_error_indicator
+_FakeWindow._check_schema_conflict = DeskWindow._check_schema_conflict
+_FakeWindow._is_instance_currently_placed = DeskWindow._is_instance_currently_placed
+_FakeWindow._notify_schema_conflict = DeskWindow._notify_schema_conflict
+_FakeWindow._show_schema_conflict_popup = DeskWindow._show_schema_conflict_popup
+_FakeWindow.find_frame_by_instance_id = DeskWindow.find_frame_by_instance_id
 _FakeWindow._on_widget_error_clicked = DeskWindow._on_widget_error_clicked
 
 
@@ -186,6 +193,60 @@ def test_on_widget_error_clicked_noop_with_no_error():
 
 
 test_on_widget_error_clicked_noop_with_no_error()
+
+
+# ---------- TODO 47aaf73: an error with empty captured text ----------
+
+
+def test_error_with_empty_message_still_shows_button_and_flag():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        win = _FakeWindow(Path(d))
+        info = _html_widget_info(Path(d))
+        frame = win._place_widget("ordinary_html", info, (0, 0), (400, 300), instance_id=uuid_mod.uuid4().hex[:8])
+
+        frame.set_error(True, "")
+        check("has_error is True even though the captured message is empty", frame.has_error is True)
+        check("[ERROR] button still visible with an empty captured message", frame._titlebar.error_button.isVisible())
+
+
+test_error_with_empty_message_still_shows_button_and_flag()
+
+
+def test_clicking_error_button_with_empty_message_shows_placeholder_not_a_noop():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        win = _FakeWindow(Path(d))
+        info = _html_widget_info(Path(d))
+        frame = win._place_widget("ordinary_html", info, (0, 0), (400, 300), instance_id=uuid_mod.uuid4().hex[:8])
+        frame.set_error(True, "")
+
+        win._confirm_widget_error_dismissed = win._confirm_widget_error_dismissed_recording
+        win._on_widget_error_clicked(frame)
+
+        check(
+            "clicking with an empty captured message no longer silently does nothing -- the dialog is shown with a placeholder",
+            win.confirm_calls == ["(no error message was captured)"],
+        )
+        check("indicator cleared after acknowledging the empty-message error", not frame._titlebar.error_button.isVisible())
+        check("has_error is False after clearing", frame.has_error is False)
+
+
+test_clicking_error_button_with_empty_message_shows_placeholder_not_a_noop()
+
+
+def test_has_error_flag_matches_button_visibility_through_a_full_cycle():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        win = _FakeWindow(Path(d))
+        info = _html_widget_info(Path(d))
+        frame = win._place_widget("ordinary_html", info, (0, 0), (400, 300), instance_id=uuid_mod.uuid4().hex[:8])
+
+        check("has_error starts False", frame.has_error is False)
+        frame.set_error(True, "boom")
+        check("has_error True after set_error(True, ...)", frame.has_error is True)
+        frame.set_error(False)
+        check("has_error False after set_error(False)", frame.has_error is False)
+
+
+test_has_error_flag_matches_button_visibility_through_a_full_cycle()
 
 
 # ---------- kind:"html" real capture (real QtWebEngine JS execution, data: URL) ----------

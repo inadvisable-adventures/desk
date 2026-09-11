@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from desk.event_mediator import EventMediator
+from desk.schema_registry import SchemaRegistry
 from desk.server.app import DEFAULT_WIDGETS_DIR, create_app
 from desk.shell.bridge import GuiBridge
 from desk.widgets import WidgetInfo, discover_widgets
@@ -29,6 +30,7 @@ class ServerHandle:
     widgets: dict[str, WidgetInfo]  # kind:"html" widgets served by this server
     gui_bridge: GuiBridge
     event_mediator: EventMediator
+    schema_registry: SchemaRegistry
     _server: uvicorn.Server
     _thread: threading.Thread
     _app: FastAPI
@@ -76,6 +78,12 @@ def start_server(
     # DeskWindow (via ServerHandle.event_mediator) share the exact same
     # instance, the same "one shared mediator" shape GuiBridge itself uses.
     event_mediator = EventMediator()
+    # Same "one shared instance for the whole app run" reasoning as
+    # event_mediator above (TODO af7898b) -- runtime-only, never
+    # persisted, rebuilt fresh on every process start. Given the same
+    # event_mediator (TODO 6330249) so it can publish
+    # desk.state.schema_changed on every successful mutation.
+    schema_registry = SchemaRegistry(event_mediator)
     app = create_app(token, widgets_dir=widgets_dir, gui_bridge=gui_bridge, event_mediator=event_mediator)
 
     config = uvicorn.Config(app, host=host, port=port, log_level="warning")
@@ -107,6 +115,7 @@ def start_server(
         widgets=html_widgets,
         gui_bridge=gui_bridge,
         event_mediator=event_mediator,
+        schema_registry=schema_registry,
         _server=server,
         _thread=thread,
         _app=app,

@@ -30,6 +30,8 @@ from pathlib import Path
 import claude_agent_sdk as sdk
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from desk.shell.desk_mcp_server import build_desk_mcp_server
+
 
 class ClaudeSession(QObject):
     """One Claude Agent SDK session. Signals are emitted from the
@@ -109,6 +111,11 @@ class ClaudeSession(QObject):
             permission_mode=permission_mode,
             cwd=str(cwd) if cwd is not None else None,
             can_use_tool=self._can_use_tool,
+            # TODO a762501: the in-process Desk MCP server -- a live,
+            # queryable channel into Desk's own running shell. Tool
+            # calls (mcp__desk__...) flow through can_use_tool above
+            # like any other tool, no separate approval path.
+            mcp_servers={"desk": build_desk_mcp_server()},
         )
         try:
             self._client = sdk.ClaudeSDKClient(options)
@@ -124,6 +131,24 @@ class ClaudeSession(QObject):
         if self._loop is None or self._client is None:
             return
         asyncio.run_coroutine_threadsafe(self._query_and_stream(text), self._loop)
+
+    def set_permission_mode(self, mode: str) -> None:
+        """Changes permission mode live, mid-session (TODO `e9eddba`) --
+        a no-op before any session has started or after it's stopped
+        (self._loop/self._client not set yet/no longer set), same
+        guard shape as send_prompt above, so a caller (the widget's own
+        combo box) never needs its own "is a session currently live"
+        bookkeeping."""
+        if self._loop is None or self._client is None:
+            return
+        asyncio.run_coroutine_threadsafe(self._set_permission_mode(mode), self._loop)
+
+    async def _set_permission_mode(self, mode: str) -> None:
+        assert self._client is not None
+        try:
+            await self._client.set_permission_mode(mode)
+        except Exception as exc:  # noqa: BLE001 -- surfaced to the user, not swallowed
+            self.session_error.emit(str(exc))
 
     async def _query_and_stream(self, text: str) -> None:
         assert self._client is not None

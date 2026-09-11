@@ -1,0 +1,7 @@
+{
+  "name": "State Manager",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": [],
+  "default_size": { "width": 760, "height": 520 }
+}

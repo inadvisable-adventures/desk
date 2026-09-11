@@ -287,6 +287,72 @@ def test_promote_refuses_to_overwrite_existing_destination():
         )
 
 
+# ---------- TODO 7c11fe0: discovery staleness ----------
+
+
+def test_transform_added_after_initial_discover_is_found_without_a_second_discover_call():
+    with tempfile.TemporaryDirectory() as d:
+        project_dir = Path(d) / "desk_transforms"
+        service = TransformsService()
+        service.discover(None, project_dir)  # nothing exists on disk yet
+
+        t_dir = write_manifest(
+            project_dir,
+            "late_transform",
+            {"kind": "python", "entry": "transform.py", "input_type": "text", "output_type": "text"},
+        )
+        (t_dir / "transform.py").write_text(PYTHON_TRANSFORM_SOURCE)
+
+        output = service.run_blocking("late_transform", "hello", None)
+        check(
+            "a transform added to disk after the initial discover() is found and runs, no explicit second discover() call",
+            output == "HELLO",
+        )
+
+
+def test_unknown_transform_still_raises_after_the_retry():
+    with tempfile.TemporaryDirectory() as d:
+        project_dir = Path(d) / "desk_transforms"
+        service = TransformsService()
+        service.discover(None, project_dir)
+        try:
+            service.run_blocking("genuinely_does_not_exist", "x", None)
+            check("a genuinely unknown transform_id still raises TransformError", False)
+        except TransformError as e:
+            check("a genuinely unknown transform_id still raises TransformError", "Unknown transform" in str(e))
+
+
+def test_edited_python_transform_source_is_picked_up_without_restarting_desk():
+    with tempfile.TemporaryDirectory() as d:
+        project_dir = Path(d) / "desk_transforms"
+        t_dir = write_manifest(
+            project_dir,
+            "editable",
+            {"kind": "python", "entry": "transform.py", "input_type": "text", "output_type": "text"},
+        )
+        (t_dir / "transform.py").write_text(PYTHON_TRANSFORM_SOURCE)
+
+        service = TransformsService()
+        service.discover(None, project_dir)
+        first_output = service.run_blocking("editable", "hello", None)
+        check("the original transform source runs first", first_output == "HELLO")
+
+        # A real edit -- different content, and (mtime resolution on
+        # some filesystems being coarse) an explicit future mtime so
+        # this doesn't depend on real wall-clock time passing between
+        # the two writes within the same test run.
+        edited_source = PYTHON_TRANSFORM_SOURCE.replace("input_data.upper()", "input_data.lower()")
+        (t_dir / "transform.py").write_text(edited_source)
+        future = time.time() + 5
+        os.utime(t_dir / "transform.py", (future, future))
+
+        second_output = service.run_blocking("editable", "HELLO", None)
+        check(
+            "an edited-on-disk transform's new source is used, not a stale cached module",
+            second_output == "hello",
+        )
+
+
 test_python_run_and_identity()
 test_python_error_propagates_without_crashing()
 test_javascript_run_via_real_node_subprocess()
@@ -294,6 +360,9 @@ test_javascript_does_not_block_the_event_loop()
 test_typescript_builds_with_real_tsc_and_caches()
 test_promote()
 test_promote_refuses_to_overwrite_existing_destination()
+test_transform_added_after_initial_discover_is_found_without_a_second_discover_call()
+test_unknown_transform_still_raises_after_the_retry()
+test_edited_python_transform_source_is_picked_up_without_restarting_desk()
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
