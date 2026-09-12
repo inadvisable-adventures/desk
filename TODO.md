@@ -424,6 +424,150 @@ e9eddba. COMPLETED: Add a permission-mode selector to the Claude (Desk) widget
    completeness/version bump, the generated script itself compiles).
    Full `tests/verify/` suite (125 scripts) passes.
 
+7dca383. Installed Jobs: a durable, versioned alternative to the
+   ephemeral `Job` mechanism (TODO `d7e66f6`) for an agent's own
+   reusable scripts, so a job an agent expects to run repeatedly
+   doesn't need to be re-dropped-and-approved as a fresh one-shot
+   `.desk_temp` tempui file every single time. Prioritized per direct
+   user request.
+
+   **Storage**: instead of a `.desk_temp/jobs/<uuid>/` tempui-derived
+   cache, an agent writes real, durable source directly to
+   `desk-installed-jobs/<name>/main.py` (plus any other files it wants
+   to import from `main.py` -- the job's own directory is put on
+   `sys.path` for the duration of a run). `python`-kind only, no `html`
+   variant and no `Capability` list -- same unrestricted, no-sandboxing
+   in-process trust level `Job`'s own `kind: "python"` already has, so
+   there's nothing for a capability list to scope. No manifest file
+   (no `job.json`) -- the directory name *is* the job's name, and
+   nothing today needs more metadata than that plus the version hash
+   below.
+
+   **Versioning**: a job's version is `hashlib.md5(...).hexdigest()
+   [:12]` over the concatenation of every regular file under its
+   directory (sorted by relative path, each entry's path and content
+   both folded in) -- a direct multi-file extension of the exact
+   single-blob convention `DeskWindow`'s own custom-widget staleness
+   check already established (TODO 5995ffd, `hashlib.md5
+   (definition.html_b64.encode("ascii")).hexdigest()[:12]`,
+   `src/desk/shell/window.py:2267`) -- not a new hash convention.
+
+   **Registration**: installed jobs are held in-memory on `DeskWindow`
+   (`self.current_desk.installed_jobs`, a new `Desk` field mirroring
+   `custom_widgets`'s exact load/save/carry-over shape in
+   `src/desk/desks.py` -- `_load_installed_job`/`_installed_job_dict`,
+   wired into `load_desk`/`desk_state_dict`, carried over unchanged in
+   `DeskWindow._capture_desk_state` the same way `custom_widgets`/
+   `file_type_registry` already are) and mirrored into a new
+   `installed-jobs` top-level section of the current `.desk` file on
+   every install/uninstall via the existing `save_current_desk()` --
+   there is no separate write path, so the in-memory registry and the
+   `.desk` file can never drift. Live-updates to a placed Installed
+   Jobs widget reuse the exact `file_type_registry` event pattern
+   (`FILE_TYPE_REGISTRY_UPDATED_EVENT`, `window.py:1522-1531`): a new
+   `INSTALLED_JOBS_UPDATED_EVENT`, published by `install_job`/
+   `uninstall_job`, subscribed to via `bind_event_mediator`/
+   `EventSubscription` the same way `widgets/project_files/widget.py`
+   already does for the file type registry.
+
+   **MCP tools** (`src/desk/shell/desk_mcp_server.py`, alongside the 7
+   tools from TODO `a762501`): `desk_install_job(name)` -- reads
+   `desk-installed-jobs/<name>/`, computes its hash, upserts the
+   registry entry, saves. `desk_run_installed_job(name,
+   config_path=None)` -- looks the job up (GUI-thread-marshaled
+   registry read only; the actual execution below is not), then
+   **recomputes the on-disk hash and refuses to run if it no longer
+   matches the registered version_hash** (a config_path is passed
+   through unresolved as `CONFIG_PATH` in the executed script's own
+   globals if given -- resolved against the current Desk's directory
+   first if relative, same "a relative path resolves against the
+   current Desk's own directory" rule every other MCP tool here
+   already follows -- `None` if omitted; per direct user request, it
+   "should generally live in `.desk_temp` unless otherwise specified"
+   is guidance for *where an agent puts* a config file, not a filename
+   Desk invents on the job's behalf), then executes `main.py` on a
+   background thread (mirrors `widgets/job_runner/widget.py`'s own
+   `_run_python_job` exactly: `exec` into a fresh namespace, capture
+   stdout/stderr/traceback, no Qt/GUI-thread access from inside the
+   job any more than a regular `Job` gets) and returns
+   `(ok, stdout, stderr, traceback)` synchronously as the tool result
+   -- no placed runner widget needed per run, unlike `Job`/`DeskProc`.
+
+   **The hash re-check above is load-bearing, not a nice-to-have**: it
+   is what keeps "no re-approval every run" (see below) actually safe
+   -- without it, editing `main.py` on disk after install would let
+   already-approved-forever execution silently run different code than
+   what the user approved.
+
+   **Approval**: per direct user request, the *only* approval prompt
+   is at `desk_install_job` time -- it stays on the normal
+   `ClaudeSession._can_use_tool` gated path exactly like every other
+   tool (nothing to change there). `desk_run_installed_job` is
+   special-cased in `_can_use_tool` (`src/desk/claude_session.py:182`)
+   to return `PermissionResultAllow` immediately, before creating a
+   pending-permission future, so a run never prompts. Re-installing an
+   already-installed name with *changed* source still goes through the
+   normal gate (it's a fresh `desk_install_job` call), so a content
+   change is never auto-approved by association with an old approval.
+   Uninstalling stays on the normal gate too (not bypassed) -- only
+   listed as a widget-driven, user-initiated action per this item's own
+   spec, not exposed as its own MCP tool at all (matching scope: the
+   user asked for install + run via MCP, and list/uninstall via the
+   widget only).
+
+   **Installed Jobs widget** (`widgets/installed_jobs/`, `kind:
+   "python"`): lists every installed job (name + version hash),
+   mirroring `widgets/parking_lot/widget.py`'s per-row
+   `QListWidget`/`setItemWidget` shape. Reads the initial list via a
+   new `current_context.get_installed_jobs_provider()` hook (mirrors
+   `get_file_type_registry_provider`), stays live via the
+   `INSTALLED_JOBS_UPDATED_EVENT` subscription above. Each row: a
+   "View Source" button that opens an editor widget instance (via the
+   existing `current_context.get_editor_or_scrap_opener()`, exactly
+   what `JobRunnerWidget._on_view_code_clicked` already calls) for
+   every file in that job's directory -- one editor widget per file,
+   covering the plural "editor widget(s)" the item's own spec calls
+   for. An "Uninstall" button (behind the existing
+   `current_context.get_popup_opener()` confirm, matching this
+   project's established confirm-before-destroying convention) calling
+   a new `current_context.get_installed_job_uninstaller()` hook ->
+   `DeskWindow.uninstall_job(name)` -- unregisters only; the
+   `desk-installed-jobs/<name>/` directory itself is left on disk
+   (uninstall is reversible via a later `desk_install_job` call, not a
+   delete).
+
+   **Tempui docs**: per `development-process.md`'s "Keep the tempui
+   changelog docs current" section -- this is exactly that case (a new
+   feature an in-Desk agent needs to know about). New split doc
+   `tempui-installed-jobs.md` (own `_INSTALLED_JOBS_DOC` constant,
+   added to `SPLIT_DOC_CONTENT`) explaining the whole mechanism above;
+   cross-referenced from `DOC_TEMPLATE`'s existing "a few more files
+   live here too, but aren't DSL file types" paragraph, **not** the
+   "ten built-in file types" list -- installation happens via an MCP
+   tool call against a directory the agent already wrote, never via a
+   dropped tempui file, so it isn't itself a DSL file type (matches
+   how `build_job_or_desk_proc.py` was already treated as a "few more
+   files" entry, not an eleventh keyword). `TEMPUI_DOC_VERSION` 39 ->
+   40 with a matching `_NEW_FEATURES_DOC` "## Version 40" entry.
+
+   **Verification**: `tests/verify/verify_installed_jobs.py` (hashing
+   determinism/multi-file, install/uninstall registry mutation, `.desk`
+   file round-trip via `load_desk`/`save_desk`, `_capture_desk_state`
+   carry-over); `tests/verify/verify_desk_mcp_server.py` gains coverage
+   for the two new tools (install success/failure, run success/error/
+   traceback, config_path resolution, the stale-hash refusal); a new
+   `tests/verify/verify_installed_job_permission_bypass.py` (calls
+   `ClaudeSession._can_use_tool` directly: confirms
+   `mcp__desk__desk_run_installed_job` returns `PermissionResultAllow`
+   immediately with no pending future, and that
+   `mcp__desk__desk_install_job` is unaffected -- still creates one, as
+   before); `tests/verify/verify_installed_jobs_widget.py` (list
+   rendering, View Source opens one editor per file, Uninstall's
+   confirm-then-call path); `tests/verify/verify_tempui_installed_jobs_doc.py`
+   (doc-set completeness/version bump, mirroring
+   `verify_tempui_desk_proc_doc.py`).
+   [planned: installed-jobs.md]
+
 b9d3de5. Give an in-Desk agent a documented way to learn its own
    placed widget instance id, via `ClaudeAgentOptions.env` (a static,
    launch-time fact, not a live query). Converted from a
