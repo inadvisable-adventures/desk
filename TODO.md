@@ -1008,9 +1008,8 @@ b9d3de5. Give an in-Desk agent a documented way to learn its own
    explicitly **not** this item's concern -- moved to TODO `a762501`
    (the in-process MCP server) instead, per the same discussion: a
    static env var can't answer a question whose answer changes during
-   the session, and trying to make it do so is the wrong tool. Not
-   designed in full or planned yet -- intentionally left unplanned per
-   explicit instruction not to implement yet.
+   the session, and trying to make it do so is the wrong tool.
+   [planned: desk-widget-instance-id-env-var.md]
 
 765bd2a. Design the syntax and semantics of a simple pipe-chained verb
    DSL for expressing a chain of Desk actions -- deliberately scoped to
