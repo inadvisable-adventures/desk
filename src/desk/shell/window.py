@@ -253,6 +253,7 @@ class DeskWindow(QMainWindow):
         self.view.tempui_promote_requested.connect(self._on_tempui_promote_requested)
         self.view.widget_stale_clicked.connect(self._on_widget_stale_clicked)
         self.view.widget_error_clicked.connect(self._on_widget_error_clicked)
+        self.view.chat_button_clicked.connect(self._on_chat_button_clicked)
         if widgets_dir is not None:
             broker.widget_changed.connect(self._on_widget_changed_refresh_catalog)
 
@@ -733,7 +734,7 @@ class DeskWindow(QMainWindow):
             f"(for example by writing another DiscussParkingLotItem tempui "
             f"file) unless the user explicitly asks for that."
         )
-        extra_instructions = self._write_discuss_instructions_file(instructions_body)
+        extra_instructions = self._write_claude_instructions_file(instructions_body, prefix="discuss")
         center = self.view.mapToScene(self.view.viewport().rect().center())
         return self._place_widget(
             CLAUDE_WIDGET_ID,
@@ -744,22 +745,23 @@ class DeskWindow(QMainWindow):
             claude_extra_instructions=extra_instructions,
         )
 
-    def _write_discuss_instructions_file(self, body: str) -> str:
-        """Writes a Discuss session's actual instructions to a
-        standalone file under `.desk_temp`, rather than splicing them
-        into the claude launch command line -- see TODO 51be2bc. A
-        long, hand-written-prose command line typed whole into an
-        interactive PTY in one shot (ClaudeWidget.type_into_shell) is
-        risky regardless of correct shell-quoting (TODO fc17b55/TODO
-        51be2bc): this sidesteps that entirely by keeping the command
-        line itself short and free of any `'` character, no matter how
-        long or apostrophe-heavy the actual discussion content is.
-        Returns the short instruction to splice in instead. The file's
-        name is deliberately not a bare UUID (a random hex token with a
-        prefix and extension instead), so the temp-ui file watcher --
-        which treats any bare-UUID-named file in this directory as a
-        new temp-ui widget, see is_temp_ui_filename -- never mistakes
-        it for one."""
+    def _write_claude_instructions_file(self, body: str, prefix: str) -> str:
+        """Writes a fresh claude/claude_desk session's actual initial
+        instructions to a standalone file under `.desk_temp`, rather
+        than splicing them into the claude launch command line -- see
+        TODO 51be2bc. A long, hand-written-prose command line typed
+        whole into an interactive PTY in one shot
+        (ClaudeWidget.type_into_shell) is risky regardless of correct
+        shell-quoting (TODO fc17b55/TODO 51be2bc): this sidesteps that
+        entirely by keeping the command line itself short and free of
+        any `'` character, no matter how long or apostrophe-heavy the
+        actual content is. Returns the short instruction to splice in
+        instead. `prefix` (e.g. "discuss", "chat" -- TODO 93364f9) both
+        labels the file for a human skimming `.desk_temp` and keeps it
+        from being a bare UUID, so the temp-ui file watcher -- which
+        treats any bare-UUID-named file in this directory as a new
+        temp-ui widget, see is_temp_ui_filename -- never mistakes it
+        for one."""
         directory = current_context.get_current_desk_directory()
         if directory is None:
             # No current Desk directory known yet (an edge case, not
@@ -768,7 +770,7 @@ class DeskWindow(QMainWindow):
             return f" {body}"
         temp_dir = directory / TEMP_UI_DIRNAME
         temp_dir.mkdir(parents=True, exist_ok=True)
-        path = temp_dir / f"discuss-instructions-{uuid.uuid4().hex}.md"
+        path = temp_dir / f"{prefix}-instructions-{uuid.uuid4().hex}.md"
         path.write_text(body, encoding="utf-8")
         return f" Read the file at {path} now and follow its instructions for what to discuss and how."
 
@@ -788,6 +790,112 @@ class DeskWindow(QMainWindow):
         624ff3a) doesn't need to pass an unused positional -- see
         _place_discuss_claude_widget for how the two are used."""
         self._place_discuss_claude_widget(source_label, item_text, parking_lot_line)
+
+    def _on_chat_button_clicked(self, frame: WidgetFrame) -> None:
+        """The `[CHAT]` titlebar button's handler (TODO 93364f9):
+        `frame.content.widget_id` is the clicked instance's widget
+        *kind* (exposed directly by both PythonWidgetHost and
+        ChromiumWidget, no isinstance check needed -- same unchecked
+        access `_refresh_stale_indicators_for` already relies on).
+        Looked up against the catalog for `_build_widget_chat_
+        instructions` below; a widget_id gone missing from the catalog
+        between placement and click would be an already-broken state
+        this button can't do anything useful about, so it's a quiet
+        no-op rather than an error."""
+        widget_info = self._widgets.get(frame.content.widget_id)
+        if widget_info is not None:
+            self._place_widget_chat_about(frame, widget_info)
+
+    def _place_widget_chat_about(
+        self, frame: WidgetFrame, widget_info: WidgetInfo
+    ) -> WidgetFrame | None:
+        """Places a fresh claude_desk widget with a session scoped to
+        discussing `frame`'s specific instance (TODO 93364f9) -- a
+        sibling to _place_discuss_claude_widget, not a reuse of it:
+        that helper is hardcoded to the older PTY-based CLAUDE_WIDGET_ID
+        and always centers on the viewport, neither of which fits a
+        button meant to open a conversation scoped to one already
+        -placed instance. Positioned just to the right of the clicked
+        frame (falling back to viewport-center if it isn't on the
+        scene for some reason) so it reads as attached to what it's
+        about. No instance_id/dedup, same "always an independent, fresh
+        session" choice start_discussion already made above."""
+        widget = self._widgets.get(CLAUDE_DESK_WIDGET_ID)
+        if widget is None:
+            return None
+        proxy = frame.graphicsProxyWidget()
+        if proxy is not None:
+            rect = proxy.sceneBoundingRect()
+            pos = (rect.right() + 24, rect.top())
+        else:
+            center = self.view.mapToScene(self.view.viewport().rect().center())
+            pos = (center.x(), center.y())
+        extra_instructions = self._write_claude_instructions_file(
+            self._build_widget_chat_instructions(frame, widget_info), prefix="chat"
+        )
+        return self._place_widget(
+            CLAUDE_DESK_WIDGET_ID,
+            widget,
+            pos,
+            widget.default_size,
+            claude_extra_instructions=extra_instructions,
+        )
+
+    def _build_widget_chat_instructions(self, frame: WidgetFrame, widget_info: WidgetInfo) -> str:
+        """The `[CHAT]` button's initial-prompt body (TODO 93364f9),
+        covering the three things the item asked for: the live
+        instance, the code, and the definition/shared state -- plus
+        what tools this session has for digging further. Facts that
+        can't go stale (kind, on-disk paths, declared capabilities) are
+        resolved concretely here rather than left for the new session
+        to guess; facts that *can* change after this file is written
+        (current position/size, per-instance widget-local state) are
+        left to a live desk_list_widget_instances call instead, the
+        same "read it yourself, don't trust a snapshot" shape
+        _place_discuss_claude_widget already uses for a Parking Lot
+        item's current text."""
+        capabilities = ", ".join(widget_info.capabilities) or "(none declared)"
+        return (
+            "Discuss the placed widget instance below. There's no single "
+            "predetermined question -- wait for the user's first message "
+            "about what they want to talk through, but arrive already "
+            "oriented to it.\n\n"
+            "## The live instance\n"
+            f"- Widget kind: `{widget_info.id}` (\"{widget_info.name}\")\n"
+            f"- instance_id: `{frame.instance_id}`\n"
+            f"- Current title: \"{frame.title}\"\n"
+            "- For this instance's *current* position/size and its own "
+            "per-instance widget-local-storage state, call the "
+            "`desk_list_widget_instances` MCP tool and find the entry with "
+            "this instance_id -- state and position can change after this "
+            "note was written, so don't rely on this file for that.\n\n"
+            "## The code\n"
+            f"- kind: {widget_info.kind}\n"
+            f"- Manifest: `widgets/{widget_info.id}/widget.json`\n"
+            f"- Entry point: `widgets/{widget_info.id}/{widget_info.entry}`\n"
+            "Read these yourself rather than guessing at the implementation.\n\n"
+            "## The definition / shared state\n"
+            f"- Declared capabilities: {capabilities}\n"
+            "- The desk-wide `desk.state.*` store (get/set/getHistory) is "
+            "available to any widget (via the Bridge API for kind:\"html\", "
+            "or DeskWindow directly for kind:\"python\") but isn't "
+            "restricted by the capabilities list above -- check this "
+            "widget's own source for `desk.state`/`getState`/`setState` "
+            "calls to see whether/how it actually uses it, and check "
+            "`./desk-schemas/` and `.desk_temp/schemas/` for any schema "
+            "declared for a state key this widget owns.\n\n"
+            "## Tools available in this session\n"
+            "The `desk` MCP server's tools are available here "
+            "(`desk_list_widget_instances`, `desk_reveal_widget`, "
+            "`desk_screenshot_widget`, `desk_save`, `desk_list_todo_items`, "
+            "`desk_get_next_todo_item`, `desk_install_job`, "
+            "`desk_run_installed_job`) -- useful for e.g. screenshotting "
+            "this instance, or checking `desk-installed-jobs/` if this "
+            "widget's behavior turns out to be backed by an Installed Job.\n\n"
+            "Have this discussion here, in this session -- do not "
+            "immediately start another new Desk discussion of your own "
+            "about it unless the user explicitly asks for that."
+        )
 
     def open_widget(
         self,

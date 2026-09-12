@@ -8168,7 +8168,7 @@ a4c3dec. Add an on-hover control in the Claude (Desk) widget's history
    distinguishing user lines from the rest of the history to know
    which lines are reloadable.
 
-93364f9. Add a `[chat]` button (relabeled from this item's own earlier
+93364f9. COMPLETED: Add a `[chat]` button (relabeled from this item's own earlier
    "talk to Claude about this widget" working name -- same feature,
    restated by the user later in the same session with a tighter spec)
    to the widget frame chrome (`src/desk/shell/widget_frame.py`'s
@@ -8201,6 +8201,20 @@ a4c3dec. Add an on-hover control in the Claude (Desk) widget's history
    should reuse `_place_discuss_claude_widget`'s existing shape
    (adapted for the new widget kind) or needs its own placement
    helper.
+
+   Resolved: shows on every widget (per direct user confirmation);
+   uses a new `_place_widget_chat_about` helper rather than reusing
+   `_place_discuss_claude_widget` (that one is hardcoded to the older
+   PTY-based `claude` kind and always centers on the viewport). Along
+   the way, fixed a pre-existing `_BUTTON_KINDS` gap (`"error"` was
+   never added despite `_hit_test_chrome`/`mouseReleaseEvent` already
+   handling it) and corrected this item's own draft assumption that
+   `desk.state.*` access is gated by a widget's declared
+   `capabilities` -- it isn't; nothing today declares a `"state"`
+   capability and the store isn't capability-checked at all, so the
+   generated instructions describe that accurately instead. See
+   `plans/widget-chat-button.md` for the full design.
+   [planned: widget-chat-button.md]
 
 0529501. An API for widgets to invoke Claude with access scoped to
    only the files that widget itself has access to, rather than a full
