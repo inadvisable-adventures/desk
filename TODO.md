@@ -7048,6 +7048,22 @@ e4662a5. COMPLETED: Make the pan/zoom control (`src/desk/shell/zoom_control.py`'
    rather than acted on unilaterally, since it's unrelated to this
    item's scope.
 
+c4d79f0. COMPLETED: Fix file-watcher deadlock: `FileWatcherService.watch()` (`src/
+   desk_services/file_watcher/service.py`) calls `self._observer.
+   schedule()` while holding its own `self._lock`, but watchdog's
+   dispatch thread acquires its own internal lock first and then calls
+   back into our `_dispatch()`, which needs `self._lock` -- opposite
+   lock order, a reliable AB-BA deadlock. Hits in practice whenever a
+   `watch()` call for a brand-new key races an in-flight dispatch of an
+   already-watched key, which happens on ordinary launch
+   (`DeskWindow.__init__` -> `_provision_temp_ui` -> `_ensure_questions_
+   watcher` schedules a new watch right as temp-ui provisioning writes
+   files that fire dispatch on an existing watch) -- Desk hangs
+   entirely on launch (icon appears, no window paints, unkillable
+   except Ctrl+C), reported by the user with a full traceback ending at
+   `watchdog/observers/api.py:304`'s `with self._lock:`.
+   [planned: file-watcher-schedule-deadlock.md]
+
 d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
    script can run with real widget-context capabilities -- notably
    Bridge API access, which no agent-run script can reach today --

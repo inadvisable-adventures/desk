@@ -1,5 +1,6 @@
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -100,7 +101,62 @@ def test_nested_path_collision_fixed():
             svc.stop()
 
 
+def test_watch_does_not_hold_lock_across_observer_schedule():
+    # Regression test for TODO c4d79f0: FileWatcherService.watch() used
+    # to call self._observer.schedule() *while holding* self._lock.
+    # watchdog's own dispatch thread acquires its own internal lock
+    # first, then calls back into our _dispatch (needing self._lock) --
+    # opposite acquisition order from a thread already holding
+    # self._lock and entering schedule(), which is a reliable AB-BA
+    # deadlock (this is exactly what hung Desk on every launch).
+    #
+    # Verified directly and deterministically, independent of real
+    # FSEvents/thread timing: monkeypatch self._observer.schedule to
+    # probe -- from a separate helper thread, so the probe itself can
+    # never hang the test -- whether self._lock is held at the instant
+    # schedule() is entered. A plain threading.Lock isn't reentrant, so
+    # if watch()'s own thread still holds it, the helper thread's
+    # non-blocking-with-timeout acquire attempt will fail to get it.
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d).resolve()
+        svc = FileWatcherService()
+        try:
+            real_schedule = svc._observer.schedule
+            lock_was_held = []
+
+            def spying_schedule(*args, **kwargs):
+                probe_acquired = []
+
+                def probe():
+                    got = svc._lock.acquire(timeout=0.5)
+                    probe_acquired.append(got)
+                    if got:
+                        svc._lock.release()
+
+                probe_thread = threading.Thread(target=probe)
+                probe_thread.start()
+                probe_thread.join(timeout=2)
+                lock_was_held.append(not (probe_acquired and probe_acquired[0]))
+                return real_schedule(*args, **kwargs)
+
+            svc._observer.schedule = spying_schedule
+            calls = []
+            svc.watch(d, calls.append, recursive=False)
+            assert lock_was_held == [False], (
+                "FileWatcherService.watch() must not hold self._lock while inside "
+                "self._observer.schedule() -- doing so deadlocks against watchdog's "
+                "dispatch thread, which acquires its lock before calling back into "
+                "our _dispatch (needs self._lock) (TODO c4d79f0)"
+            )
+            (d / "f.txt").write_text("x")
+            assert wait_for(lambda: calls), "watch() should still work normally after the spy is installed"
+            print("test_watch_does_not_hold_lock_across_observer_schedule: PASS")
+        finally:
+            svc.stop()
+
+
 if __name__ == "__main__":
     test_dedup_and_fanout()
     test_nested_path_collision_fixed()
+    test_watch_does_not_hold_lock_across_observer_schedule()
     print("ALL PASS")

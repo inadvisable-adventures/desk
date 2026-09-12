@@ -1095,3 +1095,45 @@ directly (e.g. a plain Python list/flag the widget already tracks)
 rather than a Qt visibility query, when a test never calls `.show()`
 on anything (which most of this project's own widget tests correctly
 don't, to stay fast and headless).
+
+## `watchdog`'s dispatch thread re-enters caller code *while holding its own internal lock* -- so a caller must never hold its own lock across a call into `Observer.schedule()`/`unschedule()`
+
+`watchdog.observers.api.BaseObserver.dispatch_events` wraps its entire
+per-event handler loop in `with self._lock:` (its own internal
+`RLock`), and that loop calls straight into every registered
+`FileSystemEventHandler.dispatch()` -- i.e. into caller code -- without
+ever releasing the lock first. This isn't documented anywhere obvious
+(it reads like an implementation detail of watchdog's own bookkeeping,
+not something a caller's event handler needs to know about), but it
+means: **any lock a caller's event-handler callback acquires must never
+also be a lock that caller's own `schedule()`/`unschedule()` call sits
+behind** -- otherwise a thread already holding that lock and calling
+`schedule()` (which needs watchdog's lock) can deadlock against
+watchdog's dispatch thread (which holds its lock and needs the
+caller's lock to invoke the handler) -- a textbook AB-BA cycle, not a
+rare one: it fires reliably whenever a new `schedule()` call races an
+in-flight dispatch on any other already-scheduled watch.
+
+Found the hard way: `desk_services.file_watcher.service.
+FileWatcherService.watch()` (TODO `578cb6b`) called `self._observer.
+schedule(...)` while holding its own `self._lock`, and its
+`_NormalizingHandler` called back into `self._dispatch`, which also
+needed `self._lock` -- exactly this cycle. It reliably hung Desk on
+ordinary launch (`DeskWindow.__init__` schedules a new watch right as
+earlier-registered watches are actively dispatching from
+`_provision_temp_ui`'s own file writes), reported as the whole app
+hanging with no window ever painting, recoverable only via Ctrl+C. Not
+a rare interleaving -- it happens on a large fraction of real launches,
+since Desk always has multiple watches active by the time it schedules
+its last one. Fixed (TODO `c4d79f0`) by never holding `self._lock`
+while calling into `self._observer.schedule()`: compute what's needed
+under the lock, release it, call `schedule()`, then re-acquire briefly
+to record the result (re-checking that the key is still wanted, to
+avoid leaking the native watch if every subscriber cancelled while
+`schedule()` was in flight).
+
+The general rule this implies: treat *any* watchdog `Observer` call
+(`schedule`, `unschedule`, `unschedule_all`) the same way you'd treat a
+call that might re-enter your own code -- never make it from inside a
+lock that your own event-handler callback (directly or transitively)
+also needs.
