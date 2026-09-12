@@ -1020,3 +1020,36 @@ This file captures thoughts and TODO items that arise during work on other thing
   this gap as a side effect rather than needing an entirely separate
   mechanism. Not designed at all yet -- parking as a real, freshly
   -observed problem rather than guessing at a UI.
+
+- **`html`-kind Installed Jobs**
+
+  Surfaced while implementing TODO `7dca383` (Installed Jobs):
+  deliberately scoped to `python`-kind only for the first pass (an
+  installed job runs with the same unrestricted, no-sandboxing
+  in-process access an ordinary `Job`'s own `kind: "python"` already
+  has). A `Job` itself supports an `html`-kind variant (a real,
+  capability-scoped `kind: "html"` widget instance, Bridge API access
+  instead of raw in-process access) -- an Installed Job could
+  plausibly want the same durable/versioned/no-reapproval-on-rerun
+  treatment for that case too, but nothing in the original request
+  asked for it, and it would need its own design pass (what "install"
+  even materializes/registers for an `html`-kind job that isn't a
+  single script file, how a placed instance relates to
+  `desk-installed-jobs/<name>/`'s own multi-file directory, whether
+  `desk_run_installed_job` still makes sense as a synchronous
+  request/response for something that places a live widget instead of
+  just executing and returning). Revisit only if asked for.
+
+- **`desk_list_installed_jobs`/`desk_uninstall_job` MCP tools**
+
+  Surfaced while implementing TODO `7dca383` (Installed Jobs):
+  deliberately not added. Per that item's own spec, install + run are
+  agent-initiated via MCP, while listing/uninstalling are
+  user-initiated via the Installed Jobs widget only -- an agent has no
+  documented way to enumerate or remove installed jobs itself today.
+  If a real need for either surfaces (e.g. an agent wanting to clean up
+  its own installed jobs, or check what's already installed before
+  reinstalling), both are a small, mechanical addition on top of the
+  existing `DeskWindow.get_installed_jobs_dicts`/`.uninstall_job`
+  methods the widget already calls -- just needs a deliberate decision
+  to widen the MCP-exposed surface, not a default to back into.
