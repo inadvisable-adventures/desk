@@ -40,16 +40,30 @@ why a mutating tool would bypass this project's plan-then-verify
 discipline."""
 
 import asyncio
+import contextlib
+import io
 import json
+import sys
+import threading
+import traceback
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from claude_agent_sdk import McpSdkServerConfig, create_sdk_mcp_server, tool
 
+from desk.installed_jobs import ENTRY_FILENAME, compute_version_hash, installed_job_dir
 from desk.shell import current_context
 from desk.todo_file import TodoItem, find_nearest_todo_file, parse_todo_file
 
 DESK_MCP_SERVER_NAME = "desk"
+
+# Referenced by desk.claude_session.ClaudeSession._can_use_tool (TODO
+# 7dca383) to build the fully-qualified "mcp__desk__desk_run_installed_job"
+# name its bypass branch matches against -- kept here, not duplicated
+# as a literal there, so the two can never drift if this tool is ever
+# renamed.
+RUN_INSTALLED_JOB_TOOL_NAME = "desk_run_installed_job"
 
 _NOT_READY_MESSAGE = "Desk's GUI thread is not reachable yet -- try again shortly."
 
@@ -211,6 +225,120 @@ async def _get_next_todo_item(args: dict[str, Any]) -> dict[str, Any]:
     return _text_result("No actionable TODO item found (everything is completed/superseded/pending).")
 
 
+# sys.path is process-global -- serializes concurrent installed-job
+# runs (each already on its own executor thread) against each other so
+# one job's temporary sys.path entry can never leak into a second
+# job's own import resolution if two desk_run_installed_job calls
+# happen to overlap (e.g. two tool calls in the same agent turn).
+# Installed Jobs are not meant to be a high-throughput concurrent
+# system -- serializing here is a minimal, correct fix, not a
+# performance concession that costs anything in practice.
+_RUN_LOCK = threading.Lock()
+
+
+def _run_installed_job(script_text: str, job_dir: Path, config_path: str | None) -> tuple[bool, str, str, str]:
+    """Runs on a background thread (via loop.run_in_executor, awaited
+    directly by _run_installed_job_tool below -- not the GUI thread,
+    same "no Qt access from inside the job" rule a regular Job's own
+    `_run_python_job` (widgets/job_runner/widget.py) already follows).
+    `job_dir` is put on sys.path for the duration so main.py can import
+    sibling files in its own directory; CONFIG_PATH is the documented
+    way a script reads its optional config-file argument (TODO
+    7dca383, see tempui-installed-jobs.md) -- None if the caller didn't
+    pass one. Returns (ok, stdout, stderr, traceback) rather than
+    raising, mirroring _run_python_job's own relay payload shape."""
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    job_dir_str = str(job_dir)
+    with _RUN_LOCK:
+        sys.path.insert(0, job_dir_str)
+        try:
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                exec(
+                    compile(script_text, "<installed_job>", "exec"),
+                    {"__name__": "__installed_job__", "CONFIG_PATH": config_path},
+                )
+            return True, stdout.getvalue(), stderr.getvalue(), ""
+        except Exception:
+            return False, stdout.getvalue(), stderr.getvalue(), traceback.format_exc()
+        finally:
+            with contextlib.suppress(ValueError):
+                sys.path.remove(job_dir_str)
+
+
+@tool(
+    "desk_install_job",
+    "Register (or re-register, if its source changed) the Installed Job at "
+    "desk-installed-jobs/<name>/main.py -- computes its version hash and persists it to the current "
+    "Desk. This is the only approval point for this job: desk_run_installed_job never re-prompts.",
+    {"name": str},
+)
+async def _install_job(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        ok, message = await _call_on_gui_thread(lambda: window.install_job(args["name"]))
+    except RuntimeError as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(message, is_error=not ok)
+
+
+@tool(
+    RUN_INSTALLED_JOB_TOOL_NAME,
+    "Run an already-installed job by name, optionally passing a config file path (available to the "
+    "job's own main.py as the CONFIG_PATH global; a relative path resolves against the current Desk's "
+    "own directory; omit to pass None). Never prompts for approval -- only desk_install_job does. "
+    "Refuses to run if the on-disk source no longer matches the version that was installed (call "
+    "desk_install_job again first). Returns {ok, stdout, stderr, traceback} as JSON.",
+    # A hand-written JSON Schema, not the {name: type} shorthand
+    # (SdkMcpTool._build_schema marks every shorthand key "required" --
+    # config_path must stay genuinely optional, per this item's own
+    # spec).
+    {
+        "type": "object",
+        "properties": {"name": {"type": "string"}, "config_path": {"type": "string"}},
+        "required": ["name"],
+    },
+)
+async def _run_installed_job_tool(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    name = args["name"]
+    try:
+        job = await _call_on_gui_thread(lambda: window.get_installed_job(name))
+    except RuntimeError as e:
+        return _text_result(str(e), is_error=True)
+    if job is None:
+        return _text_result(f"{name!r} is not installed.", is_error=True)
+    directory = current_context.get_current_desk_directory()
+    if directory is None:
+        return _text_result("No current Desk directory known.", is_error=True)
+    job_dir = installed_job_dir(directory, name)
+    current_hash = compute_version_hash(job_dir)
+    if current_hash != job.version_hash:
+        return _text_result(
+            f"{name!r}'s source on disk (version {current_hash}) no longer matches the installed "
+            f"version ({job.version_hash}) -- call desk_install_job again before running it.",
+            is_error=True,
+        )
+    raw_config_path = args.get("config_path")
+    if raw_config_path:
+        config_path_obj = Path(raw_config_path)
+        if not config_path_obj.is_absolute():
+            config_path_obj = directory / config_path_obj
+        config_path: str | None = str(config_path_obj)
+    else:
+        config_path = None
+    script_text = (job_dir / ENTRY_FILENAME).read_text()
+    loop = asyncio.get_event_loop()
+    ok, stdout, stderr, tb = await loop.run_in_executor(
+        None, _run_installed_job, script_text, job_dir, config_path
+    )
+    return _text_result(json.dumps({"ok": ok, "stdout": stdout, "stderr": stderr, "traceback": tb}))
+
+
 _TOOLS = [
     _reveal_widget,
     _screenshot_widget,
@@ -219,6 +347,8 @@ _TOOLS = [
     _save_desk,
     _list_todo_items,
     _get_next_todo_item,
+    _install_job,
+    _run_installed_job_tool,
 ]
 
 

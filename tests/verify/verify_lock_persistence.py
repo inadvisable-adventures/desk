@@ -67,7 +67,9 @@ class _FakeWindow:
         from pathlib import Path
 
         self.current_desk = type(
-            "D", (), {"path": Path("/tmp/x.desk"), "custom_widgets": [], "file_type_registry": []}
+            "D",
+            (),
+            {"path": Path("/tmp/x.desk"), "custom_widgets": [], "file_type_registry": [], "installed_jobs": []},
         )()
 
     def _get_widget_local_storage(self, frame):

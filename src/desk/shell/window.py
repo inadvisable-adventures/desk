@@ -33,6 +33,13 @@ from desk.file_type_registry import (
     find_git_diff_handler,
     looks_like_text_file,
 )
+from desk.installed_jobs import (
+    ENTRY_FILENAME as INSTALLED_JOB_ENTRY_FILENAME,
+    INSTALLED_JOBS_UPDATED_EVENT,
+    InstalledJobDefinition,
+    compute_version_hash,
+    installed_job_dir,
+)
 from desk.file_watch import SingleFileWatcher
 from desk.hotreload import HotReloadBroker
 from desk.questions_file import find_nearest_questions_file, parse_questions_file, unparsed_heading_count
@@ -1475,6 +1482,9 @@ class DeskWindow(QMainWindow):
             # isn't derived from placed widgets either -- carry it over
             # unchanged, or every save would silently wipe it back to [].
             file_type_registry=self.current_desk.file_type_registry,
+            # Same reasoning again (TODO 7dca383): an installed job has
+            # no placed widget instance of its own to derive this from.
+            installed_jobs=self.current_desk.installed_jobs,
         )
 
     def get_state_dict(self) -> dict:
@@ -1529,6 +1539,76 @@ class DeskWindow(QMainWindow):
         self.current_desk.file_type_registry = [entry_from_dict(e) for e in entries]
         self.save_current_desk()
         self._event_mediator.publish(FILE_TYPE_REGISTRY_UPDATED_EVENT, {"entries": entries}, sender_instance_id)
+
+    def get_installed_jobs_dicts(self) -> list[dict]:
+        """TODO 7dca383: the current Desk's installed-jobs registry, as
+        JSON-serializable dicts sorted by name -- shared by the
+        Installed Jobs widget's current_context
+        .get_installed_jobs_provider() initial read and its own
+        INSTALLED_JOBS_UPDATED_EVENT payload, so the two never drift
+        (same reasoning as get_file_type_registry_dicts)."""
+        return sorted(
+            (
+                {"name": job.name, "version_hash": job.version_hash, "installed_at": job.installed_at}
+                for job in self.current_desk.installed_jobs
+            ),
+            key=lambda d: d["name"],
+        )
+
+    def get_installed_job(self, name: str) -> InstalledJobDefinition | None:
+        for job in self.current_desk.installed_jobs:
+            if job.name == name:
+                return job
+        return None
+
+    def install_job(self, name: str) -> tuple[bool, str]:
+        """TODO 7dca383: registers (or re-registers, if `name` is
+        already installed and its source changed) the job at
+        desk-installed-jobs/<name>/ -- computes its version hash,
+        upserts the registry entry, persists via save_current_desk
+        (which also keeps the .desk file's own installed_jobs section
+        in sync), and publishes INSTALLED_JOBS_UPDATED_EVENT so any
+        placed Installed Jobs widget stays current. This is the one
+        and only approval point for this job -- see
+        desk.claude_session.ClaudeSession._can_use_tool's
+        mcp__desk__desk_run_installed_job bypass, which relies on runs
+        never re-approving."""
+        directory = installed_job_dir(self.current_desk.directory, name)
+        entry_path = directory / INSTALLED_JOB_ENTRY_FILENAME
+        if not entry_path.is_file():
+            return False, f"No {INSTALLED_JOB_ENTRY_FILENAME} found at {directory}."
+        version_hash = compute_version_hash(directory)
+        self.current_desk.installed_jobs = [
+            job for job in self.current_desk.installed_jobs if job.name != name
+        ]
+        self.current_desk.installed_jobs.append(
+            InstalledJobDefinition(name=name, version_hash=version_hash, installed_at=datetime.now().isoformat())
+        )
+        self.save_current_desk()
+        self._event_mediator.publish(
+            INSTALLED_JOBS_UPDATED_EVENT,
+            {"jobs": self.get_installed_jobs_dicts()},
+            sender_instance_id=SYSTEM_SENDER_INSTANCE_ID,
+        )
+        return True, f"Installed {name!r} (version {version_hash})."
+
+    def uninstall_job(self, name: str) -> bool:
+        """TODO 7dca383: unregisters `name` only -- the source under
+        desk-installed-jobs/<name>/ is left on disk, so a later
+        install_job(name) call can re-register it (going through the
+        normal approval gate again, same as any other install).
+        Returns whether an entry was actually removed."""
+        remaining = [job for job in self.current_desk.installed_jobs if job.name != name]
+        if len(remaining) == len(self.current_desk.installed_jobs):
+            return False
+        self.current_desk.installed_jobs = remaining
+        self.save_current_desk()
+        self._event_mediator.publish(
+            INSTALLED_JOBS_UPDATED_EVENT,
+            {"jobs": self.get_installed_jobs_dicts()},
+            sender_instance_id=SYSTEM_SENDER_INSTANCE_ID,
+        )
+        return True
 
     def switch_desk(
         self,
@@ -2086,6 +2166,11 @@ class DeskWindow(QMainWindow):
         # widget placed after a Desk switch reads the *new* Desk's own
         # file type registry, not a stale one left over from before.
         current_context.set_file_type_registry_provider(self.get_file_type_registry_dicts)
+        # Same choke point, for the same reason (TODO 7dca383): an
+        # Installed Jobs widget placed after a Desk switch reads the
+        # *new* Desk's own installed-jobs registry, not a stale one.
+        current_context.set_installed_jobs_provider(self.get_installed_jobs_dicts)
+        current_context.set_installed_job_uninstaller(self.uninstall_job)
         # Same choke point, for the same reason (TODO 54d8c18): a
         # transform invocation after a Desk switch resolves against the
         # *new* Desk's own discovered transforms, not a stale picture

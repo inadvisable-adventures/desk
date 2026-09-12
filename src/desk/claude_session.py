@@ -30,7 +30,7 @@ from pathlib import Path
 import claude_agent_sdk as sdk
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from desk.shell.desk_mcp_server import build_desk_mcp_server
+from desk.shell.desk_mcp_server import DESK_MCP_SERVER_NAME, RUN_INSTALLED_JOB_TOOL_NAME, build_desk_mcp_server
 
 
 class ClaudeSession(QObject):
@@ -115,7 +115,7 @@ class ClaudeSession(QObject):
             # queryable channel into Desk's own running shell. Tool
             # calls (mcp__desk__...) flow through can_use_tool above
             # like any other tool, no separate approval path.
-            mcp_servers={"desk": build_desk_mcp_server()},
+            mcp_servers={DESK_MCP_SERVER_NAME: build_desk_mcp_server()},
         )
         try:
             self._client = sdk.ClaudeSDKClient(options)
@@ -187,6 +187,17 @@ class ClaudeSession(QObject):
         is NOT invoked for actions the CLI's own built-in heuristics
         already auto-approve (e.g. a plain read-only `echo`), same as
         real interactive `claude` usage."""
+        # TODO 7dca383: an Installed Job is approved once, at
+        # desk_install_job time (which stays on the normal gated path
+        # below) -- running it via desk_run_installed_job must never
+        # re-prompt, per that item's own spec, so it's auto-allowed
+        # here before a pending-permission future is even created. This
+        # is only safe because desk_run_installed_job itself refuses to
+        # run if the on-disk source no longer matches the version hash
+        # that was actually installed/approved -- see that tool's own
+        # docstring in desk.shell.desk_mcp_server.
+        if tool_name == f"mcp__{DESK_MCP_SERVER_NAME}__{RUN_INSTALLED_JOB_TOOL_NAME}":
+            return sdk.PermissionResultAllow(behavior="allow", updated_input=None, updated_permissions=None)
         request_id = uuid.uuid4().hex
         assert self._loop is not None
         future = self._loop.create_future()

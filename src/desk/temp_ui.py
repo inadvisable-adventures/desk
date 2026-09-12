@@ -280,7 +280,17 @@ APP_DSL_DIRNAME = "app_dsl"
 # base64-encode-and-chunk step an author previously had to write from
 # scratch every time. `tempui-jobs.md`/`tempui-desk-proc.md` and this
 # file's own "There's also `build_widget.py`" paragraph now mention it.
-TEMPUI_DOC_VERSION = 39
+#
+# TODO 7dca383: bumped 39 -> 40 for Installed Jobs: a durable, versioned
+# alternative to the ephemeral `Job` mechanism, installed once (via the
+# new `desk_install_job` MCP tool) from real source at
+# `desk-installed-jobs/<name>/main.py` and re-run any number of times
+# (via `desk_run_installed_job`) with no further approval prompt. Not a
+# dropped-tempui-file DSL keyword -- installation happens via an MCP
+# tool call, not a file drop -- so this is a new split doc,
+# tempui-installed-jobs.md, referenced from this file's own "a few more
+# files" paragraph below, not the main file-type list above.
+TEMPUI_DOC_VERSION = 40
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -343,7 +353,15 @@ re-read this whole doc set and diff it against memory. There's also
 `build_job_or_desk_proc.py` — packages a plain script into a
 ready-to-drop `Job`/`DeskProc` tempui file (base64-encoding and
 chunking it for you); see either of those files' own docs for how to
-invoke it.
+invoke it. There's also
+[tempui-installed-jobs.md](./tempui-installed-jobs.md) — Installed
+Jobs, a durable, versioned alternative to `Job` for a script you expect
+to run repeatedly: install it once from real source at
+`desk-installed-jobs/<name>/main.py` (one approval prompt), then run
+it as many times as you like via an MCP tool call with no further
+prompt. Not a dropped-tempui-file DSL keyword like the ones above --
+installation happens via an MCP tool call against a directory you
+already wrote, never via a file dropped in this directory.
 
 ## Questions for the user: use QUESTIONS.md, not this DSL
 
@@ -1365,6 +1383,70 @@ print(f"screenshot saved: {result}")
 ```
 """
 
+_INSTALLED_JOBS_DOC = """# Installed Jobs
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its shared version number -- this file
+covers Installed Jobs, which are **not** a tempui-DSL file type (there
+is no dropped-file keyword for this -- see that overview's own "a few
+more files" paragraph).
+
+A `Job` (see `tempui-jobs.md`) is a one-shot script, re-approved every
+single time you drop a fresh tempui file for it. An **Installed Job**
+is the durable, versioned alternative for a script you expect to run
+*repeatedly*: install it once (one approval prompt), then run it as
+many times as you like with no further prompt at all.
+
+## Installing
+
+Write your script to `desk-installed-jobs/<name>/main.py` (project
+-root-relative, a sibling of `.desk_temp/`, not inside it -- this is
+real, durable source, not disposable cache). You can add other files
+alongside it and `import` them from `main.py` -- the job's own
+directory is put on `sys.path` for the duration of a run. There is no
+capability list and no `html` variant: `main.py` runs with the same
+unrestricted, no-sandboxing in-process access any other Python code
+already running in this process has (the same trust level a `Job`'s
+own `kind: "python"` already has).
+
+Then call the `desk_install_job` MCP tool with `name` (the directory
+name under `desk-installed-jobs/`). This computes a version hash over
+your script's current source and registers it -- **this is the only
+approval prompt you'll see for this job.**
+
+## Running
+
+Call the `desk_run_installed_job` MCP tool with `name` and, optionally,
+`config_path` -- a path to a config file your script wants to read,
+available to it as the `CONFIG_PATH` global (a plain string, or `None`
+if you didn't pass one). A relative `config_path` resolves against the
+current Desk's own directory. There's no fixed default filename Desk
+invents on your behalf -- if you want a config file, put it wherever
+makes sense for your job and pass its path; it should generally live
+under `.desk_temp/` (ephemeral, per-project scratch space) unless
+there's a specific reason for it to live elsewhere.
+
+**This never prompts for approval.** That's the entire point of
+installing a job instead of dropping a fresh `Job` file every time you
+want to run it. It does mean the tool refuses to run if your script's
+on-disk source no longer matches the version that was actually
+approved at install time (someone edited `main.py` after installing) --
+call `desk_install_job` again first in that case, which re-approves the
+new version.
+
+The tool returns `{"ok": ..., "stdout": ..., "stderr": ..., "traceback": ...}` as JSON --
+your script's captured stdout/stderr, plus a traceback if it raised.
+
+## The Installed Jobs widget
+
+Placeable like any other widget: lists every installed job (name +
+version hash), with a "View Source" button (opens each of the job's
+own files in a real editor widget) and an "Uninstall" button (behind a
+confirmation) per row. Uninstalling only removes the registration --
+your source under `desk-installed-jobs/<name>/` is left on disk, so
+installing the same name again later just re-approves it.
+"""
+
 # TODO 7462cdb: reverse-chronological changelogs for the whole tempui
 # doc set, tagged by the TEMPUI_DOC_VERSION each entry was introduced
 # in -- not DSL-keyword-triggered file types themselves (nothing writes
@@ -1433,6 +1515,19 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 40
+- Installed Jobs: a durable, versioned alternative to the ephemeral
+  `Job` mechanism for a script you expect to run repeatedly. Write real
+  source to `desk-installed-jobs/<name>/main.py`, then call the new
+  `desk_install_job` MCP tool once (the only approval prompt) --
+  afterward, `desk_run_installed_job(name, config_path=None)` runs it
+  as many times as you like with **no further approval prompt**, and
+  refuses to run if the on-disk source no longer matches the version
+  that was actually installed. A new "Installed Jobs" widget lists what
+  you've installed, with per-row "View Source" and "Uninstall" (source
+  is kept on disk either way). Not a tempui-DSL file type -- see
+  `tempui-installed-jobs.md`.
 
 ## Version 39
 - A new authoring convenience script,
@@ -2146,6 +2241,7 @@ CUSTOM_WIDGETS_DOC_FILENAME = "tempui-custom-widgets.md"
 DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME = "tempui-discuss-parking-lot-item.md"
 JOBS_DOC_FILENAME = "tempui-jobs.md"
 DESK_PROC_DOC_FILENAME = "tempui-desk-proc.md"
+INSTALLED_JOBS_DOC_FILENAME = "tempui-installed-jobs.md"
 BREAKING_CHANGES_DOC_FILENAME = "tempui-breaking-changes.md"
 NEW_FEATURES_DOC_FILENAME = "tempui-new-features.md"
 BUILD_WIDGET_SCRIPT_FILENAME = "build_widget.py"
@@ -2169,6 +2265,7 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME: _DISCUSS_PARKING_LOT_ITEM_DOC,
     JOBS_DOC_FILENAME: _JOBS_DOC,
     DESK_PROC_DOC_FILENAME: _DESK_PROC_DOC,
+    INSTALLED_JOBS_DOC_FILENAME: _INSTALLED_JOBS_DOC,
     BREAKING_CHANGES_DOC_FILENAME: _BREAKING_CHANGES_DOC,
     NEW_FEATURES_DOC_FILENAME: _NEW_FEATURES_DOC,
     BUILD_WIDGET_SCRIPT_FILENAME: _BUILD_WIDGET_SCRIPT,

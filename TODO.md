@@ -424,7 +424,7 @@ e9eddba. COMPLETED: Add a permission-mode selector to the Claude (Desk) widget
    completeness/version bump, the generated script itself compiles).
    Full `tests/verify/` suite (125 scripts) passes.
 
-7dca383. Installed Jobs: a durable, versioned alternative to the
+7dca383. COMPLETED: Installed Jobs: a durable, versioned alternative to the
    ephemeral `Job` mechanism (TODO `d7e66f6`) for an agent's own
    reusable scripts, so a job an agent expects to run repeatedly
    doesn't need to be re-dropped-and-approved as a fresh one-shot
@@ -567,6 +567,89 @@ e9eddba. COMPLETED: Add a permission-mode selector to the Claude (Desk) widget
    (doc-set completeness/version bump, mirroring
    `verify_tempui_desk_proc_doc.py`).
    [planned: installed-jobs.md]
+
+   COMPLETED: Implemented as designed above, no deviations. New
+   `src/desk/installed_jobs.py` (`InstalledJobDefinition`,
+   `compute_version_hash`, `installed_job_dir`,
+   `INSTALLED_JOBS_UPDATED_EVENT`). `src/desk/desks.py` -- `Desk
+   .installed_jobs`, wired into `load_desk`/`desk_state_dict`.
+   `src/desk/shell/window.py` -- `DeskWindow.install_job`/
+   `.uninstall_job`/`.get_installed_job`/`.get_installed_jobs_dicts`;
+   `_capture_desk_state` carries `installed_jobs` over (same as
+   `custom_widgets`/`file_type_registry`); `_refresh_picker` registers
+   the two new `current_context` hooks at the same choke point
+   `file_type_registry_provider` already uses. `src/desk/shell
+   /current_context.py` -- `set/get_installed_jobs_provider`,
+   `set/get_installed_job_uninstaller`. `src/desk/shell
+   /desk_mcp_server.py` -- `desk_install_job(name)` and
+   `desk_run_installed_job(name, config_path=None)` (a hand-written
+   JSON Schema, not the `{name: type}` shorthand, since that shorthand
+   marks every key required -- confirmed directly against the
+   installed SDK's own `SdkMcpTool._build_schema`); the latter
+   recomputes the on-disk hash and refuses to run on a mismatch before
+   ever executing anything; the execution itself is serialized by a
+   module-level lock around its `sys.path` mutation (`sys.path` is
+   process-global -- without this, two overlapping
+   `desk_run_installed_job` calls could leak one job's own directory
+   into another's import resolution). `src/desk/claude_session.py` --
+   `_can_use_tool` gained a bypass branch for
+   `mcp__desk__desk_run_installed_job` specifically (checked by name,
+   built from `DESK_MCP_SERVER_NAME`/`RUN_INSTALLED_JOB_TOOL_NAME` so
+   the two can't drift), returning `PermissionResultAllow` before a
+   pending-permission future is even created;
+   `mcp__desk__desk_install_job` and every other tool are unaffected,
+   confirmed directly (see verification below). New
+   `widgets/installed_jobs/` (`kind: "python"`), mirroring
+   `widgets/parking_lot/widget.py`'s per-row `QListWidget`/
+   `setItemWidget` shape -- "View Source" opens one editor widget per
+   file in the job's directory via the existing
+   `get_editor_or_scrap_opener()`; "Uninstall" confirms via
+   `get_popup_opener()` (proceeding without confirmation if no popup
+   service is registered, rather than silently blocking the action)
+   then calls the uninstaller; stays live via a
+   `bind_event_mediator`/`EventSubscription` subscription to
+   `INSTALLED_JOBS_UPDATED_EVENT`, mirroring
+   `widgets/project_files/widget.py`'s own file-type-registry
+   subscription exactly. `src/desk/temp_ui.py` -- new split doc
+   `tempui-installed-jobs.md`; `TEMPUI_DOC_VERSION` 39 -> 40 with a
+   matching `_NEW_FEATURES_DOC` entry; `DOC_TEMPLATE`'s "a few more
+   files" paragraph extended (not the "ten built-in file types" list,
+   since installation is MCP-tool-driven, not a dropped tempui file).
+
+   New verify coverage: `tests/verify/verify_installed_jobs.py` (14
+   checks: hash determinism, changes on content/filename change,
+   multi-file order-independence, `.desk` file round-trip via
+   `load_desk`/`save_desk`/`desk_state_dict`, an old `.desk` file
+   missing the key still loads with `installed_jobs == []`);
+   `tests/verify/verify_installed_job_permission_bypass.py` (9 checks,
+   against a real `ClaudeSession._can_use_tool`, not a fake: confirms
+   `desk_run_installed_job` returns `PermissionResultAllow` with no
+   `permission_request` ever emitted and no pending future ever
+   created, while `desk_install_job` and an ordinary tool like `Write`
+   both still create and resolve a real pending permission request);
+   `tests/verify/verify_installed_jobs_widget.py` (15 checks: list
+   population from the provider, empty/no-provider cases, live refresh
+   via a directly-invoked `_on_mediated_event`, View Source opening one
+   editor per real file on disk, Uninstall's confirm/cancel paths, and
+   uninstall still proceeding with no popup opener registered);
+   `tests/verify/verify_tempui_installed_jobs_doc.py` (18 checks:
+   doc-set completeness/version bump/cross-references, mirroring
+   `verify_tempui_desk_proc_doc.py`); `tests/verify/verify_desk_mcp_server.py`
+   extended (+13 checks, mirroring its own existing fake-`current_context`
+   convention) to cover `desk_install_job`'s success/failure pass
+   -through, and `desk_run_installed_job`'s success (stdout/CONFIG_PATH
+   captured), a raising script (traceback captured), not-installed,
+   relative-`config_path`-resolves-against-the-Desk-directory, and the
+   stale-hash refusal (source edited on disk after install without a
+   fresh `desk_install_job` call). Found and fixed one real regression
+   this change itself caused in an unrelated pre-existing script, per
+   this project's investigate-don't-just-note convention:
+   `tests/verify/verify_lock_persistence.py`'s hand-built fake
+   `current_desk` object was missing the new `installed_jobs`
+   attribute `_capture_desk_state` now reads unconditionally -- fixed
+   by adding it to that fixture, the same way `custom_widgets`/
+   `file_type_registry` were already there. Full `tests/verify/` suite
+   (142 scripts, 8 `disabled_`) reruns clean, 130/130 passing.
 
 b9d3de5. Give an in-Desk agent a documented way to learn its own
    placed widget instance id, via `ClaudeAgentOptions.env` (a static,

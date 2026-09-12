@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from desk.file_type_registry import FileTypeRegistryEntry, entry_from_dict, entry_to_dict
+from desk.installed_jobs import InstalledJobDefinition
 from desk.temp_ui import CustomWidgetDefinition
 
 DESK_SUFFIX = ".desk"
@@ -99,6 +100,13 @@ class Desk:
     # .DeskWindow.get_state/set_state, never by touching this dict
     # directly from outside it.
     state: dict[str, StateEntry] = field(default_factory=dict)
+    # Installed Jobs (TODO 7dca383) -- durable, versioned agent-authored
+    # jobs registered via the desk_install_job MCP tool. Not derived
+    # from anything on the canvas (no placed widget instance per
+    # installed job), same category as custom_widgets/
+    # file_type_registry above -- carried over unchanged by
+    # DeskWindow._capture_desk_state.
+    installed_jobs: list[InstalledJobDefinition] = field(default_factory=list)
 
     @property
     def name(self) -> str:
@@ -135,6 +143,14 @@ def _load_custom_widget(data: dict) -> CustomWidgetDefinition:
     )
 
 
+def _load_installed_job(data: dict) -> InstalledJobDefinition:
+    return InstalledJobDefinition(
+        name=data["name"],
+        version_hash=data["version_hash"],
+        installed_at=data["installed_at"],
+    )
+
+
 def load_state_entry(data: dict) -> StateEntry:
     """Public (TODO 297f1a6, needed by desk.shell.window's JSON import
     /export) -- the JSON shape a StateEntry round-trips through,
@@ -151,6 +167,7 @@ def load_desk(path: Path) -> Desk:
     custom_widgets = [_load_custom_widget(cw) for cw in data.get("custom_widgets", [])]
     file_type_registry = [entry_from_dict(e) for e in data.get("file_type_registry", [])]
     state = {key: load_state_entry(entry) for key, entry in data.get("state", {}).items()}
+    installed_jobs = [_load_installed_job(j) for j in data.get("installed_jobs", [])]
     return Desk(
         path=path,
         widgets=widgets,
@@ -160,6 +177,7 @@ def load_desk(path: Path) -> Desk:
         custom_widgets=custom_widgets,
         file_type_registry=file_type_registry,
         state=state,
+        installed_jobs=installed_jobs,
     )
 
 
@@ -172,6 +190,14 @@ def _custom_widget_dict(cw: CustomWidgetDefinition) -> dict:
             {"width": cw.default_size[0], "height": cw.default_size[1]} if cw.default_size else None
         ),
         "capabilities": cw.capabilities,
+    }
+
+
+def _installed_job_dict(job: InstalledJobDefinition) -> dict:
+    return {
+        "name": job.name,
+        "version_hash": job.version_hash,
+        "installed_at": job.installed_at,
     }
 
 
@@ -210,6 +236,7 @@ def desk_state_dict(desk: Desk) -> dict:
         "custom_widgets": [_custom_widget_dict(cw) for cw in desk.custom_widgets],
         "file_type_registry": [entry_to_dict(e) for e in desk.file_type_registry],
         "state": {key: state_entry_dict(entry) for key, entry in desk.state.items()},
+        "installed_jobs": [_installed_job_dict(j) for j in desk.installed_jobs],
     }
 
 

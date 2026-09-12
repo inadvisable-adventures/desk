@@ -2,6 +2,14 @@
 
 Unexpected corner cases, non-obvious library/API behavior, and mistakes worth not repeating, recorded for whoever (human or agent) works on this codebase next. See `development-process.md`'s Learnings section for what belongs here and the workflow for adding to it.
 
+## `claude_agent_sdk.tool`'s `{name: type}` shorthand schema marks *every* key required -- there's no way to declare an optional argument with it
+
+`@tool(name, description, {"a": str, "b": str})` looks like it should let a caller omit `b`, the same way an ordinary Python function with a default would. It doesn't: `SdkMcpTool`'s internal `_build_schema` (`claude_agent_sdk/__init__.py`) turns that shorthand into `{"type": "object", "properties": {...}, "required": list(properties.keys())}` -- every key in the dict becomes `required` in the resulting JSON Schema, unconditionally, regardless of whether the handler itself treats a missing key as optional (e.g. via `args.get(...)`).
+
+Confirmed directly by reading the installed SDK's own source (not assumed from docs) while adding `desk_run_installed_job`'s optional `config_path` argument (TODO `7dca383`) -- the shorthand would have silently made the SDK require it on every call.
+
+To declare a genuinely optional parameter, skip the shorthand and pass a full hand-written JSON Schema dict instead (the `tool()` decorator's `input_schema` accepts one directly -- `_build_schema` returns it as-is when it already has `"type"`/`"properties"` keys): `{"type": "object", "properties": {"a": {"type": "string"}, "b": {"type": "string"}}, "required": ["a"]}`.
+
 ## `QWidget.graphicsProxyWidget()` does not bubble up from a child to its embedding proxy
 
 If a `QWidget` is embedded in a `QGraphicsScene` via `scene.addWidget(widget)`, only that exact widget's `graphicsProxyWidget()` returns the real `QGraphicsProxyWidget` — a *child* of that widget's own `graphicsProxyWidget()` returns `None`, even though it's just as embedded. Confirmed directly: constructing a parent/child pair and embedding only the parent, `child.graphicsProxyWidget()` is `None` while `parent.graphicsProxyWidget()` is not.

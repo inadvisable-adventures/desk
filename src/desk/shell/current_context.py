@@ -69,6 +69,18 @@ hook: it runs entirely in-process on a background thread, no
 `DeskWindow` involvement required. See `desk.shell.window.DeskWindow
 .start_html_job`.
 
+Also holds an "installed jobs provider" hook and an "installed job
+uninstaller" hook (TODO 7dca383), same minimal shape again: let the
+Installed Jobs widget read the current Desk's installed-jobs registry
+once (e.g. on its own `__init__`, live updates arriving separately via
+the existing `bind_event_mediator` mechanism, TODO 6f9c51b, subscribed
+to `desk.installed_jobs.INSTALLED_JOBS_UPDATED_EVENT`) and uninstall
+one by name, without needing to import `desk.shell.window` directly --
+the same "read once, then react to the mediator" shape
+`get_file_type_registry_provider` above already establishes. See
+`desk.shell.window.DeskWindow.get_installed_jobs_dicts`/
+`.uninstall_job`.
+
 Also holds a "GUI thread caller" hook (TODO 97bd090), same minimal
 shape again: lets in-process Python code running on a background
 thread -- a Desk Proc's own script execution, the same shape a Job's
@@ -117,6 +129,8 @@ _schema_file_writer: Callable[[str, str, str], str | None] | None = None
 _schema_file_deleter: Callable[[str], str | None] | None = None
 _state_exporter: Callable[[Path], str | None] | None = None
 _state_importer: Callable[[Path], str | None] | None = None
+_installed_jobs_provider: Callable[[], list[dict]] | None = None
+_installed_job_uninstaller: Callable[[str], bool] | None = None
 
 
 def set_current_desk_directory(directory: Path) -> None:
@@ -492,3 +506,28 @@ def set_state_importer(importer: Callable[[Path], str | None]) -> None:
 
 def get_state_importer() -> Callable[[Path], str | None] | None:
     return _state_importer
+
+
+def set_installed_jobs_provider(provider: Callable[[], list[dict]]) -> None:
+    """TODO 7dca383: `provider() -> [{"name", "version_hash",
+    "installed_at"}, ...]`, sorted by name. See
+    `desk.shell.window.DeskWindow.get_installed_jobs_dicts`."""
+    global _installed_jobs_provider
+    _installed_jobs_provider = provider
+
+
+def get_installed_jobs_provider() -> Callable[[], list[dict]] | None:
+    return _installed_jobs_provider
+
+
+def set_installed_job_uninstaller(uninstaller: Callable[[str], bool]) -> None:
+    """TODO 7dca383: `uninstaller(name) -> bool` (whether an entry was
+    actually removed) -- unregisters an installed job; its source
+    under `desk-installed-jobs/<name>/` is left on disk. See
+    `desk.shell.window.DeskWindow.uninstall_job`."""
+    global _installed_job_uninstaller
+    _installed_job_uninstaller = uninstaller
+
+
+def get_installed_job_uninstaller() -> Callable[[str], bool] | None:
+    return _installed_job_uninstaller

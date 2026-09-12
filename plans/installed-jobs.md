@@ -1,4 +1,4 @@
-# Installed Jobs (TODO `7dca383`)
+# Installed Jobs (TODO `7dca383`) (COMPLETED)
 
 ## Summary
 
