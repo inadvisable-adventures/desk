@@ -9076,3 +9076,50 @@ e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
    No application code changed -- a pure investigation. Confirmed the
    new file exists; full regression suite: 100 scripts, 0 failures
    (unchanged, as expected).
+
+13f4ad5. Rework promoted/custom-widget source-of-truth: durable,
+   registration-time source paths instead of keyword-based convention,
+   and a gitignored per-widget build cache instead of baked-in
+   `html_b64`. Addresses findings 1-2 of
+   `../FEEDBACK/FEEDBACK-DESK-promoted-widget-source-of-truth-2026-08-04-1321.md`
+   (confirmed bug: `_relocate_promoted_widget_source`,
+   `src/desk/shell/window.py:2647`, derives the authoring source
+   directory from `keyword` -- e.g. `PdfViewer` -- but the real
+   directory is kebab-case (`pdf-viewer`), so it silently no-ops for
+   almost every real-source widget; plus that file's design
+   recommendation that the `.desk` file reference source rather than
+   duplicate it).
+
+   1. **Durable registration record with a source path.** Widget
+      registration (`_register_custom_widget` and its two call sites,
+      `_register_custom_widgets_from_desk`/`_register_custom_widgets_
+      from_desk_temp`, `window.py:2521-2553`) should record the
+      project-directory-relative path to the widget's authoring source
+      directory as part of the registration itself -- for both
+      still-tempui-authored and already-promoted widgets, not just the
+      transient, promotion-discarding `self._custom_widget_source_
+      paths: dict[str, Path]` (`window.py:268`, popped and thrown away
+      at the start of promotion, `window.py:2629`). For a promoted
+      widget this means the `.desk` file's `custom_widgets` entries
+      (`CustomWidgetDefinition`, `src/desk/temp_ui.py:2518`; persisted
+      via `desks.py:136`/`188`) need a new `source_path: str | None`
+      field so the association survives a save/reload and an app
+      restart, not just the current process's lifetime.
+   2. **Promotion uses the record, not the keyword.** `_relocate_
+      promoted_widget_source` (`window.py:2647`) should resolve the
+      source directory from that new `source_path` field (populated at
+      initial registration time, from whichever side already knows the
+      real directory name) instead of reconstructing `directory /
+      TEMP_UI_DIRNAME / CUSTOM_WIDGET_SRC_DIRNAME / keyword` from the
+      keyword -- this is the actual fix for the confirmed bug above,
+      not just a workaround for the CamelCase-vs-kebab-case mismatch.
+   3. **No baked `html_b64` in the `.desk` file for source-backed
+      widgets.** Once a widget has a recorded source path, the `.desk`
+      file should stop storing its compiled `html_b64` inline --
+      instead, build output goes into a gitignored, per-widget `.build`
+      directory inside its `desk_widgets/<name>/` directory (new
+      top-level `.gitignore` pattern `**/.build/`, alongside the
+      existing `**/build/`/`.desk_temp/` entries), rebuilt on demand
+      rather than frozen at promote-time. A hand-authored, inline-only
+      `DefineWidget` with no source directory keeps today's baked-
+      `html_b64` behavior, since there's nothing to build from.
