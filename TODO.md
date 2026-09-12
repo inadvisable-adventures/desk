@@ -651,7 +651,7 @@ e9eddba. COMPLETED: Add a permission-mode selector to the Claude (Desk) widget
    `file_type_registry` were already there. Full `tests/verify/` suite
    (142 scripts, 8 `disabled_`) reruns clean, 130/130 passing.
 
-888b537. A Bridge API capability so a `kind: "html"` widget can run an
+888b537. COMPLETED: A Bridge API capability so a `kind: "html"` widget can run an
    already-Installed Job too (TODO `7dca383`), not just an agent via
    MCP -- `desk.installedJobs.run(name, configPath)`, capability
    `installed_jobs`. Prioritized per direct user request, immediately
@@ -751,6 +751,75 @@ e9eddba. COMPLETED: Add a permission-mode selector to the Claude (Desk) widget
    -name-list check; a new/extended tempui doc verify script covers
    the new Bridge API bullet. Full `tests/verify/` suite rerun clean.
    [planned: installed-jobs-bridge-api.md]
+
+   COMPLETED: Implemented as designed above, no deviations. The
+   `7dca383` refactor landed exactly as planned:
+   `desk.installed_jobs.run_script`/`_RUN_LOCK`/`resolve_config_path`/
+   `INSTALLED_JOB_RUN_TIMEOUT_SECONDS` (120.0); `DeskWindow
+   .get_installed_job_for_run`/`.run_installed_job` (non-blocking,
+   mirrors `run_transform`); `desk_mcp_server._run_installed_job_tool`
+   now a thin adapter (an `asyncio.Future` resolved via
+   `loop.call_soon_threadsafe` from `on_result`) with identical
+   behavior/wording to before. New `POST /api/bridge/installedJobs/run`
+   (`src/desk/server/app.py`, `InstalledJobsRunRequest`,
+   `run_on_gui_async` gained an optional `timeout` param, default
+   unchanged for `transforms.run`/`introspect.snapshot`); `ValueError`
+   (not installed/stale hash) -> `HTTPException(400, ...)`, distinct
+   from a successful-but-failing run (`200`, `ok: false`).
+   `desk.installedJobs.run(name, configPath)` added to
+   `BRIDGE_CLIENT_TEMPLATE`. Docs: `_CUSTOM_WIDGETS_DOC` gained the
+   `desk.installedJobs.run` bullet (with the 120s-timeout caveat);
+   `_JOBS_DOC`'s closed capability list gained `installed_jobs`;
+   `tempui-installed-jobs.md` gained a "Running from a kind:\"html\"
+   widget" section; `TEMPUI_DOC_VERSION` 40 -> 41 with a matching
+   `_NEW_FEATURES_DOC` entry.
+
+   **Found and fixed one real bug via manual testing while writing
+   this item's own verify coverage, recorded in `LEARNINGS.md`**:
+   `contextlib.redirect_stdout`/`redirect_stderr` (used by
+   `run_script`, moved verbatim from the prior implementation) swap
+   `sys.stdout`/`sys.stderr` process-wide, not per-thread -- a `print()`
+   from any *other* thread while a job's own capture window is open
+   gets silently swallowed into that job's own buffer instead of
+   reaching the real terminal. Not a regression in product code (the
+   same pattern already existed in `widgets/job_runner/widget.py`'s
+   `_run_python_job`, and `_RUN_LOCK` already prevents two installed
+   -job runs from colliding with each other this way) -- purely a
+   hazard for a test that prints from the main thread while a
+   background job run is in flight, which is exactly what
+   `verify_installed_jobs.py`'s own non-blocking-run test originally
+   did, and was fixed there (defer every print-performing assertion
+   until after the job's own execution window has closed).
+
+   New verify coverage: `tests/verify/verify_installed_jobs.py`
+   extended (+13 checks, 27 total) -- `resolve_config_path` (None/
+   empty/relative/absolute), `get_installed_job_for_run` (matching
+   hash/not-installed/stale-hash) and `run_installed_job` called
+   directly against the *real* `DeskWindow` methods (grabbed
+   unbound off the class and called against a minimal duck-typed
+   `.current_desk`-only stand-in, mirroring
+   `verify_lock_persistence.py`'s own established technique) --
+   proves genuine non-blocking behavior (returns before a real 0.2s
+   -sleeping job finishes) and real `CONFIG_PATH` resolution end to
+   end. `tests/verify/verify_desk_mcp_server.py`'s installed-job-run
+   tests rewritten (47 checks total, unchanged count) to match the
+   refactored thin-adapter shape -- a fake `run_installed_job` that
+   resolves via a real background thread after a short delay (not
+   immediately), proving the future-based relay via
+   `call_soon_threadsafe` genuinely waits. New
+   `tests/verify/verify_installed_jobs_bridge_api.py` (12 checks,
+   mirroring `verify_bridge_api_transforms_run.py`'s exact real
+   -`start_server`-plus-`QTimer`-delayed-callback shape): a delayed
+   successful run, config_path omitted -> `None`, a failing script ->
+   `{"ok": false, ...}` at HTTP 200 (not an HTTP error), a validation
+   `ValueError` -> HTTP 400 (not 200), missing-capability -> 403, and
+   the Bridge client declares `installedJobs.run`.
+   `tests/verify/verify_tempui_jobs_doc.py`'s capability-name-list
+   check gained `installed_jobs`;
+   `tests/verify/verify_tempui_installed_jobs_doc.py` extended (+7
+   checks) for the new Bridge API cross-references and the Version 41
+   changelog entry. Full `tests/verify/` suite (139 scripts, 8
+   `disabled_`) reruns clean, 131/131 passing.
 
 b9d3de5. Give an in-Desk agent a documented way to learn its own
    placed widget instance id, via `ClaudeAgentOptions.env` (a static,

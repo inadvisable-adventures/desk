@@ -46,7 +46,7 @@ jobs_doc = SPLIT_DOC_CONTENT[JOBS_DOC_FILENAME]
 check("jobs doc documents the Job/kind/summary first-line format", "Job<TAB>kind<TAB>summary" in jobs_doc)
 check("jobs doc documents Capability lines", "Capability<TAB>name" in jobs_doc)
 check("jobs doc documents Script lines", "Script<TAB>base64-chunk" in jobs_doc)
-check("jobs doc lists the real capability namespace names", all(name in jobs_doc for name in ("workspace", "fs", "widgets", "events", "filetypes", "editor", "popups", "transforms", "introspect")))
+check("jobs doc lists the real capability namespace names", all(name in jobs_doc for name in ("workspace", "fs", "widgets", "events", "filetypes", "editor", "popups", "transforms", "introspect", "installed_jobs")))
 check("jobs doc cross-references the Bridge API's full documentation rather than duplicating it", "tempui-custom-widgets.md" in jobs_doc)
 check("jobs doc explains the html-kind 'Done' caveat", "async" in jobs_doc and "Done" in jobs_doc)
 check("jobs doc explains that Start is disabled/one-shot", "disabled" in jobs_doc)

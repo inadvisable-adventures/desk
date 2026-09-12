@@ -1,4 +1,4 @@
-# Installed Jobs Bridge API (TODO `888b537`)
+# Installed Jobs Bridge API (TODO `888b537`) (COMPLETED)
 
 ## Summary
 

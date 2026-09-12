@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import shutil
+import threading
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -39,6 +40,8 @@ from desk.installed_jobs import (
     InstalledJobDefinition,
     compute_version_hash,
     installed_job_dir,
+    resolve_config_path,
+    run_script as run_installed_job_script,
 )
 from desk.file_watch import SingleFileWatcher
 from desk.hotreload import HotReloadBroker
@@ -1609,6 +1612,57 @@ class DeskWindow(QMainWindow):
             sender_instance_id=SYSTEM_SENDER_INSTANCE_ID,
         )
         return True
+
+    def get_installed_job_for_run(self, name: str) -> InstalledJobDefinition:
+        """TODO 7dca383/888b537: looks up an installed job specifically
+        for actually running it -- raises ValueError (not a bare
+        None-return) if it isn't installed, or if its on-disk source no
+        longer matches the version that was installed/approved. This is
+        the load-bearing check that keeps "no reapproval on every run"
+        safe: without it, editing desk-installed-jobs/<name>/ after
+        install (without a fresh install_job call) would let
+        already-approved-forever execution silently run different code
+        than what was actually approved. Shared by both
+        run_installed_job below (agent-via-MCP and html-widget-via
+        -Bridge-API both call through it) so this check can never drift
+        between the two entry points."""
+        job = self.get_installed_job(name)
+        if job is None:
+            raise ValueError(f"{name!r} is not installed.")
+        job_dir = installed_job_dir(self.current_desk.directory, name)
+        current_hash = compute_version_hash(job_dir)
+        if current_hash != job.version_hash:
+            raise ValueError(
+                f"{name!r}'s source on disk (version {current_hash}) no longer matches the installed "
+                f"version ({job.version_hash}) -- call desk_install_job again before running it."
+            )
+        return job
+
+    def run_installed_job(
+        self, name: str, config_path: str | None, on_result: Callable[[bool, str, str, str], None]
+    ) -> None:
+        """TODO 7dca383/888b537: non-blocking, mirrors run_transform's
+        own shape exactly (see TransformsService._invoke) -- validates
+        via get_installed_job_for_run (raises ValueError synchronously,
+        before anything is spawned, so a caller can tell "bad request"
+        from "the job ran and here's what happened"), resolves
+        config_path, then runs the job on a background thread and calls
+        on_result(ok, stdout, stderr, traceback) once, later, from that
+        thread. Called from desk_mcp_server._run_installed_job_tool
+        (agent-initiated) and the Bridge API's POST
+        /api/bridge/installedJobs/run route (an unrelated kind:"html"
+        widget-initiated, TODO 888b537) -- both entry points share this
+        one implementation rather than each running their own copy."""
+        self.get_installed_job_for_run(name)  # raises ValueError; return value unused here
+        job_dir = installed_job_dir(self.current_desk.directory, name)
+        resolved_config_path = resolve_config_path(self.current_desk.directory, config_path)
+        script_text = (job_dir / INSTALLED_JOB_ENTRY_FILENAME).read_text()
+
+        def _run() -> None:
+            ok, stdout, stderr, tb = run_installed_job_script(script_text, job_dir, resolved_config_path)
+            on_result(ok, stdout, stderr, tb)
+
+        threading.Thread(target=_run, daemon=True).start()
 
     def switch_desk(
         self,

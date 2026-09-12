@@ -27,7 +27,7 @@ def check(name, condition):
         print(f"FAIL: {name}")
 
 
-check("TEMPUI_DOC_VERSION bumped to at least 40", TEMPUI_DOC_VERSION >= 40)
+check("TEMPUI_DOC_VERSION bumped to at least 41", TEMPUI_DOC_VERSION >= 41)
 
 main_doc = render_static_doc()
 check(
@@ -69,12 +69,36 @@ check(
     "doc cross-references the ephemeral Job mechanism it's an alternative to",
     "tempui-jobs.md" in installed_jobs_doc,
 )
+check(
+    "doc documents the Bridge API's installedJobs.run for kind:html widgets (TODO 888b537)",
+    "desk.installedJobs.run" in installed_jobs_doc and "installed_jobs" in installed_jobs_doc,
+)
+check(
+    "doc cross-references tempui-custom-widgets.md for the Bridge API's full call shape",
+    "tempui-custom-widgets.md" in installed_jobs_doc,
+)
+check("doc explains the Bridge API path's own 120-second bound", "120 second" in installed_jobs_doc)
 
 new_features_doc = SPLIT_DOC_CONTENT["tempui-new-features.md"]
 check("new-features doc has a Version 40 entry", "## Version 40" in new_features_doc)
 check(
     "Version 40 entry mentions Installed Jobs",
     "Installed Jobs" in new_features_doc.split("## Version 40", 1)[1].split("## Version 39", 1)[0],
+)
+check("new-features doc has a Version 41 entry", "## Version 41" in new_features_doc)
+check(
+    "Version 41 entry mentions the installed_jobs Bridge API capability",
+    "installed_jobs" in new_features_doc.split("## Version 41", 1)[1].split("## Version 40", 1)[0],
+)
+
+custom_widgets_doc = SPLIT_DOC_CONTENT["tempui-custom-widgets.md"]
+check(
+    "custom-widgets doc's Bridge API section documents desk.installedJobs.run",
+    "desk.installedJobs.run(name, configPath)" in custom_widgets_doc,
+)
+check(
+    "custom-widgets doc's Bridge API bullet names the installed_jobs capability",
+    "capability\n  `installed_jobs`" in custom_widgets_doc or "capability `installed_jobs`" in custom_widgets_doc,
 )
 
 print(f"\n{passed} passed, {failed} failed")

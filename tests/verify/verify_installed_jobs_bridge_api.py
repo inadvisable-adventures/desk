@@ -1,0 +1,247 @@
+import json
+import os
+import sys
+import tempfile
+import threading
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src"))
+
+from PyQt6.QtCore import QTimer  # noqa: E402
+from PyQt6.QtWidgets import QApplication  # noqa: E402
+
+app = QApplication.instance() or QApplication(sys.argv)
+
+from desk.server.bridge_client import BRIDGE_CLIENT_TEMPLATE  # noqa: E402
+from desk.server.runner import start_server  # noqa: E402
+from desk.widgets import WidgetInfo  # noqa: E402
+
+passed = 0
+failed = 0
+
+
+def check(name, condition):
+    global passed, failed
+    if condition:
+        passed += 1
+        print(f"PASS: {name}")
+    else:
+        failed += 1
+        print(f"FAIL: {name}")
+
+
+class _FakeGuiWindow:
+    """Simulates DeskWindow.run_installed_job -- with a deliberately
+    delayed (QTimer, not immediate) resolution, the same shape a real
+    background-thread job run actually has, to prove the route's
+    run_on_gui_async plumbing genuinely waits for a later callback
+    rather than only working by accident for an immediately-resolving
+    one -- mirrors verify_bridge_api_transforms_run.py exactly."""
+
+    def __init__(self, capabilities=("installed_jobs",)) -> None:
+        self._capabilities = list(capabilities)
+        self.run_installed_job_calls = []
+
+    def get_widget_info(self, widget_id):
+        return WidgetInfo(
+            id=widget_id, path=Path("."), kind="html", name=widget_id, entry="index.html",
+            capabilities=self._capabilities, default_size=None,
+        )
+
+    def run_installed_job(self, name, config_path, on_result):
+        self.run_installed_job_calls.append((name, config_path))
+        if name == "ghost":
+            raise ValueError(f"{name!r} is not installed.")
+        if name == "broken":
+            QTimer.singleShot(50, lambda: on_result(False, "", "", "ValueError: boom"))
+            return
+        QTimer.singleShot(50, lambda: on_result(True, f"ran {name}", "", ""))
+
+
+def _request(url, token, widget_id, body):
+    headers = {"X-Desk-Token": token, "X-Desk-Widget-Id": widget_id, "Content-Type": "application/json"}
+    req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as response:
+            return response.status, json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read().decode("utf-8"))
+
+
+def _run_with_pumped_event_loop(fn, timeout=10):
+    outcome = {}
+
+    def run():
+        try:
+            fn()
+        except Exception as e:  # noqa: BLE001
+            outcome["error"] = e
+        finally:
+            outcome["done"] = True
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    deadline = time.time() + timeout
+    while not outcome.get("done") and time.time() < deadline:
+        app.processEvents()
+        time.sleep(0.01)
+    thread.join(timeout=1)
+    assert outcome.get("done"), "background request never finished"
+    if "error" in outcome:
+        raise outcome["error"]
+
+
+def test_run_resolves_via_a_delayed_callback():
+    with tempfile.TemporaryDirectory() as d:
+        widgets_dir = Path(d) / "widgets"
+        widgets_dir.mkdir()
+        handle = start_server(widgets_dir=widgets_dir)
+        try:
+            fake_window = _FakeGuiWindow()
+            handle.gui_bridge.attach(fake_window)
+            base = f"http://{handle.host}:{handle.port}"
+            result = {}
+
+            def run_requests():
+                result["status"], result["body"] = _request(
+                    f"{base}/api/bridge/installedJobs/run", handle.token, "some_widget",
+                    body={"name": "greet", "config_path": "cfg.json"},
+                )
+
+            _run_with_pumped_event_loop(run_requests)
+            check("status 200", result["status"] == 200)
+            check(
+                "delayed on_result's payload reaches the HTTP response",
+                result["body"] == {"ok": True, "stdout": "ran greet", "stderr": "", "traceback": ""},
+            )
+            check(
+                "DeskWindow.run_installed_job was called with the request's own fields",
+                fake_window.run_installed_job_calls == [("greet", "cfg.json")],
+            )
+        finally:
+            handle.stop()
+
+
+def test_run_config_path_omitted_becomes_none():
+    with tempfile.TemporaryDirectory() as d:
+        widgets_dir = Path(d) / "widgets"
+        widgets_dir.mkdir()
+        handle = start_server(widgets_dir=widgets_dir)
+        try:
+            fake_window = _FakeGuiWindow()
+            handle.gui_bridge.attach(fake_window)
+            base = f"http://{handle.host}:{handle.port}"
+            result = {}
+
+            def run_requests():
+                result["status"], result["body"] = _request(
+                    f"{base}/api/bridge/installedJobs/run", handle.token, "some_widget",
+                    body={"name": "greet", "config_path": None},
+                )
+
+            _run_with_pumped_event_loop(run_requests)
+            check("status 200", result["status"] == 200)
+            check(
+                "an omitted config_path is passed through as None",
+                fake_window.run_installed_job_calls == [("greet", None)],
+            )
+        finally:
+            handle.stop()
+
+
+def test_run_failing_script_reports_ok_false_not_an_http_error():
+    with tempfile.TemporaryDirectory() as d:
+        widgets_dir = Path(d) / "widgets"
+        widgets_dir.mkdir()
+        handle = start_server(widgets_dir=widgets_dir)
+        try:
+            fake_window = _FakeGuiWindow()
+            handle.gui_bridge.attach(fake_window)
+            base = f"http://{handle.host}:{handle.port}"
+            result = {}
+
+            def run_requests():
+                result["status"], result["body"] = _request(
+                    f"{base}/api/bridge/installedJobs/run", handle.token, "some_widget",
+                    body={"name": "broken", "config_path": None},
+                )
+
+            _run_with_pumped_event_loop(run_requests)
+            check("status still 200 (the job ran, it just failed)", result["status"] == 200)
+            check(
+                "the failure is in the body, not an HTTP error",
+                result["body"] == {"ok": False, "stdout": "", "stderr": "", "traceback": "ValueError: boom"},
+            )
+        finally:
+            handle.stop()
+
+
+def test_run_validation_error_gets_400_not_200():
+    with tempfile.TemporaryDirectory() as d:
+        widgets_dir = Path(d) / "widgets"
+        widgets_dir.mkdir()
+        handle = start_server(widgets_dir=widgets_dir)
+        try:
+            fake_window = _FakeGuiWindow()
+            handle.gui_bridge.attach(fake_window)
+            base = f"http://{handle.host}:{handle.port}"
+            result = {}
+
+            def run_requests():
+                result["status"], result["body"] = _request(
+                    f"{base}/api/bridge/installedJobs/run", handle.token, "some_widget",
+                    body={"name": "ghost", "config_path": None},
+                )
+
+            _run_with_pumped_event_loop(run_requests)
+            check("a not-installed/stale-hash ValueError is a 400, not a 200 with ok:false", result["status"] == 400)
+            check("the ValueError's own message reaches the response", "is not installed" in result["body"].get("detail", ""))
+        finally:
+            handle.stop()
+
+
+def test_missing_capability_gets_403():
+    with tempfile.TemporaryDirectory() as d:
+        widgets_dir = Path(d) / "widgets"
+        widgets_dir.mkdir()
+        handle = start_server(widgets_dir=widgets_dir)
+        try:
+            fake_window = _FakeGuiWindow(capabilities=())
+            handle.gui_bridge.attach(fake_window)
+            base = f"http://{handle.host}:{handle.port}"
+            result = {}
+
+            def run_requests():
+                result["status"], result["body"] = _request(
+                    f"{base}/api/bridge/installedJobs/run", handle.token, "some_widget",
+                    body={"name": "greet", "config_path": None},
+                )
+
+            _run_with_pumped_event_loop(run_requests)
+            check("caller without the installed_jobs capability gets 403", result["status"] == 403)
+            check("no call made without the capability", fake_window.run_installed_job_calls == [])
+        finally:
+            handle.stop()
+
+
+def test_bridge_client_declares_installed_jobs_namespace():
+    check(
+        "bridge client declares installedJobs.run",
+        '"/api/bridge/installedJobs/run"' in BRIDGE_CLIENT_TEMPLATE and "installedJobs:" in BRIDGE_CLIENT_TEMPLATE,
+    )
+
+
+test_run_resolves_via_a_delayed_callback()
+test_run_config_path_omitted_becomes_none()
+test_run_failing_script_reports_ok_false_not_an_http_error()
+test_run_validation_error_gets_400_not_200()
+test_missing_capability_gets_403()
+test_bridge_client_declares_installed_jobs_namespace()
+
+print(f"\n{passed} passed, {failed} failed")
+sys.exit(1 if failed else 0)

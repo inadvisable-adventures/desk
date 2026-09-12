@@ -11,6 +11,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from desk.event_mediator import EventMediator
 from desk.file_type_registry import FILE_TYPE_REGISTRY_UPDATED_EVENT
+from desk.installed_jobs import INSTALLED_JOB_RUN_TIMEOUT_SECONDS
 from desk.shell.bridge import GuiBridge
 from desk.widgets import WidgetInfo, discover_widgets
 
@@ -191,6 +192,11 @@ class TransformsRunRequest(BaseModel):
     transform_id: str
     input: str
     config: dict | None = None
+
+
+class InstalledJobsRunRequest(BaseModel):
+    name: str
+    config_path: str | None = None
 
 
 def _event_dict(event) -> dict:
@@ -556,12 +562,12 @@ def create_app(
     # GuiBridge.call_async, since QWebEnginePage.runJavaScript's own
     # result only arrives via a later callback.
 
-    async def run_on_gui_async(starter):
+    async def run_on_gui_async(starter, timeout: float = 10.0):
         if gui_bridge is None:
             raise HTTPException(503, "GUI bridge not available")
         loop = asyncio.get_event_loop()
         try:
-            return await loop.run_in_executor(None, gui_bridge.call_async, starter)
+            return await loop.run_in_executor(None, gui_bridge.call_async, starter, timeout)
         except RuntimeError as e:
             raise HTTPException(503, str(e)) from e
         except TimeoutError as e:
@@ -585,6 +591,41 @@ def create_app(
             )
         )
         return result
+
+    @app.post("/api/bridge/installedJobs/run")
+    async def installed_jobs_run(
+        body: InstalledJobsRunRequest, widget: WidgetInfo = Depends(require_caller("installed_jobs"))
+    ):
+        # Same run_on_gui_async shape as transforms.run above (a real
+        # run can genuinely take a while) -- but with a longer,
+        # explicit timeout (INSTALLED_JOB_RUN_TIMEOUT_SECONDS): unlike
+        # the agent-facing desk_run_installed_job MCP tool (an
+        # unbounded await), this is a synchronous HTTP request/response
+        # and can't wait forever. A run that outlives this timeout
+        # keeps executing to completion regardless -- this route's own
+        # caller just stops waiting for the result (see
+        # desk.installed_jobs.INSTALLED_JOB_RUN_TIMEOUT_SECONDS's own
+        # docstring). A ValueError from DeskWindow
+        # .get_installed_job_for_run (not installed, or the on-disk
+        # source no longer matches the installed version -- TODO
+        # 7dca383/888b537's load-bearing safety check) is a genuine bad
+        # request, not a job-ran-but-failed result, so it's a 400
+        # here -- distinct from `{"ok": false, ...}`, the same "bad
+        # request vs. the thing you asked for actually failed" split
+        # the MCP tool's own is_error already draws.
+        try:
+            return await run_on_gui_async(
+                lambda resolve: gui_bridge.window.run_installed_job(
+                    body.name,
+                    body.config_path,
+                    lambda ok, stdout, stderr, tb: resolve(
+                        {"ok": ok, "stdout": stdout, "stderr": stderr, "traceback": tb}
+                    ),
+                ),
+                timeout=INSTALLED_JOB_RUN_TIMEOUT_SECONDS,
+            )
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
 
     @app.post("/api/bridge/introspect/snapshot")
     async def introspect_snapshot(
