@@ -55,7 +55,7 @@ from desk.shell.new_desk_dialog import NewDeskDialog
 from desk.shell.python_widget import PythonWidgetHost
 from desk.shell.schema_file_watcher import SCHEMA_FILES_DIRNAME, TOP_LEVEL_SCHEMAS_DIRNAME, SchemaFileWatcher
 from desk.shell.temp_ui_manager import TempUiManager
-from desk.shell.widget_frame import WidgetFrame
+from desk.shell.widget_frame import MIN_HEIGHT, WidgetFrame
 from desk.transforms import PROJECT_TRANSFORMS_DIRNAME, TEMP_TRANSFORMS_DIRNAME
 from desk_services.popups import get_service as get_popups_service
 from desk_services.transforms import get_service as get_transforms_service
@@ -385,6 +385,8 @@ class DeskWindow(QMainWindow):
         current_context.set_schema_file_deleter(self.delete_schema_key)
         current_context.set_state_exporter(self.export_state_json)
         current_context.set_state_importer(self.import_state_json)
+        current_context.set_widget_subtitle_setter(self.set_widget_subtitle)
+        current_context.set_widget_height_adjuster(self.adjust_widget_instance_height)
         self._sync_tempui_doc()
         self._open_crash_log_widgets()
 
@@ -401,6 +403,7 @@ class DeskWindow(QMainWindow):
                     (round(state.width), round(state.height)),
                     instance_id=state.instance_id,
                     restore=True,
+                    local_storage_data=state.state,
                 )
                 if frame is None:
                     # A desk.state.* schema conflict (TODO af7898b) --
@@ -482,6 +485,7 @@ class DeskWindow(QMainWindow):
         instance_id: str | None = None,
         restore: bool = False,
         claude_extra_instructions: str = "",
+        local_storage_data: dict | None = None,
     ) -> WidgetFrame | None:
         if widget_id in (CLAUDE_WIDGET_ID, CLAUDE_DESK_WIDGET_ID) and instance_id is None:
             # A claude/claude_desk widget's instance_id doubles as its
@@ -529,6 +533,19 @@ class DeskWindow(QMainWindow):
                 frame, resume=restore, extra_instructions=claude_extra_instructions
             )
         elif widget_id == CLAUDE_DESK_WIDGET_ID:
+            if local_storage_data is not None:
+                # TODO 1ceb701: applied *before* start_session below,
+                # unlike every other widget kind's own widget-local
+                # -storage restore (which happens afterward, from
+                # _load_desk_widgets' own generic call) -- this
+                # widget's start_session reads the model/permission
+                # -mode combo boxes' current selection synchronously,
+                # so restoring a saved selection any later would always
+                # arrive one step too late to affect the very session
+                # it's meant to restore. _load_desk_widgets' own later
+                # call still runs too either way -- a harmless,
+                # idempotent second application for this widget kind.
+                self._bind_widget_local_storage(frame, local_storage_data)
             self._bind_claude_desk_widget(
                 frame, resume=restore, extra_instructions=claude_extra_instructions
             )
@@ -1223,6 +1240,28 @@ class DeskWindow(QMainWindow):
         frame = self.find_frame_by_instance_id(instance_id)
         if frame is not None:
             frame.set_subtitle(text)
+
+    def adjust_widget_instance_height(self, instance_id: str, delta: int) -> None:
+        """The `current_context` "widget height adjuster" hook (TODO
+        f4a7872) -- grows/shrinks a placed widget instance's own frame
+        by `delta` pixels (negative to shrink), clamped to `MIN_HEIGHT`
+        the same way `WorkspaceView._apply_drag`'s own manual bottom
+        -edge resize-drag already is. Lets a `python` widget's own
+        expandable section (e.g. the Claude (Desk) widget's
+        background-tasks panel) grow the *widget* to fit newly-shown
+        content instead of squeezing its existing area, and shrink back
+        by the same amount once collapsed. A silent no-op for an
+        unknown instance id or one with no backing graphics proxy (e.g.
+        a request racing a just-closed widget) -- same tolerance as
+        set_widget_subtitle above."""
+        frame = self.find_frame_by_instance_id(instance_id)
+        if frame is None:
+            return
+        proxy = frame.graphicsProxyWidget()
+        if proxy is None:
+            return
+        size = proxy.size()
+        proxy.resize(size.width(), max(MIN_HEIGHT, size.height() + delta))
 
     def _bind_temp_ui_content(self, content, tempui_path: Path, directory: Path) -> None:
         """Wires a freshly-placed or restored TempUI-backed widget's

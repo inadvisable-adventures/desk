@@ -3,13 +3,14 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
     QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from desk.claude_session import ClaudeSession
+from desk.claude_session import TERMINAL_TASK_STATUSES, ClaudeSession
 from desk.shell import current_context
 from desk.speech import TranscriptionResult
 from desk.temp_ui import DOC_FILENAME, TEMP_UI_DIRNAME
@@ -87,6 +88,12 @@ PERMISSION_MODE_CHOICES = [
 ]
 DEFAULT_PERMISSION_MODE_INDEX = 0  # "Default"
 
+# TODO f4a7872: fixed, not sizeHint-driven -- keeps the panel's own
+# expand/collapse frame-resize delta (see _on_tasks_toggled) exactly
+# symmetric regardless of how many background tasks have accumulated;
+# the panel's own QListWidget scrolls internally past this height.
+TASKS_PANEL_HEIGHT = 140
+
 
 def _doc_path() -> str:
     directory = current_context.get_current_desk_directory()
@@ -128,6 +135,28 @@ class ClaudeDeskWidget(QWidget):
         self._session.permission_request.connect(self._on_permission_request)
         self._session.turn_complete.connect(self._on_turn_complete)
         self._session.session_error.connect(self._on_session_error)
+        self._session.task_event.connect(self._on_task_event)
+        # TODO 551014c: shows this session's id in the titlebar once the
+        # SDK client actually connects -- not done directly inside
+        # start_session, since that runs synchronously inside
+        # DeskWindow._load_desk_widgets on a Desk restore, *before*
+        # DeskWindow.__init__ reaches its own current_context hook
+        # -wiring block (including the widget-subtitle-setter hook this
+        # needs). `connected` is instead emitted later, asynchronously,
+        # from the session's own background thread -- Qt only delivers
+        # a cross-thread signal once this (GUI) thread's event loop
+        # actually runs, which is strictly after DeskWindow.__init__'s
+        # synchronous call stack (hook-wiring included) has returned --
+        # so connecting to it here works correctly for both a fresh
+        # launch and a restore, with no change needed to that wiring
+        # order at all.
+        self._session.connected.connect(self._on_session_connected)
+        # Set at the top of start_session -- doubles as this widget's
+        # own placed instance_id (DeskWindow._place_widget's own
+        # comment explains why), so no separate instance-id plumbing is
+        # needed for either the subtitle (above) or the background
+        # -tasks panel's own height-adjuster call below.
+        self._session_id: str | None = None
         # QObject.destroyed fires right before this widget's own C++
         # object is torn down, regardless of whether that happens via
         # close()/deleteLater()/parent deletion -- canvas.py's
@@ -171,6 +200,18 @@ class ClaudeDeskWidget(QWidget):
         self._permission_mode_combo.setCurrentIndex(DEFAULT_PERMISSION_MODE_INDEX)
         self._permission_mode_combo.currentIndexChanged.connect(self._on_permission_mode_changed)
 
+        # TODO f4a7872: task_id -> {"description", "status", "summary",
+        # "last_tool_name"} (only whichever keys have actually been
+        # reported so far -- see _on_task_event), insertion-ordered.
+        self._background_tasks: dict[str, dict] = {}
+        self._tasks_toggle_button = QPushButton()
+        self._tasks_toggle_button.setCheckable(True)
+        self._tasks_toggle_button.toggled.connect(self._on_tasks_toggled)
+        self._tasks_list = QListWidget()
+        self._tasks_list.setFixedHeight(TASKS_PANEL_HEIGHT)
+        self._tasks_list.setVisible(False)
+        self._update_tasks_toggle_label()
+
         self._history = QPlainTextEdit()
         self._history.setReadOnly(True)
 
@@ -201,6 +242,7 @@ class ClaudeDeskWidget(QWidget):
         top_row.addWidget(self._queue_label)
         top_row.addWidget(self._model_combo)
         top_row.addWidget(self._permission_mode_combo)
+        top_row.addWidget(self._tasks_toggle_button)
 
         prompt_row = QHBoxLayout()
         prompt_row.addWidget(self._mic_button)
@@ -212,10 +254,15 @@ class ClaudeDeskWidget(QWidget):
         layout.addWidget(self._history, stretch=1)
         layout.addLayout(self._permission_row)
         layout.addLayout(prompt_row)
+        # TODO f4a7872: expands from the bottom of the widget on toggle
+        # (see _on_tasks_toggled) -- last in the layout, below the
+        # prompt row.
+        layout.addWidget(self._tasks_list)
 
         self._set_busy(False)
 
     def start_session(self, session_id: str, resume: bool, extra_instructions: str = "") -> None:
+        self._session_id = session_id
         model = MODEL_CHOICES[self._model_combo.currentIndex()][1]
         permission_mode = PERMISSION_MODE_CHOICES[self._permission_mode_combo.currentIndex()][1]
         cwd = current_context.get_current_desk_directory()
@@ -253,6 +300,108 @@ class ClaudeDeskWidget(QWidget):
         setCurrentIndex above, before __init__ finishes, or a
         not-yet-connected widget)."""
         self._session.set_permission_mode(PERMISSION_MODE_CHOICES[index][1])
+
+    def _on_session_connected(self) -> None:
+        """TODO 551014c: shows this session's id in the titlebar (see
+        __init__'s own comment on why this is wired to `connected`
+        rather than done directly inside start_session). Truncated to
+        8 hex characters, matching this codebase's existing instance-id
+        display convention elsewhere (DeskWindow
+        ._display_name_for_instance)."""
+        setter = current_context.get_widget_subtitle_setter()
+        if setter is not None and self._session_id is not None:
+            setter(self._session_id, self._session_id[:8])
+
+    # -- persisted model/permission-mode selection (TODO 1ceb701) -----
+
+    @staticmethod
+    def _index_for_value(choices: list[tuple[str, str | None]], value: object, default_index: int) -> int:
+        for index, (_label, choice_value) in enumerate(choices):
+            if choice_value == value:
+                return index
+        return default_index
+
+    def get_widget_local_storage(self) -> dict:
+        """The generic python-widget persisted-state hook (TODO
+        fb76057) -- lets a Desk reboot restore a resumed session's
+        previously-selected model/permission-mode instead of resetting
+        to this widget's hardcoded defaults. Stores the real SDK
+        value, not the combo index, so it stays meaningful even if
+        MODEL_CHOICES/PERMISSION_MODE_CHOICES later gain/lose/reorder
+        entries."""
+        return {
+            "model": MODEL_CHOICES[self._model_combo.currentIndex()][1],
+            "permission_mode": PERMISSION_MODE_CHOICES[self._permission_mode_combo.currentIndex()][1],
+        }
+
+    # A sentinel, not None: MODEL_CHOICES' own "Default" entry's value
+    # IS None (see MODEL_CHOICES above), so an explicitly-saved "model":
+    # None (the user really had "Default" selected) must be told apart
+    # from the key being entirely absent (data saved before this
+    # feature existed, or an empty {} from a widget instance that
+    # predates it) -- data.get(key, _NOT_SAVED) below, not data.get(key).
+    _NOT_SAVED = object()
+
+    def set_widget_local_storage(self, data: dict) -> None:
+        """Falls back to this widget's own existing hardcoded default
+        index for a value no longer present in the choices list (e.g. a
+        retired model), or for data saved before this feature existed
+        (an empty/missing-key dict) -- never raises on unexpected
+        input, since a Desk restore must not fail a widget's placement
+        over a stale preference."""
+        model = data.get("model", self._NOT_SAVED)
+        self._model_combo.setCurrentIndex(
+            DEFAULT_MODEL_INDEX if model is self._NOT_SAVED
+            else self._index_for_value(MODEL_CHOICES, model, DEFAULT_MODEL_INDEX)
+        )
+        permission_mode = data.get("permission_mode", self._NOT_SAVED)
+        self._permission_mode_combo.setCurrentIndex(
+            DEFAULT_PERMISSION_MODE_INDEX if permission_mode is self._NOT_SAVED
+            else self._index_for_value(PERMISSION_MODE_CHOICES, permission_mode, DEFAULT_PERMISSION_MODE_INDEX)
+        )
+
+    # -- background-tasks panel (TODO f4a7872) ------------------------
+
+    def _on_task_event(self, task_id: str, patch: dict) -> None:
+        task = self._background_tasks.setdefault(task_id, {})
+        for key, value in patch.items():
+            if value is not None:
+                task[key] = value
+        self._refresh_tasks_list()
+
+    def _refresh_tasks_list(self) -> None:
+        self._tasks_list.clear()
+        for task_id, task in self._background_tasks.items():
+            status = task.get("status", "pending")
+            description = task.get("description") or task_id
+            text = f"[{status}] {description}"
+            summary = task.get("summary")
+            if summary:
+                text += f" — {summary}"
+            self._tasks_list.addItem(text)
+        self._update_tasks_toggle_label()
+
+    def _update_tasks_toggle_label(self) -> None:
+        running = sum(
+            1 for task in self._background_tasks.values() if task.get("status") not in TERMINAL_TASK_STATUSES
+        )
+        base = f"Background Tasks ({running} running)" if running else "Background Tasks"
+        arrow = "▾" if self._tasks_toggle_button.isChecked() else "▸"
+        self._tasks_toggle_button.setText(f"{base} {arrow}")
+
+    def _on_tasks_toggled(self, checked: bool) -> None:
+        """Expands/collapses the panel and grows/shrinks this widget's
+        own placed frame to fit it (TODO f4a7872), rather than
+        squeezing the existing history/prompt area -- a no-op on the
+        resize (the panel still shows/hides normally) if this widget
+        instance's own id isn't known yet or the height-adjuster hook
+        isn't registered, matching every other current_context hook's
+        own "unset is a safe no-op" convention."""
+        self._tasks_list.setVisible(checked)
+        self._update_tasks_toggle_label()
+        adjuster = current_context.get_widget_height_adjuster()
+        if adjuster is not None and self._session_id is not None:
+            adjuster(self._session_id, TASKS_PANEL_HEIGHT if checked else -TASKS_PANEL_HEIGHT)
 
     def _append_history(self, text: str) -> None:
         self._history.appendPlainText(text)

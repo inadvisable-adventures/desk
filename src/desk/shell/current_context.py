@@ -91,7 +91,24 @@ thread. Deliberately reuses the exact primitive the Local Web Server's
 own Bridge API already relies on for this same problem
 (`desk.shell.bridge.GuiBridge.call`, already documented as safe to call
 "from any other thread") rather than inventing a second one -- set
-once, in `DeskWindow.__init__`, to `self._handle.gui_bridge.call`."""
+once, in `DeskWindow.__init__`, to `self._handle.gui_bridge.call`.
+
+Also holds a "widget subtitle setter" hook (TODO 551014c), same
+minimal shape again: lets a `python` widget put its own state into its
+own titlebar (e.g. the Claude (Desk) widget showing its own session
+id) the same way a `kind: "html"` widget's `desk.self.setSubtitle`
+Bridge API call already can, without needing to import
+`desk.shell.window` directly -- see
+`desk.shell.window.DeskWindow.set_widget_subtitle` (already
+kind-agnostic; this hook is the only new thing this needed).
+
+Also holds a "widget height adjuster" hook (TODO f4a7872), same
+minimal shape again: lets a `python` widget grow or shrink its own
+placed frame by a given pixel delta (e.g. the Claude (Desk) widget's
+background-tasks panel growing the whole widget when expanded, instead
+of squeezing its existing content), without needing to import
+`desk.shell.window`/`desk.shell.canvas` directly -- see
+`desk.shell.window.DeskWindow.adjust_widget_instance_height`."""
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -131,6 +148,8 @@ _state_exporter: Callable[[Path], str | None] | None = None
 _state_importer: Callable[[Path], str | None] | None = None
 _installed_jobs_provider: Callable[[], list[dict]] | None = None
 _installed_job_uninstaller: Callable[[str], bool] | None = None
+_widget_subtitle_setter: Callable[[str, str | None], None] | None = None
+_widget_height_adjuster: Callable[[str, int], None] | None = None
 
 
 def set_current_desk_directory(directory: Path) -> None:
@@ -531,3 +550,30 @@ def set_installed_job_uninstaller(uninstaller: Callable[[str], bool]) -> None:
 
 def get_installed_job_uninstaller() -> Callable[[str], bool] | None:
     return _installed_job_uninstaller
+
+
+def set_widget_subtitle_setter(setter: Callable[[str, str | None], None]) -> None:
+    """TODO 551014c: `setter(instance_id, text)` -- puts `text` into
+    that widget instance's own titlebar, `None`/empty clearing it back
+    to the bare title, same as the Bridge API's `desk.self.setSubtitle`.
+    See `desk.shell.window.DeskWindow.set_widget_subtitle`."""
+    global _widget_subtitle_setter
+    _widget_subtitle_setter = setter
+
+
+def get_widget_subtitle_setter() -> Callable[[str, str | None], None] | None:
+    return _widget_subtitle_setter
+
+
+def set_widget_height_adjuster(adjuster: Callable[[str, int], None]) -> None:
+    """TODO f4a7872: `adjuster(instance_id, delta)` -- grows (positive
+    `delta`) or shrinks (negative) that widget instance's own placed
+    frame by `delta` pixels, clamped to the usual minimum widget
+    height. See
+    `desk.shell.window.DeskWindow.adjust_widget_instance_height`."""
+    global _widget_height_adjuster
+    _widget_height_adjuster = adjuster
+
+
+def get_widget_height_adjuster() -> Callable[[str, int], None] | None:
+    return _widget_height_adjuster

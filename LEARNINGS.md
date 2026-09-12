@@ -10,6 +10,14 @@ Confirmed directly by reading the installed SDK's own source (not assumed from d
 
 To declare a genuinely optional parameter, skip the shorthand and pass a full hand-written JSON Schema dict instead (the `tool()` decorator's `input_schema` accepts one directly -- `_build_schema` returns it as-is when it already has `"type"`/`"properties"` keys): `{"type": "object", "properties": {"a": {"type": "string"}, "b": {"type": "string"}}, "required": ["a"]}`.
 
+## Some `tests/verify/` scripts hardcode a sibling checkout's absolute path as `REPO_ROOT` -- they silently test the *wrong repo* from any other checkout
+
+About 29 of the ~133 scripts in `tests/verify/` set `REPO_ROOT = Path("/Users/mphair/inadvisable-adventures/desk")` (a literal, hardcoded absolute path to one specific checkout) instead of the portable `REPO_ROOT = Path(__file__).resolve().parents[2]` the other ~14 already use. Running one of the hardcoded-path scripts from a *different* checkout (e.g. a `desk-dev-2` worktree/clone) does not fail and does not error -- it silently imports and tests the *other* checkout's code (`sys.path.insert(0, str(REPO_ROOT / "src"))` plus `spec_from_file_location(..., REPO_ROOT / "widgets" / ...)` both point there), so every check can report `PASS` while validating code the current session never touched.
+
+Found directly while adding coverage for `widgets/claude_desk/widget.py` changes in a `desk-dev-2` checkout: `tests/verify/verify_claude_desk_widget.py` kept passing before *and* after edits that should have changed its own assertions' outcomes, because it was actually exercising `/Users/mphair/inadvisable-adventures/desk`'s copy of the same file the whole time. Fixed for that one script (the one directly gating this session's own verification) by switching it to the relative form -- the other ~28 are unfixed, tracked as a real, separate item (surfaced to `PARKINGLOT.md` rather than fixed in-line here, per `shared_development_process.md`'s "surfaced during work on something else" guidance).
+
+Before trusting a `tests/verify/` script's `PASS` result as evidence about *this* checkout, check its `REPO_ROOT` line -- a hardcoded absolute path means it may not be testing the code you think it is.
+
 ## `QWidget.graphicsProxyWidget()` does not bubble up from a child to its embedding proxy
 
 If a `QWidget` is embedded in a `QGraphicsScene` via `scene.addWidget(widget)`, only that exact widget's `graphicsProxyWidget()` returns the real `QGraphicsProxyWidget` — a *child* of that widget's own `graphicsProxyWidget()` returns `None`, even though it's just as embedded. Confirmed directly: constructing a parent/child pair and embedding only the parent, `child.graphicsProxyWidget()` is `None` while `parent.graphicsProxyWidget()` is not.

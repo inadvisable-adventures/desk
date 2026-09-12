@@ -6,6 +6,148 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+f4a7872. COMPLETED: Add a monitorable background-tasks panel to the Claude (Desk)
+   widget (`widgets/claude_desk/widget.py`) -- the Claude Agent SDK
+   reports a session's background tasks (backgrounded Bash, a
+   subagent/Task run, ...) as `TaskStartedMessage`/`TaskProgressMessage`/
+   `TaskNotificationMessage`/`TaskUpdatedMessage` system messages, which
+   `ClaudeSession._handle_message` (`src/desk/claude_session.py`)
+   currently drops entirely. Prioritized to the top of this file per
+   direct user request (three related Claude (Desk) widget UX asks in
+   the same request -- this is one of them, see also TODO `1ceb701`/
+   `551014c`). The panel expands from the bottom of the widget on
+   toggle and grows the widget's own placed frame to fit (rather than
+   squeezing the existing history/prompt area), via a new
+   `current_context` "widget height adjuster" hook.
+   [planned: claude-desk-background-tasks-panel.md]
+
+   COMPLETED: `src/desk/claude_session.py` -- re-exported
+   `TERMINAL_TASK_STATUSES`; new `task_event(task_id, patch)` signal;
+   `_handle_message` gained branches for
+   `TaskStartedMessage`/`TaskProgressMessage`/`TaskNotificationMessage`/
+   `TaskUpdatedMessage`, each emitting a merged `patch` dict (a
+   `TaskUpdatedMessage`'s own `status` folded into `patch` under a
+   top-level `"status"` key, matching `TaskNotificationMessage`'s own
+   shape). `src/desk/shell/current_context.py` -- new
+   `widget_height_adjuster` hook (get/set pair). `src/desk/shell
+   /window.py` -- `MIN_HEIGHT` imported alongside `WidgetFrame`;
+   `DeskWindow.adjust_widget_instance_height(instance_id, delta)`
+   (finds the frame, resizes its `graphicsProxyWidget()`, clamped to
+   `MIN_HEIGHT`); wired into `__init__`'s hook-wiring block.
+   `widgets/claude_desk/widget.py` -- `TASKS_PANEL_HEIGHT = 140`; a
+   `QListWidget` panel (fixed height, hidden by default) appended after
+   the prompt row; a checkable toggle `QPushButton` in `top_row`
+   showing a live running-task count and an expand/collapse arrow;
+   `_on_task_event` merges each patch (filtering `None` values so an
+   unreported field never blanks an already-known one) and rebuilds
+   the list from scratch; `_on_tasks_toggled` shows/hides the panel and
+   calls the new height-adjuster hook with `+`/`-TASKS_PANEL_HEIGHT`
+   symmetrically. New `tests/verify/verify_claude_desk_background_tasks_panel.py`
+   (21 checks): real `claude_agent_sdk` `Task*Message` instances fed
+   through a real `ClaudeSession._handle_message` produce the right
+   merged `task_event` payload for each of the four subtypes (including
+   a `TaskUpdatedMessage` with `status=None`); the panel's default
+   hidden state, toggle label text (both the running count and the
+   expand/collapse arrow), a `None`-valued patch field never
+   overwriting an already-set one, and the height-adjuster hook being
+   called symmetrically on expand/collapse -- and as a safe no-op with
+   neither a session id nor a registered hook yet. Also fixed
+   `tests/verify/verify_claude_desk_widget.py`'s own `REPO_ROOT` (was
+   hardcoded to a sibling checkout's absolute path, silently testing
+   the *wrong repo* the whole time -- see the new `LEARNINGS.md`
+   entry). Full `tests/verify/` regression suite passes (133 scripts,
+   0 failures; 8 pre-existing `disabled_` scripts unaffected).
+
+1ceb701. COMPLETED: Persist the Claude (Desk) widget's model/permission-mode combo
+   selections (`widgets/claude_desk/widget.py`) into the widget's own
+   per-instance widget-local storage (TODO `fb76057`), so a Desk reboot
+   restores a resumed session's previously-selected model/mode instead
+   of resetting to this widget's hardcoded defaults. Prioritized to the
+   top of this file per direct user request (see TODO `f4a7872`'s own
+   note). Requires a narrow ordering fix in
+   `DeskWindow._place_widget`/`_load_desk_widgets`: today, widget-local
+   storage is restored *after* this widget kind's `start_session`
+   already ran (and already read the still-default combo values) --
+   fixed by applying it earlier, for this one widget id only.
+   [planned: claude-desk-persist-model-permission-mode.md]
+
+   COMPLETED: `src/desk/shell/window.py` -- `_place_widget` gained a
+   `local_storage_data` parameter; for `CLAUDE_DESK_WIDGET_ID`
+   specifically, when given, calls the existing
+   `_bind_widget_local_storage` *before* `_bind_claude_desk_widget`
+   (i.e. before `start_session` reads the combo boxes) -- every other
+   widget kind's own restore timing is untouched, and
+   `_load_desk_widgets`'s own later, generic
+   `_bind_widget_local_storage` call still fires too (a harmless,
+   idempotent second application for this widget kind).
+   `_load_desk_widgets` passes `local_storage_data=state.state`.
+   `widgets/claude_desk/widget.py` -- `get_widget_local_storage`/
+   `set_widget_local_storage` (the generic python-widget persisted
+   -state hook, TODO `fb76057`), storing/restoring the real SDK model/
+   permission-mode values (not the combo index) via a small
+   `_index_for_value` helper that falls back to this widget's own
+   hardcoded default index for an unrecognized value; a `_NOT_SAVED`
+   sentinel (not `data.get(key)` alone) distinguishes an explicitly
+   -saved `"model": None` (the real "Default" choice's own value) from
+   the key being entirely absent (pre-existing/never-saved data),
+   which would otherwise both resolve to the same value and wrongly
+   pick "Default" instead of falling back to `DEFAULT_MODEL_INDEX`.
+   New `tests/verify/verify_claude_desk_persist_model_permission_mode.py`
+   (13 checks): round-trip of a non-default selection through
+   get/set_widget_local_storage; the unknown-value and missing-key
+   fallback cases; the explicit-`None`-vs-missing-key distinction; a
+   real `start_session` call confirming the restored model/mode (not
+   the hardcoded default) is what actually gets passed to
+   `ClaudeSession.start`; and a source-order check confirming
+   `DeskWindow._place_widget` itself calls `_bind_widget_local_storage`
+   before `_bind_claude_desk_widget`. Full `tests/verify/` regression
+   suite passes (see TODO `f4a7872`'s own write-up for the count).
+
+551014c. COMPLETED: Show the Claude (Desk) widget's own session id in its titlebar
+   via the existing widget-subtitle mechanism (TODO `3cd90cf`) -- the
+   widget's placed instance id already doubles as its Claude Agent SDK
+   session id (`DeskWindow._place_widget`'s own comment says so
+   directly), and there is no separate "session name" concept in the
+   installed SDK to prefer instead. Prioritized to the top of this file
+   per direct user request (see TODO `f4a7872`'s own note). Needs a new
+   `current_context` "widget subtitle setter" hook so a `python`-kind
+   widget can reach `DeskWindow.set_widget_subtitle` without importing
+   `desk.shell.window` directly, wired up carefully (via
+   `ClaudeSession.connected`, not directly inside `start_session`) to
+   avoid the same hook-not-yet-registered-at-restore-time ordering trap
+   TODO `1ceb701` also has to work around.
+   [planned: claude-desk-titlebar-session-id.md]
+
+   COMPLETED: `src/desk/shell/current_context.py` -- new
+   `widget_subtitle_setter` hook (get/set pair). `src/desk/shell
+   /window.py` -- `current_context.set_widget_subtitle_setter(self.set_widget_subtitle)`
+   added to `__init__`'s existing hook-wiring block (`set_widget_subtitle`
+   itself was already kind-agnostic; no change needed there).
+   `widgets/claude_desk/widget.py` -- `self._session_id` set at the top
+   of `start_session`; a new `_on_session_connected` slot (connected to
+   `self._session.connected` in `__init__`, alongside the widget's
+   other signal connections) calls the hook with `(session_id,
+   session_id[:8])`, truncated to match `DeskWindow
+   ._display_name_for_instance`'s own existing 8-hex-character display
+   convention. Deliberately wired to `connected`, not called directly
+   inside `start_session` -- confirmed the real reason during
+   implementation: `start_session` runs synchronously inside
+   `DeskWindow._load_desk_widgets` on a Desk restore, *before*
+   `DeskWindow.__init__` reaches its own hook-wiring block, so calling
+   the hook directly there would silently no-op for every restored
+   widget; `connected` fires later, asynchronously, off the session's
+   own background thread, which Qt only delivers once this (GUI)
+   thread's event loop actually runs -- strictly after `__init__`'s
+   hook-wiring has already completed. New
+   `tests/verify/verify_claude_desk_titlebar_session_id.py` (7 checks):
+   the hook is `None` until set and returns exactly what was set;
+   `DeskWindow.__init__`'s own source actually wires it to
+   `self.set_widget_subtitle`; a real widget with a fake session
+   confirms nothing is set before `connected` fires and the right
+   `(session_id, session_id[:8])` pair is set once it does; and a
+   missing hook is a safe no-op. Full `tests/verify/` regression suite
+   passes (see TODO `f4a7872`'s own write-up for the count).
+
 97bd090. COMPLETED: A "Desk Proc" mechanism: a one-time script an agent can create that
    runs with real, in-process access to Desk itself (not just a
    `kind: "html"` widget's Bridge API) -- e.g. reveal a specific placed

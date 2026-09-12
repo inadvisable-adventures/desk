@@ -32,6 +32,12 @@ from PyQt6.QtCore import QObject, pyqtSignal
 
 from desk.shell.desk_mcp_server import DESK_MCP_SERVER_NAME, RUN_INSTALLED_JOB_TOOL_NAME, build_desk_mcp_server
 
+# Re-exported (TODO f4a7872) so widgets/claude_desk/widget.py never needs
+# its own `import claude_agent_sdk` just to check whether a background
+# task's status is terminal -- this module stays the one place that
+# import lives, same reasoning as everything else here.
+TERMINAL_TASK_STATUSES = sdk.TERMINAL_TASK_STATUSES
+
 
 class ClaudeSession(QObject):
     """One Claude Agent SDK session. Signals are emitted from the
@@ -47,6 +53,17 @@ class ClaudeSession(QObject):
     turn_complete = pyqtSignal(dict)  # see _handle_message's ResultMessage branch
     session_error = pyqtSignal(str)
     session_ended = pyqtSignal()
+    # TODO f4a7872: one combined signal for every background-task
+    # lifecycle message (task_id, patch) -- the four Task*Message
+    # subtypes below each just update *some* fields of one tracked
+    # task, so the widget-side handling is a single dict-merge
+    # regardless of which subtype produced it. A field a given subtype
+    # doesn't itself report is simply absent from `patch` -- but a
+    # present field CAN still be `None` (e.g. TaskProgressMessage's own
+    # `last_tool_name` before any tool has run yet), so a receiver must
+    # filter `None` values out of its own merge rather than assume
+    # their mere absence is the only case to handle.
+    task_event = pyqtSignal(str, dict)
     # Emitted once connect() succeeds, before any initial_prompt turn (if
     # any) is sent. A resumed session with no initial_prompt never fires
     # turn_complete/session_error at all otherwise -- found via real
@@ -178,6 +195,33 @@ class ClaudeSession(QObject):
                     "num_turns": message.num_turns,
                 }
             )
+        elif isinstance(message, sdk.TaskStartedMessage):
+            self.task_event.emit(
+                message.task_id, {"description": message.description, "status": "running"}
+            )
+        elif isinstance(message, sdk.TaskProgressMessage):
+            self.task_event.emit(
+                message.task_id,
+                {
+                    "description": message.description,
+                    "status": "running",
+                    "last_tool_name": message.last_tool_name,
+                },
+            )
+        elif isinstance(message, sdk.TaskNotificationMessage):
+            self.task_event.emit(
+                message.task_id, {"status": message.status, "summary": message.summary}
+            )
+        elif isinstance(message, sdk.TaskUpdatedMessage):
+            # `patch` is the CLI's own raw payload (TODO f4a7872) --
+            # `status` is folded in under its own key (rather than left
+            # nested) so the widget's merge only ever needs to look at
+            # top-level "status", the same shape TaskNotificationMessage
+            # above already produces.
+            patch = dict(message.patch)
+            if message.status is not None:
+                patch["status"] = message.status
+            self.task_event.emit(message.task_id, patch)
 
     async def _can_use_tool(self, tool_name: str, tool_input: dict, context: object) -> object:
         """The SDK's own tool-approval hook (claude_agent_sdk
