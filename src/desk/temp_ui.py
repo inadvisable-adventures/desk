@@ -290,7 +290,14 @@ APP_DSL_DIRNAME = "app_dsl"
 # tool call, not a file drop -- so this is a new split doc,
 # tempui-installed-jobs.md, referenced from this file's own "a few more
 # files" paragraph below, not the main file-type list above.
-TEMPUI_DOC_VERSION = 40
+#
+# TODO 888b537: bumped 40 -> 41 -- a new Bridge API capability,
+# `installed_jobs`, letting a `kind: "html"` widget run an already
+# -Installed Job too (`desk.installedJobs.run(name, configPath)`), not
+# just an agent via `desk_run_installed_job`. New bullet in "The Desk
+# Bridge API" section; `Job`'s own closed Capability-name list gained
+# `installed_jobs`. No DSL change.
+TEMPUI_DOC_VERSION = 41
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -964,6 +971,19 @@ built for genuine cross-widget signaling:
   transform that declares `has_config: true`. The same service a
   `kind: "python"` widget reaches via
   `current_context.get_transform_runner_blocking()`.
+- `desk.installedJobs.run(name, configPath)` (capability
+  `installed_jobs`) — runs an already-Installed Job (see
+  [tempui-installed-jobs.md](./tempui-installed-jobs.md)) by name,
+  same as the agent-facing `desk_run_installed_job` MCP tool — no
+  approval prompt either way, since a declared capability is itself
+  the trust boundary here (the same way it already is for every other
+  call in this list). `configPath` is optional (`null`/omitted if not
+  given); returns `{ ok, stdout, stderr, traceback }`. **Bounded to
+  120 seconds**, unlike the MCP tool's unbounded wait — this is a
+  synchronous HTTP request/response and can't wait forever; a job
+  expected to genuinely run longer belongs on the agent/MCP path
+  instead (the run itself isn't cancelled by the timeout, only this
+  call's own wait for its result is).
 
 The calls above are almost always all a `DefineWidget` widget actually
 needs.
@@ -1210,9 +1230,10 @@ one-shot run, no more.
   `kind: "html"` (ignored, but harmless, for `kind: "python"`): the
   same coarse Bridge API capability names a `DefineWidget`'s own
   `Capability` lines use (`workspace`, `fs`, `widgets`, `events`,
-  `filetypes`, `editor`, `popups`, `transforms`, `introspect` -- see
-  "The Desk Bridge API" in `tempui-custom-widgets.md` for what each
-  one actually grants). Declare only what your script actually calls
+  `filetypes`, `editor`, `popups`, `transforms`, `introspect`,
+  `installed_jobs` -- see "The Desk Bridge API" in
+  `tempui-custom-widgets.md` for what each one actually grants).
+  Declare only what your script actually calls
   -- an undeclared capability's Bridge call gets a real HTTP 403, not
   silent success.
 - One or more `Script<TAB>base64-chunk` lines -- your script's entire
@@ -1437,6 +1458,18 @@ new version.
 The tool returns `{"ok": ..., "stdout": ..., "stderr": ..., "traceback": ...}` as JSON --
 your script's captured stdout/stderr, plus a traceback if it raised.
 
+## Running from a `kind: "html"` widget
+
+An unrelated `kind: "html"` widget (declaring the `installed_jobs`
+capability) can run an Installed Job too, via
+`desk.installedJobs.run(name, configPath)` -- see "The Desk Bridge
+API" in `tempui-custom-widgets.md` for its exact call shape. Same
+no-reapproval-on-run/stale-hash-refusal behavior as the MCP tool
+above, but bounded to 120 seconds (a synchronous HTTP request/response
+can't wait forever the way an agent's own `await` can) -- a job
+expected to run longer than that belongs on the MCP/agent path
+instead.
+
 ## The Installed Jobs widget
 
 Placeable like any other widget: lists every installed job (name +
@@ -1515,6 +1548,17 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 41
+- A new Bridge API capability, `installed_jobs`:
+  `desk.installedJobs.run(name, configPath)` lets a `kind: "html"`
+  widget run an already-Installed Job too (see `tempui-installed-jobs.md`),
+  the same as the agent-facing `desk_run_installed_job` MCP tool --
+  no approval prompt either way (a declared capability is itself the
+  trust boundary here). Bounded to 120 seconds (unlike the MCP tool's
+  unbounded wait) since this is a synchronous HTTP request/response --
+  a job expected to run longer belongs on the MCP/agent path instead.
+  `Job`'s own closed capability-name list gained `installed_jobs` too.
 
 ## Version 40
 - Installed Jobs: a durable, versioned alternative to the ephemeral

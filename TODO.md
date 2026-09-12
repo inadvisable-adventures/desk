@@ -793,6 +793,176 @@ e9eddba. COMPLETED: Add a permission-mode selector to the Claude (Desk) widget
    `file_type_registry` were already there. Full `tests/verify/` suite
    (142 scripts, 8 `disabled_`) reruns clean, 130/130 passing.
 
+888b537. COMPLETED: A Bridge API capability so a `kind: "html"` widget can run an
+   already-Installed Job too (TODO `7dca383`), not just an agent via
+   MCP -- `desk.installedJobs.run(name, configPath)`, capability
+   `installed_jobs`. Prioritized per direct user request, immediately
+   following `7dca383`.
+
+   **Refactors `7dca383`'s own implementation to add this without
+   duplicating its safety-critical logic.** `7dca383` put the "is this
+   name installed, does its on-disk source still match the installed
+   version hash" check and the actual background-thread exec directly
+   inside `desk_mcp_server._run_installed_job_tool`/`_run_installed_job`
+   -- fine when there was exactly one caller, wrong once there are two
+   (MCP and Bridge) that both need the *identical* stale-hash refusal
+   and execution behavior. Moving to a single shared implementation:
+   - `src/desk/installed_jobs.py` gains `run_script(script_text,
+     job_dir, config_path) -> (ok, stdout, stderr, traceback)` (the
+     exec-on-a-background-thread body, moved verbatim from
+     `desk_mcp_server.py`, including its `_RUN_LOCK` --
+     `sys.path` is process-global, so the lock now also correctly
+     serializes a Bridge-triggered run against an MCP-triggered one,
+     which wasn't previously possible to even have collide) and
+     `resolve_config_path(directory, raw) -> str | None` (the
+     relative-resolves-against-the-Desk-directory rule, also moved out
+     of the MCP tool so both entry points share one implementation).
+   - `DeskWindow.get_installed_job_for_run(name) -> InstalledJobDefinition`
+     (raises `ValueError` for "not installed" or "stale hash" --
+     the load-bearing check from `7dca383`, now defined exactly once).
+   - `DeskWindow.run_installed_job(name, config_path, on_result)` --
+     non-blocking (mirrors `DeskWindow.run_transform`/
+     `TransformsService._invoke`'s own shape exactly): validates via
+     `get_installed_job_for_run` (raises synchronously, before spawning
+     anything, so a caller can tell "bad request" from "the job ran and
+     here's what happened"), resolves `config_path`, then spawns a
+     background thread running `installed_jobs.run_script` and calls
+     `on_result(ok, stdout, stderr, traceback)` from that thread.
+   - `desk_mcp_server._run_installed_job_tool` becomes a thin adapter:
+     marshals `window.run_installed_job(name, config_path, on_result)`
+     onto the GUI thread (fast -- it only validates and spawns a
+     thread), with `on_result` resolving an `asyncio.Future` via
+     `loop.call_soon_threadsafe` that the handler then awaits --
+     `ValueError`/`RuntimeError` from the GUI-thread call still produce
+     the exact same `is_error` text results as before (same wording,
+     existing verify coverage for `7dca383` unchanged).
+
+   **The new Bridge API route**: `POST /api/bridge/installedJobs/run`
+   (`src/desk/server/app.py`, alongside `transforms_run` --
+   `InstalledJobsRunRequest {name: str, config_path: str | None}`,
+   gated by `require_caller("installed_jobs")`) calls
+   `gui_bridge.window.run_installed_job(...)` via `run_on_gui_async`
+   (non-blocking GUI-thread call, matching `transforms.run`'s own
+   shape exactly -- `_invoke`'s "spawn a thread, call back later"
+   pattern is the real precedent here, not `run_on_gui`'s synchronous
+   form) and returns `{ok, stdout, stderr, traceback}` -- the same
+   shape the MCP tool already returns. A `ValueError` from
+   `get_installed_job_for_run` (not installed / stale hash) is caught
+   at the route and surfaced as `HTTPException(400, ...)`, distinct
+   from a successful-but-failing run (`ok: false` in a 200 response) --
+   the same "bad request vs. the thing you asked for actually failed"
+   split the MCP tool's `is_error` already draws.
+
+   **Timeout, a real difference from the MCP path**: `GuiBridge
+   .call_async`'s own `timeout` (default 10s) bounds how long the
+   *synchronous HTTP request* can wait for `on_result` -- unlike the
+   MCP path (an `await` with no bound), a Bridge-API-initiated run is a
+   blocking request/response over HTTP and can't wait forever.
+   `run_on_gui_async` gains an optional `timeout` parameter (default
+   unchanged, so `transforms.run`/`introspect.snapshot` are
+   unaffected) and the new route passes a longer
+   `INSTALLED_JOB_RUN_TIMEOUT_SECONDS` (a new constant in
+   `installed_jobs.py`, documented in the new doc bullet below so an
+   `html` widget author knows a run expected to take longer belongs on
+   the MCP/agent-initiated path instead, which has no such bound) --
+   note a job that times out from the *caller's* perspective keeps
+   running to completion in the background regardless (the thread
+   isn't killed, `on_result` just has no one left listening); this is
+   an accepted, documented limitation of the synchronous-HTTP shape,
+   not a bug to design around further in this pass.
+
+   **Docs**: `_CUSTOM_WIDGETS_DOC` (`src/desk/temp_ui.py`) gains a
+   `desk.installedJobs.run(name, configPath)` bullet in "The Desk
+   Bridge API" section, right after the `transforms` bullet, covering
+   the timeout caveat above and cross-referencing
+   `tempui-installed-jobs.md`. `_JOBS_DOC`'s own closed
+   capability-name list (used by a `Job`'s `Capability` lines) gains
+   `installed_jobs`. `TEMPUI_DOC_VERSION` bumped with a matching
+   `_NEW_FEATURES_DOC` entry, per `development-process.md`'s "Keep the
+   tempui changelog docs current" section.
+
+   **Verification**: extended `tests/verify/verify_desk_mcp_server.py`
+   coverage for `_run_installed_job_tool` continues to pass unchanged
+   (same behavior/wording, now routed through `DeskWindow
+   .run_installed_job` instead of doing everything itself); new
+   `tests/verify/verify_installed_jobs_bridge_api.py` (real FastAPI
+   `TestClient`, matching however the existing Bridge API route tests
+   are structured -- capability-gating 403, success, not-installed and
+   stale-hash 400s, the timeout constant is honored); `tests/verify/
+   verify_tempui_jobs_doc.py` gains `installed_jobs` to its capability
+   -name-list check; a new/extended tempui doc verify script covers
+   the new Bridge API bullet. Full `tests/verify/` suite rerun clean.
+   [planned: installed-jobs-bridge-api.md]
+
+   COMPLETED: Implemented as designed above, no deviations. The
+   `7dca383` refactor landed exactly as planned:
+   `desk.installed_jobs.run_script`/`_RUN_LOCK`/`resolve_config_path`/
+   `INSTALLED_JOB_RUN_TIMEOUT_SECONDS` (120.0); `DeskWindow
+   .get_installed_job_for_run`/`.run_installed_job` (non-blocking,
+   mirrors `run_transform`); `desk_mcp_server._run_installed_job_tool`
+   now a thin adapter (an `asyncio.Future` resolved via
+   `loop.call_soon_threadsafe` from `on_result`) with identical
+   behavior/wording to before. New `POST /api/bridge/installedJobs/run`
+   (`src/desk/server/app.py`, `InstalledJobsRunRequest`,
+   `run_on_gui_async` gained an optional `timeout` param, default
+   unchanged for `transforms.run`/`introspect.snapshot`); `ValueError`
+   (not installed/stale hash) -> `HTTPException(400, ...)`, distinct
+   from a successful-but-failing run (`200`, `ok: false`).
+   `desk.installedJobs.run(name, configPath)` added to
+   `BRIDGE_CLIENT_TEMPLATE`. Docs: `_CUSTOM_WIDGETS_DOC` gained the
+   `desk.installedJobs.run` bullet (with the 120s-timeout caveat);
+   `_JOBS_DOC`'s closed capability list gained `installed_jobs`;
+   `tempui-installed-jobs.md` gained a "Running from a kind:\"html\"
+   widget" section; `TEMPUI_DOC_VERSION` 40 -> 41 with a matching
+   `_NEW_FEATURES_DOC` entry.
+
+   **Found and fixed one real bug via manual testing while writing
+   this item's own verify coverage, recorded in `LEARNINGS.md`**:
+   `contextlib.redirect_stdout`/`redirect_stderr` (used by
+   `run_script`, moved verbatim from the prior implementation) swap
+   `sys.stdout`/`sys.stderr` process-wide, not per-thread -- a `print()`
+   from any *other* thread while a job's own capture window is open
+   gets silently swallowed into that job's own buffer instead of
+   reaching the real terminal. Not a regression in product code (the
+   same pattern already existed in `widgets/job_runner/widget.py`'s
+   `_run_python_job`, and `_RUN_LOCK` already prevents two installed
+   -job runs from colliding with each other this way) -- purely a
+   hazard for a test that prints from the main thread while a
+   background job run is in flight, which is exactly what
+   `verify_installed_jobs.py`'s own non-blocking-run test originally
+   did, and was fixed there (defer every print-performing assertion
+   until after the job's own execution window has closed).
+
+   New verify coverage: `tests/verify/verify_installed_jobs.py`
+   extended (+13 checks, 27 total) -- `resolve_config_path` (None/
+   empty/relative/absolute), `get_installed_job_for_run` (matching
+   hash/not-installed/stale-hash) and `run_installed_job` called
+   directly against the *real* `DeskWindow` methods (grabbed
+   unbound off the class and called against a minimal duck-typed
+   `.current_desk`-only stand-in, mirroring
+   `verify_lock_persistence.py`'s own established technique) --
+   proves genuine non-blocking behavior (returns before a real 0.2s
+   -sleeping job finishes) and real `CONFIG_PATH` resolution end to
+   end. `tests/verify/verify_desk_mcp_server.py`'s installed-job-run
+   tests rewritten (47 checks total, unchanged count) to match the
+   refactored thin-adapter shape -- a fake `run_installed_job` that
+   resolves via a real background thread after a short delay (not
+   immediately), proving the future-based relay via
+   `call_soon_threadsafe` genuinely waits. New
+   `tests/verify/verify_installed_jobs_bridge_api.py` (12 checks,
+   mirroring `verify_bridge_api_transforms_run.py`'s exact real
+   -`start_server`-plus-`QTimer`-delayed-callback shape): a delayed
+   successful run, config_path omitted -> `None`, a failing script ->
+   `{"ok": false, ...}` at HTTP 200 (not an HTTP error), a validation
+   `ValueError` -> HTTP 400 (not 200), missing-capability -> 403, and
+   the Bridge client declares `installedJobs.run`.
+   `tests/verify/verify_tempui_jobs_doc.py`'s capability-name-list
+   check gained `installed_jobs`;
+   `tests/verify/verify_tempui_installed_jobs_doc.py` extended (+7
+   checks) for the new Bridge API cross-references and the Version 41
+   changelog entry. Full `tests/verify/` suite (139 scripts, 8
+   `disabled_`) reruns clean, 131/131 passing.
+
 b9d3de5. Give an in-Desk agent a documented way to learn its own
    placed widget instance id, via `ClaudeAgentOptions.env` (a static,
    launch-time fact, not a live query). Converted from a

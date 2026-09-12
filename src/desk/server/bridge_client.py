@@ -132,6 +132,10 @@ BRIDGE_CLIENT_TEMPLATE = """
       run: (transformId, input, config) =>
         call("POST", "/api/bridge/transforms/run", { transform_id: transformId, input, config: config ?? null }),
     },
+    installedJobs: {
+      run: (name, configPath) =>
+        call("POST", "/api/bridge/installedJobs/run", { name, config_path: configPath ?? null }),
+    },
     self: {
       getManifest: () => call("GET", "/api/bridge/self/getManifest"),
       getLocalStorage: () => call("GET", "/api/bridge/self/getLocalStorage"),

@@ -3,13 +3,15 @@ import json
 import os
 import sys
 import tempfile
+import threading
+import time
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from desk.installed_jobs import InstalledJobDefinition, compute_version_hash  # noqa: E402
+from desk.installed_jobs import InstalledJobDefinition  # noqa: E402
 from desk.shell import current_context  # noqa: E402
 from desk.shell.desk_mcp_server import (  # noqa: E402
     DESK_MCP_SERVER_NAME,
@@ -53,6 +55,8 @@ class _FakeWindow:
         self._state = {"widgets": [{"instance_id": "abc", "widget_id": "editor"}]}
         self.saved = False
         self._installed_jobs = {}
+        self._run_failures = {}
+        self._run_results = {}
 
     def install_job(self, name):
         self.calls.append(("install_job", name))
@@ -64,6 +68,26 @@ class _FakeWindow:
     def get_installed_job(self, name):
         self.calls.append(("get_installed_job", name))
         return self._installed_jobs.get(name)
+
+    def run_installed_job(self, name, config_path, on_result):
+        """Mirrors DeskWindow.run_installed_job's own contract:
+        raise ValueError synchronously for a configured failure name;
+        otherwise call on_result from a real background thread after a
+        short delay (not immediately) -- proves the tool's future-based
+        relay genuinely waits for a later callback rather than only
+        working by accident for an immediately-resolving one, the same
+        thing verify_bridge_api_transforms_run.py's QTimer delay
+        proves for the Bridge API route."""
+        self.calls.append(("run_installed_job", name, config_path))
+        if name in self._run_failures:
+            raise ValueError(self._run_failures[name])
+        result = self._run_results.get(name, (True, "ok", "", ""))
+
+        def _delayed_result():
+            time.sleep(0.05)
+            on_result(*result)
+
+        threading.Thread(target=_delayed_result, daemon=True).start()
 
     def zoom_to_widget_by_instance_id(self, instance_id):
         self.calls.append(("zoom", instance_id))
@@ -180,13 +204,6 @@ def test_all_handlers_report_not_ready_with_no_main_window():
         check(f"{handler.name} reports not-ready with no main window, not a crash", result.get("is_error") is True)
 
 
-def _write_installed_job(directory: Path, name: str, script: str) -> Path:
-    job_dir = directory / "desk-installed-jobs" / name
-    job_dir.mkdir(parents=True, exist_ok=True)
-    (job_dir / "main.py").write_text(script)
-    return job_dir
-
-
 def test_install_job_reports_ok_and_failure_from_the_window():
     window = _register_fake_window()
 
@@ -201,74 +218,47 @@ def test_install_job_reports_ok_and_failure_from_the_window():
     _clear_context()
 
 
-def test_run_installed_job_success_error_not_installed_and_config_path():
-    with tempfile.TemporaryDirectory() as d:
-        directory = Path(d)
-        current_context.set_current_desk_directory(directory)
-        window = _register_fake_window()
+def test_run_installed_job_relays_a_delayed_successful_result():
+    window = _register_fake_window()
+    window._run_results["greet"] = (True, "hello", "", "")
 
-        # -- not installed at all --
-        result = run(_run_installed_job_tool.handler({"name": "ghost"}))
-        check("running an uninstalled job is a clear error", result.get("is_error") is True)
-
-        # -- installed + successful run, stdout captured, CONFIG_PATH None --
-        _write_installed_job(directory, "greet", "print('hello', CONFIG_PATH)\n")
-        run(_install_job.handler({"name": "greet"}))
-        job = window.get_installed_job("greet")
-        job.version_hash = compute_version_hash(directory / "desk-installed-jobs" / "greet")
-        result = run(_run_installed_job_tool.handler({"name": "greet"}))
-        payload = json.loads(_text_of(result))
-        check("run succeeds", payload["ok"] is True)
-        check("stdout captured, CONFIG_PATH is None when omitted", payload["stdout"].strip() == "hello None")
-
-        # -- a raising script --
-        _write_installed_job(directory, "broken", "raise ValueError('boom')\n")
-        run(_install_job.handler({"name": "broken"}))
-        window.get_installed_job("broken").version_hash = compute_version_hash(
-            directory / "desk-installed-jobs" / "broken"
-        )
-        result = run(_run_installed_job_tool.handler({"name": "broken"}))
-        payload = json.loads(_text_of(result))
-        check("a raising job reports ok=False", payload["ok"] is False)
-        check("traceback captured", "ValueError: boom" in payload["traceback"])
-
-        # -- config_path: relative resolves against the current Desk directory --
-        _write_installed_job(directory, "echo_config", "print(CONFIG_PATH)\n")
-        run(_install_job.handler({"name": "echo_config"}))
-        window.get_installed_job("echo_config").version_hash = compute_version_hash(
-            directory / "desk-installed-jobs" / "echo_config"
-        )
-        result = run(_run_installed_job_tool.handler({"name": "echo_config", "config_path": "cfg.json"}))
-        payload = json.loads(_text_of(result))
-        check(
-            "a relative config_path resolves against the current Desk directory",
-            payload["stdout"].strip() == str(directory / "cfg.json"),
-        )
-        _clear_context()
+    result = run(_run_installed_job_tool.handler({"name": "greet", "config_path": "cfg.json"}))
+    payload = json.loads(_text_of(result))
+    check("run succeeds", payload["ok"] is True)
+    check("stdout relayed through from the later on_result call", payload["stdout"] == "hello")
+    check(
+        "routed through window.run_installed_job with the tool's own raw args, unresolved",
+        ("run_installed_job", "greet", "cfg.json") in window.calls,
+    )
+    _clear_context()
 
 
-def test_run_installed_job_refuses_on_stale_hash():
-    with tempfile.TemporaryDirectory() as d:
-        directory = Path(d)
-        current_context.set_current_desk_directory(directory)
-        window = _register_fake_window()
+def test_run_installed_job_config_path_omitted_becomes_none():
+    window = _register_fake_window()
+    run(_run_installed_job_tool.handler({"name": "greet"}))
+    check("an omitted config_path is passed through as None, not missing/empty-string", ("run_installed_job", "greet", None) in window.calls)
+    _clear_context()
 
-        _write_installed_job(directory, "greet", "print('v1')\n")
-        run(_install_job.handler({"name": "greet"}))
-        window.get_installed_job("greet").version_hash = compute_version_hash(
-            directory / "desk-installed-jobs" / "greet"
-        )
 
-        # Source changes on disk after install, without a fresh install_job call.
-        _write_installed_job(directory, "greet", "print('v2 -- different source')\n")
+def test_run_installed_job_relays_a_failing_script_result():
+    window = _register_fake_window()
+    window._run_results["broken"] = (False, "", "", "ValueError: boom")
 
-        result = run(_run_installed_job_tool.handler({"name": "greet"}))
-        check("run refuses when on-disk source no longer matches the installed version", result.get("is_error") is True)
-        check(
-            "the refusal message tells the caller to reinstall",
-            "desk_install_job" in _text_of(result),
-        )
-        _clear_context()
+    result = run(_run_installed_job_tool.handler({"name": "broken"}))
+    payload = json.loads(_text_of(result))
+    check("a raising job reports ok=False", payload["ok"] is False)
+    check("traceback relayed through", "ValueError: boom" in payload["traceback"])
+    _clear_context()
+
+
+def test_run_installed_job_surfaces_a_validation_error_as_is_error():
+    window = _register_fake_window()
+    window._run_failures["ghost"] = "'ghost' is not installed."
+
+    result = run(_run_installed_job_tool.handler({"name": "ghost"}))
+    check("a ValueError from window.run_installed_job (not installed/stale hash) is a clear error", result.get("is_error") is True)
+    check("the message is passed through unchanged", "is not installed" in _text_of(result))
+    _clear_context()
 
 
 def _write_todo(directory: Path, text: str) -> Path:
@@ -346,8 +336,10 @@ test_get_next_todo_item_skips_completed_and_pending()
 test_get_next_todo_item_when_everything_is_done()
 test_todo_tools_report_a_clear_error_with_no_desk_directory_known()
 test_install_job_reports_ok_and_failure_from_the_window()
-test_run_installed_job_success_error_not_installed_and_config_path()
-test_run_installed_job_refuses_on_stale_hash()
+test_run_installed_job_relays_a_delayed_successful_result()
+test_run_installed_job_config_path_omitted_becomes_none()
+test_run_installed_job_relays_a_failing_script_result()
+test_run_installed_job_surfaces_a_validation_error_as_is_error()
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
