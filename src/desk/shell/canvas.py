@@ -18,6 +18,7 @@ from desk.shell.widget_frame import (
     MIN_WIDTH,
     WidgetFrame,
     _BringToFrontButton,
+    _ChatButton,
     _CloseButton,
     _ErrorIndicatorButton,
     _EyeButton,
@@ -58,6 +59,10 @@ NEW_SCRATCH_BUTTON_MARGIN = 12
 # "greeked" (TODO 33d3e8d) is a click-anywhere-on-the-frame variant of the
 # same shape, not tied to one specific chrome sub-widget -- see
 # _hit_test_chrome's greeked short-circuit.
+# "error" was missing here despite _hit_test_chrome returning it and
+# mouseReleaseEvent having a real dispatch branch for it (TODO
+# 93364f9's audit finding) -- without it, mousePressEvent never
+# treated an [ERROR] press as a button click at all.
 _BUTTON_KINDS = {
     "close",
     "bring_to_front",
@@ -66,6 +71,8 @@ _BUTTON_KINDS = {
     "unlock",
     "tempui_promote",
     "stale",
+    "error",
+    "chat",
     "eye",
     "greeked",
 }
@@ -97,6 +104,7 @@ class WorkspaceView(QGraphicsView):
     tempui_promote_requested = pyqtSignal(WidgetFrame)  # TODO 91b3f42
     widget_stale_clicked = pyqtSignal(WidgetFrame)  # TODO 3e2c4f2
     widget_error_clicked = pyqtSignal(WidgetFrame)  # TODO d4d6c71
+    chat_button_clicked = pyqtSignal(WidgetFrame)  # TODO 93364f9
     popup_closed = pyqtSignal(WidgetFrame)  # TODO 359684f: a popup's close (X) button
     new_scratch_requested = pyqtSignal()  # TODO 945b086: the lower-left hover button clicked
     empty_canvas_double_clicked = pyqtSignal(QPointF)  # TODO 496d685: scene pos of the double-click
@@ -564,6 +572,8 @@ class WorkspaceView(QGraphicsView):
                     self.widget_stale_clicked.emit(frame)
                 elif kind == "error":
                     self.widget_error_clicked.emit(frame)
+                elif kind == "chat":
+                    self.chat_button_clicked.emit(frame)
                 elif kind in ("eye", "greeked"):
                     self.zoom_to_widget(frame)
             event.accept()
@@ -676,6 +686,7 @@ class WorkspaceView(QGraphicsView):
                 _TempuiPromoteButton,
                 _StaleIndicatorButton,
                 _ErrorIndicatorButton,
+                _ChatButton,
                 _EyeButton,
                 _TitleBar,
                 _ResizeHandle,
@@ -699,6 +710,8 @@ class WorkspaceView(QGraphicsView):
             return frame, "stale"
         if isinstance(child, _ErrorIndicatorButton):
             return frame, "error"
+        if isinstance(child, _ChatButton):
+            return frame, "chat"
         if isinstance(child, _EyeButton):
             return frame, "eye"
         if isinstance(child, _TitleBar):

@@ -261,6 +261,38 @@ class _ErrorIndicatorButton(QWidget):
         self._label.setStyleSheet(f"color: #ff5c5c; font-weight: bold; font-size: {font_pt}pt;")
 
 
+class _ChatButton(QWidget):
+    """TODO 93364f9: shown on every placed widget instance, always
+    (unlike _TempuiPromoteButton/_StaleIndicatorButton/_ErrorIndicatorButton,
+    which are conditional) -- clicking it (handled centrally by
+    WorkspaceView, same as every other titlebar button) opens a fresh
+    "Claude (Desk)" session scoped to this specific instance -- see
+    DeskWindow._on_chat_button_clicked. Same variable-width-sized-to-its
+    -own-text shape as those three, standard (non-red) label color since
+    this isn't an indicator of a problem."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Start a new Claude (Desk) session to discuss this widget instance.")
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(TEMPUI_BUTTON_MARGIN, 0, TEMPUI_BUTTON_MARGIN, 0)
+        self._label = QLabel("[CHAT]")
+        self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        layout.addWidget(self._label)
+
+        self.apply_scale(1.0)
+
+    def apply_scale(self, view_scale: float) -> None:
+        """See _TitleBar.apply_scale: keeps this button a constant
+        on-screen size regardless of the WorkspaceView's current zoom."""
+        view_scale = view_scale or 1.0
+        self.setFixedHeight(max(1, round(TITLEBAR_HEIGHT / view_scale)))
+        font_pt = max(1, round(TITLEBAR_FONT_PT / view_scale))
+        self._label.setStyleSheet(f"color: #e8e8e8; font-size: {font_pt}pt;")
+
+
 def _button_target_width(button: QWidget) -> int:
     """TODO 33d3e8d: this button's own fixed on-screen width -- the same
     width it always renders at once counter-scaled (apply_scale), so this
@@ -273,6 +305,7 @@ def _button_target_width(button: QWidget) -> int:
         _TempuiPromoteButton: "[TEMPUI]",
         _StaleIndicatorButton: "[STALE]",
         _ErrorIndicatorButton: "[ERROR]",
+        _ChatButton: "[CHAT]",
     }
     for button_type, text in text_by_type.items():
         if isinstance(button, button_type):
@@ -320,6 +353,8 @@ class _TitleBar(QWidget):
         layout.addWidget(self.stale_button)
         self.error_button = _ErrorIndicatorButton()
         layout.addWidget(self.error_button)
+        self.chat_button = _ChatButton()
+        layout.addWidget(self.chat_button)
         self.lock_button = _LockButton()
         layout.addWidget(self.lock_button)
         self.bring_to_front_button = _BringToFrontButton()
@@ -422,6 +457,7 @@ class _TitleBar(QWidget):
             self.tempui_promote_button.setVisible(False)
             self.stale_button.setVisible(False)
             self.error_button.setVisible(False)
+            self.chat_button.setVisible(False)
             self.lock_button.setVisible(False)
             self.bring_to_front_button.setVisible(False)
             self.send_to_back_button.setVisible(False)
@@ -433,6 +469,7 @@ class _TitleBar(QWidget):
         self.tempui_promote_button.setVisible(show and self._tempui_promotable)
         self.stale_button.setVisible(show and self._stale)
         self.error_button.setVisible(show and self._has_error)
+        self.chat_button.setVisible(show and not self._locked)
         self.lock_button.setVisible(show and not self._locked)
         self.bring_to_front_button.setVisible(show and not self._locked)
         self.send_to_back_button.setVisible(show and not self._locked)
@@ -470,6 +507,7 @@ class _TitleBar(QWidget):
         else:
             buttons.extend(
                 [
+                    self.chat_button,
                     self.lock_button,
                     self.bring_to_front_button,
                     self.send_to_back_button,
@@ -518,6 +556,7 @@ class _TitleBar(QWidget):
         self.tempui_promote_button.apply_scale(view_scale)
         self.stale_button.apply_scale(view_scale)
         self.error_button.apply_scale(view_scale)
+        self.chat_button.apply_scale(view_scale)
         self.lock_button.apply_scale(view_scale)
         self.bring_to_front_button.apply_scale(view_scale)
         self.send_to_back_button.apply_scale(view_scale)

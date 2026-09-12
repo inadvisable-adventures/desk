@@ -1053,3 +1053,19 @@ This file captures thoughts and TODO items that arise during work on other thing
   existing `DeskWindow.get_installed_jobs_dicts`/`.uninstall_job`
   methods the widget already calls -- just needs a deliberate decision
   to widen the MCP-exposed surface, not a default to back into.
+
+- **~28 `tests/verify/` scripts hardcode a sibling checkout's absolute
+  path as `REPO_ROOT`, instead of the portable
+  `Path(__file__).resolve().parents[2]` form ~14 others already use**
+
+  Surfaced while adding coverage for the Claude (Desk) widget's
+  background-tasks panel/persisted model-mode/titlebar-session-id work
+  (TODOs `f4a7872`/`1ceb701`/`551014c`) -- see `LEARNINGS.md`'s new
+  entry for the full gotcha (a hardcoded-path script silently tests a
+  *different* checkout's code, `PASS` and all, from any checkout other
+  than the one it was written in). Fixed only
+  `tests/verify/verify_claude_desk_widget.py` in that session (the one
+  directly gating its own verification); every other hardcoded-path
+  script is unfixed. Revisit as a real cleanup pass: swap every
+  remaining one over to the relative form, then confirm the full suite
+  still passes from more than one checkout location.
