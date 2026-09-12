@@ -63,10 +63,12 @@ Whenever a change made to Desk itself is a breaking change or a new
 feature from the perspective of an agent running *inside* Desk (in
 some other project) — i.e. anything that would change what such an
 agent needs to know about `.desk_temp`'s tempui DSL or Bridge API —
-update `tempui-breaking-changes.md`/`tempui-new-features.md` (see
-`src/desk/temp_ui.py`'s `_BREAKING_CHANGES_DOC`/`_NEW_FEATURES_DOC`)
-accordingly, in the same commit as the change. This is a standing part
-of the Desk-development workflow, not a one-off backfill.
+update the `_BREAKING_CHANGES_DOC`/`_NEW_FEATURES_DOC` constants in
+`src/desk/temp_ui.py`, which render to `tempui-breaking-changes.md`/
+`tempui-new-features.md` in `.desk_temp/` at runtime (not checked-in
+files), accordingly, in the same commit as the change. This is a
+standing part of the Desk-development workflow, not a one-off
+backfill.
 
 ## Shared development process
 
