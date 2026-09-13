@@ -1,4 +1,4 @@
-# Pipe-chained verb DSL: syntax and semantics (TODO `765bd2a`)
+# Pipe-chained verb DSL: syntax and semantics (TODO `765bd2a`) (COMPLETED)
 
 ## Summary
 

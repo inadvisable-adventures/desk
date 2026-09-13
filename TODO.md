@@ -1110,7 +1110,7 @@ b9d3de5. COMPLETED: Give an in-Desk agent a documented way to learn its own
    `verify_eye_button_persists_title_only.py`, reproduces identically on
    `main` before this change -- unrelated, not a regression).
 
-765bd2a. Design the syntax and semantics of a simple pipe-chained verb
+765bd2a. COMPLETED: Design the syntax and semantics of a simple pipe-chained verb
    DSL for expressing a chain of Desk actions -- deliberately scoped to
    the *language itself* (grammar, verb/argument shape, how values
    flow between stages, the escape-hatch's own denotation, error/
@@ -1166,6 +1166,25 @@ b9d3de5. COMPLETED: Give an in-Desk agent a documented way to learn its own
    (a Runner widget's status display, an MCP tool's return value,
    or something else).
    [planned: pipe-chained-verb-dsl.md]
+
+   COMPLETED: Fully specified in `plans/pipe-chained-verb-dsl.md` --
+   grammar (a quoting-aware `|`-split of stages, each a `py:<base64>`
+   escape-hatch expression or `verb_name arg arg ...` with `shlex`
+   -style argument splitting); a fixed, curated built-in verb registry
+   rather than an extensible one (deliberately, to avoid designing for
+   a hypothetical future requirement); real in-process Python object
+   passing between stages (never a string round-trip), with an opt-in
+   `{"ok": ...}`-dict return convention for verbs with a natural
+   success/failure outcome; the escape hatch as a single `eval()` (a
+   callable result gets called with the piped value, a non-callable
+   result is used as-is); fail-fast execution with a structured
+   per-stage result contract mirroring `Job`/`DeskProc`/Installed Jobs'
+   existing `{"ok", ..., "traceback"}` shape. Three worked examples
+   walked by hand against every rule as this item's own verification
+   (no code was written -- this item's scope is design only, per its
+   own text). Delivery transport, verb extensibility, and the actual
+   interpreter/backing implementations are explicitly left to a later,
+   separate TODO.
 
 1239cfd. COMPLETED: Stop using counting numbers to identify TODO items — this
    item's own id (visible once this file is converted, right below)
