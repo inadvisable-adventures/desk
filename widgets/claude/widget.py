@@ -71,12 +71,19 @@ class ClaudeWidget(TerminalWidget):
         # rather than dropping back to a shell. If claude isn't found,
         # bash's exec fails and the interactive shell stays usable, which
         # preserves the original claude-not-found safety (TODO 6907120).
+        # TODO b9d3de5: DESK_WIDGET_INSTANCE_ID exposes session_id (this
+        # widget's own instance_id, per the class docstring above) to the
+        # claude process's environment -- a plain `VAR=value` prefix on a
+        # simple command only exports it for that command, so it has no
+        # effect on the rest of this shell's environment. Documented in
+        # desk-temporary-ui.md's "Environment variables" section.
+        env_prefix = f"DESK_WIDGET_INSTANCE_ID={shlex.quote(session_id)} "
         if resume:
             # Reload: reconnect to the existing session, and (per TODO
             # 1d7331b) do not re-send the initial Desk prompt (so
             # extra_instructions -- only meaningful on a fresh launch --
             # is ignored here too).
-            command = f"exec claude --resume {shlex.quote(session_id)} {PERMISSION_MODE_ARGS}\n"
+            command = f"{env_prefix}exec claude --resume {shlex.quote(session_id)} {PERMISSION_MODE_ARGS}\n"
         else:
             # Fresh launch: assign the session id up front (so a later
             # reload can --resume it) and send the initial Desk prompt.
@@ -105,7 +112,7 @@ class ClaudeWidget(TerminalWidget):
             # start_session could reintroduce this the same way.
             prompt = prompt.replace("\n", " ")
             command = (
-                f"exec claude --session-id {shlex.quote(session_id)} "
+                f"{env_prefix}exec claude --session-id {shlex.quote(session_id)} "
                 f"{PERMISSION_MODE_ARGS} {shlex.quote(prompt)}\n"
             )
         # Typed into the freshly-spawned shell rather than exec-ing

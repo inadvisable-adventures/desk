@@ -963,7 +963,7 @@ e9eddba. COMPLETED: Add a permission-mode selector to the Claude (Desk) widget
    changelog entry. Full `tests/verify/` suite (139 scripts, 8
    `disabled_`) reruns clean, 131/131 passing.
 
-b9d3de5. Give an in-Desk agent a documented way to learn its own
+b9d3de5. COMPLETED: Give an in-Desk agent a documented way to learn its own
    placed widget instance id, via `ClaudeAgentOptions.env` (a static,
    launch-time fact, not a live query). Converted from a
    `PARKINGLOT.md` entry, surfaced using TODO `97bd090` (`DeskProc`) to
@@ -1010,6 +1010,34 @@ b9d3de5. Give an in-Desk agent a documented way to learn its own
    static env var can't answer a question whose answer changes during
    the session, and trying to make it do so is the wrong tool.
    [planned: desk-widget-instance-id-env-var.md]
+
+   COMPLETED: Implemented as designed above, no deviations.
+   `ClaudeSession._connect_and_maybe_prompt` (`src/desk/claude_session.py`)
+   passes `env={"DESK_WIDGET_INSTANCE_ID": session_id}` on the
+   `ClaudeAgentOptions` it builds. `widgets/claude/widget.py`'s
+   `ClaudeWidget.start_session` prefixes both the `--resume` and fresh
+   -launch shell commands with `DESK_WIDGET_INSTANCE_ID=<session_id> `
+   before `exec claude` (a plain shell-simple-command env-var prefix,
+   scoped to that one command only). Documented in a new "Environment
+   variables" section in `desk-temporary-ui.md` (`src/desk/temp_ui.py`'s
+   `DOC_TEMPLATE`) rather than a per-session prompt sentence, so it's
+   extensible to future static self-facts without further prompt bloat;
+   `TEMPUI_DOC_VERSION` 41 -> 42 with a matching `_NEW_FEATURES_DOC`
+   entry.
+
+   New verify coverage: `tests/verify/verify_desk_widget_instance_id_env_var.py`
+   (10 checks) -- `ClaudeSession._connect_and_maybe_prompt`'s built
+   `ClaudeAgentOptions.env` checked directly (fresh and resumed) against
+   a monkeypatched `ClaudeSDKClient` (no real SDK connection, mirroring
+   `verify_installed_job_permission_bypass.py`'s own pattern); a real
+   `ClaudeWidget()` (a real local `bash` PTY, no live `claude`/network
+   dependency, mirroring `verify_terminal_cwd.py`) with `type_into_shell`
+   patched to capture the exact command string for both the fresh
+   -launch and resume branches; the new doc section, its
+   `TEMPUI_DOC_VERSION` bump, and its `_NEW_FEATURES_DOC` entry. Full
+   `tests/verify/` suite rerun clean (the one pre-existing failure,
+   `verify_eye_button_persists_title_only.py`, reproduces identically on
+   `main` before this change -- unrelated, not a regression).
 
 765bd2a. Design the syntax and semantics of a simple pipe-chained verb
    DSL for expressing a chain of Desk actions -- deliberately scoped to

@@ -1,4 +1,4 @@
-# Widget instance id via `DESK_WIDGET_INSTANCE_ID` env var (TODO `b9d3de5`)
+# Widget instance id via `DESK_WIDGET_INSTANCE_ID` env var (TODO `b9d3de5`) (COMPLETED)
 
 ## Summary
 

@@ -297,7 +297,13 @@ APP_DSL_DIRNAME = "app_dsl"
 # just an agent via `desk_run_installed_job`. New bullet in "The Desk
 # Bridge API" section; `Job`'s own closed Capability-name list gained
 # `installed_jobs`. No DSL change.
-TEMPUI_DOC_VERSION = 41
+#
+# TODO b9d3de5: bumped 41 -> 42 for a new "Environment variables"
+# section in DOC_TEMPLATE, documenting `DESK_WIDGET_INSTANCE_ID` (the
+# widget-hosted-agent's own placed instance id) -- not a DSL/Bridge API
+# change, but new static content an agent reading this doc needs to
+# know about, same as any other DOC_TEMPLATE addition.
+TEMPUI_DOC_VERSION = 42
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -369,6 +375,20 @@ it as many times as you like via an MCP tool call with no further
 prompt. Not a dropped-tempui-file DSL keyword like the ones above --
 installation happens via an MCP tool call against a directory you
 already wrote, never via a file dropped in this directory.
+
+## Environment variables
+
+If you're running as the agent behind a `claude`/`Claude (Desk)`
+widget (as opposed to a script invoked via `Job`/`DeskProc`/an
+Installed Job), a few static, launch-time facts about your own placed
+widget instance are available as environment variables rather than
+folded into your prompt -- check for these directly (e.g. `echo
+$DESK_WIDGET_INSTANCE_ID`) rather than assuming one is absent just
+because this document doesn't call it out by name at launch:
+
+- `DESK_WIDGET_INSTANCE_ID` -- this widget instance's own instance id
+  (the same id used internally as your session id for `--resume`/
+  reconnection across a Desk reload).
 
 ## Questions for the user: use QUESTIONS.md, not this DSL
 
@@ -1548,6 +1568,15 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 42
+- A new "Environment variables" section: the agent behind a `claude`/
+  `Claude (Desk)` widget can now read its own placed widget instance
+  id directly from its environment as `DESK_WIDGET_INSTANCE_ID`,
+  instead of having no supported way to learn it. A static,
+  launch-time fact only -- not a live query; the in-process Desk MCP
+  server's own tools (e.g. `desk_reveal_widget`) remain the way to
+  answer anything dynamic (current placements, live state).
 
 ## Version 41
 - A new Bridge API capability, `installed_jobs`:
