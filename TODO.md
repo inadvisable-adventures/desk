@@ -1164,9 +1164,8 @@ b9d3de5. COMPLETED: Give an in-Desk agent a documented way to learn its own
    *contract* (a structured per-stage result value, at minimum) --
    independent of how any given transport chooses to surface that
    (a Runner widget's status display, an MCP tool's return value,
-   or something else). Not designed in full or planned yet --
-   intentionally left unplanned per explicit instruction not to
-   implement yet.
+   or something else).
+   [planned: pipe-chained-verb-dsl.md]
 
 1239cfd. COMPLETED: Stop using counting numbers to identify TODO items — this
    item's own id (visible once this file is converted, right below)
