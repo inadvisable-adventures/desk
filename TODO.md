@@ -9395,3 +9395,25 @@ e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
       rather than frozen at promote-time. A hand-authored, inline-only
       `DefineWidget` with no source directory keeps today's baked-
       `html_b64` behavior, since there's nothing to build from.
+
+63bfd42. Implement the pipe-chained verb DSL designed in TODO `765bd2a`
+   (`plans/pipe-chained-verb-dsl.md`) -- that item was deliberately
+   scoped to the language design only (grammar, verb/argument shape,
+   value flow, the escape hatch, error/partial-failure semantics); this
+   item is the follow-on: a real parser/interpreter (per the plan's own
+   naming assumption, `src/desk/pipeline_dsl.py`), an actual built-in
+   verb registry with real backing implementations (the plan's
+   "Illustrative starter verb catalog" is explicitly non-binding -- a
+   grounding example, not a commitment), and at least one delivery
+   mechanism getting a pipeline string to Desk in the first place (a
+   `Job`/`DeskProc` tempui file's `Script` line, an `a762501` MCP tool
+   argument, or something else -- the plan's own point is that the
+   language should come out the same regardless of which transport(s)
+   this item ends up picking).
+
+   Not yet planned -- write a plan per `shared_development_process.md`
+   before implementing, and treat the linked design plan's "Explicitly
+   out of scope" section as this item's own starting scope boundary
+   (verb extensibility beyond a fixed catalog remains explicitly
+   deferred, not part of this item either, absent a concrete need
+   surfacing during planning).
