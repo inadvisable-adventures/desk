@@ -4,6 +4,7 @@ import sys
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, "src")
 
+from desk.desks import Desk  # noqa: E402
 from desk.shell.window import DeskWindow  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
@@ -66,11 +67,10 @@ class _FakeWindow:
         self.view = _FakeView(frames)
         from pathlib import Path
 
-        self.current_desk = type(
-            "D",
-            (),
-            {"path": Path("/tmp/x.desk"), "custom_widgets": [], "file_type_registry": [], "installed_jobs": []},
-        )()
+        # TODO 224fbc9: a real Desk instance, not a duck-typed stand-in
+        # -- _capture_desk_state now builds its result via
+        # dataclasses.replace, which requires a real dataclass instance.
+        self.current_desk = Desk(path=Path("/tmp/x.desk"))
 
     def _get_widget_local_storage(self, frame):
         return {}

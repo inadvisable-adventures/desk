@@ -1,4 +1,4 @@
-# Fix `_capture_desk_state`/friends dropping `Desk.state` (TODO `224fbc9`)
+# Fix `_capture_desk_state`/friends dropping `Desk.state` (TODO `224fbc9`) (COMPLETED)
 
 ## Summary
 

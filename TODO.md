@@ -6,7 +6,7 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
-224fbc9. `DeskWindow._capture_desk_state()` (`src/desk/shell/window.py`)
+224fbc9. COMPLETED: `DeskWindow._capture_desk_state()` (`src/desk/shell/window.py`)
    drops `Desk.state` -- the shared `desk.state.*` store -- when
    rebuilding a fresh `Desk` from the live canvas on every save, so it
    silently resets to `{}`. Because `save_current_desk()` immediately
@@ -31,6 +31,51 @@ reordered or its description edited.
    Prioritized per direct user request (real, repeatable data loss for
    any project using `desk.state`).
    [planned: fix-capture-desk-state-drops-state.md]
+
+   COMPLETED: Implemented the structural fix, per the feedback's own
+   suggestion, rather than patching only the reported `state` field:
+   `_capture_desk_state`, `change_current_desk_directory`, and
+   `rename_current_desk` (`src/desk/shell/window.py`) all now build
+   their result via `dataclasses.replace(self.current_desk, ...)`
+   instead of hand-enumerating which fields to carry over. Auditing
+   every `Desk(...)` construction site in `window.py` while fixing this
+   turned up a *third*, previously-unreported instance of the same bug
+   in `rename_current_desk` (dropped all four of `state`/
+   `custom_widgets`/`file_type_registry`/`installed_jobs`), fixed the
+   same way. `get_state_dict` needed no code change -- it already reads
+   through `_capture_desk_state`, so fixing that fixed it too (verified,
+   not assumed).
+
+   New verify coverage: `tests/verify/verify_state_store.py` (+23
+   checks, 46 total) -- `_capture_desk_state`/`get_state_dict` no longer
+   drop `state` (or `custom_widgets`/`file_type_registry`/
+   `installed_jobs`); a direct reproduction of the reported incident
+   (close one of two placed widgets, then save -- state survives);
+   `change_current_desk_directory`/`rename_current_desk` both carry
+   over all four fields; a real save-then-`load_desk` round trip
+   confirms a `.desk` file's `state` section is no longer always `{}`
+   by construction (closing the feedback's "structural finding" as a
+   side effect of this same fix, confirmed rather than assumed). Ran
+   the new tests against the pre-fix code first to confirm they
+   actually fail there (they do -- one raises an uncaught `KeyError`
+   partway through, since the bug is a real, hard crash-adjacent data
+   loss, not a soft mismatch). Also fixed `verify_state_store.py`'s own
+   `sys.path` line, which hardcoded an absolute path to a sibling
+   checkout (`/Users/mphair/inadvisable-adventures/desk/src`) and was
+   silently testing *that* checkout's unfixed code instead of this
+   one's -- see `LEARNINGS.md`'s existing entry on this class of bug;
+   the ~28 other affected scripts remain tracked separately in
+   `PARKINGLOT.md`, unchanged here.
+   `tests/verify/verify_lock_persistence.py`'s `_FakeWindow` updated to
+   use a real `Desk(...)` instance (`dataclasses.replace` requires a
+   real dataclass instance, not the ad hoc duck-typed stand-in it used
+   before) -- still passes unchanged otherwise.
+
+   Full `tests/verify/` suite rerun clean beyond two pre-existing,
+   unrelated failures confirmed present on `main` before this change via
+   `git stash` (`verify_eye_button_persists_title_only.py`,
+   `verify_relocate_promoted_widget_source.py` -- the latter fails
+   identically with or without this change).
 
 f4a7872. COMPLETED: Add a monitorable background-tasks panel to the Claude (Desk)
    widget (`widgets/claude_desk/widget.py`) -- the Claude Agent SDK
