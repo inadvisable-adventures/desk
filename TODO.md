@@ -6,6 +6,32 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+224fbc9. `DeskWindow._capture_desk_state()` (`src/desk/shell/window.py`)
+   drops `Desk.state` -- the shared `desk.state.*` store -- when
+   rebuilding a fresh `Desk` from the live canvas on every save, so it
+   silently resets to `{}`. Because `save_current_desk()` immediately
+   does `self.current_desk = desk` afterward, this wipes the *live*,
+   in-memory store too, not just what's written to disk -- and
+   `save_current_desk()` runs on removing *any* widget of *any* kind,
+   switching Desks, quitting, and more, so closing a single widget
+   deletes every `desk.state` key any widget has ever written, for the
+   rest of the running session. Two further instances of the same bug
+   reported alongside it: `get_state_dict()` (the Bridge API's
+   `workspace.getState`) always reports `"state": {}` regardless of
+   what's actually stored, since it reads through the same broken
+   `_capture_desk_state()`; and `change_current_desk_directory()`
+   hand-builds a `Desk(...)` dropping `state`, `custom_widgets`,
+   `file_type_registry`, *and* `installed_jobs` all at once. Reported
+   in
+   `../FEEDBACK/FEEDBACK-DESK-state-store-wiped-by-capture-desk-state-2026-09-12-2100.md`
+   (`draw-with-desk`), found while building a multi-widget raycaster
+   family that relies on `desk.state` as its only persistence layer --
+   real project data (camera/scene definitions) was lost and had to be
+   manually recovered from `.desk_temp/MEDIATED-EVENT-LOG.tsv`.
+   Prioritized per direct user request (real, repeatable data loss for
+   any project using `desk.state`).
+   [planned: fix-capture-desk-state-drops-state.md]
+
 f4a7872. COMPLETED: Add a monitorable background-tasks panel to the Claude (Desk)
    widget (`widgets/claude_desk/widget.py`) -- the Claude Agent SDK
    reports a session's background tasks (backgrounded Bash, a
