@@ -79,8 +79,19 @@ def test_min_full_width_does_not_double_count_eye_button():
     from desk.shell.widget_frame import TITLEBAR_BUTTON_SPACING, _button_target_width
 
     # Every OTHER currently-relevant button (unlocked, not
-    # tempui-promotable, not stale): lock/bring_to_front/send_to_back/close.
-    other_buttons = [bar.lock_button, bar.bring_to_front_button, bar.send_to_back_button, bar.close_button]
+    # tempui-promotable, not stale):
+    # chat/lock/bring_to_front/send_to_back/close. TODO 13f4ad5: this
+    # list had gone stale (missing chat_button, added to
+    # _visible_button_widgets_for_full_state's own unlocked branch after
+    # this test was written), so it under-counted min_full_width_px's
+    # real button set and this check failed against current code.
+    other_buttons = [
+        bar.chat_button,
+        bar.lock_button,
+        bar.bring_to_front_button,
+        bar.send_to_back_button,
+        bar.close_button,
+    ]
     expected_extra = sum(_button_target_width(b) for b in other_buttons) + len(other_buttons) * TITLEBAR_BUTTON_SPACING
     actual_extra = bar.min_full_width_px() - bar.min_title_only_width_px()
     check("min_full_width_px adds exactly the other buttons' width, not the eye button again", actual_extra == expected_extra)

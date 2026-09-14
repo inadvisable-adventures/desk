@@ -92,6 +92,12 @@ else:
         "decoded html has compiled JS, not the marker",
         "BUILD:COMPILED_JS" not in decoded and "HelloWidget extends HTMLElement" in decoded,
     )
+    # TODO 13f4ad5: a SourcePath line naming the directory it was
+    # literally built from, round-tripping into source_path -- the
+    # durable record _relocate_promoted_widget_source uses instead of
+    # reconstructing a source directory from `keyword`.
+    check("generated file has a SourcePath line naming widget_dir", f"SourcePath\t{widget_dir}" in text)
+    check("parser round-trips source_path", definition.source_path == str(widget_dir))
 
 # Test 2: missing manifest key -> clear BuildError.
 bad_dir = widget_src_root / "bad_manifest"

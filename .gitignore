@@ -6,6 +6,12 @@
 **/dist/
 **/node_modules/
 
+# Per-widget rebuilt-on-demand build cache for a source-backed promoted
+# custom widget (TODO 13f4ad5, desk.custom_widgets.build_from_source)
+# -- regenerated fresh every time Desk registers the widget, never
+# authoring source itself.
+**/.build/
+
 **/*.egg-info/
 
 # MacOS

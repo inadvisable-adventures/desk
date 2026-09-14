@@ -140,6 +140,10 @@ def _load_custom_widget(data: dict) -> CustomWidgetDefinition:
         # "capabilities" key at all there, same as a widget.json with
         # none declared.
         capabilities=data.get("capabilities", []),
+        # Defaults to None for a .desk file saved before TODO 13f4ad5
+        # added source_path -- same as a hand-authored, inline-only
+        # widget that never had a source directory to record.
+        source_path=data.get("source_path"),
     )
 
 
@@ -185,11 +189,17 @@ def _custom_widget_dict(cw: CustomWidgetDefinition) -> dict:
     return {
         "keyword": cw.keyword,
         "label": cw.label,
+        # TODO 13f4ad5: "" (not omitted) for a source-backed widget --
+        # its content is rebuilt on demand from source_path instead of
+        # being baked in here. Still always a str key, never absent, so
+        # _load_custom_widget above can keep using data["html_b64"]
+        # unconditionally.
         "html_b64": cw.html_b64,
         "default_size": (
             {"width": cw.default_size[0], "height": cw.default_size[1]} if cw.default_size else None
         ),
         "capabilities": cw.capabilities,
+        "source_path": cw.source_path,
     }
 
 
