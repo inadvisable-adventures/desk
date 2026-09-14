@@ -12,7 +12,7 @@ from pathlib import Path
 from PyQt6.QtCore import QPointF, Qt, QTimer
 from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QWidget
 
-from desk.custom_widgets import build_from_source, materialize
+from desk.custom_widgets import LikelySourceCandidate, build_from_source, find_likely_source_candidates, materialize
 from desk.desks import (
     DESK_SUFFIX,
     Desk,
@@ -63,6 +63,7 @@ from desk.transforms import PROJECT_TRANSFORMS_DIRNAME, TEMP_TRANSFORMS_DIRNAME
 from desk_services.popups import get_service as get_popups_service
 from desk_services.transforms import get_service as get_transforms_service
 from desk.temp_ui import (
+    CUSTOM_WIDGET_SRC_DIRNAME,
     CustomWidgetDefinition,
     DESK_WIDGETS_BUILD_GITIGNORE_ENTRY,
     DOC_FILENAME,
@@ -2781,7 +2782,14 @@ class DeskWindow(QMainWindow):
         re-registered from that new location -- the same "same keyword,
         same source" refresh path _register_custom_widget already
         supports -- which rebuilds+remounts it and recomputes
-        content_hash against the fresh build output."""
+        content_hash against the fresh build output.
+
+        TODO 9613bb0: before any of that, _resolve_promotion_source
+        gets a say -- if this definition doesn't yet have a usable
+        source_path, it looks for a likely real source directory under
+        .desk_temp/widgets/ and asks the user what to do (adopt it,
+        keep the widget inline, or cancel the promotion outright)
+        instead of silently falling back to baking html_b64."""
         if not isinstance(frame.content, ChromiumWidget):
             return
         keyword = frame.content.widget_id
@@ -2796,6 +2804,8 @@ class DeskWindow(QMainWindow):
             f"Save “{definition.label}” permanently in this Desk, and remove its "
             "definition from tempui?",
         )():
+            return
+        if not self._resolve_promotion_source(definition):
             return
         self.current_desk.custom_widgets.append(definition)
         self._custom_widget_sources[keyword] = "desk"
@@ -2837,6 +2847,105 @@ class DeskWindow(QMainWindow):
         self.view.set_widget_catalog(self._widgets)
         frame.set_tempui_promotable(False)
         self._sync_tempui_doc()
+
+    def _resolve_promotion_source(self, definition: CustomWidgetDefinition) -> bool:
+        """TODO 9613bb0: called right after `_on_tempui_promote_requested`'s
+        own "Promote to Desk" confirm, before any promotion state is
+        mutated. A no-op (`True`) when `definition.source_path` is
+        already set and that directory exists -- the common case for a
+        widget authored "from real source" with a recorded `SourcePath`
+        line, unaffected by this method.
+
+        Otherwise (no `source_path` at all, or a recorded one whose
+        directory has since gone missing) this used to fall straight
+        through to keeping `html_b64` baked in the `.desk` file with no
+        visible signal beyond an INFO log line (TODO `a820354`) --
+        correct for a genuinely hand-authored, inline-only
+        `DefineWidget`, but silent for the much more likely case: a
+        real-source widget whose `SourcePath` was simply never
+        recorded. Looks for a plausible source directory first
+        (`desk.custom_widgets.find_likely_source_candidates`) and puts
+        the choice in front of the user instead of choosing silently.
+
+        Returns `False` to abort the whole promotion untouched (nothing
+        has been mutated yet at this point in
+        `_on_tempui_promote_requested`)."""
+        project_dir = self.current_desk.directory
+        if definition.source_path is not None and (project_dir / definition.source_path).is_dir():
+            return True
+        candidates = find_likely_source_candidates(project_dir, definition.keyword)
+        if candidates:
+            proceed, chosen = self._confirm_promotion_source_candidate(definition, candidates)
+        else:
+            proceed, chosen = self._confirm_promotion_no_source(definition), None
+        if not proceed:
+            return False
+        if chosen is not None:
+            definition.source_path = chosen.path.relative_to(project_dir).as_posix()
+        return True
+
+    def _confirm_promotion_no_source(self, definition: CustomWidgetDefinition) -> bool:
+        """Split out so headless verification can monkeypatch just this
+        one method instead of driving a real modal QMessageBox --
+        mirrors _confirm_stale_reload/_confirm_widget_error_dismissed
+        above."""
+        box = QMessageBox(self)
+        box.setWindowTitle("No Recorded Source Directory")
+        box.setText(f"“{definition.label}” has no usable, recorded authoring source directory.")
+        stale_note = ""
+        if definition.source_path is not None:
+            stale_note = f" (previously recorded at {definition.source_path}, which no longer exists)"
+        box.setInformativeText(
+            f"No likely match was found under {TEMP_UI_DIRNAME}/{CUSTOM_WIDGET_SRC_DIRNAME}/ "
+            f"either{stale_note}. Promoting now will bake its HTML as opaque base64 "
+            "directly into the .desk file instead of a real, diffable source "
+            "directory -- expected for a genuinely hand-authored widget, but worth "
+            "double-checking first if it was actually built from real source."
+        )
+        promote_button = box.addButton("Promote Anyway", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        return box.clickedButton() is promote_button
+
+    def _confirm_promotion_source_candidate(
+        self, definition: CustomWidgetDefinition, candidates: list[LikelySourceCandidate]
+    ) -> tuple[bool, LikelySourceCandidate | None]:
+        """Split out so headless verification can monkeypatch just this
+        one method instead of driving a real modal QMessageBox --
+        mirrors _confirm_stale_reload/_confirm_widget_error_dismissed
+        above. Returns (proceed, chosen candidate or None to keep the
+        widget inline); (False, None) means the whole promotion was
+        cancelled."""
+        project_dir = self.current_desk.directory
+        box = QMessageBox(self)
+        box.setWindowTitle("Possible Source Directory Found")
+        plural = len(candidates) != 1
+        box.setText(
+            f"“{definition.label}” has no recorded authoring source, but "
+            f"{len(candidates) if plural else 'a'} likely match{'es were' if plural else ' was'} "
+            f"found under {TEMP_UI_DIRNAME}/{CUSTOM_WIDGET_SRC_DIRNAME}/."
+        )
+        candidate_buttons: dict[object, LikelySourceCandidate] = {}
+        lines = []
+        for candidate in candidates:
+            rel = candidate.path.relative_to(project_dir).as_posix()
+            reason = (
+                "widget.json's own keyword matches exactly"
+                if candidate.matched_by == "keyword"
+                else "directory name is a likely spelling variant"
+            )
+            lines.append(f"{rel} ({reason})")
+            candidate_buttons[box.addButton(f"Use {rel}", QMessageBox.ButtonRole.AcceptRole)] = candidate
+        box.setInformativeText("\n".join(lines))
+        keep_inline_button = box.addButton("Keep as Base64", QMessageBox.ButtonRole.ActionRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked in candidate_buttons:
+            return True, candidate_buttons[clicked]
+        if clicked is keep_inline_button:
+            return True, None
+        return False, None
 
     def _relocate_promoted_widget_source(self, keyword: str) -> None:
         """TODO 59c5a70: moves a promoted widget's authoring source
