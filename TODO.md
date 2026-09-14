@@ -6,6 +6,77 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+224fbc9. COMPLETED: `DeskWindow._capture_desk_state()` (`src/desk/shell/window.py`)
+   drops `Desk.state` -- the shared `desk.state.*` store -- when
+   rebuilding a fresh `Desk` from the live canvas on every save, so it
+   silently resets to `{}`. Because `save_current_desk()` immediately
+   does `self.current_desk = desk` afterward, this wipes the *live*,
+   in-memory store too, not just what's written to disk -- and
+   `save_current_desk()` runs on removing *any* widget of *any* kind,
+   switching Desks, quitting, and more, so closing a single widget
+   deletes every `desk.state` key any widget has ever written, for the
+   rest of the running session. Two further instances of the same bug
+   reported alongside it: `get_state_dict()` (the Bridge API's
+   `workspace.getState`) always reports `"state": {}` regardless of
+   what's actually stored, since it reads through the same broken
+   `_capture_desk_state()`; and `change_current_desk_directory()`
+   hand-builds a `Desk(...)` dropping `state`, `custom_widgets`,
+   `file_type_registry`, *and* `installed_jobs` all at once. Reported
+   in
+   `../FEEDBACK/FEEDBACK-DESK-state-store-wiped-by-capture-desk-state-2026-09-12-2100.md`
+   (`draw-with-desk`), found while building a multi-widget raycaster
+   family that relies on `desk.state` as its only persistence layer --
+   real project data (camera/scene definitions) was lost and had to be
+   manually recovered from `.desk_temp/MEDIATED-EVENT-LOG.tsv`.
+   Prioritized per direct user request (real, repeatable data loss for
+   any project using `desk.state`).
+   [planned: fix-capture-desk-state-drops-state.md]
+
+   COMPLETED: Implemented the structural fix, per the feedback's own
+   suggestion, rather than patching only the reported `state` field:
+   `_capture_desk_state`, `change_current_desk_directory`, and
+   `rename_current_desk` (`src/desk/shell/window.py`) all now build
+   their result via `dataclasses.replace(self.current_desk, ...)`
+   instead of hand-enumerating which fields to carry over. Auditing
+   every `Desk(...)` construction site in `window.py` while fixing this
+   turned up a *third*, previously-unreported instance of the same bug
+   in `rename_current_desk` (dropped all four of `state`/
+   `custom_widgets`/`file_type_registry`/`installed_jobs`), fixed the
+   same way. `get_state_dict` needed no code change -- it already reads
+   through `_capture_desk_state`, so fixing that fixed it too (verified,
+   not assumed).
+
+   New verify coverage: `tests/verify/verify_state_store.py` (+23
+   checks, 46 total) -- `_capture_desk_state`/`get_state_dict` no longer
+   drop `state` (or `custom_widgets`/`file_type_registry`/
+   `installed_jobs`); a direct reproduction of the reported incident
+   (close one of two placed widgets, then save -- state survives);
+   `change_current_desk_directory`/`rename_current_desk` both carry
+   over all four fields; a real save-then-`load_desk` round trip
+   confirms a `.desk` file's `state` section is no longer always `{}`
+   by construction (closing the feedback's "structural finding" as a
+   side effect of this same fix, confirmed rather than assumed). Ran
+   the new tests against the pre-fix code first to confirm they
+   actually fail there (they do -- one raises an uncaught `KeyError`
+   partway through, since the bug is a real, hard crash-adjacent data
+   loss, not a soft mismatch). Also fixed `verify_state_store.py`'s own
+   `sys.path` line, which hardcoded an absolute path to a sibling
+   checkout (`/Users/mphair/inadvisable-adventures/desk/src`) and was
+   silently testing *that* checkout's unfixed code instead of this
+   one's -- see `LEARNINGS.md`'s existing entry on this class of bug;
+   the ~28 other affected scripts remain tracked separately in
+   `PARKINGLOT.md`, unchanged here.
+   `tests/verify/verify_lock_persistence.py`'s `_FakeWindow` updated to
+   use a real `Desk(...)` instance (`dataclasses.replace` requires a
+   real dataclass instance, not the ad hoc duck-typed stand-in it used
+   before) -- still passes unchanged otherwise.
+
+   Full `tests/verify/` suite rerun clean beyond two pre-existing,
+   unrelated failures confirmed present on `main` before this change via
+   `git stash` (`verify_eye_button_persists_title_only.py`,
+   `verify_relocate_promoted_widget_source.py` -- the latter fails
+   identically with or without this change).
+
 f4a7872. COMPLETED: Add a monitorable background-tasks panel to the Claude (Desk)
    widget (`widgets/claude_desk/widget.py`) -- the Claude Agent SDK
    reports a session's background tasks (backgrounded Bash, a
@@ -963,7 +1034,7 @@ e9eddba. COMPLETED: Add a permission-mode selector to the Claude (Desk) widget
    changelog entry. Full `tests/verify/` suite (139 scripts, 8
    `disabled_`) reruns clean, 131/131 passing.
 
-b9d3de5. Give an in-Desk agent a documented way to learn its own
+b9d3de5. COMPLETED: Give an in-Desk agent a documented way to learn its own
    placed widget instance id, via `ClaudeAgentOptions.env` (a static,
    launch-time fact, not a live query). Converted from a
    `PARKINGLOT.md` entry, surfaced using TODO `97bd090` (`DeskProc`) to
@@ -1008,11 +1079,38 @@ b9d3de5. Give an in-Desk agent a documented way to learn its own
    explicitly **not** this item's concern -- moved to TODO `a762501`
    (the in-process MCP server) instead, per the same discussion: a
    static env var can't answer a question whose answer changes during
-   the session, and trying to make it do so is the wrong tool. Not
-   designed in full or planned yet -- intentionally left unplanned per
-   explicit instruction not to implement yet.
+   the session, and trying to make it do so is the wrong tool.
+   [planned: desk-widget-instance-id-env-var.md]
 
-765bd2a. Design the syntax and semantics of a simple pipe-chained verb
+   COMPLETED: Implemented as designed above, no deviations.
+   `ClaudeSession._connect_and_maybe_prompt` (`src/desk/claude_session.py`)
+   passes `env={"DESK_WIDGET_INSTANCE_ID": session_id}` on the
+   `ClaudeAgentOptions` it builds. `widgets/claude/widget.py`'s
+   `ClaudeWidget.start_session` prefixes both the `--resume` and fresh
+   -launch shell commands with `DESK_WIDGET_INSTANCE_ID=<session_id> `
+   before `exec claude` (a plain shell-simple-command env-var prefix,
+   scoped to that one command only). Documented in a new "Environment
+   variables" section in `desk-temporary-ui.md` (`src/desk/temp_ui.py`'s
+   `DOC_TEMPLATE`) rather than a per-session prompt sentence, so it's
+   extensible to future static self-facts without further prompt bloat;
+   `TEMPUI_DOC_VERSION` 41 -> 42 with a matching `_NEW_FEATURES_DOC`
+   entry.
+
+   New verify coverage: `tests/verify/verify_desk_widget_instance_id_env_var.py`
+   (10 checks) -- `ClaudeSession._connect_and_maybe_prompt`'s built
+   `ClaudeAgentOptions.env` checked directly (fresh and resumed) against
+   a monkeypatched `ClaudeSDKClient` (no real SDK connection, mirroring
+   `verify_installed_job_permission_bypass.py`'s own pattern); a real
+   `ClaudeWidget()` (a real local `bash` PTY, no live `claude`/network
+   dependency, mirroring `verify_terminal_cwd.py`) with `type_into_shell`
+   patched to capture the exact command string for both the fresh
+   -launch and resume branches; the new doc section, its
+   `TEMPUI_DOC_VERSION` bump, and its `_NEW_FEATURES_DOC` entry. Full
+   `tests/verify/` suite rerun clean (the one pre-existing failure,
+   `verify_eye_button_persists_title_only.py`, reproduces identically on
+   `main` before this change -- unrelated, not a regression).
+
+765bd2a. COMPLETED: Design the syntax and semantics of a simple pipe-chained verb
    DSL for expressing a chain of Desk actions -- deliberately scoped to
    the *language itself* (grammar, verb/argument shape, how values
    flow between stages, the escape-hatch's own denotation, error/
@@ -1066,9 +1164,27 @@ b9d3de5. Give an in-Desk agent a documented way to learn its own
    *contract* (a structured per-stage result value, at minimum) --
    independent of how any given transport chooses to surface that
    (a Runner widget's status display, an MCP tool's return value,
-   or something else). Not designed in full or planned yet --
-   intentionally left unplanned per explicit instruction not to
-   implement yet.
+   or something else).
+   [planned: pipe-chained-verb-dsl.md]
+
+   COMPLETED: Fully specified in `plans/pipe-chained-verb-dsl.md` --
+   grammar (a quoting-aware `|`-split of stages, each a `py:<base64>`
+   escape-hatch expression or `verb_name arg arg ...` with `shlex`
+   -style argument splitting); a fixed, curated built-in verb registry
+   rather than an extensible one (deliberately, to avoid designing for
+   a hypothetical future requirement); real in-process Python object
+   passing between stages (never a string round-trip), with an opt-in
+   `{"ok": ...}`-dict return convention for verbs with a natural
+   success/failure outcome; the escape hatch as a single `eval()` (a
+   callable result gets called with the piped value, a non-callable
+   result is used as-is); fail-fast execution with a structured
+   per-stage result contract mirroring `Job`/`DeskProc`/Installed Jobs'
+   existing `{"ok", ..., "traceback"}` shape. Three worked examples
+   walked by hand against every rule as this item's own verification
+   (no code was written -- this item's scope is design only, per its
+   own text). Delivery transport, verb extensibility, and the actual
+   interpreter/backing implementations are explicitly left to a later,
+   separate TODO.
 
 1239cfd. COMPLETED: Stop using counting numbers to identify TODO items — this
    item's own id (visible once this file is converted, right below)
@@ -9298,3 +9414,25 @@ e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
    `desk_widgets/` can first come to exist.
 
    [planned: desk-widgets-build-gitignore.md (COMPLETED)]
+
+63bfd42. Implement the pipe-chained verb DSL designed in TODO `765bd2a`
+   (`plans/pipe-chained-verb-dsl.md`) -- that item was deliberately
+   scoped to the language design only (grammar, verb/argument shape,
+   value flow, the escape hatch, error/partial-failure semantics); this
+   item is the follow-on: a real parser/interpreter (per the plan's own
+   naming assumption, `src/desk/pipeline_dsl.py`), an actual built-in
+   verb registry with real backing implementations (the plan's
+   "Illustrative starter verb catalog" is explicitly non-binding -- a
+   grounding example, not a commitment), and at least one delivery
+   mechanism getting a pipeline string to Desk in the first place (a
+   `Job`/`DeskProc` tempui file's `Script` line, an `a762501` MCP tool
+   argument, or something else -- the plan's own point is that the
+   language should come out the same regardless of which transport(s)
+   this item ends up picking).
+
+   Not yet planned -- write a plan per `shared_development_process.md`
+   before implementing, and treat the linked design plan's "Explicitly
+   out of scope" section as this item's own starting scope boundary
+   (verb extensibility beyond a fixed catalog remains explicitly
+   deferred, not part of this item either, absent a concrete need
+   surfacing during planning).

@@ -133,6 +133,13 @@ class ClaudeSession(QObject):
             # calls (mcp__desk__...) flow through can_use_tool above
             # like any other tool, no separate approval path.
             mcp_servers={DESK_MCP_SERVER_NAME: build_desk_mcp_server()},
+            # TODO b9d3de5: a static, launch-time self-fact -- session_id
+            # doubles as this widget's own instance_id (see
+            # DeskWindow._bind_claude_desk_widget) -- exposed as a real
+            # env var rather than a prompt sentence so it costs nothing
+            # per turn and survives context compaction. Documented in
+            # desk-temporary-ui.md's "Environment variables" section.
+            env={"DESK_WIDGET_INSTANCE_ID": session_id},
         )
         try:
             self._client = sdk.ClaudeSDKClient(options)

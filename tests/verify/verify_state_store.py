@@ -9,7 +9,14 @@ import urllib.request
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
+# A hardcoded absolute path here would silently test a *different*
+# checkout's code if one happens to exist alongside this one -- see
+# LEARNINGS.md's "Some tests/verify/ scripts hardcode a sibling
+# checkout's absolute path" entry. This is the one script directly
+# gating TODO 224fbc9's own verification, so fixed here; the ~28 other
+# affected scripts remain tracked separately in PARKINGLOT.md.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 import desk.shell.widget_frame  # noqa: E402  (imported before QApplication -- WebEngine ordering)
 import desk.shell.canvas  # noqa: E402
@@ -68,6 +75,209 @@ def test_old_desk_file_without_state_defaults_to_empty():
         path.write_text('{"widgets": []}')
         desk = load_desk(path)
         check("old .desk file with no state key defaults to {}", desk.state == {})
+
+
+# ---------- TODO 224fbc9: _capture_desk_state (and friends) must not
+# drop Desk.state -- see
+# ../FEEDBACK/FEEDBACK-DESK-state-store-wiped-by-capture-desk-state-2026-09-12-2100.md
+# ----------
+
+
+class _FakeProxy:
+    def pos(self):
+        p = type("P", (), {})()
+        p.x = lambda: 0.0
+        p.y = lambda: 0.0
+        return p
+
+    def size(self):
+        s = type("S", (), {})()
+        s.width = lambda: 100.0
+        s.height = lambda: 100.0
+        return s
+
+
+class _FakeContent:
+    widget_id = "editor"
+
+
+class _FakeFrame:
+    def __init__(self, instance_id):
+        self.instance_id = instance_id
+        self.content = _FakeContent()
+        self.locked = False
+        self.placed_content_hash = None
+
+    def graphicsProxyWidget(self):
+        return _FakeProxy()
+
+
+class _FakeView:
+    def __init__(self, frames):
+        self._frames = frames
+
+    def get_view_state(self):
+        return 0.0, 0.0, 1.0
+
+
+class _FakeCaptureWindow:
+    def __init__(self, current_desk, frames=()):
+        self.view = _FakeView(list(frames))
+        self.current_desk = current_desk
+
+    def _get_widget_local_storage(self, frame):
+        return {}
+
+
+_FakeCaptureWindow._capture_desk_state = DeskWindow._capture_desk_state
+_FakeCaptureWindow.get_state_dict = DeskWindow.get_state_dict
+
+
+def _desk_with_everything(**overrides):
+    from desk.file_type_registry import FileTypeRegistryEntry
+    from desk.installed_jobs import InstalledJobDefinition
+    from desk.temp_ui import CustomWidgetDefinition
+
+    kwargs = dict(
+        path=Path("/tmp/everything.desk"),
+        state={"raycaster.camera.camera-1": StateEntry(value={"x": 1}, edit=None)},
+        custom_widgets=[CustomWidgetDefinition(keyword="marker", label="Marker", html_b64="")],
+        file_type_registry=[FileTypeRegistryEntry(extensions=[".marker"])],
+        installed_jobs=[InstalledJobDefinition(name="marker", version_hash="abc123", installed_at="2026-01-01T00:00:00")],
+    )
+    kwargs.update(overrides)
+    return Desk(**kwargs)
+
+
+def test_capture_desk_state_carries_over_state():
+    win = _FakeCaptureWindow(_desk_with_everything())
+    captured = win._capture_desk_state()
+    check("_capture_desk_state carries over state", captured.state == win.current_desk.state)
+    check("_capture_desk_state still carries over custom_widgets", captured.custom_widgets == win.current_desk.custom_widgets)
+    check("_capture_desk_state still carries over file_type_registry", captured.file_type_registry == win.current_desk.file_type_registry)
+    check("_capture_desk_state still carries over installed_jobs", captured.installed_jobs == win.current_desk.installed_jobs)
+
+
+def test_get_state_dict_reflects_live_state():
+    win = _FakeCaptureWindow(_desk_with_everything())
+    result = win.get_state_dict()
+    check("get_state_dict (workspace.getState) reports the real, non-empty state", result["state"] != {})
+    check(
+        "get_state_dict's reported state matches the live store",
+        set(result["state"]) == {"raycaster.camera.camera-1"},
+    )
+
+
+def test_close_widget_does_not_wipe_state():
+    """Reproduces the reported incident: a Desk with two placed widgets
+    and non-empty state, one widget closed (removed from view._frames,
+    matching what close_widget/close_widget_by_instance_id do before
+    calling save_current_desk), then a save -- state must survive."""
+    frame_a = _FakeFrame("instance-a")
+    frame_b = _FakeFrame("instance-b")
+    desk = _desk_with_everything()
+    win = _FakeCaptureWindow(desk, frames=[frame_a, frame_b])
+
+    before = win._capture_desk_state()
+    check("state present before any widget is closed", before.state != {})
+
+    # Simulate closing frame_b, then the save that follows (the real
+    # save_current_desk does exactly this: recapture, then replace
+    # self.current_desk with the freshly-captured Desk).
+    win.view._frames.remove(frame_b)
+    win.current_desk = win._capture_desk_state()
+
+    check("closing a widget does not wipe the live state store", win.current_desk.state != {})
+    check("state value itself is unchanged", win.current_desk.state["raycaster.camera.camera-1"].value == {"x": 1})
+    check("the closed widget is actually gone from the captured widgets", len(win.current_desk.widgets) == 1)
+
+
+class _FakeDeskOpsWindow:
+    """Exercises change_current_desk_directory/rename_current_desk's
+    own carry-over behavior directly -- save_current_desk/
+    _refresh_picker/_provision_temp_ui/_warn are stubbed no-ops (real
+    add_to_mru/GUI refresh are irrelevant to what's being checked here
+    and add_to_mru writes to the real ~/.desk/recent_desks.json, which
+    a verify script must not touch as a side effect)."""
+
+    def __init__(self, current_desk):
+        self.current_desk = current_desk
+
+    def save_current_desk(self):
+        pass
+
+    def _refresh_picker(self):
+        pass
+
+    def _provision_temp_ui(self, provisioning=None):
+        pass
+
+    def _warn(self, title, message):
+        pass
+
+
+_FakeDeskOpsWindow.change_current_desk_directory = DeskWindow.change_current_desk_directory
+_FakeDeskOpsWindow.rename_current_desk = DeskWindow.rename_current_desk
+
+
+def test_change_directory_carries_over_state_and_other_fields():
+    with tempfile.TemporaryDirectory() as d:
+        old_dir = Path(d) / "old"
+        new_dir = Path(d) / "new"
+        old_dir.mkdir()
+        new_dir.mkdir()
+        desk = _desk_with_everything(path=old_dir / "everything.desk")
+        win = _FakeDeskOpsWindow(desk)
+        win.change_current_desk_directory(new_dir, confirm=lambda: True)
+        check("change_current_desk_directory updates path", win.current_desk.path == new_dir / "everything.desk")
+        check("change_current_desk_directory carries over state", win.current_desk.state == desk.state)
+        check("change_current_desk_directory carries over custom_widgets", win.current_desk.custom_widgets == desk.custom_widgets)
+        check("change_current_desk_directory carries over file_type_registry", win.current_desk.file_type_registry == desk.file_type_registry)
+        check("change_current_desk_directory carries over installed_jobs", win.current_desk.installed_jobs == desk.installed_jobs)
+
+
+def test_rename_carries_over_state_and_other_fields():
+    from unittest.mock import patch
+
+    with tempfile.TemporaryDirectory() as d:
+        directory = Path(d)
+        old_path = directory / "old-name.desk"
+        old_path.write_text("{}")
+        desk = _desk_with_everything(path=old_path)
+        win = _FakeDeskOpsWindow(desk)
+        with patch("desk.shell.window.add_to_mru"):
+            win.rename_current_desk("new-name")
+        check("rename_current_desk updates path", win.current_desk.path == directory / "new-name.desk")
+        check("rename_current_desk actually renamed the file on disk", win.current_desk.path.is_file())
+        check("rename_current_desk carries over state", win.current_desk.state == desk.state)
+        check("rename_current_desk carries over custom_widgets", win.current_desk.custom_widgets == desk.custom_widgets)
+        check("rename_current_desk carries over file_type_registry", win.current_desk.file_type_registry == desk.file_type_registry)
+        check("rename_current_desk carries over installed_jobs", win.current_desk.installed_jobs == desk.installed_jobs)
+
+
+def test_capture_then_save_then_reload_round_trips_state():
+    """The feedback's 'structural finding': every .desk file's state was
+    always {} on disk, precisely because _capture_desk_state wiped it
+    before save_desk ever saw it. Proves the fix closes that too."""
+    with tempfile.TemporaryDirectory() as d:
+        desk = _desk_with_everything(path=Path(d) / "roundtrip.desk")
+        win = _FakeCaptureWindow(desk)
+        captured = win._capture_desk_state()
+        save_desk(captured)
+        reloaded = load_desk(captured.path)
+        check("a real save/reload round-trip no longer loses state", reloaded.state != {})
+        check(
+            "round-tripped state value matches what was live",
+            reloaded.state["raycaster.camera.camera-1"].value == {"x": 1},
+        )
+
+
+test_capture_desk_state_carries_over_state()
+test_get_state_dict_reflects_live_state()
+test_close_widget_does_not_wipe_state()
+test_change_directory_carries_over_state_and_other_fields()
+test_rename_carries_over_state_and_other_fields()
+test_capture_then_save_then_reload_round_trips_state()
 
 
 # ---------- Bridge API, over real HTTP ----------

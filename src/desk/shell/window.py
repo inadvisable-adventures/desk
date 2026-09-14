@@ -5,7 +5,7 @@ import shutil
 import threading
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -1617,25 +1617,21 @@ class DeskWindow(QMainWindow):
                 )
             )
         pan_x, pan_y, scale = self.view.get_view_state()
-        return Desk(
-            path=self.current_desk.path,
+        # TODO 224fbc9: dataclasses.replace, not a hand-enumerated
+        # Desk(...) call -- every field not named below (custom_widgets,
+        # file_type_registry, state, installed_jobs, ...) isn't derived
+        # from anything on the canvas, so it's carried over from the
+        # current in-memory Desk unchanged, automatically, including any
+        # *future* Desk field. Hand-enumerating them here previously
+        # required remembering to add each one by hand and had already
+        # silently dropped Desk.state (wiping the live store, not just
+        # what's written to disk -- see the TODO item for the incident).
+        return replace(
+            self.current_desk,
             widgets=widget_states,
             pan_x=pan_x,
             pan_y=pan_y,
             scale=scale,
-            # Carried over from the current in-memory Desk, not
-            # re-derived from anything on the canvas -- promoted custom
-            # widget definitions (TODO 91b3f42) aren't placed widget
-            # instances themselves, so there's nothing in view._frames
-            # to capture them from.
-            custom_widgets=self.current_desk.custom_widgets,
-            # Same reasoning (TODO b5d52c0): the file type registry
-            # isn't derived from placed widgets either -- carry it over
-            # unchanged, or every save would silently wipe it back to [].
-            file_type_registry=self.current_desk.file_type_registry,
-            # Same reasoning again (TODO 7dca383): an installed job has
-            # no placed widget instance of its own to derive this from.
-            installed_jobs=self.current_desk.installed_jobs,
         )
 
     def get_state_dict(self) -> dict:
@@ -1919,13 +1915,12 @@ class DeskWindow(QMainWindow):
         if not confirm():
             return
         new_path = new_directory / self.current_desk.path.name
-        self.current_desk = Desk(
-            path=new_path,
-            widgets=self.current_desk.widgets,
-            pan_x=self.current_desk.pan_x,
-            pan_y=self.current_desk.pan_y,
-            scale=self.current_desk.scale,
-        )
+        # TODO 224fbc9: dataclasses.replace -- only `path` actually
+        # changes here, so only it needs restating; every other field
+        # (previously hand-listed, and previously missing state/
+        # custom_widgets/file_type_registry/installed_jobs entirely)
+        # carries over automatically.
+        self.current_desk = replace(self.current_desk, path=new_path)
         self.save_current_desk()
         self._provision_temp_ui()
 
@@ -1997,13 +1992,9 @@ class DeskWindow(QMainWindow):
             return
         self.save_current_desk()  # ensure the .desk file exists before renaming it
         self.current_desk.path.rename(new_path)
-        self.current_desk = Desk(
-            path=new_path,
-            widgets=self.current_desk.widgets,
-            pan_x=self.current_desk.pan_x,
-            pan_y=self.current_desk.pan_y,
-            scale=self.current_desk.scale,
-        )
+        # TODO 224fbc9: dataclasses.replace -- see
+        # change_current_desk_directory's identical comment above.
+        self.current_desk = replace(self.current_desk, path=new_path)
         # add_to_mru's own load_mru() filters out the now-nonexistent old
         # path (it keeps only is_file() entries), so the stale name drops
         # out of the persisted MRU automatically.

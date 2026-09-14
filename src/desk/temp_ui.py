@@ -308,7 +308,13 @@ APP_DSL_DIRNAME = "app_dsl"
 # Bridge API" section; `Job`'s own closed Capability-name list gained
 # `installed_jobs`. No DSL change.
 #
-# TODO 13f4ad5: bumped 41 -> 42 -- a source-backed `DefineWidget`'s
+# TODO b9d3de5: bumped 41 -> 42 for a new "Environment variables"
+# section in DOC_TEMPLATE, documenting `DESK_WIDGET_INSTANCE_ID` (the
+# widget-hosted-agent's own placed instance id) -- not a DSL/Bridge API
+# change, but new static content an agent reading this doc needs to
+# know about, same as any other DOC_TEMPLATE addition.
+#
+# TODO 13f4ad5: bumped 42 -> 43 -- a source-backed `DefineWidget`'s
 # generated file now carries a `SourcePath` line recording its
 # authoring source directory (fixing a promotion bug where relocating
 # that directory was guessed from `keyword` instead, which almost
@@ -321,7 +327,7 @@ APP_DSL_DIRNAME = "app_dsl"
 # capability and a breaking change -- rebuilding on demand means `tsc`
 # must be available wherever such a Desk is subsequently opened, not
 # just where it was authored).
-TEMPUI_DOC_VERSION = 42
+TEMPUI_DOC_VERSION = 43
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -393,6 +399,20 @@ it as many times as you like via an MCP tool call with no further
 prompt. Not a dropped-tempui-file DSL keyword like the ones above --
 installation happens via an MCP tool call against a directory you
 already wrote, never via a file dropped in this directory.
+
+## Environment variables
+
+If you're running as the agent behind a `claude`/`Claude (Desk)`
+widget (as opposed to a script invoked via `Job`/`DeskProc`/an
+Installed Job), a few static, launch-time facts about your own placed
+widget instance are available as environment variables rather than
+folded into your prompt -- check for these directly (e.g. `echo
+$DESK_WIDGET_INSTANCE_ID`) rather than assuming one is absent just
+because this document doesn't call it out by name at launch:
+
+- `DESK_WIDGET_INSTANCE_ID` -- this widget instance's own instance id
+  (the same id used internally as your session id for `--resume`/
+  reconnection across a Desk reload).
 
 ## Questions for the user: use QUESTIONS.md, not this DSL
 
@@ -1548,7 +1568,7 @@ version your own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
 
-## Version 42
+## Version 43
 - A promoted, source-backed `DefineWidget` (see "Authoring from real
   source" in `tempui-custom-widgets.md`) no longer bakes its compiled
   `html_b64` into the `.desk` file at promote time -- it's rebuilt
@@ -1603,7 +1623,7 @@ own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
 
-## Version 42
+## Version 43
 - A source-backed `DefineWidget`'s authoring source directory is now
   recorded durably at build time (a new `SourcePath` line / the
   `source_path` field), surviving promotion, save/reload, and even a
@@ -1612,6 +1632,15 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   directory name didn't match the DSL `keyword` (typically CamelCase),
   which is the common case. See "Authoring from real source" in
   `tempui-custom-widgets.md`.
+
+## Version 42
+- A new "Environment variables" section: the agent behind a `claude`/
+  `Claude (Desk)` widget can now read its own placed widget instance
+  id directly from its environment as `DESK_WIDGET_INSTANCE_ID`,
+  instead of having no supported way to learn it. A static,
+  launch-time fact only -- not a live query; the in-process Desk MCP
+  server's own tools (e.g. `desk_reveal_widget`) remain the way to
+  answer anything dynamic (current placements, live state).
 
 ## Version 41
 - A new Bridge API capability, `installed_jobs`:
