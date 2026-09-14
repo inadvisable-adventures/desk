@@ -262,6 +262,99 @@ def test_mic_transcription_sets_text_via_setplaintext():
     )
 
 
+def _selection_texts(widget) -> list[str]:
+    """The plain text each of widget._history's current extra
+    selections covers, with Qt's own U+2029 paragraph-separator
+    (what QTextCursor.selectedText() uses in place of "\n" across a
+    multi-block selection) converted back to "\n" for comparison
+    against the original appended text."""
+    return [selection.cursor.selectedText().replace(" ", "\n") for selection in widget._history.extraSelections()]
+
+
+def test_send_now_highlights_the_user_line():
+    module = _load_widget_module()
+    widget = module.build()
+    widget._session = _FakeSession()
+
+    widget._send_now("hello there")
+
+    check("sending a message adds exactly one extra selection", len(widget._history.extraSelections()) == 1)
+    check("the selection covers exactly the appended '> ' line", _selection_texts(widget) == ["> hello there"])
+    fmt = widget._history.extraSelections()[0].format
+    check("the selection uses USER_MESSAGE_COLOR", fmt.foreground().color() == module.USER_MESSAGE_COLOR)
+    check("the selection is demi-bold", fmt.fontWeight() == module.QFont.Weight.DemiBold)
+
+
+def test_queued_message_highlights_the_user_line():
+    widget = _load_widget_module().build()
+    widget._session = _FakeSession()
+    widget._busy = True
+
+    widget._prompt_input.setPlainText("queue me")
+    widget._on_send_clicked()
+
+    check("queueing a message adds exactly one extra selection", len(widget._history.extraSelections()) == 1)
+    check("the selection covers exactly the '[queued] ' line", _selection_texts(widget) == ["[queued] queue me"])
+
+
+def test_non_user_lines_add_no_selection():
+    widget = _load_widget_module().build()
+
+    widget._on_assistant_text("an assistant reply")
+    widget._on_tool_use("id1", "Write", {"path": "x"})
+    widget._on_tool_result("id1", "ok", False)
+    widget._on_session_error("boom")
+
+    check("no extra selections come from non-user lines", widget._history.extraSelections() == [])
+    check(
+        "the lines still appear as plain text",
+        all(
+            line in widget._history.toPlainText()
+            for line in ["an assistant reply", "[tool] Write(path='x')", "[tool result] ok", "[error] boom"]
+        ),
+    )
+
+
+def test_multiline_user_text_gets_a_single_selection():
+    widget = _load_widget_module().build()
+
+    widget._append_history("line one\nline two\nline three", is_user=True)
+
+    check(
+        "a multi-line user append is covered by exactly one selection spanning the whole text",
+        _selection_texts(widget) == ["line one\nline two\nline three"],
+    )
+
+
+def test_history_plain_text_matches_pre_styling_output():
+    widget = _load_widget_module().build()
+    widget._session = _FakeSession()
+
+    widget._send_now("hi")
+    widget._on_assistant_text("hello back")
+    widget._on_tool_use("id1", "Write", {"path": "x"})
+    widget._on_tool_result("id1", "ok", False)
+    widget._busy = True
+    widget._prompt_input.setPlainText("queued one")
+    widget._on_send_clicked()
+    widget._on_session_error("boom")
+
+    check(
+        "the styling overlay leaves toPlainText() exactly what the old unstyled code produced",
+        widget._history.toPlainText()
+        == "\n".join(
+            [
+                "> hi",
+                "hello back",
+                "[tool] Write(path='x')",
+                "[tool result] ok",
+                "[queued] queued one",
+                "[error] boom",
+            ]
+        ),
+    )
+
+
 test_widget_json_is_well_formed()
 test_window_wiring()
 test_permission_mode_combo_present_and_defaults_to_default()
@@ -273,6 +366,11 @@ test_plain_enter_sends_without_inserting_a_newline()
 test_shift_enter_inserts_a_newline_without_sending()
 test_on_send_clicked_reads_and_clears_the_multiline_box()
 test_mic_transcription_sets_text_via_setplaintext()
+test_send_now_highlights_the_user_line()
+test_queued_message_highlights_the_user_line()
+test_non_user_lines_add_no_selection()
+test_multiline_user_text_gets_a_single_selection()
+test_history_plain_text_matches_pre_styling_output()
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

@@ -8475,7 +8475,7 @@ af7898b. COMPLETED: The state store's (TODO `f68383f`) schema declaration,
    sibling-checkout-path bug TODO `224fbc9`'s own write-up already
    flagged, not caused by this change.
 
-78d6207. Visually differentiate user-entered prompts from Claude's own
+78d6207. COMPLETED: Visually differentiate user-entered prompts from Claude's own
    responses in the Claude (Desk) widget's history
    (`widgets/claude_desk/widget.py`'s `_history`), without breaking
    copy/paste out of it. Right now `_append_history` just appends
@@ -8488,6 +8488,47 @@ af7898b. COMPLETED: The state store's (TODO `f68383f`) schema declaration,
    selection/copy behavior exactly -- no stray markup and no altered
    whitespace when copying a message or a whole transcript.
    [planned: claude-desk-history-user-styling.md]
+
+   COMPLETED: `widgets/claude_desk/widget.py` -- `_append_history`
+   gained an `is_user: bool = False` keyword; `start_session`'s
+   bootstrap-prompt line, `_send_now`'s `"> {text}"` line, and
+   `_on_send_clicked`'s `"[queued] {text}"` line all pass
+   `is_user=True` (every other call site unchanged). A user line gets
+   a `QTextEdit.ExtraSelection` (new `USER_MESSAGE_COLOR =
+   QColor("#3daee9")`, this app's established accent blue -- see
+   `widgets/editor/widget.py`'s own `CARET_COLOR` -- plus
+   `QFont.Weight.DemiBold`), same technique
+   `widgets/voice_input/widget.py`'s `_highlight_low_confidence_words`
+   already established in this codebase: `setExtraSelections()` is a
+   pure render overlay, never part of the document, never in
+   `toPlainText()`, never in what gets copied -- so no risk to the
+   existing plain-text selection/copy behavior. A new
+   `_history_user_selections` list is tracked on the widget and
+   re-applied wholesale on every user line, since
+   `setExtraSelections()` always replaces its entire argument.
+   Character offsets for the selection are computed from the
+   appended text's own length (`end = characterCount() - 1`, `start =
+   end - len(text)`), which is correct for a multi-line prompt too
+   (embedded newlines become block boundaries that still consume
+   exactly one character position each, same as a literal `"\n"`)
+   -- confirmed, not assumed.
+
+   New coverage in `tests/verify/verify_claude_desk_widget.py` (+5
+   tests, 36 checks total in that file): sending/queueing a message
+   each add exactly one extra selection covering exactly that line's
+   own text, styled with `USER_MESSAGE_COLOR`/demi-bold;
+   assistant-text/tool-use/tool-result/error lines add no selection;
+   a multi-line user append gets exactly one selection spanning the
+   whole text (`QTextCursor.selectedText()`'s own U+2029
+   paragraph-separator substitution round-tripped back to `"\n"` for
+   the comparison); and a representative mixed transcript's
+   `_history.toPlainText()` output is confirmed byte-for-byte
+   unchanged from what the pre-styling code would have produced.
+
+   Full `tests/verify/` suite (138 non-disabled scripts) passes beyond
+   the same pre-existing, unrelated
+   `verify_relocate_promoted_widget_source.py` failure already noted
+   in TODO `8df6797`'s own write-up -- no new failures.
 
 a4c3dec. Add an on-hover control in the Claude (Desk) widget's history
    (`widgets/claude_desk/widget.py`'s `_history`) that reloads a

@@ -1,4 +1,4 @@
-# Visually differentiate user prompts in the Claude (Desk) widget's history (TODO `78d6207`)
+# Visually differentiate user prompts in the Claude (Desk) widget's history (TODO `78d6207`) (COMPLETED)
 
 ## Summary
 
@@ -101,3 +101,27 @@ Run the full `tests/verify/` suite and compare the failing set against
 the pre-existing baseline (`git stash`) to confirm nothing else
 regressed. No browser launch needed (offscreen Qt platform, matching
 every other `verify_claude_desk_widget.py` test).
+
+## Verification results
+
+Implemented as designed: `_append_history(text, *, is_user=False)`;
+`USER_MESSAGE_COLOR = QColor("#3daee9")`; a widget-owned
+`_history_user_selections` list re-applied via `setExtraSelections()`
+on every user line. `start_session`'s bootstrap-prompt line,
+`_send_now`'s `"> {text}"` line, and `_on_send_clicked`'s
+`"[queued] {text}"` line all pass `is_user=True`; every other call
+site unchanged.
+
+Extended `tests/verify/verify_claude_desk_widget.py` with the five
+tests described above (36 checks total in that file, 0 failures),
+including a direct check that `_history.toPlainText()` for a
+representative mixed transcript matches exactly what the pre-change
+code would have produced (byte-for-byte), and that
+`QTextCursor.selectedText()`'s own U+2029 paragraph-separator
+substitution for a multi-block selection round-trips back to the
+original `"\n"`-joined text for the multi-line-prompt case.
+
+Full `tests/verify/` suite (138 non-disabled scripts) run: only the
+same pre-existing, unrelated `verify_relocate_promoted_widget_source.py`
+failure from TODO `8df6797`'s own verification remains -- no new
+failures introduced by this change.

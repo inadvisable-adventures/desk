@@ -1,4 +1,5 @@
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
 from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -6,6 +7,7 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QPlainTextEdit,
     QPushButton,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -101,6 +103,12 @@ TASKS_PANEL_HEIGHT = 140
 # scrolls vertically past this height, so nothing is ever lost, only
 # the visible height is capped.
 PROMPT_INPUT_HEIGHT = 60
+
+# TODO 78d6207: this app's established accent blue -- see
+# widgets/editor/widget.py's own CARET_COLOR, which names this exact
+# hex as such -- reused here rather than inventing a new color to
+# visually set user-authored history lines apart from everything else.
+USER_MESSAGE_COLOR = QColor("#3daee9")
 
 
 def _doc_path() -> str:
@@ -242,6 +250,12 @@ class ClaudeDeskWidget(QWidget):
 
         self._history = QPlainTextEdit()
         self._history.setReadOnly(True)
+        # TODO 78d6207: accumulated across the whole session and
+        # re-applied wholesale on every user line (see _append_history)
+        # -- QPlainTextEdit.setExtraSelections() always replaces its
+        # entire argument, so earlier highlights must be tracked here
+        # rather than appended to Qt's own list.
+        self._history_user_selections: list[QTextEdit.ExtraSelection] = []
 
         self._prompt_input = _PromptInput()
         self._prompt_input.setPlaceholderText("Message Claude...")
@@ -308,7 +322,7 @@ class ClaudeDeskWidget(QWidget):
         self._status_label.setText("Connecting...")
         self._set_busy(True)
         if initial_prompt:
-            self._append_history(f"> {initial_prompt}")
+            self._append_history(f"> {initial_prompt}", is_user=True)
         else:
             # Resuming with nothing queued to send: connect() alone
             # never fires turn_complete/session_error (there's no
@@ -434,8 +448,35 @@ class ClaudeDeskWidget(QWidget):
         if adjuster is not None and self._session_id is not None:
             adjuster(self._session_id, TASKS_PANEL_HEIGHT if checked else -TASKS_PANEL_HEIGHT)
 
-    def _append_history(self, text: str) -> None:
+    def _append_history(self, text: str, *, is_user: bool = False) -> None:
         self._history.appendPlainText(text)
+        if not is_user:
+            return
+        # setExtraSelections() (TODO 78d6207) is a pure render overlay
+        # -- never part of the document, never in toPlainText(), never
+        # in what gets copied -- so this adds visual differentiation
+        # with zero risk to today's plain-text selection/copy output.
+        # end/start computed from `text`'s own length, not block
+        # counting: correct whether or not appendPlainText needed to
+        # insert a leading block separator (not part of `text`, so
+        # irrelevant to this arithmetic) and whether `text` itself
+        # contains embedded newlines (each becomes a block boundary
+        # that still consumes exactly one character position, same as
+        # a literal "\n" here) -- covers a multi-line prompt correctly,
+        # not just a single line.
+        end = self._history.document().characterCount() - 1
+        start = end - len(text)
+        cursor = QTextCursor(self._history.document())
+        cursor.setPosition(start)
+        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        selection = QTextEdit.ExtraSelection()
+        selection.cursor = cursor
+        fmt = QTextCharFormat()
+        fmt.setForeground(USER_MESSAGE_COLOR)
+        fmt.setFontWeight(QFont.Weight.DemiBold)
+        selection.format = fmt
+        self._history_user_selections.append(selection)
+        self._history.setExtraSelections(self._history_user_selections)
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
@@ -463,7 +504,7 @@ class ClaudeDeskWidget(QWidget):
         self._queue_label.setVisible(True)
 
     def _send_now(self, text: str) -> None:
-        self._append_history(f"> {text}")
+        self._append_history(f"> {text}", is_user=True)
         self._set_busy(True)
         self._session.send_prompt(text)
 
@@ -485,7 +526,7 @@ class ClaudeDeskWidget(QWidget):
         self._prompt_input.clear()
         if self._busy:
             self._message_queue.append(text)
-            self._append_history(f"[queued] {text}")
+            self._append_history(f"[queued] {text}", is_user=True)
             self._update_queue_label()
         else:
             self._send_now(text)
