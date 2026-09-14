@@ -8424,7 +8424,7 @@ af7898b. COMPLETED: The state store's (TODO `f68383f`) schema declaration,
    actually get torn down (`PyQt6.sip.isdeleted`). Full `tests/verify/`
    regression suite passes (124 scripts total, 0 failures).
 
-8df6797. Make the Claude (Desk) widget's prompt input
+8df6797. COMPLETED: Make the Claude (Desk) widget's prompt input
    (`widgets/claude_desk/widget.py`'s `_prompt_input`, currently a
    single-line `QLineEdit`) a multi-line box that wraps text instead,
    so a long prompt wraps visually rather than scrolling off-screen
@@ -8432,6 +8432,48 @@ af7898b. COMPLETED: The state store's (TODO `f68383f`) schema declaration,
    "send" once `returnPressed` (a `QLineEdit`-only signal) is no
    longer available -- e.g. Enter to send, Shift+Enter for a newline.
    [planned: claude-desk-multiline-prompt-input.md]
+
+   COMPLETED: `widgets/claude_desk/widget.py` -- new
+   `_PromptInput(QPlainTextEdit)` class with a `send_requested`
+   signal: plain Enter/Return (no Shift) emits it instead of inserting
+   a newline; Shift+Enter (or any other key) falls through to normal
+   `QPlainTextEdit` behavior, which inserts one. `_prompt_input` now
+   an instance of it (word-wraps by default, unlike the old
+   `QLineEdit`), fixed to a new `PROMPT_INPUT_HEIGHT = 60` (~3 lines,
+   matching `TASKS_PANEL_HEIGHT`'s own flat-pixel-constant precedent
+   in the same file) so an arbitrarily long prompt can't push the
+   history area off the bottom -- the box still scrolls vertically
+   past that height. `_mic_button`/`_send_button` bottom-aligned in
+   `prompt_row` so they sit at the box's bottom edge rather than
+   Qt's default vertical centering. Every other `_prompt_input` call
+   site (`_on_send_clicked`, the mic-dictation slot) updated from
+   `QLineEdit`'s `text()`/`setText()` to `QPlainTextEdit`'s
+   `toPlainText()`/`setPlainText()` (`clear()` unchanged -- both
+   classes have it).
+
+   New coverage added to `tests/verify/verify_claude_desk_widget.py`
+   (+5 tests, 26 checks total in that file): `_prompt_input` is the
+   new `_PromptInput`/`QPlainTextEdit`; a standalone `_PromptInput`
+   (not the full widget, since the widget's real `send_requested` ->
+   `_on_send_clicked` wiring clears the box as part of actually
+   sending, which would conflate "was a newline ever inserted" with
+   "did the send handler clear afterward") confirms plain Enter emits
+   `send_requested` without inserting a newline, and Shift+Enter
+   inserts a newline without emitting it; `_on_send_clicked` reads/
+   clears the box via the new API and still sends the full multi-line
+   text; the mic-dictation slot sets dictated text via `setPlainText`.
+   Also updated the two disabled-but-still-real scripts that reference
+   `_prompt_input.text()`/`.setText()` directly
+   (`tests/verify/disabled_verify_claude_desk_widget_claude_api.py`,
+   `tests/verify/disabled_verify_claude_desk_widget_mic.py`) to the
+   new API so they stay correct if run by hand.
+
+   Full `tests/verify/` suite (138 non-disabled scripts) passes beyond
+   one pre-existing, unrelated failure
+   (`verify_relocate_promoted_widget_source.py`) confirmed present on
+   unmodified `main` via `git stash` -- same class of hardcoded-
+   sibling-checkout-path bug TODO `224fbc9`'s own write-up already
+   flagged, not caused by this change.
 
 78d6207. Visually differentiate user-entered prompts from Claude's own
    responses in the Claude (Desk) widget's history

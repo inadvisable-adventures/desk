@@ -28,6 +28,8 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 # as every other verify script here that touches window.py.
 import desk.shell.window  # noqa: E402,F401
 
+from PyQt6.QtCore import Qt  # noqa: E402
+from PyQt6.QtTest import QTest  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 app = QApplication(sys.argv)
@@ -120,12 +122,16 @@ class _FakeSession:
     def __init__(self):
         self.start_calls = []
         self.permission_mode_calls = []
+        self.send_prompt_calls = []
 
     def start(self, session_id, resume, model, permission_mode, cwd, initial_prompt):
         self.start_calls.append((session_id, resume, model, permission_mode, cwd, initial_prompt))
 
     def set_permission_mode(self, mode):
         self.permission_mode_calls.append(mode)
+
+    def send_prompt(self, text):
+        self.send_prompt_calls.append(text)
 
     def stop(self):
         # The widget's own __init__ connects self.destroyed to
@@ -189,12 +195,84 @@ def test_set_permission_mode_is_a_real_no_op_before_start():
     check("ClaudeSession.set_permission_mode no-ops before any session has started", True)
 
 
+def test_prompt_input_is_a_wrapping_multiline_box():
+    module = _load_widget_module()
+    widget = module.build()
+    check(
+        "_prompt_input is the new word-wrapping _PromptInput class, not a QLineEdit",
+        isinstance(widget._prompt_input, module._PromptInput),
+    )
+    from PyQt6.QtWidgets import QPlainTextEdit
+
+    check("_PromptInput is a QPlainTextEdit subclass", isinstance(widget._prompt_input, QPlainTextEdit))
+
+
+def test_plain_enter_sends_without_inserting_a_newline():
+    # A standalone _PromptInput, not a full built widget -- the real
+    # ClaudeDeskWidget already wires send_requested to
+    # _on_send_clicked, which clears the box as part of actually
+    # sending, so testing through the full widget would conflate "was
+    # a newline ever inserted" with "did the send handler clear
+    # afterward". This isolates the class's own key handling.
+    box = _load_widget_module()._PromptInput()
+    box.setPlainText("hello")
+    sent = []
+    box.send_requested.connect(lambda: sent.append(True))
+
+    QTest.keyClick(box, Qt.Key.Key_Return)
+
+    check("plain Enter emits send_requested", sent == [True])
+    check("plain Enter does not insert a newline", box.toPlainText() == "hello")
+
+
+def test_shift_enter_inserts_a_newline_without_sending():
+    box = _load_widget_module()._PromptInput()
+    box.setPlainText("hello")
+    box.moveCursor(box.textCursor().MoveOperation.End)
+    sent = []
+    box.send_requested.connect(lambda: sent.append(True))
+
+    QTest.keyClick(box, Qt.Key.Key_Return, Qt.KeyboardModifier.ShiftModifier)
+
+    check("Shift+Enter does not emit send_requested", sent == [])
+    check("Shift+Enter inserts a newline", box.toPlainText() == "hello\n")
+
+
+def test_on_send_clicked_reads_and_clears_the_multiline_box():
+    widget = _load_widget_module().build()
+    fake_session = _FakeSession()
+    widget._session = fake_session
+    widget._session_id = "fake-instance-id"
+
+    widget._prompt_input.setPlainText("first line\nsecond line")
+    widget._on_send_clicked()
+
+    check("_on_send_clicked strips/sends the full multi-line text", "first line\nsecond line" in widget._history.toPlainText())
+    check("_on_send_clicked clears the box afterward", widget._prompt_input.toPlainText() == "")
+
+
+def test_mic_transcription_sets_text_via_setplaintext():
+    from desk.speech import TranscriptionResult
+
+    widget = _load_widget_module().build()
+    widget._on_mic_transcription_finished(TranscriptionResult(text="dictated text", words=[]), None)
+    check(
+        "dictated text lands in _prompt_input via the new setPlainText/toPlainText API",
+        widget._prompt_input.toPlainText() == "dictated text",
+    )
+
+
 test_widget_json_is_well_formed()
 test_window_wiring()
 test_permission_mode_combo_present_and_defaults_to_default()
 test_start_session_passes_the_selected_permission_mode()
 test_changing_the_combo_calls_set_permission_mode_live()
 test_set_permission_mode_is_a_real_no_op_before_start()
+test_prompt_input_is_a_wrapping_multiline_box()
+test_plain_enter_sends_without_inserting_a_newline()
+test_shift_enter_inserts_a_newline_without_sending()
+test_on_send_clicked_reads_and_clears_the_multiline_box()
+test_mic_transcription_sets_text_via_setplaintext()
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

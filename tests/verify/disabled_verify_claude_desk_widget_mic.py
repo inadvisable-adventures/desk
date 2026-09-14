@@ -128,7 +128,7 @@ def test_mic_button_dictates_into_the_prompt_box_without_sending():
 
     ok = wait_until(lambda: widget._prompt_input.isEnabled())
     check("controls re-enable once transcription finishes", ok)
-    check("the dictated text landed in the prompt box", "dictation" in widget._prompt_input.text().lower())
+    check("the dictated text landed in the prompt box", "dictation" in widget._prompt_input.toPlainText().lower())
     check("mic button reverts to Record", widget._mic_button.text() == "●")
     check("nothing was sent to the session -- the user still has to hit Send", sent == [])
 

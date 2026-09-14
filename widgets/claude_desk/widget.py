@@ -1,8 +1,8 @@
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QListWidget,
     QPlainTextEdit,
     QPushButton,
@@ -94,6 +94,14 @@ DEFAULT_PERMISSION_MODE_INDEX = 0  # "Default"
 # the panel's own QListWidget scrolls internally past this height.
 TASKS_PANEL_HEIGHT = 140
 
+# TODO 8df6797: fixed, not sizeHint-driven, matching TASKS_PANEL_HEIGHT's
+# own precedent above -- ~3 lines at the default font size. Keeps the
+# prompt box multi-line without letting an arbitrarily long prompt push
+# the history area off the bottom of the widget; _PromptInput still
+# scrolls vertically past this height, so nothing is ever lost, only
+# the visible height is capped.
+PROMPT_INPUT_HEIGHT = 60
+
 
 def _doc_path() -> str:
     directory = current_context.get_current_desk_directory()
@@ -114,6 +122,26 @@ def _development_process_instruction() -> str:
 
 def _format_tool_input(tool_input: dict) -> str:
     return ", ".join(f"{key}={value!r}" for key, value in tool_input.items())
+
+
+class _PromptInput(QPlainTextEdit):
+    """A word-wrapping, multi-line stand-in for the QLineEdit this
+    widget's prompt box used to be (TODO 8df6797) -- QPlainTextEdit has
+    no QLineEdit-only `returnPressed` signal, so this recreates the
+    same "Enter submits" affordance itself: a bare Return/Enter (no
+    Shift) emits `send_requested` instead of inserting a newline;
+    Shift+Enter (or any other key) falls through to the normal
+    QPlainTextEdit behavior, which inserts one."""
+
+    send_requested = pyqtSignal()
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not (
+            event.modifiers() & Qt.KeyboardModifier.ShiftModifier
+        ):
+            self.send_requested.emit()
+            return
+        super().keyPressEvent(event)
 
 
 class ClaudeDeskWidget(QWidget):
@@ -215,9 +243,10 @@ class ClaudeDeskWidget(QWidget):
         self._history = QPlainTextEdit()
         self._history.setReadOnly(True)
 
-        self._prompt_input = QLineEdit()
+        self._prompt_input = _PromptInput()
         self._prompt_input.setPlaceholderText("Message Claude...")
-        self._prompt_input.returnPressed.connect(self._on_send_clicked)
+        self._prompt_input.setFixedHeight(PROMPT_INPUT_HEIGHT)
+        self._prompt_input.send_requested.connect(self._on_send_clicked)
         self._send_button = QPushButton("Send")
         self._send_button.clicked.connect(self._on_send_clicked)
         self._mic_button = QPushButton("●")
@@ -246,8 +275,10 @@ class ClaudeDeskWidget(QWidget):
 
         prompt_row = QHBoxLayout()
         prompt_row.addWidget(self._mic_button)
+        prompt_row.setAlignment(self._mic_button, Qt.AlignmentFlag.AlignBottom)
         prompt_row.addWidget(self._prompt_input, stretch=1)
         prompt_row.addWidget(self._send_button)
+        prompt_row.setAlignment(self._send_button, Qt.AlignmentFlag.AlignBottom)
 
         layout = QVBoxLayout(self)
         layout.addLayout(top_row)
@@ -448,7 +479,7 @@ class ClaudeDeskWidget(QWidget):
             self._status_label.setText(idle_status)
 
     def _on_send_clicked(self) -> None:
-        text = self._prompt_input.text().strip()
+        text = self._prompt_input.toPlainText().strip()
         if not text:
             return
         self._prompt_input.clear()
@@ -500,7 +531,7 @@ class ClaudeDeskWidget(QWidget):
         # Set, not sent: the user reviews/edits a dictated prompt the
         # same way they would review anything they typed -- nothing
         # goes to Claude until they hit Send/Enter themselves.
-        self._prompt_input.setText(result.text)
+        self._prompt_input.setPlainText(result.text)
         self._status_label.setText("Idle.")
 
     def _on_assistant_text(self, text: str) -> None:

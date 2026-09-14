@@ -220,7 +220,7 @@ def test_widget_history_and_permission_ui():
             check("widget goes idle once the first turn completes", ok)
             check("history contains the bootstrap prompt's own opening text", "running inside of Desk" in widget._history.toPlainText())
 
-            widget._prompt_input.setText("Use the Write tool to create a file named widget-probe.txt containing hi.")
+            widget._prompt_input.setPlainText("Use the Write tool to create a file named widget-probe.txt containing hi.")
             widget._on_send_clicked()
 
             # isVisibleTo(widget), not isVisible(): confirmed directly
@@ -275,7 +275,7 @@ def test_message_queue_sends_in_order_once_idle():
             widget.start_session(str(uuid.uuid4()), resume=False, extra_instructions="")
             check("widget starts busy (bootstrap turn in flight)", widget._busy is True)
 
-            widget._prompt_input.setText("Reply with exactly the word: first")
+            widget._prompt_input.setPlainText("Reply with exactly the word: first")
             widget._on_send_clicked()
             check("a message sent while busy does not dispatch immediately", sent_prompts == [])
             check("Send button relabels to Queue while busy", widget._send_button.text() == "Queue")
@@ -283,7 +283,7 @@ def test_message_queue_sends_in_order_once_idle():
             check("the queue label reports one queued message", widget._queue_label.text() == "Queued: 1")
             check("history records the queued submission", "[queued] Reply with exactly the word: first" in widget._history.toPlainText())
 
-            widget._prompt_input.setText("Reply with exactly the word: second")
+            widget._prompt_input.setPlainText("Reply with exactly the word: second")
             widget._on_send_clicked()
             check("a second message queues behind the first, not sent yet", sent_prompts == [])
             check("the queue label now reports two queued messages", widget._queue_label.text() == "Queued: 2")

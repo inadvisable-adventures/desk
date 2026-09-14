@@ -1,4 +1,4 @@
-# Multi-line, word-wrapping prompt input for the Claude (Desk) widget (TODO `8df6797`)
+# Multi-line, word-wrapping prompt input for the Claude (Desk) widget (TODO `8df6797`) (COMPLETED)
 
 ## Summary
 
@@ -87,3 +87,26 @@ of sending.
 Run the full `tests/verify/` suite and compare the failing set against
 the pre-existing baseline (`git stash`) to confirm nothing else
 regressed.
+
+## Verification results
+
+Implemented as designed: `_PromptInput(QPlainTextEdit)` with a
+`send_requested` signal, `PROMPT_INPUT_HEIGHT = 60`, bottom-aligned
+mic/send buttons. Extended `tests/verify/verify_claude_desk_widget.py`
+with the five tests described above (26 checks total in that file, 0
+failures). Also updated the two disabled-but-still-real scripts that
+reference `_prompt_input.text()`/`.setText()` directly
+(`tests/verify/disabled_verify_claude_desk_widget_claude_api.py`,
+`tests/verify/disabled_verify_claude_desk_widget_mic.py`) to the new
+`toPlainText()`/`setPlainText()` API so they stay correct if run by
+hand.
+
+Full `tests/verify/` suite run (138 non-disabled scripts): only
+`tests/verify/verify_relocate_promoted_widget_source.py` fails --
+confirmed pre-existing via `git stash` (fails identically,
+with the same segfault, on unmodified `main`; its own traceback shows
+it's importing `desk.shell.window` from a hardcoded sibling checkout
+path rather than this repo, the same class of bug TODO `224fbc9`'s own
+write-up already flags), not caused by this change. No browser launch
+was needed for this widget's own verification (offscreen Qt platform,
+matching every other `verify_claude_desk_widget.py` test).
