@@ -84,6 +84,26 @@ Authoring happens once in TS + template HTML; `python3
 `desk_widgets/<name>` once promoted) repackages it any time it changes,
 and the packaging step is entirely mechanical and never hand-edited.
 
+**Current state (as of TODO 13f4ad5):** the generated `DefineWidget`
+file also carries a `SourcePath` line naming the directory it was
+built from -- Desk records this as `CustomWidgetDefinition.source_path`
+and uses it to relocate the source directory on promotion, instead of
+(as it originally, buggily did) reconstructing that directory from the
+`DefineWidget` line's own `keyword`, which is almost never the same
+string as this (kebab-case) directory name. A promoted, source-backed
+widget also no longer keeps a baked `html_b64` copy in the `.desk`
+file -- it's rebuilt fresh from `desk_widgets/<name>/` into a
+gitignored `desk_widgets/<name>/.build/` cache every time Desk
+registers it (`desk.custom_widgets.build_from_source`), so `tsc` must
+be available wherever such a Desk is subsequently opened, not just
+where it was authored/promoted. Desk itself keeps the *project's own*
+`.gitignore` covering that cache (TODO 1c67fe5,
+`desk.temp_ui.ensure_desk_widgets_gitignore_entry`, a
+`desk_widgets/**/.build/` entry -- narrower than this repo's own
+top-level `**/.build/`), checked at startup/Desk-switch and again
+right after a promotion, both moments `desk_widgets/` can first come
+to exist.
+
 ### Where the build script itself lives (TODO 029047b)
 
 It isn't a file seeded once into a new project (as it originally was,

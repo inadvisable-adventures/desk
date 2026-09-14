@@ -12,7 +12,7 @@ from pathlib import Path
 from PyQt6.QtCore import QPointF, Qt, QTimer
 from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QWidget
 
-from desk.custom_widgets import materialize
+from desk.custom_widgets import build_from_source, materialize
 from desk.desks import (
     DESK_SUFFIX,
     Desk,
@@ -63,8 +63,8 @@ from desk.transforms import PROJECT_TRANSFORMS_DIRNAME, TEMP_TRANSFORMS_DIRNAME
 from desk_services.popups import get_service as get_popups_service
 from desk_services.transforms import get_service as get_transforms_service
 from desk.temp_ui import (
-    CUSTOM_WIDGET_SRC_DIRNAME,
     CustomWidgetDefinition,
+    DESK_WIDGETS_BUILD_GITIGNORE_ENTRY,
     DOC_FILENAME,
     JobDefinition,
     MARKDOWN_KEYWORD,
@@ -74,6 +74,7 @@ from desk.temp_ui import (
     SCRATCH_KEYWORD,
     TEMP_UI_DIRNAME,
     detect_temp_ui_kind,
+    ensure_desk_widgets_gitignore_entry,
     is_temp_ui_filename,
     parse_define_widget,
     parse_desk_proc,
@@ -2035,6 +2036,17 @@ class DeskWindow(QMainWindow):
         temp_dir = self._temp_ui_manager.provision(directory, ask_create_dir, ask_gitignore)
         self._ensure_questions_watcher()
         self._provision_schema_files(directory, temp_dir)
+        # TODO 1c67fe5: covers a project that already had desk_widgets/
+        # from before this check existed (or from work done outside
+        # Desk) -- not gated by `provisioning`/the two confirms above,
+        # since it's an independent, unrelated .gitignore concern that
+        # only ever prompts at all once desk_widgets/ actually exists
+        # (see ensure_desk_widgets_gitignore_entry's own docstring),
+        # which a brand-new `new_desk` flow never has yet anyway.
+        ensure_desk_widgets_gitignore_entry(
+            directory,
+            self._confirm_fn("Custom Widgets", f"Add “{DESK_WIDGETS_BUILD_GITIGNORE_ENTRY}” to .gitignore?"),
+        )
 
     def _provision_schema_files(self, directory: Path, temp_dir: Path | None) -> None:
         """Re-derives every top-level desk.state.* schema file's own
@@ -2543,14 +2555,29 @@ class DeskWindow(QMainWindow):
             )
             return False
 
-        directory = materialize(self.current_desk.directory / TEMP_UI_DIRNAME, definition)
-        if directory is None:
-            return False
-        # TODO 5995ffd: hashing the already-available base64 text
-        # directly (a deterministic encoding of the decoded HTML) is
-        # equivalent to hashing the decoded document itself, and avoids
-        # a second decode here.
-        content_hash = hashlib.md5(definition.html_b64.encode("ascii")).hexdigest()[:12]
+        if definition.source_path is not None and not definition.html_b64:
+            # TODO 13f4ad5: a source-backed, promoted widget doesn't
+            # keep a baked html_b64 copy -- rebuild it fresh from its
+            # durably-recorded source directory instead. A definition
+            # that's still tempui-sourced always has html_b64 already
+            # (built by hand via .desk_temp/build_widget.py before the
+            # DefineWidget file was even dropped), so this only ever
+            # triggers for a promoted definition loaded from the .desk
+            # file, or right after promotion strips it (see
+            # _on_tempui_promote_requested).
+            directory = build_from_source(self.current_desk.directory, definition.source_path)
+            if directory is None:
+                return False
+            content_hash = hashlib.md5((directory / "index.html").read_bytes()).hexdigest()[:12]
+        else:
+            directory = materialize(self.current_desk.directory / TEMP_UI_DIRNAME, definition)
+            if directory is None:
+                return False
+            # TODO 5995ffd: hashing the already-available base64 text
+            # directly (a deterministic encoding of the decoded HTML)
+            # is equivalent to hashing the decoded document itself, and
+            # avoids a second decode here.
+            content_hash = hashlib.md5(definition.html_b64.encode("ascii")).hexdigest()[:12]
         info = WidgetInfo(
             id=keyword,
             path=directory,
@@ -2749,12 +2776,21 @@ class DeskWindow(QMainWindow):
         confirm, saves the widget's definition permanently into the
         current .desk file, removes the original DefineWidget tempui
         file (the .desk file becomes the sole remaining source of
-        truth), and re-syncs the doc. No re-mounting is needed --
-        materialize always regenerates the same shared
-        .desk_temp/custom_widgets/<keyword>/ cache directory regardless
-        of source, so the already-mounted server route keeps serving
-        the exact same content uninterrupted; only which side is
-        authoritative changes."""
+        truth), and re-syncs the doc.
+
+        For a hand-authored, inline-only definition (no source_path),
+        no re-mounting is needed -- materialize always regenerates the
+        same shared .desk_temp/custom_widgets/<keyword>/ cache
+        directory regardless of source, so the already-mounted server
+        route keeps serving the exact same content uninterrupted; only
+        which side is authoritative changes. A source-backed
+        definition (TODO 13f4ad5) is different: it never keeps a baked
+        html_b64 copy in the .desk file, so after its source directory
+        is relocated (_relocate_promoted_widget_source) it's
+        re-registered from that new location -- the same "same keyword,
+        same source" refresh path _register_custom_widget already
+        supports -- which rebuilds+remounts it and recomputes
+        content_hash against the fresh build output."""
         if not isinstance(frame.content, ChromiumWidget):
             return
         keyword = frame.content.widget_id
@@ -2772,11 +2808,31 @@ class DeskWindow(QMainWindow):
             return
         self.current_desk.custom_widgets.append(definition)
         self._custom_widget_sources[keyword] = "desk"
-        self.save_current_desk()
-        source_path = self._custom_widget_source_paths.pop(keyword, None)
-        if source_path is not None and source_path.is_file():
-            source_path.unlink()
+        tempui_file_path = self._custom_widget_source_paths.pop(keyword, None)
+        if tempui_file_path is not None and tempui_file_path.is_file():
+            tempui_file_path.unlink()
         self._relocate_promoted_widget_source(keyword)
+        # TODO 1c67fe5: this is the other moment (besides
+        # _provision_temp_ui at startup/Desk-switch) desk_widgets/ can
+        # first come to exist -- ensure its rebuilt-on-demand .build/
+        # caches are gitignored right away, not just from the next
+        # startup onward.
+        ensure_desk_widgets_gitignore_entry(
+            self.current_desk.directory,
+            self._confirm_fn("Custom Widgets", f"Add “{DESK_WIDGETS_BUILD_GITIGNORE_ENTRY}” to .gitignore?"),
+        )
+        # TODO 13f4ad5: only switch to the never-bakes-html_b64,
+        # rebuilt-on-demand behavior if the recorded source directory
+        # actually exists on disk (whether relocation just moved it
+        # there, or it was already there) -- not merely because
+        # source_path is set. Guards against stripping the one working
+        # copy of a widget's content out from under it in the rare case
+        # its source directory went missing between being authored and
+        # being promoted.
+        if definition.source_path is not None and (self.current_desk.directory / definition.source_path).is_dir():
+            definition.html_b64 = ""
+            self._register_custom_widget(definition, source="desk")
+        self.save_current_desk()
         # TODO 6857997/2b2a642: the widget is now a permanent, first
         # -class part of this Desk -- flip the already-registered
         # WidgetInfo in place (no need to re-materialize/re-mount,
@@ -2795,38 +2851,58 @@ class DeskWindow(QMainWindow):
         """TODO 59c5a70: moves a promoted widget's authoring source
         directory (see "Authoring from real source" in
         tempui-custom-widgets.md, TODO b324217) out of
-        .desk_temp/widgets/<keyword>/ -- gitignored, disposable-support
+        .desk_temp/widgets/<name>/ -- gitignored, disposable-support
         territory -- into a permanent, non-gitignored desk_widgets/
-        <keyword>/ project subdirectory, matching the promoted
-        definition's own move into the .desk file. Not every custom
-        widget has a source directory to move (a hand-authored, inline
-        -only one never did) -- a missing source directory is a no-op,
-        not an error (logged at INFO, not raised or warned -- TODO
-        a820354). A pre-existing destination is left alone
+        <name>/ project subdirectory, matching the promoted
+        definition's own move into the .desk file.
+
+        TODO 13f4ad5: resolves the source directory from the
+        definition's own durably-recorded source_path, not by
+        reconstructing .desk_temp/widgets/<keyword>/ from `keyword` --
+        that guess is almost always wrong, since a source directory's
+        real (kebab-case) name is almost never the same string as its
+        DSL keyword (typically CamelCase), which silently no-op'd
+        relocation for nearly every real-source widget. The destination
+        directory name likewise comes from the source directory's own
+        name, not `keyword`, for the same reason. On a successful move,
+        source_path is updated in place to the new location so the
+        very next save (by the caller) persists it correctly.
+
+        Not every custom widget has a source directory to move (a
+        hand-authored, inline-only one never did, and neither does a
+        definition saved before this field existed) -- a missing
+        source_path, or a source_path whose directory doesn't exist, is
+        a no-op, not an error (logged at INFO, not raised or warned --
+        TODO a820354). A pre-existing destination is left alone
         (logged, not raised): the .desk file promotion above has
         already succeeded by this point, and a problem with this
         secondary bookkeeping step shouldn't make the whole promotion
         look like it failed."""
-        source_dir = self.current_desk.directory / TEMP_UI_DIRNAME / CUSTOM_WIDGET_SRC_DIRNAME / keyword
+        definition = self._custom_widget_definitions.get(keyword)
+        if definition is None or definition.source_path is None:
+            logger.info(
+                "No recorded source path for promoted widget %r -- nothing to relocate "
+                "(expected for a hand-authored, inline-only widget)",
+                keyword,
+            )
+            return
+        source_dir = self.current_desk.directory / definition.source_path
         if not source_dir.is_dir():
             # TODO a820354: quiet-by-default (logger.info, not
             # .warning) -- the common case really is "nothing to
             # move," and warning-by-default would be noisy for every
             # widget doing nothing wrong. Still a real breadcrumb for
-            # the uncommon case: a widget whose source genuinely exists,
-            # just at an older convention's path (this project's own
-            # pre-version-14 custom_widget_src/<name>/), gets this exact
-            # same silent no-op today with nothing to distinguish it.
+            # the uncommon case: a widget whose source directory was
+            # itself moved or deleted outside Desk since it was
+            # recorded.
             logger.info(
-                "No authoring source directory found for promoted widget %r at %s "
-                "-- nothing to relocate (expected for a hand-authored, inline-only "
-                "widget; if this widget's source exists at an older convention's "
-                "location, it won't be found here)",
-                keyword,
+                "Recorded source path %s for promoted widget %r does not exist "
+                "-- nothing to relocate",
                 source_dir,
+                keyword,
             )
             return
-        destination_dir = self.current_desk.directory / PROMOTED_WIDGET_SRC_DIRNAME / keyword
+        destination_dir = self.current_desk.directory / PROMOTED_WIDGET_SRC_DIRNAME / source_dir.name
         if destination_dir.exists():
             logger.warning(
                 "Not relocating promoted widget %r's authoring source: %s already exists",
@@ -2836,6 +2912,9 @@ class DeskWindow(QMainWindow):
             return
         destination_dir.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(source_dir), str(destination_dir))
+        definition.source_path = (
+            Path(PROMOTED_WIDGET_SRC_DIRNAME) / source_dir.name
+        ).as_posix()
 
     def _on_rename_requested(self) -> None:
         name = self._prompt_fn(

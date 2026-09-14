@@ -187,7 +187,11 @@ def test_desk_custom_widgets_round_trip():
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         path = Path(d) / "test.desk"
         definition = CustomWidgetDefinition(
-            keyword="KanbanBoard", label="Kanban Board", html_b64=SAMPLE_HTML_B64, default_size=(600, 400)
+            keyword="KanbanBoard",
+            label="Kanban Board",
+            html_b64=SAMPLE_HTML_B64,
+            default_size=(600, 400),
+            source_path="desk_widgets/kanban-board",
         )
         desk = Desk(path=path, custom_widgets=[definition])
         save_desk(desk)
@@ -198,6 +202,8 @@ def test_desk_custom_widgets_round_trip():
         assert got.label == "Kanban Board"
         assert got.html_b64 == SAMPLE_HTML_B64
         assert got.default_size == (600, 400)
+        # TODO 13f4ad5
+        assert got.source_path == "desk_widgets/kanban-board"
     print("Desk.custom_widgets round-trips through save_desk/load_desk: PASS")
 
 
@@ -208,6 +214,22 @@ def test_desk_custom_widgets_defaults_empty_for_old_file():
         loaded = load_desk(path)
         assert loaded.custom_widgets == []
     print("old-shaped .desk file (no custom_widgets key) loads with default []: PASS")
+
+
+def test_desk_custom_widget_source_path_defaults_none_for_old_entry():
+    # TODO 13f4ad5: a .desk file's custom_widgets entry saved before
+    # source_path existed has no such key at all -- same shape as a
+    # hand-authored, inline-only widget that never had one.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        path = Path(d) / "old_custom_widget.desk"
+        path.write_text(
+            '{"widgets": [], "pan_x": 0.0, "pan_y": 0.0, "scale": 1.0, "custom_widgets": '
+            f'[{{"keyword": "KanbanBoard", "label": "Kanban Board", "html_b64": "{SAMPLE_HTML_B64}"}}]}}'
+        )
+        loaded = load_desk(path)
+        assert len(loaded.custom_widgets) == 1
+        assert loaded.custom_widgets[0].source_path is None
+    print("custom_widgets entry saved before source_path existed loads with source_path=None: PASS")
 
 
 # ---------- ServerHandle.mount_html_widget against a real running server ----------
@@ -702,6 +724,7 @@ test_sync_custom_widgets_doc_section_noop_if_doc_missing()
 test_sync_custom_widgets_doc_section_appends_then_patches_in_place()
 test_desk_custom_widgets_round_trip()
 test_desk_custom_widgets_defaults_empty_for_old_file()
+test_desk_custom_widget_source_path_defaults_none_for_old_entry()
 test_mount_html_widget_serves_over_real_http()
 test_register_custom_widget_success()
 test_register_custom_widget_desk_sourced_is_not_tempui_only()

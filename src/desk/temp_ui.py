@@ -5,6 +5,8 @@ from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from desk.git_utils import find_git_root
+
 TEMP_UI_DIRNAME = ".desk_temp"
 DOC_FILENAME = "desk-temporary-ui.md"
 # **/__pycache__/ covers what running a seeded scripts/todo_item_ids.py
@@ -24,6 +26,14 @@ GITIGNORE_COMMENT = "# Desk-specific"
 # matching the promoted definition's own move into the .desk file).
 CUSTOM_WIDGET_SRC_DIRNAME = "widgets"
 PROMOTED_WIDGET_SRC_DIRNAME = "desk_widgets"
+
+# TODO 13f4ad5: where desk.custom_widgets.build_from_source writes a
+# source-backed promoted widget's rebuilt-on-demand HTML -- gitignored,
+# regenerated fresh every time Desk registers the widget. Defined here
+# (not in custom_widgets.py, which already imports from this module)
+# so ensure_desk_widgets_gitignore_entry/DESK_WIDGETS_BUILD_GITIGNORE_
+# ENTRY below can reference it without an import cycle.
+SOURCE_BUILD_CACHE_DIRNAME = ".build"
 
 # TODO 3b1ef3d: shared-components/ (this repo's own root, checked into
 # git -- see its own README.md) is the source of truth for a small
@@ -297,7 +307,21 @@ APP_DSL_DIRNAME = "app_dsl"
 # just an agent via `desk_run_installed_job`. New bullet in "The Desk
 # Bridge API" section; `Job`'s own closed Capability-name list gained
 # `installed_jobs`. No DSL change.
-TEMPUI_DOC_VERSION = 41
+#
+# TODO 13f4ad5: bumped 41 -> 42 -- a source-backed `DefineWidget`'s
+# generated file now carries a `SourcePath` line recording its
+# authoring source directory (fixing a promotion bug where relocating
+# that directory was guessed from `keyword` instead, which almost
+# never matches the real, kebab-case directory name), and a promoted
+# source-backed widget no longer bakes `html_b64` into the `.desk`
+# file -- it's rebuilt on demand into a gitignored
+# `desk_widgets/<name>/.build/` cache instead. "Authoring from real
+# source"/"Promoting a defined widget to the Desk" updated; new
+# changelog entries in both split docs (this is both a bugfix/new
+# capability and a breaking change -- rebuilding on demand means `tsc`
+# must be available wherever such a Desk is subsequently opened, not
+# just where it was authored).
+TEMPUI_DOC_VERSION = 42
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -766,7 +790,11 @@ Then `python3 .desk_temp/build_widget.py .desk_temp/widgets/<name>`
 compiles it (`tsc -p <dir>`), concatenates the compiled JS, substitutes
 it into `widget.html`'s marker, base64-encodes the result, and writes a
 fresh `DefineWidget` tempui file under `.desk_temp/` — printing the
-path it wrote.
+path it wrote. That file also records a `SourcePath` line naming
+`<name>`'s directory (TODO 13f4ad5) — Desk uses this durable record to
+find the real source directory later, rather than guessing it back
+from the `DefineWidget` line's own `keyword`, which is almost never
+the same string as this (kebab-case) directory name.
 
 Once promoted (see "Promoting a defined widget to the Desk" below), the
 source directory moves to `desk_widgets/<name>/` at the project root —
@@ -842,6 +870,19 @@ same reason — a promoted widget is now a permanent part of the
 project, so its source shouldn't keep living in `.desk_temp` either.
 Invocation (see above) keeps working exactly the same afterward,
 promoted or not.
+
+A source-backed promoted widget (TODO 13f4ad5) does **not** keep a
+baked copy of its compiled HTML in the `.desk` file — instead Desk
+rebuilds it fresh from `desk_widgets/<name>/` into a gitignored
+`desk_widgets/<name>/.build/` cache every time it registers this
+widget (startup, Desk switch, or right after promotion itself), the
+same compile-and-package step `build_widget.py` runs by hand. This
+means `tsc` (and anything else that widget's own build needs) must be
+available wherever a Desk containing it is subsequently opened, not
+just on the machine it was authored/promoted on — see
+`tempui-breaking-changes.md`. A hand-authored, inline-only
+`DefineWidget` (no source directory) is unaffected: there's nothing to
+rebuild from, so it keeps today's baked-`html_b64` behavior.
 
 ## The Desk Bridge API — what your widget's own JS can call
 
@@ -1507,6 +1548,19 @@ version your own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
 
+## Version 42
+- A promoted, source-backed `DefineWidget` (see "Authoring from real
+  source" in `tempui-custom-widgets.md`) no longer bakes its compiled
+  `html_b64` into the `.desk` file at promote time -- it's rebuilt
+  fresh into a gitignored `desk_widgets/<name>/.build/` cache every
+  time Desk registers it (startup, Desk switch, or right after
+  promotion) instead. This means `tsc` (and anything else that
+  widget's own build needs) must be available wherever a Desk
+  containing one is subsequently opened, not just the machine it was
+  originally authored/promoted on. A hand-authored, inline-only
+  `DefineWidget` (no source directory) is unaffected -- it still bakes
+  `html_b64` exactly as before.
+
 ## Version 18
 - `DefineWidget` no longer auto-places one instance the first time a
   brand-new keyword is registered (this reverts the Version 12 new
@@ -1548,6 +1602,16 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 42
+- A source-backed `DefineWidget`'s authoring source directory is now
+  recorded durably at build time (a new `SourcePath` line / the
+  `source_path` field), surviving promotion, save/reload, and even a
+  restart -- fixes a bug where promoting a widget silently failed to
+  relocate its source directory whenever the real (kebab-case)
+  directory name didn't match the DSL `keyword` (typically CamelCase),
+  which is the common case. See "Authoring from real source" in
+  `tempui-custom-widgets.md`.
 
 ## Version 41
 - A new Bridge API capability, `installed_jobs`:
@@ -2056,6 +2120,12 @@ def build_widget(widget_dir: Path) -> tuple[str, str]:
     lines.extend(
         f"StateSchema\\t{key}\\t{type_expr}" for key, type_expr in manifest.get("state_schema", {}).items()
     )
+    # TODO 13f4ad5: records the directory this file was literally built
+    # from (Desk resolves it against the project directory) so a later
+    # promotion can relocate the real source directory without having
+    # to guess it back from `keyword` -- which is almost never the same
+    # string as this (kebab-case) directory name.
+    lines.append(f"SourcePath\\t{widget_dir.as_posix()}")
     lines.extend(f"Html\\t{chunk}" for chunk in _chunk(html_b64, HTML_CHUNK_SIZE))
     return manifest["keyword"], "\\n".join(lines) + "\\n"
 
@@ -2531,7 +2601,17 @@ class CustomWidgetDefinition:
     with no `capabilities` key. `state_schema` (TODO af7898b) is the
     same key -> TypeScript-type-expression-string dict a real
     `widget.json`'s own `state_schema` field would be -- see
-    desk.schema_types and plans/state-store-schema-core.md."""
+    desk.schema_types and plans/state-store-schema-core.md.
+    `source_path` (TODO 13f4ad5) is the project-directory-relative,
+    POSIX-style path to this widget's current authoring source
+    directory (e.g. `.desk_temp/widgets/pdf-viewer`, later
+    `desk_widgets/pdf-viewer` once promoted) -- `None` for a
+    hand-authored, inline-only widget with no source directory at all,
+    or a definition saved before this field existed. This is the
+    durable record `_relocate_promoted_widget_source`/
+    `_register_custom_widget` (desk.shell.window) use instead of
+    reconstructing a source directory from `keyword`, which almost
+    never matches the real (kebab-case) directory name."""
 
     keyword: str
     label: str
@@ -2539,6 +2619,7 @@ class CustomWidgetDefinition:
     default_size: tuple[int, int] | None = None
     capabilities: list[str] = field(default_factory=list)
     state_schema: dict[str, str] = field(default_factory=dict)
+    source_path: str | None = None
 
 
 def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
@@ -2550,7 +2631,9 @@ def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
     `StateSchema<TAB>key<TAB>type_expr` lines (TODO af7898b -- same
     repeatable shape; a duplicate key keeps the last one in file order,
     the same way a real widget.json's own state_schema dict would
-    behave for a duplicate JSON key), and one or more
+    behave for a duplicate JSON key), an optional `SourcePath<TAB>path`
+    line (TODO 13f4ad5 -- the project-relative authoring source
+    directory this file was built from, if any), and one or more
     `Html<TAB>base64-chunk` lines (concatenated in file order before
     decoding -- decoding itself happens later, in
     desk.custom_widgets.materialize, not here). Returns None if the
@@ -2570,6 +2653,7 @@ def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
     size: tuple[int, int] | None = None
     capabilities: list[str] = []
     state_schema: dict[str, str] = {}
+    source_path: str | None = None
     html_chunks: list[str] = []
     for line in lines[1:]:
         if line.startswith("Size\t"):
@@ -2590,6 +2674,10 @@ def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
                 type_expr = parts[2].strip()
                 if key and type_expr:
                     state_schema[key] = type_expr
+        elif line.startswith("SourcePath\t"):
+            path = line.split("\t", 1)[1].strip()
+            if path:
+                source_path = path
         elif line.startswith("Html\t"):
             html_chunks.append(line.split("\t", 1)[1])
 
@@ -2602,6 +2690,7 @@ def parse_define_widget(text: str) -> CustomWidgetDefinition | None:
         default_size=size,
         capabilities=capabilities,
         state_schema=state_schema,
+        source_path=source_path,
     )
 
 
@@ -3002,12 +3091,16 @@ def sync_custom_widgets_doc_section(
     doc_path.write_text(text)
 
 
+def _present_gitignore_entries(text: str) -> set[str]:
+    return {line.strip().rstrip("/") for line in text.splitlines()}
+
+
 def _missing_entries(text: str) -> list[str]:
     """Which of GITIGNORE_ENTRIES aren't present yet -- checked
     independently (an existing project that already ignores
     `.desk_temp/` but not `**/__pycache__/`, from before TODO c458012,
     gets just the missing one appended, not a duplicate)."""
-    present = {line.strip().rstrip("/") for line in text.splitlines()}
+    present = _present_gitignore_entries(text)
     return [entry for entry in GITIGNORE_ENTRIES if entry.rstrip("/") not in present]
 
 
@@ -3038,3 +3131,55 @@ def ensure_gitignore_entry(git_root: Path, ask: Callable[[], bool]) -> None:
     prefix = existing if existing.endswith("\n") or not existing else existing + "\n"
     block = "\n".join(missing)
     gitignore_path.write_text(f"{prefix}\n{GITIGNORE_COMMENT}\n{block}\n")
+
+
+# TODO 1c67fe5: the pattern covering SOURCE_BUILD_CACHE_DIRNAME
+# wherever it can appear under a project's PROMOTED_WIDGET_SRC_DIRNAME
+# -- e.g. `desk_widgets/pdf-viewer/.build/`. Deliberately narrower than
+# GITIGNORE_ENTRIES above (this repo's own top-level `**/.build/`,
+# added the same TODO 13f4ad5 this supports): a *project* Desk is
+# managing should only ever need to ignore its own desk_widgets/ build
+# caches, not every `.build/` directory anywhere in the project, which
+# could plausibly collide with something unrelated to Desk.
+DESK_WIDGETS_BUILD_GITIGNORE_ENTRY = f"{PROMOTED_WIDGET_SRC_DIRNAME}/**/{SOURCE_BUILD_CACHE_DIRNAME}/"
+
+
+def ensure_desk_widgets_gitignore_entry(directory: Path, ask: Callable[[], bool]) -> None:
+    """Adds DESK_WIDGETS_BUILD_GITIGNORE_ENTRY to `directory`'s git
+    root's `.gitignore` (creating the file if it doesn't exist) if it's
+    missing -- but only if `directory/PROMOTED_WIDGET_SRC_DIRNAME`
+    (`desk_widgets/`) actually exists: a project that has never
+    promoted a source-backed custom widget has nothing to protect yet
+    and shouldn't be asked about it. Separate from
+    ensure_gitignore_entry/GITIGNORE_ENTRIES above, which are
+    unconditional (ensured alongside .desk_temp provisioning
+    regardless of whether any custom widget has ever been promoted) --
+    this one is conditional on desk_widgets/ existing, so it can't just
+    be a third GITIGNORE_ENTRIES member.
+
+    Called from two places (TODO 1c67fe5): DeskWindow._provision_temp_ui
+    (startup/Desk-switch -- covers a project that already had
+    desk_widgets/ from before this check existed, or from working on
+    it outside Desk) and right after DeskWindow
+    ._on_tempui_promote_requested's own _relocate_promoted_widget_source
+    call, the other moment desk_widgets/ can first come to exist.
+    Mirrors ensure_gitignore_entry's own re-check-before-write dance
+    (TODO 4716585): `ask()` can pump a modal dialog's own nested event
+    loop for an arbitrary amount of time, during which something else
+    could already have added the entry."""
+    if not (directory / PROMOTED_WIDGET_SRC_DIRNAME).is_dir():
+        return
+    git_root = find_git_root(directory)
+    if git_root is None:
+        return
+    gitignore_path = git_root / ".gitignore"
+    existing = gitignore_path.read_text() if gitignore_path.is_file() else ""
+    if DESK_WIDGETS_BUILD_GITIGNORE_ENTRY.rstrip("/") in _present_gitignore_entries(existing):
+        return
+    if not ask():
+        return
+    existing = gitignore_path.read_text() if gitignore_path.is_file() else ""
+    if DESK_WIDGETS_BUILD_GITIGNORE_ENTRY.rstrip("/") in _present_gitignore_entries(existing):
+        return
+    prefix = existing if existing.endswith("\n") or not existing else existing + "\n"
+    gitignore_path.write_text(f"{prefix}\n{GITIGNORE_COMMENT}\n{DESK_WIDGETS_BUILD_GITIGNORE_ENTRY}\n")

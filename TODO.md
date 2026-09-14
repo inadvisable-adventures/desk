@@ -9233,7 +9233,7 @@ e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
    new file exists; full regression suite: 100 scripts, 0 failures
    (unchanged, as expected).
 
-13f4ad5. Rework promoted/custom-widget source-of-truth: durable,
+13f4ad5. COMPLETED: Rework promoted/custom-widget source-of-truth: durable,
    registration-time source paths instead of keyword-based convention,
    and a gitignored per-widget build cache instead of baked-in
    `html_b64`. Addresses findings 1-2 of
@@ -9279,3 +9279,22 @@ e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
       rather than frozen at promote-time. A hand-authored, inline-only
       `DefineWidget` with no source directory keeps today's baked-
       `html_b64` behavior, since there's nothing to build from.
+
+   [planned: durable-custom-widget-source-paths.md (COMPLETED)]
+
+1c67fe5. COMPLETED: Ensure a managed project's own `.gitignore` covers
+   `desk_widgets/**/.build/` -- the rebuilt-on-demand build cache TODO
+   13f4ad5 introduced under any promoted, source-backed custom widget's
+   own `desk_widgets/<name>/` directory. Deliberately narrower than
+   this repo's own top-level `**/.build/` (added the same TODO): a
+   *project* Desk is managing should only ignore its own desk_widgets/
+   build caches, not every `.build/` directory anywhere in the project.
+   `desk.temp_ui.ensure_desk_widgets_gitignore_entry` is conditional on
+   `desk_widgets/` actually existing (a project that's never promoted a
+   source-backed widget has nothing to protect and shouldn't be asked
+   about it) -- called from `DeskWindow._provision_temp_ui` (startup/
+   Desk-switch) and right after `_on_tempui_promote_requested`'s own
+   `_relocate_promoted_widget_source` call, the two moments
+   `desk_widgets/` can first come to exist.
+
+   [planned: desk-widgets-build-gitignore.md (COMPLETED)]

@@ -1069,3 +1069,26 @@ This file captures thoughts and TODO items that arise during work on other thing
   script is unfixed. Revisit as a real cleanup pass: swap every
   remaining one over to the relative form, then confirm the full suite
   still passes from more than one checkout location.
+
+- **Default to authoring an explicitly-requested widget as a real
+  project widget, not through tempui/`DefineWidget`**
+
+  Finding 3 of
+  `../FEEDBACK/FEEDBACK-DESK-promoted-widget-source-of-truth-2026-08-04-1321.md`
+  -- findings 1-2 of that same file are TODO `13f4ad5`, which is scoped
+  to those two only. `tempui-custom-widgets.md` currently presents the
+  `DefineWidget` -> place -> `[TEMPUI]`-promote flow as *the* way to
+  author a real-source widget, with no callout distinguishing "the
+  agent decided mid-task that a small, speculative widget would help"
+  from "the user explicitly asked for a widget to be built." For the
+  latter, round-tripping through `.desk_temp/`, a manual promote click,
+  and a source-relocation step serves no purpose. Two parts: (a) a
+  second `desk.widgets.discover_widgets(project_dir / "desk_widgets")`
+  call merged into the same registry (today only Desk's own repo root
+  is scanned, via `DEFAULT_WIDGETS_DIR` in `desk/server/app.py`), so an
+  agent can write `desk_widgets/<name>/` (manifest + source) directly
+  from the start -- no tempui file, no promote step; (b) a line in
+  `tempui-custom-widgets.md` telling agents to prefer that path when a
+  widget was explicitly requested, reserving tempui for
+  speculative/disposable widgets the agent builds unprompted. Natural
+  to pair with any later work generalizing `desk_widgets/` discovery.
