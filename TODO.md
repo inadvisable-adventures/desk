@@ -8487,6 +8487,7 @@ af7898b. COMPLETED: The state store's (TODO `f68383f`) schema declaration,
    (color, weight, indentation, ...) must preserve today's plain-text
    selection/copy behavior exactly -- no stray markup and no altered
    whitespace when copying a message or a whole transcript.
+   [planned: claude-desk-history-user-styling.md]
 
 a4c3dec. Add an on-hover control in the Claude (Desk) widget's history
    (`widgets/claude_desk/widget.py`'s `_history`) that reloads a
