@@ -7492,7 +7492,7 @@ c4d79f0. COMPLETED: Fix file-watcher deadlock: `FileWatcherService.watch()` (`sr
    `watchdog/observers/api.py:304`'s `with self._lock:`.
    [planned: file-watcher-schedule-deadlock.md]
 
-d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
+d7e66f6. COMPLETED: A lightweight, one-shot "Job" mechanism so an agent-authored
    script can run with real widget-context capabilities -- notably
    Bridge API access, which no agent-run script can reach today --
    without needing to build out a full tempui `DefineWidget`/
@@ -7653,7 +7653,7 @@ d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
    duplicating the Bridge API capability list). Full `tests/verify/`
    regression suite passes (100 scripts total, 0 failures).
 
-48e3b39. App-structure DSL: a declarative schema + parser + dual-target
+48e3b39. COMPLETED: App-structure DSL: a declarative schema + parser + dual-target
    codegen tool for the wiring/layout code of a multi-component SPA
    built as a single `kind: "html"` widget -- generalized from
    `world-timelines`'s own hand-written `app-root.ts`/`main.ts` (~500
@@ -7796,7 +7796,7 @@ d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
    `tests/verify/` regression suite passes (105 scripts total, 0
    failures).
 
-1e032f3. `app_dsl`'s generated TypeScript uses real ES modules
+1e032f3. COMPLETED: `app_dsl`'s generated TypeScript uses real ES modules
    (`import`/`export`), which `.desk_temp/build_widget.py`'s own
    `DefineWidget` packaging model can't consume -- it concatenates
    *global, non-module* scripts (confirmed both directly, and via a
@@ -7898,7 +7898,7 @@ d7e66f6. A lightweight, one-shot "Job" mechanism so an agent-authored
    33. Full `tests/verify/` regression suite passes (105 scripts
    total, 0 failures).
 
-f68383f. A shared, capability-gated, project-scoped state store --
+f68383f. COMPLETED: A shared, capability-gated, project-scoped state store --
    `desk.state.get(key)` / `set(key, value, edit?)` / `getHistory(key,
    limit)`, closing gaps 1-4 and 6 of
    `../FEEDBACK/FEEDBACK-DESK-widget-extraction-communication-gaps-2026-08-03-1634.md`
@@ -7985,7 +7985,7 @@ f68383f. A shared, capability-gated, project-scoped state store --
    `investigations/app_structure_dsl_design.md`'s "Where things were
    left" updated to record this item's completion.
 
-af7898b. The state store's (TODO `f68383f`) schema declaration,
+af7898b. COMPLETED: The state store's (TODO `f68383f`) schema declaration,
    conflict resolution, and validation core -- originally filed as a
    single item, TODO `6e1c2fe`, split into this and the two items below
    it for manageability once its actual implementation surface became
@@ -8106,7 +8106,7 @@ af7898b. The state store's (TODO `f68383f`) schema declaration,
    `investigations/app_structure_dsl_design.md`'s "Where things were
    left" updated to record this item's completion.
 
-9aef267. State store top-level schema files -- **blocked on
+9aef267. COMPLETED: State store top-level schema files -- **blocked on
    `af7898b` landing first** (needs its schema type language and
    registry to already exist). Split out of the original TODO
    `6e1c2fe` -- see `af7898b` above for why. Full design, already had
@@ -8182,7 +8182,7 @@ af7898b. The state store's (TODO `f68383f`) schema declaration,
    `investigations/app_structure_dsl_design.md`'s "Where things were
    left" updated to record this item's completion.
 
-6330249. New built-in schema/state-management widget -- an ordinary,
+6330249. COMPLETED: New built-in schema/state-management widget -- an ordinary,
    placeable/closeable Desk widget (`kind: "python"`), not a distinct
    "dashboard" UI concept. Depends on `af7898b`/`9aef267`, both
    COMPLETED. Split out of the original TODO `6e1c2fe` -- see `af7898b`
@@ -8273,7 +8273,7 @@ af7898b. The state store's (TODO `f68383f`) schema declaration,
    entire schema-validation thread (TODO `6e1c2fe`'s three-way split)
    with nothing left blocked or open in it.
 
-297f1a6. Ability to save/load shared state (`desk.state.*`, TODO
+297f1a6. COMPLETED: Ability to save/load shared state (`desk.state.*`, TODO
    `f68383f`) as JSON -- a whole-store snapshot/restore pair (every
    key's value, edit, and history), not a per-key operation, exposed
    through the State Manager widget (TODO `6330249`) as "Save
@@ -8316,7 +8316,7 @@ af7898b. The state store's (TODO `f68383f`) schema declaration,
    to pass this run; it remains an already-filed, already-disabled
    item regardless).
 
-5242aeb. Bug: widget-triggered alerts/confirmations render as detached
+5242aeb. COMPLETED: Bug: widget-triggered alerts/confirmations render as detached
    macOS windows -- notably the "Load State" confirmation and "New
    Key" validation alerts in the new State Manager widget (TODO
    `6330249`), which used a raw `QMessageBox` directly instead of the
@@ -8373,7 +8373,7 @@ af7898b. The state store's (TODO `f68383f`) schema declaration,
    `tests/verify/` regression suite passes (124 scripts total, 0
    failures).
 
-74a8b78. Bug: crash (SIGBUS) removing a desk-internal popup from the
+74a8b78. COMPLETED: Bug: crash (SIGBUS) removing a desk-internal popup from the
    canvas scene during its own click event -- confirmed via a real
    macOS crash report clicking a button inside a popup shown by
    `PopupsService.show_blocking` (the only popup mechanism in the app --
@@ -9012,7 +9012,7 @@ a8e4115. COMPLETED: Add Desk's own `CLAUDE.md` a project instruction to use path
    logs nothing. Full `tests/verify/` regression suite passes (90
    scripts, 0 failures).
 
-e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
+e86a31b. COMPLETED: A project's stale, pre-fix copy of `scripts/build_widget.py`
    can silently defeat the already-shipped capabilities-emission fix
    already living in the auto-refreshed `.desk_temp/build_widget.py`
    (TODO `31db3f6`) -- both compile/produce a valid `DefineWidget`
@@ -9102,7 +9102,7 @@ e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
    failures beyond the one pre-existing `verify_build_widget.py` gap
    just fixed).
 
-3cd90cf. Add a `desk.self.setSubtitle(text: string | null)` Bridge API
+3cd90cf. COMPLETED: Add a `desk.self.setSubtitle(text: string | null)` Bridge API
    call (any `kind: "html"` widget) so a widget instance can put its
    own state (e.g. which document it's editing) into its own
    titlebar, alongside the existing `[EXTERNAL]` text suffix (the
@@ -9173,7 +9173,7 @@ e86a31b. A project's stale, pre-fix copy of `scripts/build_widget.py`
    just the HTTP response body. Full `tests/verify/` regression suite
    passes (93 scripts total, 0 failures).
 
-7f984ec. Several small gaps found adopting Desk's shared/not-shared
+7f984ec. COMPLETED: Several small gaps found adopting Desk's shared/not-shared
    `development-process.md` doc split (TODO `1a96c9f`/`c458012`) into
    an existing project (`world-timelines`), each confirmed directly
    against Desk's own current seeding code. From
