@@ -8431,6 +8431,7 @@ af7898b. COMPLETED: The state store's (TODO `f68383f`) schema declaration,
    horizontally. Needs a way to distinguish "insert a newline" from
    "send" once `returnPressed` (a `QLineEdit`-only signal) is no
    longer available -- e.g. Enter to send, Shift+Enter for a newline.
+   [planned: claude-desk-multiline-prompt-input.md]
 
 78d6207. Visually differentiate user-entered prompts from Claude's own
    responses in the Claude (Desk) widget's history
