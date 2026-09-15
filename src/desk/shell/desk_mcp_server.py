@@ -46,6 +46,7 @@ from typing import Any
 
 from claude_agent_sdk import McpSdkServerConfig, create_sdk_mcp_server, tool
 
+from desk import pipeline_dsl
 from desk.shell import current_context
 from desk.todo_file import TodoItem, find_nearest_todo_file, parse_todo_file
 
@@ -284,6 +285,25 @@ async def _run_installed_job_tool(args: dict[str, Any]) -> dict[str, Any]:
     return _text_result(json.dumps({"ok": ok, "stdout": stdout, "stderr": stderr, "traceback": tb}))
 
 
+@tool(
+    "desk_run_pipeline",
+    "Run a pipe-chained verb DSL pipeline -- a "
+    "single string of '|'-separated stages, each either a built-in verb call (reveal_widget "
+    "<instance_id>, screenshot_widget <instance_id> <path>, screenshot_desk <path>, "
+    "list_widget_instances, open_image, shell-quoted like any other command line) or a 'py:' "
+    "-prefixed base64-encoded Python expression escape hatch. Every stage receives the previous "
+    "stage's real output value; execution stops at the first stage that raises or returns "
+    "{\"ok\": false}. Returns the structured {ok, stages, value, traceback} result as JSON.",
+    {"pipeline": str},
+)
+async def _run_pipeline(args: dict[str, Any]) -> dict[str, Any]:
+    try:
+        result = pipeline_dsl.run_pipeline(args["pipeline"])
+    except ValueError as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(json.dumps(result))
+
+
 _TOOLS = [
     _reveal_widget,
     _screenshot_widget,
@@ -294,6 +314,7 @@ _TOOLS = [
     _get_next_todo_item,
     _install_job,
     _run_installed_job_tool,
+    _run_pipeline,
 ]
 
 

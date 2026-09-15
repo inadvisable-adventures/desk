@@ -15,12 +15,14 @@ from desk.installed_jobs import InstalledJobDefinition  # noqa: E402
 from desk.shell import current_context  # noqa: E402
 from desk.shell.desk_mcp_server import (  # noqa: E402
     DESK_MCP_SERVER_NAME,
+    _TOOLS,
     _get_next_todo_item,
     _install_job,
     _list_todo_items,
     _list_widget_instances,
     _reveal_widget,
     _run_installed_job_tool,
+    _run_pipeline,
     _save_desk,
     _screenshot_desk,
     _screenshot_widget,
@@ -123,11 +125,12 @@ def _clear_context():
     current_context.set_current_desk_directory(None)
 
 
-def test_build_desk_mcp_server_names_all_nine_tools():
+def test_build_desk_mcp_server_names_all_registered_tools():
     server = build_desk_mcp_server()
     check("returns a real McpSdkServerConfig-shaped dict", server.get("type") == "sdk")
     check("server named 'desk'", server.get("name") == DESK_MCP_SERVER_NAME)
     check("a real mcp.server.Server instance is present", server.get("instance") is not None)
+    check("ten tools registered", len(_TOOLS) == 10)
 
 
 def test_reveal_widget_found_and_not_found():
@@ -316,6 +319,22 @@ def test_get_next_todo_item_when_everything_is_done():
         current_context.set_current_desk_directory(None)
 
 
+def test_run_pipeline_returns_the_structured_result_as_json():
+    window = _register_fake_window()
+    result = run(_run_pipeline.handler({"pipeline": "reveal_widget abc"}))
+    payload = json.loads(_text_of(result))
+    check("not an is_error result", result.get("is_error") is not True)
+    check("real structured result contract, routed through the fake window", payload["value"] == {"ok": True})
+    check("routed through with the right instance id", ("zoom", "abc") in window.calls)
+    _clear_context()
+
+
+def test_run_pipeline_surfaces_a_structural_error_as_is_error():
+    result = run(_run_pipeline.handler({"pipeline": "not_a_real_verb abc"}))
+    check("an unknown verb is reported as is_error, not a stack trace", result.get("is_error") is True)
+    check("the raw ValueError message is passed through", "not_a_real_verb" in _text_of(result))
+
+
 def test_todo_tools_report_a_clear_error_with_no_desk_directory_known():
     current_context.set_current_desk_directory(None)
     result = run(_list_todo_items.handler({}))
@@ -324,7 +343,7 @@ def test_todo_tools_report_a_clear_error_with_no_desk_directory_known():
     check("desk_get_next_todo_item errors clearly with no known directory", result.get("is_error") is True)
 
 
-test_build_desk_mcp_server_names_all_nine_tools()
+test_build_desk_mcp_server_names_all_registered_tools()
 test_reveal_widget_found_and_not_found()
 test_screenshot_widget_and_desk()
 test_list_widget_instances_returns_the_real_state()
@@ -340,6 +359,8 @@ test_run_installed_job_relays_a_delayed_successful_result()
 test_run_installed_job_config_path_omitted_becomes_none()
 test_run_installed_job_relays_a_failing_script_result()
 test_run_installed_job_surfaces_a_validation_error_as_is_error()
+test_run_pipeline_returns_the_structured_result_as_json()
+test_run_pipeline_surfaces_a_structural_error_as_is_error()
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

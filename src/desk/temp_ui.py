@@ -327,7 +327,7 @@ APP_DSL_DIRNAME = "app_dsl"
 # capability and a breaking change -- rebuilding on demand means `tsc`
 # must be available wherever such a Desk is subsequently opened, not
 # just where it was authored).
-TEMPUI_DOC_VERSION = 43
+TEMPUI_DOC_VERSION = 44
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -1622,6 +1622,16 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 44
+- A new `desk_run_pipeline` MCP tool: runs a pipe-chained verb DSL
+  pipeline (a single `|`-separated string of built-in verb calls --
+  `reveal_widget`, `screenshot_widget`, `screenshot_desk`,
+  `list_widget_instances`, `open_image` -- plus a `py:`-prefixed
+  base64-encoded Python-expression escape hatch) in one round trip,
+  each stage receiving the previous stage's real return value, instead
+  of chaining several separate MCP tool calls by hand. Not a tempui-DSL
+  file type -- see the tool's own description for its syntax.
 
 ## Version 43
 - A source-backed `DefineWidget`'s authoring source directory is now

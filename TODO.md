@@ -9582,7 +9582,7 @@ e86a31b. COMPLETED: A project's stale, pre-fix copy of `scripts/build_widget.py`
 
    [planned: desk-widgets-build-gitignore.md (COMPLETED)]
 
-63bfd42. Implement the pipe-chained verb DSL designed in TODO `765bd2a`
+63bfd42. COMPLETED: Implement the pipe-chained verb DSL designed in TODO `765bd2a`
    (`plans/pipe-chained-verb-dsl.md`) -- that item was deliberately
    scoped to the language design only (grammar, verb/argument shape,
    value flow, the escape hatch, error/partial-failure semantics); this
@@ -9604,3 +9604,40 @@ e86a31b. COMPLETED: A project's stale, pre-fix copy of `scripts/build_widget.py`
    deferred, not part of this item either, absent a concrete need
    surfacing during planning).
    [planned: pipe-chained-verb-dsl-implementation.md]
+
+   COMPLETED: Implemented per the plan -- `src/desk/pipeline_dsl.py`
+   has the parser/interpreter (a single `shlex.shlex(..., posix=True,
+   punctuation_chars="|")` pass handles stage-splitting and per-stage
+   argument tokenization in one step) and `run_pipeline(text)`, plus
+   `VERB_REGISTRY` with all five of the design plan's illustrative
+   -catalog verbs backed for real (`reveal_widget`/`screenshot_widget`/
+   `screenshot_desk`/`list_widget_instances` route through
+   `current_context`'s GUI-thread-caller hook exactly the way
+   `DeskProcApi`/`desk_mcp_server.py`'s own tool handlers already do;
+   `open_image` writes a real `OpenImage` tempui file into
+   `.desk_temp/`, the existing safe mechanism for that action, since it
+   has no pre-existing synchronous primitive to call the way the other
+   four do). Transport: a new `desk_run_pipeline` MCP tool on the
+   existing in-process Desk MCP server (TODO `a762501`) --
+   `desk_mcp_server.py`'s `_run_pipeline` handler calls
+   `run_pipeline` directly and returns its structured result as JSON,
+   or `is_error: true` for a structural (`ValueError`) parse failure.
+   `temp_ui.py`'s `TEMPUI_DOC_VERSION` bumped to 44 with a matching
+   `_NEW_FEATURES_DOC` entry (no tempui-DSL keyword or doc file, since
+   this isn't a dropped-file kind).
+
+   New `tests/verify/verify_pipeline_dsl.py` (55 checks): stage
+   -splitting (quoted `|` stays in one stage, unquoted `|` splits,
+   unbalanced quoting/empty pipeline/empty stage all raise upfront, an
+   unknown verb raises before any stage runs), argument coercion
+   (`int`/`float`/`bool` including the case-insensitive
+   `true`/`false`-only bool rule, unannotated/`str` passthrough, wrong
+   arg count as a runtime `TypeError` rather than a crash), the `py:`
+   escape hatch (expression and callable forms, malformed base64
+   upfront, invalid-but-decoded Python as a runtime `SyntaxError`), and
+   the design plan's own three worked examples run for real end-to-end
+   (including confirming `open_image` actually writes the expected
+   `OpenImage` tempui file). `verify_desk_mcp_server.py` gained
+   `desk_run_pipeline` coverage (+2 checks) and its tool-count check was
+   updated for the new tenth tool. Full `tests/verify/` regression
+   suite passes (139 non-disabled scripts).

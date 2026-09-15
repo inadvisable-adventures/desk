@@ -1,4 +1,4 @@
-# Pipe-chained verb DSL: implementation (TODO `63bfd42`)
+# Pipe-chained verb DSL: implementation (TODO `63bfd42`) (COMPLETED)
 
 ## Summary
 
