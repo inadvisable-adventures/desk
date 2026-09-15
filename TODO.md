@@ -8620,6 +8620,7 @@ a4c3dec. Add an on-hover control in the Claude (Desk) widget's history
    `_prompt_input` while typing. Depends on TODO `78d6207`
    distinguishing user lines from the rest of the history to know
    which lines are reloadable.
+   [planned: claude-desk-history-reload-hover.md]
 
 93364f9. COMPLETED: Add a `[chat]` button (relabeled from this item's own earlier
    "talk to Claude about this widget" working name -- same feature,
