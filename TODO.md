@@ -8653,11 +8653,10 @@ a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's histor
    confirmed to be `_history`'s own viewport.
 
    Full `tests/verify/` suite (138 non-disabled scripts) run: no new
-   failures introduced by this change (the pre-existing, unrelated
-   `verify_relocate_promoted_widget_source.py` failure from TODO
-   `8df6797`'s own verification is the only one present, same as
-   before this change). Real mouse-hover behavior in a live,
-   interactively-driven Desk window was not exercised -- the headless
+   failures at all -- the `verify_relocate_promoted_widget_source.py`
+   failure noted in TODO `78d6207`/`8df6797`'s own write-ups is gone
+   now that TODO `9613bb0` fixed it. Real mouse-hover behavior in a
+   live, interactively-driven Desk window was not exercised -- the headless
    offscreen-Qt suite covers the underlying logic directly (calling
    `_update_reload_button`/`_on_reload_clicked` with synthetic
    positions/state, matching this suite's existing style) but not an
