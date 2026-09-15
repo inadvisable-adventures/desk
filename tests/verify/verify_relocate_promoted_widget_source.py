@@ -28,6 +28,7 @@ from desk.hotreload import HotReloadBroker  # noqa: E402
 from desk.schema_registry import SchemaRegistry  # noqa: E402
 from desk.shell.canvas import WorkspaceView  # noqa: E402
 from desk.shell.window import DeskWindow  # noqa: E402
+from desk.custom_widgets import LikelySourceCandidate  # noqa: E402
 from desk.temp_ui import (  # noqa: E402
     BUILD_WIDGET_SCRIPT_FILENAME,
     CUSTOM_WIDGET_SRC_DIRNAME,
@@ -123,6 +124,14 @@ class _FakeWindow:
         self.saved = []
         self.confirmed_messages = []
         self.info_messages = []
+        # TODO 9613bb0: test-controllable stand-ins for the two new
+        # promotion-source dialogs -- default to "proceed, keep the
+        # widget inline" so tests that don't care about this behavior
+        # (added before this TODO) don't need to opt in.
+        self.no_source_choice = True
+        self.source_candidate_choice = "keep_inline"  # or a LikelySourceCandidate, or "cancel"
+        self.no_source_calls = []
+        self.source_candidate_calls = []
 
     def _confirm_fn(self, title, message):
         def confirm():
@@ -137,7 +146,21 @@ class _FakeWindow:
     def save_current_desk(self):
         self.saved.append(True)
 
+    def _confirm_promotion_no_source(self, definition):
+        self.no_source_calls.append(definition.keyword)
+        return self.no_source_choice
 
+    def _confirm_promotion_source_candidate(self, definition, candidates):
+        self.source_candidate_calls.append((definition.keyword, list(candidates)))
+        choice = self.source_candidate_choice
+        if choice == "cancel":
+            return False, None
+        if choice == "keep_inline":
+            return True, None
+        return True, choice
+
+
+_FakeWindow._resolve_promotion_source = DeskWindow._resolve_promotion_source
 _FakeWindow._register_custom_widget = DeskWindow._register_custom_widget
 _FakeWindow._refresh_stale_indicators_for = DeskWindow._refresh_stale_indicators_for
 _FakeWindow._on_tempui_promote_requested = DeskWindow._on_tempui_promote_requested
@@ -244,6 +267,11 @@ def test_no_recorded_source_path_is_a_noop_with_an_info_log():
         with _WindowLogCapture() as records:
             definition = _promote(win, "KanbanBoard", tempui_path)
 
+        # TODO 9613bb0: no .desk_temp/widgets/ at all -- no candidate to
+        # offer, so the "no source at all" dialog fires (defaulted to
+        # "Promote Anyway" above) rather than the "here's a match" one.
+        check("the no-source-found dialog was shown", win.no_source_calls == ["KanbanBoard"])
+        check("the candidate-found dialog was NOT shown", win.source_candidate_calls == [])
         check("promotion still succeeded", any(cw.keyword == "KanbanBoard" for cw in win.current_desk.custom_widgets))
         check("no source_path means html_b64 is still baked in (hand-authored fallback)", definition.html_b64 == SAMPLE_HTML_B64)
 
@@ -272,6 +300,11 @@ def test_recorded_source_path_missing_is_a_noop():
         with _WindowLogCapture() as records:
             definition = _promote(win, "KanbanBoard", tempui_path)
 
+        # TODO 9613bb0: a recorded-but-missing source directory is the
+        # same "nothing usable" situation as no source_path at all --
+        # still routes through the no-source dialog (no .desk_temp/
+        # widgets/ candidates exist in this test either).
+        check("the no-source-found dialog was shown for a missing recorded path too", win.no_source_calls == ["KanbanBoard"])
         destination_dir = directory / PROMOTED_WIDGET_SRC_DIRNAME / "KanbanBoard"
         check("no source dir to move: no destination created", not destination_dir.exists())
         check("promotion still succeeded", any(cw.keyword == "KanbanBoard" for cw in win.current_desk.custom_widgets))
@@ -311,6 +344,7 @@ def test_preexisting_destination_is_not_clobbered():
         check("still logs at WARNING for a pre-existing destination", any(r.levelno == logging.WARNING for r in records))
         check("does not log the no-source-path INFO message for this case", not any(r.levelno == logging.INFO for r in records))
         check("promotion (the .desk file part) still succeeded despite the move being skipped", any(cw.keyword == "KanbanBoard" for cw in win.current_desk.custom_widgets))
+        check("neither new dialog fired -- the recorded source_path was already usable", win.no_source_calls == [] and win.source_candidate_calls == [])
 
 
 def test_source_backed_promotion_rebuilds_and_strips_html_b64():
@@ -389,6 +423,120 @@ def test_promotion_ensures_desk_widgets_build_gitignore_entry():
         )
 
 
+def test_candidate_found_by_widget_json_keyword_match():
+    # TODO 9613bb0: a .desk_temp/widgets/ subdirectory whose widget.json
+    # "keyword" matches exactly is a candidate even when the directory's
+    # own name doesn't resemble the keyword at all.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        directory = Path(d)
+        win = _FakeWindow(directory)
+        win._register_custom_widget(_definition(), source="tempui")  # source_path=None
+
+        candidate_dir = directory / TEMP_UI_DIRNAME / CUSTOM_WIDGET_SRC_DIRNAME / "totally-different-name"
+        candidate_dir.mkdir(parents=True)
+        (candidate_dir / "widget.json").write_text('{"keyword": "KanbanBoard", "label": "Kanban Board"}')
+
+        tempui_path = directory / TEMP_UI_DIRNAME / "some-uuid"
+        tempui_path.write_text("DefineWidget\tKanbanBoard\tKanban Board\n")
+
+        win.source_candidate_choice = "keep_inline"
+        _promote(win, "KanbanBoard", tempui_path)
+
+        check("the candidate-found dialog was shown", len(win.source_candidate_calls) == 1)
+        _, candidates = win.source_candidate_calls[0]
+        check("exactly one candidate found", len(candidates) == 1)
+        check("found via the widget.json keyword match, not a name variant", candidates[0].matched_by == "keyword")
+        check("candidate path is the differently-named directory", candidates[0].path == candidate_dir)
+        check("the no-source-at-all dialog was NOT also shown", win.no_source_calls == [])
+
+
+def test_candidate_found_by_name_variant_and_adopted():
+    # TODO 9613bb0: a bare .desk_temp/widgets/pdf-viewer/ (kebab-case)
+    # is found as a likely match for keyword "PdfViewer" (PascalCase)
+    # purely by normalized name -- no widget.json keyword needed.
+    # Adopting it drives the exact same relocate + strip-html_b64 path
+    # a recorded SourcePath line would (test_source_backed_promotion_
+    # rebuilds_and_strips_html_b64's own real-source scenario).
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        directory = Path(d)
+        win = _FakeWindow(directory)
+        win._register_custom_widget(
+            _definition(keyword="PdfViewer", label="PDF Viewer"), source="tempui"
+        )  # source_path=None
+
+        candidate_dir = directory / TEMP_UI_DIRNAME / CUSTOM_WIDGET_SRC_DIRNAME / "pdf-viewer"
+        candidate_dir.mkdir(parents=True)
+        (candidate_dir / "widget.json").write_text("{}")  # no keyword field -- name match only
+
+        tempui_path = directory / TEMP_UI_DIRNAME / "some-uuid"
+        tempui_path.write_text("DefineWidget\tPdfViewer\tPDF Viewer\n")
+
+        # Instance-attribute override (not a class-level swap): picks
+        # whatever find_likely_source_candidates actually found, rather
+        # than a canned candidate this test would have to hand-construct.
+        def _confirm_promotion_source_candidate(definition, candidates):
+            win.source_candidate_calls.append((definition.keyword, list(candidates)))
+            return True, candidates[0]
+
+        win._confirm_promotion_source_candidate = _confirm_promotion_source_candidate
+
+        def _fake_build_from_source(project_dir, source_path):
+            build_dir = project_dir / source_path / ".build"
+            build_dir.mkdir(parents=True, exist_ok=True)
+            (build_dir / "index.html").write_text("<html><body>rebuilt</body></html>")
+            return build_dir
+
+        real_build_from_source = window_module.build_from_source
+        window_module.build_from_source = _fake_build_from_source
+        try:
+            definition = _promote(win, "PdfViewer", tempui_path)
+        finally:
+            window_module.build_from_source = real_build_from_source
+
+        check("exactly one candidate found, by name variant", len(win.source_candidate_calls[0][1]) == 1)
+        check("matched via directory-name variant, not a widget.json keyword", win.source_candidate_calls[0][1][0].matched_by == "name")
+        check("adopting the candidate strips html_b64 (rebuilt on demand instead)", definition.html_b64 == "")
+        check("source_path relocated to desk_widgets/pdf-viewer, same as a recorded SourcePath would", definition.source_path == "desk_widgets/pdf-viewer")
+        check("real source directory relocated out of .desk_temp/widgets/", not candidate_dir.exists())
+
+
+def test_unrelated_directory_without_widget_json_is_not_a_candidate():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        directory = Path(d)
+        win = _FakeWindow(directory)
+        win._register_custom_widget(_definition(), source="tempui")  # source_path=None
+
+        unrelated_dir = directory / TEMP_UI_DIRNAME / CUSTOM_WIDGET_SRC_DIRNAME / "kanban-board"
+        unrelated_dir.mkdir(parents=True)
+        (unrelated_dir / "notes.txt").write_text("not a widget source directory")
+
+        tempui_path = directory / TEMP_UI_DIRNAME / "some-uuid"
+        tempui_path.write_text("DefineWidget\tKanbanBoard\tKanban Board\n")
+
+        _promote(win, "KanbanBoard", tempui_path)
+
+        check("no widget.json means no candidate, despite the matching name", win.source_candidate_calls == [])
+        check("falls back to the no-source-found dialog instead", win.no_source_calls == ["KanbanBoard"])
+
+
+def test_cancelling_the_source_dialog_aborts_the_whole_promotion():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        directory = Path(d)
+        win = _FakeWindow(directory)
+        win._register_custom_widget(_definition(), source="tempui")  # source_path=None
+        win.no_source_choice = False  # "Cancel"
+
+        tempui_path = directory / TEMP_UI_DIRNAME / "some-uuid"
+        tempui_path.write_text("DefineWidget\tKanbanBoard\tKanban Board\n")
+
+        _promote(win, "KanbanBoard", tempui_path)
+
+        check("promotion did not add the widget to the .desk file", not any(cw.keyword == "KanbanBoard" for cw in win.current_desk.custom_widgets))
+        check("the source was still recorded as tempui, not desk", win._custom_widget_sources.get("KanbanBoard") != "desk")
+        check("the tempui invocation file was NOT removed", tempui_path.exists())
+        check("the Desk was never saved", win.saved == [])
+
+
 def test_doc_content():
     check("TEMPUI_DOC_VERSION bumped to at least 42", TEMPUI_DOC_VERSION >= 42)
     doc = SPLIT_DOC_CONTENT[CUSTOM_WIDGETS_DOC_FILENAME]
@@ -415,6 +563,10 @@ test_recorded_source_path_missing_is_a_noop()
 test_preexisting_destination_is_not_clobbered()
 test_source_backed_promotion_rebuilds_and_strips_html_b64()
 test_promotion_ensures_desk_widgets_build_gitignore_entry()
+test_candidate_found_by_widget_json_keyword_match()
+test_candidate_found_by_name_variant_and_adopted()
+test_unrelated_directory_without_widget_json_is_not_a_candidate()
+test_cancelling_the_source_dialog_aborts_the_whole_promotion()
 test_doc_content()
 test_build_widget_script_docstring_updated()
 

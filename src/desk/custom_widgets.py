@@ -11,11 +11,13 @@ import base64
 import binascii
 import json
 import logging
+import re
 import shutil
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
-from desk.temp_ui import SOURCE_BUILD_CACHE_DIRNAME, CustomWidgetDefinition
+from desk.temp_ui import CUSTOM_WIDGET_SRC_DIRNAME, SOURCE_BUILD_CACHE_DIRNAME, TEMP_UI_DIRNAME, CustomWidgetDefinition
 
 logger = logging.getLogger(__name__)
 
@@ -179,3 +181,69 @@ def build_from_source(project_dir: Path, source_path: str) -> Path | None:
     build_dir.mkdir(parents=True, exist_ok=True)
     (build_dir / "index.html").write_text(html)
     return build_dir
+
+
+_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _normalize_widget_name(name: str) -> str:
+    """Strips separators and case so PascalCase/camelCase/kebab-case/
+    snake_case variants of the same conceptual name compare equal --
+    e.g. "PdfViewer", "pdf-viewer", "pdf_viewer", and "pdfViewer" all
+    normalize to "pdfviewer" (TODO 9613bb0)."""
+    return _NON_ALNUM_RE.sub("", name.lower())
+
+
+@dataclass
+class LikelySourceCandidate:
+    """A `.desk_temp/widgets/` subdirectory that plausibly holds a
+    promoted widget's real authoring source, found because it has no
+    durably-recorded `source_path` to go on (see
+    find_likely_source_candidates). `matched_by` is `"keyword"` (its
+    own `widget.json` `"keyword"` field matches the widget being
+    promoted exactly -- the strong signal) or `"name"` (only the
+    directory's own name, once normalized, matches -- the common case,
+    since a source directory's kebab-case name is almost never the
+    same string as the DSL's own PascalCase/camelCase keyword)."""
+
+    path: Path
+    matched_by: str
+
+
+def find_likely_source_candidates(project_dir: Path, keyword: str) -> list[LikelySourceCandidate]:
+    """TODO 9613bb0: on promotion, a widget with no usable recorded
+    `source_path` is usually either genuinely hand-authored inline, or
+    was built "from real source" (temp_ui.py's "Authoring from real
+    source") by something that never recorded a `SourcePath` line -- an
+    older `build_widget.py`, or a hand-copied source directory. Scans
+    `TEMP_UI_DIRNAME/CUSTOM_WIDGET_SRC_DIRNAME` (`.desk_temp/widgets/`)
+    -- the one documented location such a not-yet-promoted widget's
+    source ever lives -- for directories that look like they could be
+    this widget's real source: a `widget.json` whose own `"keyword"`
+    field matches exactly, or a directory name that's a case/separator
+    variant of `keyword` (see _normalize_widget_name). Only directories
+    containing a `widget.json` are considered at all, so an unrelated
+    `.desk_temp/widgets/` subdirectory never surfaces as a false
+    positive. A malformed/unreadable `widget.json` just falls through
+    to the name check rather than raising. Returns `[]` if
+    `.desk_temp/widgets/` doesn't exist."""
+    widgets_dir = project_dir / TEMP_UI_DIRNAME / CUSTOM_WIDGET_SRC_DIRNAME
+    if not widgets_dir.is_dir():
+        return []
+    target = _normalize_widget_name(keyword)
+    candidates = []
+    for entry in sorted(widgets_dir.iterdir()):
+        if not entry.is_dir():
+            continue
+        manifest_path = entry / "widget.json"
+        if not manifest_path.is_file():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            manifest = {}
+        if isinstance(manifest, dict) and manifest.get("keyword") == keyword:
+            candidates.append(LikelySourceCandidate(path=entry, matched_by="keyword"))
+        elif _normalize_widget_name(entry.name) == target:
+            candidates.append(LikelySourceCandidate(path=entry, matched_by="name"))
+    return candidates

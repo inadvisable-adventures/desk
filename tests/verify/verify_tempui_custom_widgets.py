@@ -328,6 +328,17 @@ class _FakeWindow:
     def save_current_desk(self):
         self.saved.append(True)
 
+    # TODO 9613bb0: default to "proceed, keep the widget inline" --
+    # none of this file's promotion tests exercise the new
+    # missing-source-directory dialogs themselves (see
+    # verify_relocate_promoted_widget_source.py for that), so they
+    # shouldn't need to opt into anything just to keep promoting.
+    def _confirm_promotion_no_source(self, definition):
+        return True
+
+    def _confirm_promotion_source_candidate(self, definition, candidates):
+        return True, None
+
 
 _FakeWindow._register_custom_widget = DeskWindow._register_custom_widget
 _FakeWindow._refresh_stale_indicators_for = DeskWindow._refresh_stale_indicators_for
@@ -337,6 +348,7 @@ _FakeWindow._handle_define_widget_file = DeskWindow._handle_define_widget_file
 _FakeWindow._sync_tempui_doc = DeskWindow._sync_tempui_doc
 _FakeWindow._on_tempui_promote_requested = DeskWindow._on_tempui_promote_requested
 _FakeWindow._relocate_promoted_widget_source = DeskWindow._relocate_promoted_widget_source
+_FakeWindow._resolve_promotion_source = DeskWindow._resolve_promotion_source
 
 
 def _definition(keyword="KanbanBoard", label="Kanban Board"):

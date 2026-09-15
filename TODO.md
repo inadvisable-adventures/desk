@@ -6,6 +6,88 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+9613bb0. COMPLETED: Make promotion's "no usable recorded source directory" case
+   visible instead of a silent fallback. Reported by a user who
+   promoted a widget in another project and found its HTML still baked
+   as `html_b64` into the `.desk` file instead of moved into
+   `desk_widgets/`, and (correctly) suspected that TODO `13f4ad5`/
+   `1c67fe5` hadn't actually shipped -- investigation confirmed those
+   items *are* complete and working as designed: the baked-`html_b64`
+   fallback only applies when `CustomWidgetDefinition.source_path`
+   (`src/desk/temp_ui.py:2651`) is `None` or points at a directory that
+   no longer exists, which `_on_tempui_promote_requested`
+   (`src/desk/shell/window.py:2765`) handles by silently keeping
+   `html_b64` baked -- no dialog, only an INFO log line
+   (`_relocate_promoted_widget_source`, TODO `a820354`). That's
+   correct for a genuinely hand-authored, inline-only `DefineWidget`,
+   but gives no signal at all for the much more likely real case: the
+   widget *was* authored "from real source"
+   (`.desk_temp/widgets/<name>/`, see `temp_ui.py`'s "Authoring from
+   real source") but its `SourcePath` line was never recorded (an
+   older `build_widget.py`, a hand-copied source directory, a manually
+   -written `DefineWidget` file) -- and the on-disk source directory is
+   very likely still sitting right there under `.desk_temp/widgets/`,
+   usually under a differently-cased/separated variant of the widget's
+   DSL `keyword` (PascalCase) vs. the directory's own kebab-case name
+   -- the exact CamelCase-vs-kebab-case mismatch TODO `13f4ad5` already
+   had to account for once, for the recorded-path case.
+
+   Fix: when promotion hits this case (no `source_path`, or one whose
+   directory is missing), scan `.desk_temp/widgets/` for directories
+   that look like a plausible match for the widget being promoted --
+   an exact `widget.json` `"keyword"` match (strong signal), or a
+   directory name that's a case/separator variant of the DSL keyword
+   (PascalCase/camelCase/kebab-case/snake_case all normalize the same
+   way) -- and show a confirmation dialog naming what was found, with
+   real choices: adopt a found candidate as the widget's `source_path`
+   (letting the rest of promotion's existing source-backed path relocate
+   it and stop baking `html_b64`, unchanged), keep the widget inline
+   anyway (today's baked-`html_b64` behavior, but now an explicit
+   choice instead of a silent fallback), or cancel the promotion
+   outright. If no candidate is found either, still show a dialog
+   explaining that, before falling back to baking `html_b64`, rather
+   than doing so with no visible signal at all.
+
+   Prioritized per direct user request.
+   [planned: promotion-source-candidate-dialog.md (COMPLETED)]
+
+   COMPLETED: Implemented per the plan -- `desk.custom_widgets` gains
+   `find_likely_source_candidates`/`LikelySourceCandidate`/
+   `_normalize_widget_name` (a single strip-and-lowercase normalizer
+   handles PascalCase/camelCase/kebab-case/snake_case all at once,
+   rather than generating and checking a fixed list of variant
+   spellings); `window.py` gains `_resolve_promotion_source` (called
+   right after the existing "Promote to Desk" confirm, before any
+   promotion state is mutated) plus the two monkeypatchable dialog
+   methods `_confirm_promotion_no_source`/
+   `_confirm_promotion_source_candidate`, following the existing
+   `_confirm_stale_reload`/`_confirm_widget_error_dismissed` precedent
+   exactly. A resolved candidate is wired in purely by setting
+   `definition.source_path` before the rest of the existing
+   relocate-and-strip-`html_b64` logic runs -- that logic needed no
+   changes at all, since it was already driven entirely by
+   `source_path`.
+
+   New verify coverage in `tests/verify/verify_relocate_promoted_
+   widget_source.py` (+22 checks, 61 total): a `widget.json` keyword
+   match is found even under a differently-named directory; a bare
+   kebab-case-vs-PascalCase directory-name variant is found and, once
+   adopted, drives the same relocate/strip-`html_b64` path a recorded
+   `SourcePath` line would; a `.desk_temp/widgets/` subdirectory with
+   no `widget.json` never surfaces as a false-positive candidate;
+   cancelling the dialog aborts the whole promotion untouched (nothing
+   added to the `.desk` file, tempui file not deleted, Desk not
+   saved); the two pre-existing no-source-path/missing-source-path
+   tests updated to confirm the new dialog now fires for both. Also
+   updated `tests/verify/verify_tempui_custom_widgets.py`'s own
+   `_FakeWindow` (a second, independent promotion-flow test harness
+   that also drives `_on_tempui_promote_requested` directly) to wire
+   in `_resolve_promotion_source` with default-to-proceed stand-ins for
+   the two new dialogs -- caught by running the full `tests/verify/`
+   suite, not by this item's own targeted tests, which is exactly what
+   that full-suite pass is for. Full regression suite: 138 scripts, 0
+   failures (up from 137 scripts pre-existing).
+
 224fbc9. COMPLETED: `DeskWindow._capture_desk_state()` (`src/desk/shell/window.py`)
    drops `Desk.state` -- the shared `desk.state.*` store -- when
    rebuilding a fresh `Desk` from the live canvas on every save, so it
