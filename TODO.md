@@ -9603,3 +9603,4 @@ e86a31b. COMPLETED: A project's stale, pre-fix copy of `scripts/build_widget.py`
    (verb extensibility beyond a fixed catalog remains explicitly
    deferred, not part of this item either, absent a concrete need
    surfacing during planning).
+   [planned: pipe-chained-verb-dsl-implementation.md]
