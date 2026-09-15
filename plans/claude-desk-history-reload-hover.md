@@ -1,4 +1,4 @@
-# Hover-triggered "reload" control over user lines in the Claude (Desk) widget's history (TODO `a4c3dec`)
+# Hover-triggered "reload" control over user lines in the Claude (Desk) widget's history (TODO `a4c3dec`) (COMPLETED)
 
 ## Summary
 
@@ -135,3 +135,42 @@ needed — offscreen Qt platform, matching every other
 exercised by the headless suite; if a real Desk launch is available
 this session, do a manual sanity check, and if not, note in this
 plan's "Verification results" that the manual check was skipped.
+
+## Verification results
+
+Implemented as designed: `_append_history` gained `reload_text`
+(defaulting to `text` when omitted); `_history_user_entries` tracks
+`(start, end, reload_text)` per user line; a single `QPushButton`
+reload control is parented to `_history.viewport()`, driven by an
+`eventFilter` on that viewport (`MouseMove`/`Leave`, never consumed)
+plus a `verticalScrollBar().valueChanged` hide hook, mirroring
+`widgets/todo/widget.py`'s "open plan" button precedent as closely as
+`QPlainTextEdit` allows. `cursorForPosition()`/`cursorRect()` handle
+the mouse-position-to-text-line mapping `QListWidget.visualItemRect()`
+gets for free. Clicking the button calls
+`_prompt_input.setPlainText(reload_text)` and focuses the box.
+
+Extended `tests/verify/verify_claude_desk_widget.py` with 18 new
+checks (54 total in that file, 0 failures): `reload_text` fallback
+behavior, that the real send/queue call sites record the bare prompt
+(not the `"> "`/`"[queued] "`-prefixed display line), that non-user
+lines never register a reload entry, that `_update_reload_button`
+shows/hides correctly for in-range vs. out-of-range hover positions
+(using `isHidden()` rather than `isVisible()`, since the latter also
+depends on the whole ancestor chain being shown, which this headless
+suite's un-`show()`n widgets never are), that `_on_reload_clicked`
+correctly replaces `_prompt_input`'s text and no-ops with nothing
+hovered, and that the reload button's parent is `_history`'s own
+viewport specifically (confirming `_prompt_input` is untouched by any
+of this).
+
+Full `tests/verify/` suite (138 non-disabled scripts) run in full:
+zero new failures — output showed no `FAIL:` lines at all, meaning
+even the one pre-existing `verify_relocate_promoted_widget_source.py`
+failure noted in TODO `78d6207`'s own verification is no longer
+present (unrelated to this change; not investigated further here).
+Manual, live-cursor hover testing in an actually-launched Desk window
+was skipped — not exercised this session; the headless suite instead
+calls `_update_reload_button`/`_on_reload_clicked` directly with
+synthetic positions/state, matching this test file's existing style
+for every other private-handler test in it.

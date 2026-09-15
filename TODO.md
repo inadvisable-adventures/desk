@@ -8612,7 +8612,7 @@ af7898b. COMPLETED: The state store's (TODO `f68383f`) schema declaration,
    `verify_relocate_promoted_widget_source.py` failure already noted
    in TODO `8df6797`'s own write-up -- no new failures.
 
-a4c3dec. Add an on-hover control in the Claude (Desk) widget's history
+a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's history
    (`widgets/claude_desk/widget.py`'s `_history`) that reloads a
    previous user-entered prompt back into `_prompt_input` (e.g. to
    edit and resend it), without breaking normal text
@@ -8621,6 +8621,47 @@ a4c3dec. Add an on-hover control in the Claude (Desk) widget's history
    distinguishing user lines from the rest of the history to know
    which lines are reloadable.
    [planned: claude-desk-history-reload-hover.md]
+
+   COMPLETED: Implemented per the plan -- `_append_history` gains a
+   `reload_text` keyword storing the bare prompt (no `"> "`/
+   `"[queued] "` display prefix) alongside each user line's existing
+   `(start, end)` highlight offsets, in a new `_history_user_entries`
+   list. A single floating `QPushButton` reload control is parented to
+   `_history.viewport()`, following `widgets/todo/widget.py`'s own
+   "open plan" button precedent (eventFilter on the viewport observing
+   `MouseMove`/`Leave` -- never consumed -- plus a
+   `verticalScrollBar().valueChanged` hide hook) since `QPlainTextEdit`
+   has no `QListWidget.itemEntered` equivalent: `cursorForPosition()`
+   maps the mouse to a document offset, `cursorRect()` positions the
+   button at the hovered entry's first line. Clicking it calls
+   `_prompt_input.setPlainText(reload_text)` (replacing, not
+   appending, matching the existing dictated-text precedent) and
+   focuses the box. The event filter is installed only on
+   `_history.viewport()`, never on `_prompt_input`, so normal typing/
+   selection there is unaffected regardless of hover state elsewhere.
+
+   New verify coverage in `tests/verify/verify_claude_desk_widget.py`
+   (+18 checks, 54 total in that file): `reload_text` defaults to the
+   full displayed text when omitted (back-compat with the one
+   pre-existing direct `is_user=True` call); the real `_send_now`/
+   `_on_send_clicked` call sites record the bare prompt, not the
+   prefixed display line; non-user lines add no reload entry;
+   `_update_reload_button` shows/hides correctly for in-range vs.
+   out-of-range positions and non-user text; `_on_reload_clicked`
+   replaces `_prompt_input`'s text with the original bare prompt and
+   is a no-op with nothing hovered; the reload button's parent is
+   confirmed to be `_history`'s own viewport.
+
+   Full `tests/verify/` suite (138 non-disabled scripts) run: no new
+   failures introduced by this change (the pre-existing, unrelated
+   `verify_relocate_promoted_widget_source.py` failure from TODO
+   `8df6797`'s own verification is the only one present, same as
+   before this change). Real mouse-hover behavior in a live,
+   interactively-driven Desk window was not exercised -- the headless
+   offscreen-Qt suite covers the underlying logic directly (calling
+   `_update_reload_button`/`_on_reload_clicked` with synthetic
+   positions/state, matching this suite's existing style) but not an
+   actual on-screen hover; noted as skipped rather than claimed.
 
 93364f9. COMPLETED: Add a `[chat]` button (relabeled from this item's own earlier
    "talk to Claude about this widget" working name -- same feature,
