@@ -183,6 +183,26 @@ def build_from_source(project_dir: Path, source_path: str) -> Path | None:
     return build_dir
 
 
+def source_watch_exclusions(widget_dir: Path) -> set[Path]:
+    """TODO 4eb3d9e: directories under `widget_dir` that
+    build_from_source itself writes/reads as build output --
+    SOURCE_BUILD_CACHE_DIRNAME (".build") always, plus
+    tsconfig.json's own compilerOptions.outDir when discoverable. A
+    caller watching `widget_dir` for genuine *source* edits (see
+    desk.shell.promoted_widget_source_watcher) must ignore changes
+    under these, or the rebuild the watch itself triggers would
+    immediately retrigger the same watch. Best-effort, mirroring
+    build_from_source's own resilience to a missing/malformed source
+    tree: a bad tsconfig.json just means "no outDir to add," not an
+    error -- .build is always excluded regardless."""
+    exclusions = {widget_dir / SOURCE_BUILD_CACHE_DIRNAME}
+    try:
+        exclusions.add(_read_out_dir(widget_dir, _read_tsconfig(widget_dir)))
+    except SourceBuildError:
+        pass
+    return exclusions
+
+
 _NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
 
 

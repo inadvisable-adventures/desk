@@ -11,6 +11,7 @@ from desk.event_mediator import EventMediator  # noqa: E402
 from desk.hotreload import HotReloadBroker  # noqa: E402
 from desk.shell.canvas import WorkspaceView  # noqa: E402
 from desk.shell.window import DeskWindow, SCRATCH_WIDGET_ID  # noqa: E402
+from desk.shell.promoted_widget_source_watcher import PromotedWidgetSourceWatcher  # noqa: E402
 from desk.widgets import WidgetInfo  # noqa: E402
 from PyQt6.QtCore import QPointF, Qt  # noqa: E402
 from PyQt6.QtTest import QTest  # noqa: E402
@@ -65,6 +66,10 @@ class _FakeWindow:
         self._custom_widget_definitions = {}
         self._custom_widget_sources = {}
         self._custom_widget_content_hash = {}
+        # TODO 4eb3d9e: _register_custom_widget/_place_widget/
+        # _on_widget_stale_clicked now also touch these.
+        self._promoted_widget_source_watcher = PromotedWidgetSourceWatcher()
+        self._promoted_widget_source_dirty = set()
         self.view = WorkspaceView()
         self.view.resize(800, 600)
         self.view.show()

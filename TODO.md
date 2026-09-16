@@ -8710,7 +8710,7 @@ a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's histor
    `plans/widget-chat-button.md` for the full design.
    [planned: widget-chat-button.md]
 
-4eb3d9e. Prioritized per direct user request. Redo the design and
+4eb3d9e. COMPLETED: Prioritized per direct user request. Redo the design and
    implementation of staleness-detection and reload for **promoted**
    custom widgets (source="desk", a real `desk_widgets/<name>/` source
    directory recorded in `CustomWidgetDefinition.source_path`) so it
@@ -8750,6 +8750,79 @@ a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's histor
    documents the broken re-run workflow for a promoted widget, so it
    stops telling people to do something that doesn't work.
    [planned: promoted-widget-source-staleness.md]
+
+   COMPLETED: Implemented per the plan, plus one independently
+   -confirmed root-cause fix the plan's own design work turned up.
+   `desk.custom_widgets` gains `source_watch_exclusions(widget_dir)`
+   (`.build` always, plus `tsconfig.json`'s own `outDir` when
+   discoverable); new `src/desk/shell/promoted_widget_source_watcher.py`
+   (`PromotedWidgetSourceWatcher`, same `QObject`/per-key-debounced
+   shape as the existing `SchemaFileWatcher`) watches a promoted
+   widget's `desk_widgets/<name>/` directory recursively via the shared
+   `desk_services.file_watcher` service. `_register_custom_widget`
+   (re)starts that watch at its own existing tail whenever it registers
+   a `source="desk"`, source-backed definition -- the one choke point
+   every such registration path (startup, Desk switch, promotion,
+   `_resolve_promotion_source`, and this item's own confirmed rebuild)
+   already funnels through, so no call site needs to remember to wire
+   this up itself. A detected change (`_on_promoted_widget_source_changed`)
+   marks every already-placed instance `[STALE]` immediately and adds
+   the keyword to a new `_promoted_widget_source_dirty` set --
+   `_on_widget_stale_clicked` routes a dirty keyword to a new
+   `_on_promoted_widget_stale_clicked` instead of the existing hash
+   -diff path (which can't represent "stale, nothing rebuilt yet");
+   confirming (`_confirm_promoted_widget_rebuild`, split out the same
+   way `_confirm_stale_reload` already is) re-runs
+   `_register_custom_widget` itself (real `build_from_source`, fresh
+   hash, remount, `_refresh_stale_indicators_for` for every sibling
+   instance), then reloads and clears staleness for just the clicked
+   instance -- matching `_on_widget_stale_clicked`'s own existing per
+   -instance philosophy exactly. A failed rebuild shows a new, generic
+   -but-real `_notify_promoted_widget_rebuild_failed` dialog and leaves
+   the instance stale/dirty so it can be retried (deliberately not
+   plumbing `build_from_source`'s specific failure text into the UI --
+   see the plan's own "Design decisions" for why that's a scoped-down,
+   deliberate follow-up, not required here). `_place_widget` also
+   starts a freshly-placed instance `[STALE]` if its keyword is already
+   known-dirty.
+
+   Independently confirmed (not just suspected, per the report's own
+   "Update" section) root cause of "`[STALE]` shown, but stale content
+   served anyway": `ServerHandle.mount_html_widget`
+   (`src/desk/server/runner.py`) only ever *appended* a Starlette
+   route, so re-mounting an already-mounted `widget_id` at a
+   *different* directory was silently shadowed forever behind the
+   first-ever-mounted one -- reproduced directly with a standalone
+   real-server HTTP round trip before writing any fix, not assumed
+   from the report's own unconfirmed `outDir`/`.build`-mismatch
+   hypothesis. Fixed by removing any existing route named
+   `f"widget-{widget_id}"` before mounting the new one.
+
+   `tempui-custom-widgets.md`'s "Authoring from real source" corrected
+   (no more re-running `build_widget.py` against `desk_widgets/<name>/`
+   -- edit it directly instead, Desk watches it); `TEMPUI_DOC_VERSION`
+   43 -> 44; new Version 44 entries in both
+   `tempui-breaking-changes.md`/`tempui-new-features.md`.
+
+   New `tests/verify/verify_promoted_widget_source_staleness.py` (35
+   checks: `source_watch_exclusions`, real-file-watch coverage for
+   `PromotedWidgetSourceWatcher` including a real tsc end-to-end
+   rebuild-via-stale-click, and the full
+   register/mark-dirty/click/confirm/decline/fail/fresh-placement
+   matrix) and `tests/verify/verify_server_runner.py` (6 checks,
+   `mount_html_widget`'s dedup fix via a real HTTP round trip). Also
+   updated several existing test fixtures
+   (`verify_relocate_promoted_widget_source.py`,
+   `verify_new_desk_flow.py`'s `switch_desk` ordering test, and a
+   dozen others sharing the same `_FakeWindow` shape) to carry the two
+   new fields real `DeskWindow` code now touches
+   (`_promoted_widget_source_watcher`/`_promoted_widget_source_dirty`),
+   and corrected one now-stale doc-content assertion in
+   `verify_ensure_build_widget_script.py` that had been checking for
+   the exact broken re-run instruction this item removes.
+
+   Full `tests/verify/` suite (140 non-disabled scripts) run clean:
+   all pass, no failures.
 
 0529501. An API for widgets to invoke Claude with access scoped to
    only the files that widget itself has access to, rather than a full

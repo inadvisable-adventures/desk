@@ -1,4 +1,4 @@
-# Redo promoted-widget staleness detection and reload (TODO `4eb3d9e`)
+# Redo promoted-widget staleness detection and reload (TODO `4eb3d9e`) (COMPLETED)
 
 ## Summary
 
@@ -274,3 +274,73 @@ real Chromium widget. Real mouse-hover/click behavior and an actual
 window are not exercised by the headless suite; note in this plan's
 "Verification results" whether a manual check was possible this
 session or was skipped.
+
+## Verification results
+
+Implemented exactly as designed above, plus the one independently
+-confirmed `mount_html_widget` fix (see "Design decisions" -- verified
+directly with a standalone real-server HTTP round trip before writing
+the fix, not assumed from the report's own unconfirmed hypothesis).
+
+New `tests/verify/verify_promoted_widget_source_staleness.py` (35
+checks, 0 failures): `source_watch_exclusions` (with a real tsconfig
+`outDir`, a missing tsconfig, and a malformed one); a real
+`PromotedWidgetSourceWatcher` watch fires on a genuine source-file
+edit and does *not* fire for a write under `.build/`, and
+`stop_watching`/`stop_all` actually stop future events;
+`_register_custom_widget` starts a watch only for a `source="desk"`,
+source-backed definition; `_on_promoted_widget_source_changed` marks
+every placed instance `[STALE]` and dirties the keyword;
+`_on_widget_stale_clicked` routes a dirty keyword to the new promoted
+-widget handler instead of the hash-diff one (asserted directly: the
+hash-diff confirm dialog raises if it's ever called for this case);
+decline/confirm-success/confirm-failure all behave as designed,
+including the per-instance behavior (a second placed instance stays
+`[STALE]` until it's clicked too) and the failure path leaving the
+instance stale/dirty so it can be retried; a freshly-placed instance
+of an already-dirty keyword starts `[STALE]`; and one full real,
+end-to-end test with an actual `tsc` invocation (not monkeypatched)
+-- edit a real `.ts` file, detect the change, click, confirm, rebuild,
+confirm the content hash changed and the rebuilt `.build/index.html`
+genuinely contains the new source's own output.
+
+New `tests/verify/verify_server_runner.py` (6 checks, 0 failures): a
+real `start_server`/HTTP round trip confirms remounting a *different*
+directory for an already-mounted `widget_id` now actually serves the
+new content (previously silently served the first-ever-mounted
+directory forever); editing the *currently*-mounted directory's file
+in place still works exactly as before; exactly one route remains
+registered per `widget_id`, not one accumulating per registration;
+and two different `widget_id`s remain independent.
+
+Several existing test fixtures needed the same two new fields real
+`DeskWindow` code now touches
+(`_promoted_widget_source_watcher`/`_promoted_widget_source_dirty`) --
+`verify_relocate_promoted_widget_source.py` (a real
+`PromotedWidgetSourceWatcher`, since that file exercises real
+`desk_widgets/<name>/` directories directly), `verify_new_desk_flow.py`
+(extended its own `switch_desk`-ordering test with an explicit
+assertion that `stop_all()` is called and the dirty set is cleared,
+matching that file's own established "switch_desk now also touches
+these directly" comment convention), and eleven others sharing the
+same `_FakeWindow`/`_FakeHandle` shape, patched with a small script
+rather than by hand given the count. One existing test's own
+assertion was genuinely stale, not just missing a field:
+`verify_ensure_build_widget_script.py` had been checking that the
+custom-widgets doc *did* tell you to re-run `build_widget.py` against
+`desk_widgets/<name>/` -- exactly the broken instruction this item
+removes -- corrected to check the opposite (the old instruction is
+gone, the new watch-based guidance is present).
+
+Full `tests/verify/` suite (140 non-disabled scripts, including both
+new files above) run clean via a fresh, from-scratch sweep: all pass,
+no failures at all.
+
+Manual, live-interactive verification (opening a real Desk, editing a
+promoted widget's source by hand, watching the `[STALE]` button appear
+and clicking through the confirm dialog) was not performed this
+session -- no interactive Desk/browser session was available. The
+end-to-end real-`tsc` test above covers the same mechanism
+(watch-detect -> mark stale -> click -> confirm -> real rebuild ->
+hash change -> reload) directly against the real `DeskWindow` methods,
+just without a human at a real GUI driving it.
