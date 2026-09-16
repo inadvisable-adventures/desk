@@ -8710,6 +8710,47 @@ a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's histor
    `plans/widget-chat-button.md` for the full design.
    [planned: widget-chat-button.md]
 
+4eb3d9e. Prioritized per direct user request. Redo the design and
+   implementation of staleness-detection and reload for **promoted**
+   custom widgets (source="desk", a real `desk_widgets/<name>/` source
+   directory recorded in `CustomWidgetDefinition.source_path`) so it
+   works the same way it already does for a still-`.desk_temp`-sourced
+   `DefineWidget` custom widget: watch the widget's own source files
+   for changes; on a detected change, show the same `[STALE]` titlebar
+   button (`_refresh_stale_indicators_for`/`WidgetFrame.set_stale`,
+   TODO `5995ffd`) on every already-placed instance; clicking it asks
+   for confirmation (mirroring `_confirm_stale_reload`'s existing
+   dialog shape) and, if confirmed, rebuilds
+   (`desk.custom_widgets.build_from_source`) and reloads.
+
+   Cites `../FEEDBACK/FEEDBACK-DESK-promoted-widgets-no-stale-marker
+   -2026-09-15-1744.md`: after promotion, `desk_widgets/<name>/`'s
+   documented post-promotion edit-rebuild workflow
+   (`tempui-custom-widgets.md`'s "for any further edits, exactly as
+   before" instruction, i.e. re-running `.desk_temp/build_widget.py`)
+   is silently rejected by `_register_custom_widget`'s own
+   `existing_source != source` guard (`"desk"` vs. `"tempui"`) --
+   logged, never surfaced to a user or agent, and the rebuilt code
+   never gets picked up at all, not even for a freshly-placed
+   instance. The report's own "Update" section found Desk-switch is
+   not a working escape hatch either: it does re-register and
+   correctly mark instances `[STALE]`, but the content served after
+   reloading past that marker is still not the edited source --
+   flagged there only as a hypothesis (a possible `outDir`/`.build`
+   cache-directory mismatch), not confirmed from source.
+
+   Whatever the redo's exact mechanism turns out to be, it must not
+   depend on `.desk_temp/build_widget.py` being re-run against an
+   already-promoted widget at all (the specific workflow the report
+   found silently broken) -- the whole point is that editing
+   `desk_widgets/<name>/`'s real source files directly is enough on
+   its own to be detected and (once confirmed) rebuilt, the same way a
+   `.desk_temp` `DefineWidget` widget's live edits already are. Also
+   correct or replace whatever in `tempui-custom-widgets.md` currently
+   documents the broken re-run workflow for a promoted widget, so it
+   stops telling people to do something that doesn't work.
+   [planned: promoted-widget-source-staleness.md]
+
 0529501. An API for widgets to invoke Claude with access scoped to
    only the files that widget itself has access to, rather than a full
    unrestricted session. Motivating example: the peer `necro-4x`
