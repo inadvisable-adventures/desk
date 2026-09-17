@@ -19,6 +19,7 @@ e4d73dc. Add a `map` verb to the pipe-chained verb DSL (TODO `63bfd42`,
    same order, as this stage's own output.
 
    Prioritized per direct user request.
+   [planned: pipeline-dsl-map-verb.md]
 
 9613bb0. COMPLETED: Make promotion's "no usable recorded source directory" case
    visible instead of a silent fallback. Reported by a user who
