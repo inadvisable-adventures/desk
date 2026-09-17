@@ -1,4 +1,4 @@
-# Pipe-chained verb DSL: `map` verb (TODO `e4d73dc`)
+# Pipe-chained verb DSL: `map` verb (TODO `e4d73dc`) (COMPLETED)
 
 ## Summary
 

@@ -312,6 +312,148 @@ def test_open_image_reports_ok_false_with_no_desk_directory():
     check("no current Desk directory known -> ok False, not a crash", result == {"ok": False})
 
 
+# -- The map verb (TODO e4d73dc) -----------------------------------------
+
+def test_map_groups_correctly_around_its_own_inner_pipes():
+    # An empty list means the map's own sub-pipeline never actually runs
+    # (nothing to apply it to) -- this test is purely about how the
+    # surrounding text groups into stages, not about running the inner
+    # verbs, so their real signatures don't matter here.
+    result = pipeline_dsl.run_pipeline(
+        f"py:{b64('[]')} | map +| echo x | echo y |+ | echo after",
+        {"echo": lambda _, s=None: s},
+    )
+    check("pipeline succeeded", result["ok"] is True)
+    check("three top-level stages, not sliced apart by the map's own inner '|'s", len(result["stages"]) == 3)
+    check("stage 2 is the map stage", result["stages"][1]["kind"] == "map")
+    check("stage 3 is the ordinary stage after the map, not part of it", result["stages"][2]["verb"] == "echo")
+
+
+def test_map_missing_close_raises_upfront():
+    try:
+        pipeline_dsl.run_pipeline("map +| echo x", {"echo": lambda _, s: s})
+        check("missing '|+' should raise", False)
+    except ValueError as e:
+        check("missing '|+' raises ValueError", "missing closing" in str(e))
+
+
+def test_map_empty_sub_pipeline_raises_upfront():
+    try:
+        pipeline_dsl.run_pipeline("echo a | map +| |+", {"echo": lambda _, s: s})
+        check("an empty map sub-pipeline should raise", False)
+    except ValueError as e:
+        check("empty map sub-pipeline raises ValueError", "empty" in str(e))
+
+
+def test_map_empty_sub_pipeline_with_no_separating_space_also_raises():
+    # '+||+', with no space at all between the delimiters, is a single
+    # '||' token straight out of shlex (adjacent punctuation characters
+    # merge) -- _tokenize expands any all-'|' token back into individual
+    # '|' tokens so this degenerate-but-plausible spelling still parses
+    # (and still correctly rejects as empty) rather than silently
+    # misgrouping.
+    try:
+        pipeline_dsl.run_pipeline("echo a | map +||+", {"echo": lambda _, s: s})
+        check("an empty map sub-pipeline (no separating space) should raise", False)
+    except ValueError as e:
+        check("empty map sub-pipeline (no separating space) raises ValueError", "empty" in str(e))
+
+
+def test_map_as_a_literal_argument_is_not_misparsed_as_the_keyword():
+    def _accepts_any_args(_, *args):
+        return list(args)
+
+    registry = {"some_verb": _accepts_any_args, "other_verb": _accepts_any_args}
+    result = pipeline_dsl.run_pipeline("some_verb map + | other_verb", registry)
+    check("two ordinary stages, not a misparsed map", len(result["stages"]) == 2)
+    check("'map' passed through as a literal argument, not a keyword", result["stages"][0]["args"] == ["map", "+"])
+    check("second stage is the real 'other_verb' call", result["stages"][1]["verb"] == "other_verb")
+
+
+def test_map_doubles_each_item_of_a_list():
+    def double(item: int) -> int:
+        return item * 2
+
+    result = pipeline_dsl.run_pipeline(f"py:{b64('[1, 2, 3]')} | map +| double |+", {"double": double})
+    check("map recombines the per-item results in order", result["value"] == [2, 4, 6])
+
+
+def test_map_accepts_a_tuple_and_always_outputs_a_list():
+    def double(item: int) -> int:
+        return item * 2
+
+    result = pipeline_dsl.run_pipeline(f"py:{b64('(1, 2, 3)')} | map +| double |+", {"double": double})
+    check("a tuple input succeeds", result["ok"] is True)
+    check("output is always a real list", result["value"] == [2, 4, 6] and isinstance(result["value"], list))
+
+
+def test_map_rejects_a_non_sequence_piped_value():
+    def double(item: int) -> int:
+        return item * 2
+
+    result = pipeline_dsl.run_pipeline(f"py:{b64('5')} | map +| double |+", {"double": double})
+    check("a non-list/tuple piped value is a per-stage failure, not a crash", result["ok"] is False)
+    check("reported as a TypeError", "TypeError" in result["stages"][-1]["error"])
+
+
+def test_map_each_sub_pipeline_receives_its_own_item_not_none_or_the_outer_value():
+    seen = []
+
+    def record(item):
+        seen.append(item)
+        return item
+
+    pipeline_dsl.run_pipeline(f"py:{b64('[10, 20, 30]')} | map +| record |+", {"record": record})
+    check("each sub-pipeline saw its own item, in order", seen == [10, 20, 30])
+
+
+def test_map_fail_fast_names_the_failing_item_and_reason_with_no_partial_output():
+    def fail_on_three(item: int) -> dict:
+        if item == 3:
+            return {"ok": False}
+        return {"ok": True}
+
+    result = pipeline_dsl.run_pipeline(f"py:{b64('[1, 2, 3, 4]')} | map +| fail_on_three |+", {"fail_on_three": fail_on_three})
+    check("the whole map stage fails", result["ok"] is False)
+    map_entry = result["stages"][-1]
+    check("no partial output", map_entry["output"] is None)
+    check("names the failing item's index (0-based, third item)", "item 2" in map_entry["error"])
+    check("names the underlying reason", "verb reported ok: false" in map_entry["error"])
+
+
+def test_nested_map():
+    def double(item: int) -> int:
+        return item * 2
+
+    result = pipeline_dsl.run_pipeline(
+        f"py:{b64('[[1, 2], [3, 4]]')} | map +| map +| double |+ |+", {"double": double}
+    )
+    check("nested map recombines correctly at both levels", result["value"] == [[2, 4], [6, 8]])
+
+
+def test_map_end_to_end_against_a_fake_window():
+    # reveal_widget's own real argument (instance_id) comes from a
+    # plain shlex-parsed string, not the piped value it deliberately
+    # ignores (Sec. 3) -- this small adapter verb is what a real
+    # pipeline author would write to run it once per piped item inside
+    # a map, exercising the real pipeline_dsl.reveal_widget/_call_gui
+    # routing against the fake window underneath.
+    def reveal_by_id(instance_id: str) -> dict:
+        return pipeline_dsl.reveal_widget(None, instance_id)
+
+    _register_fake_window()
+    result = pipeline_dsl.run_pipeline(
+        f"py:{b64('[\"abc\", \"def\", \"ghi\"]')} | map +| reveal_by_id |+",
+        {"reveal_by_id": reveal_by_id},
+    )
+    check("map over real instance ids succeeds", result["ok"] is True)
+    check(
+        "recombined into a list of each reveal_widget call's own result",
+        result["value"] == [{"ok": True}, {"ok": True}, {"ok": True}],
+    )
+    _clear_context()
+
+
 test_quoted_pipe_stays_in_one_stage()
 test_unquoted_pipe_splits_stages()
 test_py_stage_base64_with_plus_and_slash_survives_tokenization()
@@ -333,6 +475,18 @@ test_worked_example_1_full_happy_path_writes_a_real_open_image_tempui_file()
 test_reveal_widget_and_screenshot_verbs()
 test_verbs_report_not_ready_instead_of_crashing()
 test_open_image_reports_ok_false_with_no_desk_directory()
+test_map_groups_correctly_around_its_own_inner_pipes()
+test_map_missing_close_raises_upfront()
+test_map_empty_sub_pipeline_raises_upfront()
+test_map_empty_sub_pipeline_with_no_separating_space_also_raises()
+test_map_as_a_literal_argument_is_not_misparsed_as_the_keyword()
+test_map_doubles_each_item_of_a_list()
+test_map_accepts_a_tuple_and_always_outputs_a_list()
+test_map_rejects_a_non_sequence_piped_value()
+test_map_each_sub_pipeline_receives_its_own_item_not_none_or_the_outer_value()
+test_map_fail_fast_names_the_failing_item_and_reason_with_no_partial_output()
+test_nested_map()
+test_map_end_to_end_against_a_fake_window()
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

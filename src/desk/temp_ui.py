@@ -327,7 +327,7 @@ APP_DSL_DIRNAME = "app_dsl"
 # capability and a breaking change -- rebuilding on demand means `tsc`
 # must be available wherever such a Desk is subsequently opened, not
 # just where it was authored).
-TEMPUI_DOC_VERSION = 44
+TEMPUI_DOC_VERSION = 45
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -1622,6 +1622,17 @@ introduced it -- read from the top down until you reach a version your
 own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
+
+## Version 45
+- `desk_run_pipeline`'s pipeline DSL gains a `map` stage: `map +| verb1
+  | verb2 |+` -- everything between the `+|`/`|+` delimiters is itself
+  a full sub-pipeline in this same syntax (including a nested `map`).
+  `map` requires a list/array piped value, runs the sub-pipeline once
+  per item (each item, not the outer pipeline's own value, is what the
+  sub-pipeline's first stage receives), and recombines the per-item
+  results into a new list. The first item whose sub-pipeline doesn't
+  succeed fails the whole `map` stage, naming which item and why -- no
+  partial results.
 
 ## Version 44
 - A new `desk_run_pipeline` MCP tool: runs a pipe-chained verb DSL

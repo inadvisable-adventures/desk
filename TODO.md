@@ -6,7 +6,7 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
-e4d73dc. Add a `map` verb to the pipe-chained verb DSL (TODO `63bfd42`,
+e4d73dc. COMPLETED: Add a `map` verb to the pipe-chained verb DSL (TODO `63bfd42`,
    `src/desk/pipeline_dsl.py`): `map +| verb1 | verb2 |+` -- everything
    between the `+|`/`|+` delimiters is itself a full sub-pipeline spec
    (using the DSL's own existing grammar, including nesting another
@@ -20,6 +20,42 @@ e4d73dc. Add a `map` verb to the pipe-chained verb DSL (TODO `63bfd42`,
 
    Prioritized per direct user request.
    [planned: pipeline-dsl-map-verb.md]
+
+   COMPLETED: Implemented per the plan -- `_group_top_level_stages`
+   (replacing the old flat `_group_stages`) recognizes a `map` stage's
+   `+|`/`|+` delimiters contextually (only right after a `map` keyword
+   that itself began a stage), rather than adding `+` as a second
+   global `shlex` punctuation character (confirmed that would corrupt
+   an ordinary argument or a `py:` base64 payload containing a literal
+   `+`). Nesting (`map` inside `map`) falls out of the same `map_depth`
+   -tracking scan with no extra code. `run_pipeline`'s per-stage loop
+   was extracted into a reusable `_execute_stages` so a `map` stage can
+   recursively call it once per item; a failing item raises immediately,
+   making the whole `map` stage one failed stage in the outer result
+   (fail-fast, no partial-results mode of its own), naming the failing
+   item's index and reason. `list` and `tuple` piped values both work,
+   output is always a `list`. `desk_run_pipeline`'s own tool description
+   and `temp_ui.py`'s `TEMPUI_DOC_VERSION` (bumped to 45, matching
+   `_NEW_FEATURES_DOC` entry) updated.
+
+   New coverage added to `tests/verify/verify_pipeline_dsl.py` (+23
+   checks): grouping around the map's own inner pipes without slicing
+   it apart, a missing/empty sub-pipeline raising upfront (including
+   the no-separating-space `+||+` spelling, which needed `_tokenize`
+   to expand a merged `||` token back into individual `|` tokens),
+   confirming a literal `map` argument not in stage-leading position is
+   never misread as the keyword, per-item value flow, list/tuple
+   acceptance and always-list output, a non-sequence piped value as a
+   clean per-stage failure, fail-fast naming the failing item, real
+   nesting, and a full end-to-end run against the fake window.
+   `tests/verify/verify_desk_mcp_server.py` gained a `map`-through
+   -the-real-tool check (+2). Full `tests/verify/` regression suite run
+   afterward: the same 5 scripts fail before and after this change
+   (confirmed via `git stash`) -- a pre-existing, unrelated environment
+   issue (`_FakeWindow` missing `_promoted_widget_source_dirty` against
+   a `desk.shell.window` resolved from a sibling `desk` checkout, not
+   this repo's own `src/`), not something this item introduced or is
+   responsible for fixing.
 
 9613bb0. COMPLETED: Make promotion's "no usable recorded source directory" case
    visible instead of a silent fallback. Reported by a user who

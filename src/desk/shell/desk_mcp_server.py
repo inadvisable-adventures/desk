@@ -290,10 +290,15 @@ async def _run_installed_job_tool(args: dict[str, Any]) -> dict[str, Any]:
     "Run a pipe-chained verb DSL pipeline -- a "
     "single string of '|'-separated stages, each either a built-in verb call (reveal_widget "
     "<instance_id>, screenshot_widget <instance_id> <path>, screenshot_desk <path>, "
-    "list_widget_instances, open_image, shell-quoted like any other command line) or a 'py:' "
-    "-prefixed base64-encoded Python expression escape hatch. Every stage receives the previous "
-    "stage's real output value; execution stops at the first stage that raises or returns "
-    "{\"ok\": false}. Returns the structured {ok, stages, value, traceback} result as JSON.",
+    "list_widget_instances, open_image, shell-quoted like any other command line), a 'py:' "
+    "-prefixed base64-encoded Python expression escape hatch, or a map stage (`map +| verb1 | "
+    "verb2 |+`, where everything between +| and |+ is itself a full sub-pipeline in this same "
+    "syntax, including a nested map) that requires a list/array piped value, runs the "
+    "sub-pipeline once per item, and recombines the per-item results into a new list. Every "
+    "stage receives the previous stage's real output value (map's own sub-pipeline receives "
+    "each item, not the outer pipeline's value); execution stops at the first stage (or map "
+    "item) that raises or returns {\"ok\": false}. Returns the structured {ok, stages, value, "
+    "traceback} result as JSON.",
     {"pipeline": str},
 )
 async def _run_pipeline(args: dict[str, Any]) -> dict[str, Any]:

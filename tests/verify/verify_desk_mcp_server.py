@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import os
 import sys
@@ -335,6 +336,19 @@ def test_run_pipeline_surfaces_a_structural_error_as_is_error():
     check("the raw ValueError message is passed through", "not_a_real_verb" in _text_of(result))
 
 
+def _b64(text: str) -> str:
+    return base64.b64encode(text.encode()).decode()
+
+
+def test_run_pipeline_with_a_map_stage():
+    numbers_b64 = _b64("[1, 2, 3]")
+    double_b64 = _b64("lambda x: x * 2")
+    result = run(_run_pipeline.handler({"pipeline": f"py:{numbers_b64} | map +| py:{double_b64} |+"}))
+    payload = json.loads(_text_of(result))
+    check("not an is_error result", result.get("is_error") is not True)
+    check("map recombines the per-item results through the real MCP tool", payload["value"] == [2, 4, 6])
+
+
 def test_todo_tools_report_a_clear_error_with_no_desk_directory_known():
     current_context.set_current_desk_directory(None)
     result = run(_list_todo_items.handler({}))
@@ -361,6 +375,7 @@ test_run_installed_job_relays_a_failing_script_result()
 test_run_installed_job_surfaces_a_validation_error_as_is_error()
 test_run_pipeline_returns_the_structured_result_as_json()
 test_run_pipeline_surfaces_a_structural_error_as_is_error()
+test_run_pipeline_with_a_map_stage()
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
