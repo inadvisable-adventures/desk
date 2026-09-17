@@ -6,6 +6,20 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+e4d73dc. Add a `map` verb to the pipe-chained verb DSL (TODO `63bfd42`,
+   `src/desk/pipeline_dsl.py`): `map +| verb1 | verb2 |+` -- everything
+   between the `+|`/`|+` delimiters is itself a full sub-pipeline spec
+   (using the DSL's own existing grammar, including nesting another
+   `map` inside it). `map` takes the previous stage's output, which
+   must be a list/array, spawns the sub-pipeline once per item (each
+   sub-pipeline run gets that item as its own first piped value, `None`
+   for the sub-pipeline's own first stage otherwise being wrong -- it's
+   the *item*, not the outer pipeline's original piped value), and
+   recombines the per-item results back into a new list/array, in the
+   same order, as this stage's own output.
+
+   Prioritized per direct user request.
+
 9613bb0. COMPLETED: Make promotion's "no usable recorded source directory" case
    visible instead of a silent fallback. Reported by a user who
    promoted a widget in another project and found its HTML still baked
