@@ -32,7 +32,8 @@ def check(name, condition):
         print(f"FAIL: {name}")
 
 
-WIDGETS_DIR = Path("/Users/mphair/inadvisable-adventures/desk/widgets")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+WIDGETS_DIR = REPO_ROOT / "widgets"
 LIVE_CALL_RE = re.compile(r"QMessageBox\.(question|warning|information|critical)\s*\(")
 
 

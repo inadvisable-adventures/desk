@@ -6,7 +6,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-REPO_ROOT = Path("/Users/mphair/inadvisable-adventures/desk")
+REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_PATH = REPO_ROOT / "scripts" / "todo_item_ids.py"
 
 passed = 0

@@ -8,7 +8,8 @@ import time
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 import desk.shell.widget_frame  # noqa: E402  (imported before QApplication -- WebEngine ordering)
 import desk.shell.canvas  # noqa: E402
@@ -33,7 +34,6 @@ from desk.temp_ui import (  # noqa: E402
     _CUSTOM_WIDGETS_DOC,
 )
 
-REPO_ROOT = Path("/Users/mphair/inadvisable-adventures/desk")
 COMPONENT_DIR = REPO_ROOT / "shared-components" / "document-editor-base"
 
 passed = 0

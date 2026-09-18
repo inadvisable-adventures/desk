@@ -25,7 +25,8 @@ import time
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from PyQt6.QtGui import QGuiApplication  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
@@ -35,7 +36,6 @@ import desk.voice_capture as voice_capture  # noqa: E402
 
 app = QApplication(sys.argv)
 
-REPO_ROOT = Path("/Users/mphair/inadvisable-adventures/desk")
 WIDGET_DIR = REPO_ROOT / "widgets" / "voice_input"
 
 passed = 0

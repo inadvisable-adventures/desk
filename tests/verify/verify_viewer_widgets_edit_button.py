@@ -5,7 +5,8 @@ import tempfile
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 import desk.shell.widget_frame  # noqa: E402  (imported before QApplication -- WebEngine ordering)
 import desk.shell.canvas  # noqa: E402
@@ -139,7 +140,7 @@ def test_open_editor_or_scrap_falls_back_to_scratch_for_binary():
 
 
 project_files_mod = load_widget_module(
-    "project_files_edit_button_verify_mod", "/Users/mphair/inadvisable-adventures/desk/widgets/project_files/widget.py"
+    "project_files_edit_button_verify_mod", str(REPO_ROOT / "widgets" / "project_files" / "widget.py")
 )
 
 
@@ -173,7 +174,7 @@ def test_project_files_delegates_to_shared_editor_or_scrap_hook():
 def _load_viewer(widget_name):
     return load_widget_module(
         f"{widget_name}_edit_button_verify_mod",
-        f"/Users/mphair/inadvisable-adventures/desk/widgets/{widget_name}/widget.py",
+        str(REPO_ROOT / "widgets" / widget_name / "widget.py"),
     )
 
 

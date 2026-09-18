@@ -10,7 +10,8 @@ import urllib.request
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
@@ -91,7 +92,7 @@ def test_old_desk_file_without_registry_defaults_to_empty():
 
 
 def test_filetype_registry_editor_widget_discovered():
-    widgets = discover_widgets(Path("/Users/mphair/inadvisable-adventures/desk/widgets"))
+    widgets = discover_widgets(REPO_ROOT / "widgets")
     info = widgets.get("filetype_registry_editor")
     check("widget discovered", info is not None)
     check("kind is html", info.kind == "html")
@@ -120,7 +121,7 @@ def test_file_explorer_reads_initial_registry_and_updates_on_event():
     from desk.event_mediator import EventMediator
 
     file_explorer_mod = load_widget_module(
-        "file_explorer_verify_mod", "/Users/mphair/inadvisable-adventures/desk/widgets/project_files/widget.py"
+        "file_explorer_verify_mod", str(REPO_ROOT / "widgets" / "project_files" / "widget.py")
     )
     with tempfile.TemporaryDirectory() as d:
         directory = Path(d)

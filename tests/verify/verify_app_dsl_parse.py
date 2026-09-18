@@ -4,7 +4,8 @@ import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-REPO_ROOT = "/Users/mphair/inadvisable-adventures/desk"
+from pathlib import Path
+REPO_ROOT = str(Path(__file__).resolve().parents[2])
 sys.path.insert(0, os.path.join(REPO_ROOT, "app_dsl"))
 
 from parse import parse_app_definition  # noqa: E402

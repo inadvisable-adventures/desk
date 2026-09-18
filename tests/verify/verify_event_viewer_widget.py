@@ -5,7 +5,8 @@ import tempfile
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
@@ -23,7 +24,7 @@ def load_widget_module(name, path):
 
 
 event_viewer_widget = load_widget_module(
-    "event_viewer_verify_mod", "/Users/mphair/inadvisable-adventures/desk/widgets/event_viewer/widget.py"
+    "event_viewer_verify_mod", str(REPO_ROOT / "widgets" / "event_viewer" / "widget.py")
 )
 
 passed = 0
@@ -76,7 +77,7 @@ def test_set_event_with_none_payload():
 
 def test_double_click_opens_event_viewer_with_correct_event():
     event_log_widget = load_widget_module(
-        "event_log_verify_mod", "/Users/mphair/inadvisable-adventures/desk/widgets/event_log/widget.py"
+        "event_log_verify_mod", str(REPO_ROOT / "widgets" / "event_log" / "widget.py")
     )
 
     with tempfile.TemporaryDirectory() as d:
@@ -115,7 +116,7 @@ def test_double_click_opens_event_viewer_with_correct_event():
 
 def test_broken_opener_or_missing_set_event_does_not_raise():
     event_log_widget = load_widget_module(
-        "event_log_verify_mod", "/Users/mphair/inadvisable-adventures/desk/widgets/event_log/widget.py"
+        "event_log_verify_mod", str(REPO_ROOT / "widgets" / "event_log" / "widget.py")
     )
 
     with tempfile.TemporaryDirectory() as d:

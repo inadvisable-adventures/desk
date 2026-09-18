@@ -2,7 +2,9 @@ import os
 import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
+from pathlib import Path
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from desk.event_mediator import EventMediator  # noqa: E402
 from desk.schema_registry import SCHEMA_CHANGED_EVENT, SchemaConflict, SchemaRegistry  # noqa: E402

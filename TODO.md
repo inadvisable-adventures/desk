@@ -6,6 +6,65 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+c393520. COMPLETED: Fix the remaining `tests/verify/` scripts that hardcode an
+   absolute path to the sibling `desk` checkout
+   (`/Users/mphair/inadvisable-adventures/desk`) instead of deriving
+   it portably from `Path(__file__).resolve().parents[2]` -- see
+   `LEARNINGS.md`'s existing entry on this gotcha (a hardcoded-path
+   script silently tests a *different* checkout's code, `PASS` and
+   all, when run from any checkout other than the one it was written
+   in) and the stale `PARKINGLOT.md` entry noting only
+   `verify_claude_desk_widget.py` was ever actually fixed. Re-auditing
+   while planning this item found the scope is bigger than that
+   entry's "~28 scripts" estimate -- see the plan for the full,
+   corrected count and every hardcoded-path shape found, not just the
+   `REPO_ROOT = Path("...")` pattern the existing estimate was based
+   on.
+
+   Prioritized per direct user request (surfaced while listing out
+   the currently-failing `tests/verify/` scripts).
+   [planned: fix-hardcoded-repo-root-verify-scripts.md]
+
+   COMPLETED: Re-auditing found 72 affected scripts, not the ~28 the
+   stale `PARKINGLOT.md` entry estimated -- that entry only counted
+   the specific `REPO_ROOT = Path("...")` shape; the rest hardcoded
+   the sibling checkout's path directly into a `sys.path.insert(...)`
+   call, a second path constant (`WIDGETS_DIR`, `REAL_WIDGETS =
+   discover_widgets(...)`), or an `importlib.util.spec_from_file_
+   location(...)` call, with no `REPO_ROOT` variable involved at all.
+   Fixed every one to derive `REPO_ROOT = Path(__file__).resolve()
+   .parents[2]` (matching the ~14 scripts that already had this
+   right) and rewrote each hardcoded reference in terms of it,
+   preserving each call site's original `str`/`Path` expectations.
+   Caught and fixed two bugs the mechanical rewrite itself introduced
+   before they could land: one script (`verify_event_recorder_widget.py`)
+   referenced `REPO_ROOT` via `+` string concatenation from when it
+   was a plain `str`, which broke once the rewrite made it a `Path`
+   (fixed to `str(REPO_ROOT / "widgets" / "event_recorder" /
+   "widget.py")`); another (`verify_new_desk_existing_project_gaps.py`)
+   ended up with `REPO_ROOT / "shared_development_process.md".read_text()`,
+   where `.read_text()` bound to the string literal instead of the
+   whole path expression (fixed by parenthesizing). Removed the now-
+   stale `PARKINGLOT.md` entry this TODO supersedes.
+
+   Verified: `grep -rl '/Users/mphair/inadvisable-adventures/desk'
+   tests/verify/` (excluding this checkout's own `-dev-2` path) now
+   returns nothing; every touched file passes `python3 -m py_compile`;
+   the full non-`disabled_` `tests/verify/` suite (139 scripts) passes
+   with 0 failures -- including the 5 that failed before this change
+   (`verify_custom_widget_content_hash.py`,
+   `verify_ensure_build_widget_script.py`,
+   `verify_relocate_promoted_widget_source.py`,
+   `verify_stale_marker_click_dialog.py`,
+   `verify_state_store_schema_placement.py`), which were only failing
+   because they were silently exercising the sibling checkout's
+   drifted `window.py` and now correctly run against this checkout's
+   own code instead. Spot-ran the touched `disabled_` scripts too
+   (mic/network/live-API ones, killed after a few seconds since they
+   wait on real hardware/network by design): each one either passed
+   its real checks or ran cleanly with no import/path error before
+   being killed, confirming the rewrite didn't break them either.
+
 e4d73dc. COMPLETED: Add a `map` verb to the pipe-chained verb DSL (TODO `63bfd42`,
    `src/desk/pipeline_dsl.py`): `map +| verb1 | verb2 |+` -- everything
    between the `+|`/`|+` delimiters is itself a full sub-pipeline spec

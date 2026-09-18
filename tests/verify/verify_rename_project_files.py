@@ -5,7 +5,8 @@ import sys
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from desk.widgets import discover_widgets  # noqa: E402
 
@@ -22,8 +23,6 @@ def check(name, condition):
         failed += 1
         print(f"FAIL: {name}")
 
-
-REPO_ROOT = Path("/Users/mphair/inadvisable-adventures/desk")
 
 widgets = discover_widgets(REPO_ROOT / "widgets")
 check("project_files discovered", "project_files" in widgets)

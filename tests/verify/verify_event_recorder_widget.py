@@ -3,15 +3,15 @@ import os
 import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
+from pathlib import Path
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from PyQt6.QtCore import QEvent, QPoint, QPointF, Qt
 from PyQt6.QtGui import QMouseEvent, QWheelEvent
 from PyQt6.QtWidgets import QApplication
 
 app = QApplication.instance() or QApplication([])
-
-REPO_ROOT = "/Users/mphair/inadvisable-adventures/desk"
 
 passed = 0
 failed = 0
@@ -27,7 +27,9 @@ def check(name, condition):
         print(f"FAIL: {name}")
 
 
-spec = importlib.util.spec_from_file_location("event_recorder_check", REPO_ROOT + "/widgets/event_recorder/widget.py")
+spec = importlib.util.spec_from_file_location(
+    "event_recorder_check", str(REPO_ROOT / "widgets" / "event_recorder" / "widget.py")
+)
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
 

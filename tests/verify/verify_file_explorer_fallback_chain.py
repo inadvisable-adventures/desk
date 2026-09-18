@@ -5,7 +5,8 @@ import tempfile
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 import desk.shell.widget_frame  # noqa: E402  (imported before QApplication -- WebEngine ordering)
 import desk.shell.canvas  # noqa: E402
@@ -53,7 +54,7 @@ def load_widget_module(name, path):
 
 
 file_explorer_mod = load_widget_module(
-    "file_explorer_fallback_verify_mod", "/Users/mphair/inadvisable-adventures/desk/widgets/project_files/widget.py"
+    "file_explorer_fallback_verify_mod", str(REPO_ROOT / "widgets" / "project_files" / "widget.py")
 )
 
 # ---------- lookup helpers (pure functions) ----------

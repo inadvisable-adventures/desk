@@ -5,7 +5,8 @@ import tempfile
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 import desk.shell.widget_frame  # noqa: E402  (imported before QApplication -- WebEngine ordering)
 import desk.shell.canvas  # noqa: E402
@@ -37,7 +38,7 @@ def check(name, condition):
         print(f"FAIL: {name}")
 
 
-REAL_WIDGETS = discover_widgets(Path("/Users/mphair/inadvisable-adventures/desk/widgets"))
+REAL_WIDGETS = discover_widgets(REPO_ROOT / "widgets")
 STATE_MANAGER_INFO = REAL_WIDGETS["state_manager"]
 
 

@@ -10,7 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path("/Users/mphair/inadvisable-adventures/desk")
+REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "download_whisper_model.py"
 PYTHON = str(REPO_ROOT / ".venv" / "bin" / "python3")
 

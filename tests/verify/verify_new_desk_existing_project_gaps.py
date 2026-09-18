@@ -5,7 +5,8 @@ import time
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "src"))
 
 # TODO 78bfa41: QWebEngineWidgets must be imported before a
 # QApplication is constructed -- desk.shell.window pulls in
@@ -180,7 +181,7 @@ def test_new_desk_does_not_call_notify_when_copy_development_process_is_false():
 
 
 def test_shared_development_process_documents_feedback_convention():
-    doc = Path("/Users/mphair/inadvisable-adventures/desk/shared_development_process.md").read_text()
+    doc = (REPO_ROOT / "shared_development_process.md").read_text()
     check("doc mentions ../FEEDBACK/", "../FEEDBACK/" in doc)
     check("doc mentions the implemented/ archival step", "../FEEDBACK/implemented/" in doc)
     check("doc mentions the FEEDBACK-DESK naming convention", "FEEDBACK-DESK-" in doc)
