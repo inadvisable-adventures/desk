@@ -708,6 +708,34 @@ Desk Bridge API.
     widget — not redesigned as part of this item. See
     `plans/claude-widget-agent-sdk-integration.md`.
 
+    **Scoped sessions** (TODO `0529501`) — `ClaudeSession.start()`
+    takes an optional `allowed_paths: list[Path]`, for a `python`
+    widget that already knows exactly which file(s) it's allowed to
+    touch (e.g. a widget with its own file picker wanting a "send this
+    to Claude" affordance without handing out broader filesystem
+    access than the widget itself has). Confirmed directly, with real
+    live sessions, that `ClaudeAgentOptions(cwd=..., add_dirs=...)` is
+    **not** an access boundary by itself — an out-of-scope `Read` just
+    triggers a normal `permission_request`, same as any other gated
+    call, and succeeds once allowed — and that `can_use_tool` is
+    **not** one either, since its own docstring says it's never
+    consulted under `permission_mode="bypassPermissions"`. The actual
+    boundary is a `PreToolUse` hook, confirmed to still deny an
+    out-of-scope path even under `bypassPermissions` (the one mode
+    `can_use_tool` is skipped for entirely). A scoped session is
+    additionally given a fixed, narrower `tools` list (`Read`, `Write`,
+    `Edit`, `NotebookEdit` — no `Bash`, since a shell command's
+    arguments have no structured path field a hook could check) and no
+    Desk MCP server (TODO `a762501`'s live shell-control channel is
+    broader than "only the files this session was scoped to"). This is
+    a headless capability, not a UI — a calling widget uses
+    `ClaudeSession` directly and builds whatever minimal inline
+    affordance it needs, the same "bespoke, inline,
+    background-thread-plus-signals" shape the Git Status/Voice Input
+    widgets already use for their own async work, rather than spawning
+    a second full Claude (Desk) widget instance. See
+    `plans/scoped-claude-session-api.md`.
+
 ### Widget Model
 
 See `design-docs/widget-ux.md` for the interactive chrome (titlebar/drag,

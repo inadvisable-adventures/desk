@@ -9075,7 +9075,7 @@ a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's histor
    Full `tests/verify/` suite (140 non-disabled scripts) run clean:
    all pass, no failures.
 
-0529501. An API for widgets to invoke Claude with access scoped to
+0529501. COMPLETED: An API for widgets to invoke Claude with access scoped to
    only the files that widget itself has access to, rather than a full
    unrestricted session. Motivating example: the peer `necro-4x`
    project's domain-analysis widget has a prompt text field meant to
@@ -9104,6 +9104,47 @@ a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's histor
    whether it reuses `ClaudeDeskWidget`'s own UI or is meant to run
    headless/inline within the calling widget instead.
    [planned: scoped-claude-session-api.md]
+
+   COMPLETED: Implemented per the plan -- confirmed via real, live
+   sessions (not assumed from docs) that neither
+   `ClaudeAgentOptions(cwd=..., add_dirs=...)` nor `can_use_tool` is an
+   actual access boundary (an out-of-scope `Read` just triggers a
+   normal `permission_request` and succeeds once allowed; `can_use_tool`
+   is never consulted under `permission_mode="bypassPermissions"`
+   at all), but a `PreToolUse` hook is -- confirmed to still deny an
+   out-of-scope path even under `bypassPermissions`. `desk.claude_session
+   .ClaudeSession.start()` gained an `allowed_paths: list[Path] | None`
+   parameter; when set, the session gets a fixed, narrower `tools` list
+   (`Read`/`Write`/`Edit`/`NotebookEdit`, no `Bash` since a shell
+   command's arguments have no structured path field a hook could
+   check), no Desk MCP server, and a new `_check_path_scope` `PreToolUse`
+   hook denying any call whose `file_path`/`notebook_path` is missing or
+   resolves outside `allowed_paths`. `can_use_tool` is left wired
+   unchanged, still handling ordinary in-scope approvals through the
+   widget's existing UI. Headless by design (see the plan's "Design
+   decisions") -- no new shared UI component, since no second in-repo
+   caller exists yet (the motivating example, `necro-4x`'s widget, lives
+   outside this repo); `ClaudeSession` was already directly importable
+   by any `kind: "python"` widget, so no new `current_context.py` hook
+   was needed either. `design-docs/architecture.md`'s item 30 extended
+   with a "Scoped sessions" paragraph; new `LEARNINGS.md` entry on the
+   cwd/add_dirs/can_use_tool-vs-hook finding, since it contradicts what
+   those fields' own names/docstrings suggest.
+
+   New `tests/verify/disabled_verify_scoped_claude_session.py` (real,
+   live Claude API calls, same `disabled_` convention as
+   `disabled_verify_claude_desk_widget_claude_api.py` pending TODO
+   `9bc522b`) -- 3 tests, 9 checks, all passing: an out-of-scope `Read`
+   is denied with no `permission_request` ever firing for it, the same
+   holds under `permission_mode="bypassPermissions"` specifically (the
+   case a `cwd`/`add_dirs`-only design would have silently failed), and
+   an out-of-scope `Write` is denied without ever prompting, target file
+   never created.
+
+   Verified: full `tests/verify/` regression suite (141 non-`disabled_`
+   scripts) passes, 0 failures -- this change only adds a new opt-in
+   parameter, no existing `ClaudeSession.start()` call site changed
+   behavior.
 
 ed5c62f. De-prioritized (moved to the end of the queue on request --
    priority is physical position in this file, per

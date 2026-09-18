@@ -10,6 +10,42 @@ Caught directly while writing `tests/verify/verify_installed_jobs.py`'s non-bloc
 
 If output performed by one thread appears to just disappear (not error, not hang) while another thread is doing anything with `contextlib.redirect_stdout`/`redirect_stderr`, suspect this first. There's no general fix beyond avoiding the pattern for anything that must run concurrently with other threads' own stdout/stderr use -- when writing a test that spans a `redirect_stdout` window on another thread, capture whatever conditions you need to check into plain variables first, and defer every `print`-performing assertion until after that window has closed (e.g. after `event.wait()`/`thread.join()` confirms the capturing block has already exited).
 
+## `ClaudeAgentOptions(cwd=..., add_dirs=...)` and `can_use_tool` are not filesystem access boundaries -- only a `PreToolUse` hook actually is
+
+Both look like they should restrict which files a session can reach --
+`cwd`/`add_dirs` are literally named "additional directories Claude can
+access," and `can_use_tool` is the SDK's own tool-approval callback.
+Neither one enforces anything by itself, confirmed directly with real
+sessions (TODO `0529501`, `plans/scoped-claude-session-api.md`):
+
+- A `Read` for an absolute path outside `cwd`/`add_dirs` doesn't error
+  or get silently blocked -- it just triggers an ordinary
+  `permission_request`, exactly like any other gated action (e.g.
+  `Write`), and succeeds once allowed. `cwd`/`add_dirs` only change
+  which calls the CLI's own heuristics treat as "ask" vs. "auto-allow";
+  they carry no security meaning on their own. (The installed
+  `claude_agent_sdk` package's own `SandboxSettings` docstring says the
+  same thing about filesystem restriction generally: it's "configured
+  via permission rules... not via these sandbox settings.")
+- `can_use_tool` is skipped entirely under
+  `permission_mode="bypassPermissions"` (its own docstring: "not
+  invoked for tool calls already permitted by... permission_mode...
+  since those never reach a prompt") -- a caller relying on it as the
+  enforcement point would have a scoping mechanism a plain mode choice
+  silently defeats.
+- A `PreToolUse` hook (`ClaudeAgentOptions(hooks={"PreToolUse": [...]})`,
+  returning `{"hookSpecificOutput": {"hookEventName": "PreToolUse",
+  "permissionDecision": "deny", ...}}`) is the actual boundary --
+  confirmed to still deny an out-of-scope path even under
+  `bypassPermissions`, the one mode `can_use_tool` can't touch at all.
+
+If something needs a real, trustable restriction on what a Claude Agent
+SDK session can touch (not just a UI-level approval gate), reach for a
+`PreToolUse` hook doing real per-call input-checking, not `cwd`/
+`add_dirs`/`sandbox`/`can_use_tool` -- and verify with a live session
+under `bypassPermissions` specifically, since that's the mode that
+silently defeats every mechanism except the hook.
+
 ## `claude_agent_sdk.tool`'s `{name: type}` shorthand schema marks *every* key required -- there's no way to declare an optional argument with it
 
 `@tool(name, description, {"a": str, "b": str})` looks like it should let a caller omit `b`, the same way an ordinary Python function with a default would. It doesn't: `SdkMcpTool`'s internal `_build_schema` (`claude_agent_sdk/__init__.py`) turns that shorthand into `{"type": "object", "properties": {...}, "required": list(properties.keys())}` -- every key in the dict becomes `required` in the resulting JSON Schema, unconditionally, regardless of whether the handler itself treats a missing key as optional (e.g. via `args.get(...)`).

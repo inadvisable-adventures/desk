@@ -1,4 +1,4 @@
-# Scoped Claude session API for widgets (TODO `0529501`)
+# Scoped Claude session API for widgets (TODO `0529501`) (COMPLETED)
 
 ## Summary
 
