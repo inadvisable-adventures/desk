@@ -39,7 +39,7 @@ from desk.temp_ui import (  # noqa: E402
     PROMOTED_WIDGET_SRC_DIRNAME,
     SPLIT_DOC_CONTENT,
     TEMP_UI_DIRNAME,
-    TEMPUI_DOC_VERSION,
+    CURRENT_TAGS,
     CustomWidgetDefinition,
 )
 
@@ -547,7 +547,7 @@ def test_cancelling_the_source_dialog_aborts_the_whole_promotion():
 
 
 def test_doc_content():
-    check("TEMPUI_DOC_VERSION bumped to at least 42", TEMPUI_DOC_VERSION >= 42)
+    check("changelog still covers this feature (version-40)", "version-40" in CURRENT_TAGS)
     doc = SPLIT_DOC_CONTENT[CUSTOM_WIDGETS_DOC_FILENAME]
     check("doc recommends .desk_temp/widgets/<name>/", ".desk_temp/widgets/<name>/" in doc)
     check("custom_widget_src no longer mentioned", "custom_widget_src" not in doc)

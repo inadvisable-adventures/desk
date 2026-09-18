@@ -28,7 +28,7 @@ from desk.shell.temp_ui_manager import TempUiManager  # noqa: E402
 from desk.temp_ui import (  # noqa: E402
     NEW_FEATURES_DOC_FILENAME,
     SHARED_COMPONENTS_DIRNAME,
-    TEMPUI_DOC_VERSION,
+    CURRENT_TAGS,
     SPLIT_DOC_CONTENT,
     _repo_shared_components_dir,
     sync_shared_components,
@@ -141,7 +141,7 @@ test_provision_mirrors_shared_components()
 
 
 def test_doc_version_and_new_features_entry():
-    check("TEMPUI_DOC_VERSION is >= 23", TEMPUI_DOC_VERSION >= 23)
+    check("changelog still covers this feature (version-20)", "version-20" in CURRENT_TAGS)
     new_features_text = SPLIT_DOC_CONTENT[NEW_FEATURES_DOC_FILENAME]
     check("new-features doc mentions shared-components", "shared-components" in new_features_text)
     check("new-features doc mentions hsv-color-picker", "hsv-color-picker" in new_features_text)

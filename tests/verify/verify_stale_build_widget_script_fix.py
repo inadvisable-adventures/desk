@@ -22,7 +22,7 @@ from desk.temp_ui import (  # noqa: E402
     BUILD_WIDGET_SCRIPT_FILENAME,
     CUSTOM_WIDGETS_DOC_FILENAME,
     SPLIT_DOC_CONTENT,
-    TEMPUI_DOC_VERSION,
+    CURRENT_TAGS,
     write_tempui_docs,
 )
 from desk.widgets import WidgetInfo  # noqa: E402
@@ -41,7 +41,7 @@ def check(name, condition):
         print(f"FAIL: {name}")
 
 
-check("TEMPUI_DOC_VERSION bumped to at least 29", TEMPUI_DOC_VERSION >= 29)
+check("changelog still covers this feature (version-20)", "version-20" in CURRENT_TAGS)
 custom_widgets_doc = SPLIT_DOC_CONTENT[CUSTOM_WIDGETS_DOC_FILENAME]
 new_features_doc = SPLIT_DOC_CONTENT["tempui-new-features.md"]
 check("Version 29 entry present in new-features doc", "## Version 29" in new_features_doc)

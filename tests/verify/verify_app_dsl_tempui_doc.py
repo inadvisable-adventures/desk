@@ -9,7 +9,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 from desk.temp_ui import (  # noqa: E402
     CUSTOM_WIDGETS_DOC_FILENAME,
     SPLIT_DOC_CONTENT,
-    TEMPUI_DOC_VERSION,
+    CURRENT_TAGS,
 )
 
 passed = 0
@@ -26,7 +26,7 @@ def check(name, condition):
         print(f"FAIL: {name}")
 
 
-check("TEMPUI_DOC_VERSION bumped to at least 33", TEMPUI_DOC_VERSION >= 33)
+check("changelog still covers this feature (version-30)", "version-30" in CURRENT_TAGS)
 
 custom_widgets_doc = SPLIT_DOC_CONTENT[CUSTOM_WIDGETS_DOC_FILENAME]
 check("tempui-custom-widgets.md cross-references app_dsl/README.md", "app_dsl/README.md" in custom_widgets_doc)

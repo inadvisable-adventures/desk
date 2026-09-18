@@ -12,7 +12,7 @@ from desk.temp_ui import (  # noqa: E402
     DISCUSS_PARKING_LOT_ITEM_KEYWORD,
     DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME,
     SPLIT_DOC_CONTENT,
-    TEMPUI_DOC_VERSION,
+    CURRENT_TAGS,
     detect_temp_ui_kind,
     parse_discuss_parking_lot_item,
 )
@@ -35,11 +35,11 @@ def test_detect_and_parse():
 
 
 def test_doc_version_and_split_file():
-    assert TEMPUI_DOC_VERSION >= 5
+    assert "version-00" in CURRENT_TAGS
     content = SPLIT_DOC_CONTENT[DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME]
     assert DISCUSS_PARKING_LOT_ITEM_KEYWORD in content
     assert "PARKINGLOT.md" in content
-    print("TEMPUI_DOC_VERSION bumped + tempui-discuss-parking-lot-item.md content present: PASS")
+    print("changelog still covers this feature (version-00) + tempui-discuss-parking-lot-item.md content present: PASS")
 
 
 test_detect_and_parse()

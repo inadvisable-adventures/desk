@@ -30,7 +30,7 @@ from desk.shell.chromium_widget import ChromiumWidget  # noqa: E402
 from desk.temp_ui import (  # noqa: E402
     NEW_FEATURES_DOC_FILENAME,
     SPLIT_DOC_CONTENT,
-    TEMPUI_DOC_VERSION,
+    CURRENT_TAGS,
     _CUSTOM_WIDGETS_DOC,
 )
 
@@ -79,7 +79,7 @@ test_document_editor_base_files_exist()
 
 
 def test_doc_mentions_the_new_component():
-    check("TEMPUI_DOC_VERSION is >= 25", TEMPUI_DOC_VERSION >= 25)
+    check("changelog still covers this feature (version-20)", "version-20" in CURRENT_TAGS)
     # The "Reusable UI components" section describes components
     # generically (it didn't name "hsv-color-picker" literally either)
     # -- but it does explain the copy-vs-import distinction this

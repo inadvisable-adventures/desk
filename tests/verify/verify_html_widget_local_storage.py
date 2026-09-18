@@ -11,9 +11,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, "src")
 
 from desk.temp_ui import (  # noqa: E402
+    CURRENT_TAGS,
     SPLIT_DOC_CONTENT,
-    TEMPUI_DOC_VERSION,
-    parse_doc_version,
+    parse_doc_tags,
     render_static_doc,
 )
 from desk.server.bridge_client import render_bridge_client  # noqa: E402
@@ -41,21 +41,21 @@ from desk.schema_registry import SchemaRegistry  # noqa: E402
 from desk.widgets import WidgetInfo  # noqa: E402
 
 
-# ---------- TEMPUI_DOC_VERSION bump regression check ----------
+# ---------- tag-set regression check ----------
 
 
 def test_doc_version_bumped_to_2():
-    # >= 2, not == 2: TODO e57ce5f (the doc-split TODO) bumped this
-    # again afterward -- this test only cares that TODO 5734529's own
-    # local-storage content is present somewhere in the current doc
-    # set, not the exact current version number.
-    assert TEMPUI_DOC_VERSION >= 2
+    # This test only cares that TODO 5734529's own local-storage
+    # content is present somewhere in the current doc set, not which
+    # tag introduced it (the old version-2-era content is now folded
+    # into the version-00 bucket tag, TODO 6839365).
+    assert "version-00" in CURRENT_TAGS
     doc = render_static_doc()
-    assert parse_doc_version(doc) == TEMPUI_DOC_VERSION
+    assert parse_doc_tags(doc) == set(CURRENT_TAGS)
     all_docs = doc + "".join(SPLIT_DOC_CONTENT.values())
     assert "getLocalStorage" in all_docs
     assert "setLocalStorage" in all_docs
-    print("TEMPUI_DOC_VERSION is >= 2, and the doc set documents the Bridge API's local storage calls: PASS")
+    print("changelog still covers this feature (version-00), and the doc set documents the Bridge API's local storage calls: PASS")
 
 
 # ---------- render_bridge_client embeds instance id ----------

@@ -9,9 +9,9 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from desk.temp_ui import (  # noqa: E402
     BREAKING_CHANGES_DOC_FILENAME,
+    CURRENT_TAGS,
     NEW_FEATURES_DOC_FILENAME,
     SPLIT_DOC_CONTENT,
-    TEMPUI_DOC_VERSION,
     render_static_doc,
     write_tempui_docs,
 )
@@ -30,7 +30,7 @@ def check(name, condition):
         print(f"FAIL: {name}")
 
 
-check("TEMPUI_DOC_VERSION bumped to at least 15", TEMPUI_DOC_VERSION >= 15)
+check("changelog still covers this feature (version-10)", "version-10" in CURRENT_TAGS)
 check("breaking-changes doc registered", BREAKING_CHANGES_DOC_FILENAME in SPLIT_DOC_CONTENT)
 check("new-features doc registered", NEW_FEATURES_DOC_FILENAME in SPLIT_DOC_CONTENT)
 
@@ -39,10 +39,24 @@ features = SPLIT_DOC_CONTENT[NEW_FEATURES_DOC_FILENAME]
 
 import re  # noqa: E402
 
-breaking_versions = [int(m) for m in re.findall(r"## Version (\d+)", breaking)]
-features_versions = [int(m) for m in re.findall(r"## Version (\d+)", features)]
-check("breaking doc versions strictly descending", breaking_versions == sorted(breaking_versions, reverse=True))
-check("features doc versions strictly descending", features_versions == sorted(features_versions, reverse=True))
+# Top-level sections are now one per *tag* (TODO 6839365), not one per
+# integer version -- each in CURRENT_TAGS' own newest-first order.
+# Individual old version numbers still appear, nested one level deeper
+# (`### Version N`) inside whichever tag's bucket absorbed them.
+breaking_tag_order = re.findall(r"(?m)^## (.+)$", breaking)
+features_tag_order = re.findall(r"(?m)^## (.+)$", features)
+current_newest_first = list(reversed(CURRENT_TAGS))
+check(
+    "breaking doc's tag sections are newest-first per CURRENT_TAGS",
+    breaking_tag_order == [tag for tag in current_newest_first if tag in breaking_tag_order],
+)
+check(
+    "features doc's tag sections are newest-first per CURRENT_TAGS",
+    features_tag_order == [tag for tag in current_newest_first if tag in features_tag_order],
+)
+
+breaking_versions = [int(m) for m in re.findall(r"### Version (\d+)", breaking)]
+features_versions = [int(m) for m in re.findall(r"### Version (\d+)", features)]
 # Not a contiguous 7-through-current range check: newer versions don't
 # all get an entry in both docs (e.g. version 15, TODO 1a96c9f, wasn't
 # agent-in-Desk-visible behavior, so it has no features-doc entry at

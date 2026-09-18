@@ -809,22 +809,47 @@ Desk widgets, regardless of implementation language, are defined by a
   registration path shared by both tempui- and `.desk`-file-sourced
   definitions.
 
-`desk-temporary-ui.md` itself is version-stamped (TODO `f7b1611`): an
-HTML-comment note right under its own title (`<!-- desk-temporary-ui.md
-version: N -- ... -->`) records a plain, manually-bumped integer
-(`desk.temp_ui.TEMPUI_DOC_VERSION`) that the file's author increments
-whenever `DOC_TEMPLATE`'s static content changes in a way that would
+`desk-temporary-ui.md` itself is **tagged** (TODO `6839365`, replacing an
+earlier plain-integer scheme, TODO `f7b1611`/`e57ce5f` — see
+`plans/tempui-doc-tags.md`): a tag is a short, human-written summary plus
+an appended 6-digit, non-semantic hash generated from its creation
+timestamp (`desk.temp_ui.generate_tag`), added by whoever changes
+`DOC_TEMPLATE`'s (or a split doc's) static content in a way that would
 matter to an agent reading it — never auto-derived, since there's no
 reliable way to detect "did this edit change the doc's *meaning*"
-automatically. Before opening a Desk (`TempUiManager.provision`, called
-at app startup and on every Desk switch), an already-existing doc's
-version is checked against the current one; a mismatch — **including no
-version note at all**, which always counts as out of date — rewrites
-just the static content in place (`desk.temp_ui
-.ensure_doc_version_current`), preserving the dynamic custom-widgets
-section described above verbatim if present, so a Desk directory
-provisioned long before some later doc improvement doesn't keep a
-permanently stale copy.
+automatically. `desk.temp_ui.CURRENT_TAGS` is every tag a fully
+up-to-date doc set has; an HTML-comment note per tag, right under the
+file's own title (`<!-- desk-temporary-ui.md tag: <id> -->`), records
+which tags a given project's doc set has already seen. A tag-suffixed
+hash means two workstreams on separate branches can each mint a new tag
+without colliding or needing to reconcile anything at merge time — the
+real problem the old single global integer had (two branches
+independently bumping the same version number, TODO `63bfd42`/`4eb3d9e`,
+silently renumbered by the merge with nothing recording it happened).
+Before opening a Desk (`TempUiManager.provision`, called at app startup
+and on every Desk switch), an already-existing doc's own known tags
+(canonicalized through `TAG_COLLAPSES`, in case some of them were since
+folded into a new tag) are diffed against `CURRENT_TAGS`; anything
+missing — **including a doc with no tag information at all**, which
+always counts as out of date — rewrites just the static content in place
+(`desk.temp_ui.ensure_docs_current`), preserving the dynamic
+custom-widgets section described above verbatim if present, so a Desk
+directory provisioned long before some later doc improvement doesn't
+keep a permanently stale copy. A doc that predates tag-tracking entirely
+migrates via a one-time bulk mapping, `_legacy_version_tags` (versions
+1-46 bucketed into five `version-00`..`version-40` tags).
+
+When `ensure_docs_current` finds a project missing at least one real tag
+(as opposed to just a routine repair, e.g. a user-deleted split file with
+an already-current tag set — that rewrites silently, no notification),
+`TempUiManager._notify_docs_upgraded` writes exactly one same-directory
+Markdown tempui note (never one per tag, never zero unless nothing is
+actually missing) whose body is `desk.temp_ui.render_new_tags_digest`'s
+output: the real `tempui-breaking-changes.md`/`tempui-new-features.md`
+entries for precisely the tags that project is missing. Clicking the
+notification places a real Markdown widget rendering that content
+directly, rather than pointing the reader at a file to go open
+themselves.
 
 Widgets declare **capabilities** in their manifest; the Desk Bridge only
 grants the Bridge API surface a `kind: "html"` widget actually declared

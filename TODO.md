@@ -6,7 +6,7 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
-6839365. Replace `src/desk/temp_ui.py`'s `TEMPUI_DOC_VERSION` (a single,
+6839365. COMPLETED: Replace `src/desk/temp_ui.py`'s `TEMPUI_DOC_VERSION` (a single,
    manually-bumped integer) with a tag-based scheme: a tag is a short
    (10-50 character) human-written summary plus an appended 6-digit,
    non-semantic hash generated from its creation timestamp. A
@@ -33,6 +33,66 @@ reordered or its description edited.
 
    Prioritized per direct user request.
    [planned: tempui-doc-tags.md]
+
+   COMPLETED: Implemented per the plan. `src/desk/temp_ui.py`: added
+   `Tag`/`generate_tag`/`_legacy_version_tags`/`_canonicalize_tags`/
+   `TAG_COLLAPSES` (empty for now)/`CURRENT_TAGS`/`CURRENT_TAG_SET`;
+   replaced `parse_doc_version` with `parse_doc_tags` (falls back to
+   `_legacy_version_tags` for a pre-tags doc); `ensure_docs_current` now
+   returns `(rewrote, missing_tags: frozenset[str])`. `DOC_TEMPLATE`
+   embeds one `<!-- ...tag: <id> -->` comment per current tag instead
+   of a single version number. `_BREAKING_CHANGES`/`_NEW_FEATURES` are
+   now `dict[tag_id, body]` (generated into the same
+   tempui-breaking-changes.md/tempui-new-features.md file content via a
+   new `_render_changelog_doc`), migrated programmatically (not hand
+   -retyped) from the old `_BREAKING_CHANGES_DOC`/`_NEW_FEATURES_DOC`
+   content: every version 1-46 bucketed by decade into `version-00`
+   .. `version-40`, each original bullet preserved verbatim under a
+   nested `### Version N` sub-heading. A new tag, "tagged changelog, no
+   version numbers #252348", documents the change itself. New
+   `render_new_tags_digest(tags)` builds a real excerpt of exactly the
+   given tags' entries, used by `TempUiManager._notify_docs_upgraded`
+   (`src/desk/shell/temp_ui_manager.py`) to write the doc-upgrade
+   notification as a **Markdown** tempui note (was Scratch) -- clicking
+   it now places a real Markdown widget rendering the actual missing
+   -tags' descriptions, not a static pointer to a file to go read
+   yourself. Still exactly one `provision` call site gated by
+   `if missing_tags:`, so there's only ever one notification (or zero),
+   never one per tag (the reported "multiple notifications, each
+   showing the full range" bug could not actually be reproduced against
+   `main` as investigated -- `provision` already only ever called
+   `_notify_docs_upgraded` once -- but the one-or-zero guarantee and the
+   real-content click-through are both now true by construction, and
+   directly asserted by `verify_tempui_doc_upgrade_notification.py`'s
+   own `len(added) == 1` check).
+
+   `design-docs/architecture.md`'s version-stamping paragraph rewritten
+   for the tag scheme (and its stale `ensure_doc_version_current`
+   function-name reference, which was never the real name
+   `ensure_docs_current`, fixed); `development-process.md`'s "Keep the
+   tempui changelog docs current" section updated to describe minting a
+   tag instead of bumping an integer. New `LEARNINGS.md` entry on the
+   root cause found while investigating: two branches (TODO `63bfd42`,
+   TODO `4eb3d9e`) independently bumped `TEMPUI_DOC_VERSION` `43 -> 44`
+   from the same base; the merge (`9caf3c6`) silently renumbered one
+   side to 45/46 with nothing recording it, which is exactly the class
+   of problem a hash-suffixed tag can't have.
+
+   Updated ~20 `tests/verify/*.py` scripts: the three core suites
+   (`verify_tempui_doc_versioning.py`, `verify_tempui_doc_upgrade_
+   notification.py`, `verify_tempui_changelog_docs.py`) rewritten for
+   the tag API (including new coverage for `generate_tag` validation,
+   `_legacy_version_tags` bucketing, and `_canonicalize_tags`/
+   `TAG_COLLAPSES` chaining); `verify_tempui_storage_claim_fix.py`/
+   `verify_html_widget_local_storage.py`/`verify_ensure_build_widget_
+   script.py`'s incidental version-based staleness simulations rewritten
+   against the tag API; ~15 other scripts' per-feature
+   `TEMPUI_DOC_VERSION`-bumped-to-N tripwire replaced with an equivalent
+   check that feature's own `version-XX` bucket tag is still in
+   `CURRENT_TAGS`.
+
+   Verified: full `tests/verify/` regression suite (141 non-`disabled_`
+   scripts) passes, 0 failures.
 
 c393520. COMPLETED: Fix the remaining `tests/verify/` scripts that hardcode an
    absolute path to the sibling `desk` checkout

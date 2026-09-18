@@ -11,10 +11,10 @@ from desk.shell.schema_file_watcher import SCHEMA_FILES_DIRNAME
 from desk.temp_ui import (
     DOC_FILENAME,
     TEMP_UI_DIRNAME,
-    TEMPUI_DOC_VERSION,
     ensure_docs_current,
     ensure_gitignore_entry,
     is_temp_ui_filename,
+    render_new_tags_digest,
     sync_app_dsl_tool,
     sync_shared_components,
     write_tempui_docs,
@@ -138,13 +138,13 @@ class TempUiManager(QObject):
             # TODO e57ce5f: writes the main doc plus every split-out
             # tempui-*.md doc it references, fresh.
             write_tempui_docs(temp_dir)
-            previous_version = None
+            missing_tags: frozenset[str] = frozenset()
         else:
-            # TODO f7b1611/e57ce5f: before opening a Desk, make sure
-            # the already-existing doc set's main content -- and every
-            # split-out file -- isn't a stale/missing copy from before
-            # some later improvement.
-            _, previous_version = ensure_docs_current(temp_dir)
+            # TODO f7b1611/e57ce5f/6839365: before opening a Desk, make
+            # sure the already-existing doc set's main content -- and
+            # every split-out file -- isn't a stale/missing copy from
+            # before some later improvement.
+            _, missing_tags = ensure_docs_current(temp_dir)
 
         # TODO 3b1ef3d: always re-mirrored, not gated by "already
         # exists" like the doc branch above -- every open/switch gets
@@ -165,41 +165,58 @@ class TempUiManager(QObject):
         # adds its own note's filename to.
         self._start_watching(temp_dir)
 
-        if previous_version is not None:
-            self._notify_docs_upgraded(temp_dir, previous_version)
+        if missing_tags:
+            self._notify_docs_upgraded(temp_dir, missing_tags)
 
         return temp_dir
 
-    def _write_scratch_note(self, temp_dir: Path, title: str, body: str) -> None:
-        """Shared by every same-directory Scratch-note breadcrumb this
-        class writes (TODO 7c7b676/7f984ec) -- written directly and
-        reported via the same file_added path a watcher-observed file
-        would take (_relay.added.emit + recording the filename in
-        _known_files), rather than relying on the watcher to notice
-        this write itself: _start_watching's underlying
+    def _write_note(self, temp_dir: Path, keyword: str, title: str, body: str) -> None:
+        """Shared by every same-directory notification-note breadcrumb
+        this class writes (TODO 7c7b676/7f984ec/6839365) -- written
+        directly and reported via the same file_added path a watcher
+        -observed file would take (_relay.added.emit + recording the
+        filename in _known_files), rather than relying on the watcher
+        to notice this write itself: _start_watching's underlying
         get_service().watch(...) isn't guaranteed to already be
         observing the instant it returns, so a file written immediately
         after isn't guaranteed to be seen (the same class of concern
-        TODO 578cb6b's migration had to reason about for real)."""
+        TODO 578cb6b's migration had to reason about for real). `keyword`
+        is the tempui DSL keyword this note is written as -- `Scratch`
+        for a plain breadcrumb, `Markdown` when the body itself should
+        render as real Markdown (see _notify_docs_upgraded)."""
         note_path = temp_dir / str(uuid.uuid4())
-        note_path.write_text(f"Scratch {title}\n{body}\n")
+        note_path.write_text(f"{keyword} {title}\n{body}\n")
         self._known_files.add(note_path.name)
         self._relay.added.emit(note_path)
 
-    def _notify_docs_upgraded(self, temp_dir: Path, previous_version: int) -> None:
-        """A same-directory Scratch note (TODO 7c7b676) when
-        ensure_docs_current found the doc set's embedded version
-        genuinely differed from TEMPUI_DOC_VERSION -- not for a mere
-        repair (a missing split file with an already-current version)
-        or a brand-new .desk_temp, neither of which is "a convention
-        changed" in the sense worth surfacing."""
-        self._write_scratch_note(
+    def _write_scratch_note(self, temp_dir: Path, title: str, body: str) -> None:
+        self._write_note(temp_dir, "Scratch", title, body)
+
+    def _write_markdown_note(self, temp_dir: Path, title: str, body: str) -> None:
+        self._write_note(temp_dir, "Markdown", title, body)
+
+    def _notify_docs_upgraded(self, temp_dir: Path, missing_tags: frozenset[str]) -> None:
+        """A same-directory Markdown note (TODO 7c7b676/6839365) when
+        ensure_docs_current found the doc set's own known tags don't
+        cover every tag Desk currently has -- not for a mere repair (a
+        missing split file with an already-current tag set) or a
+        brand-new .desk_temp, neither of which is "the tag set
+        changed" in the sense worth surfacing. Exactly one call site
+        (provision, above), gated by `if missing_tags:` -- there's
+        never more than one of these notifications, and never one at
+        all when nothing is actually missing. Written as Markdown, not
+        Scratch, so clicking it opens a widget that renders the real
+        descriptions of the missing tags (render_new_tags_digest)
+        rather than a static pointer telling the reader to go open
+        tempui-breaking-changes.md themselves."""
+        count = len(missing_tags)
+        self._write_markdown_note(
             temp_dir,
             "Desk's tempui conventions changed",
-            f"This project's tempui docs were just refreshed from version "
-            f"{previous_version} to {TEMPUI_DOC_VERSION}. See "
-            "tempui-breaking-changes.md for what changed in between -- some "
-            "of it may affect widgets already built in this project.",
+            f"This project's tempui docs were just refreshed -- {count} "
+            f"tag{'' if count == 1 else 's'} new to this project since it "
+            "last saw them. Some of it may affect widgets already built in "
+            "this project.\n\n" + render_new_tags_digest(missing_tags),
         )
 
     def notify_dev_process_peers_seeded(self, directory: Path) -> None:

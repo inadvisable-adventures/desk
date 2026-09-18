@@ -19,7 +19,7 @@ app = QApplication.instance() or QApplication(sys.argv)
 from desk.questions_file import unparsed_heading_count  # noqa: E402
 from desk.shell.canvas import WorkspaceView  # noqa: E402
 from desk.shell.window import DeskWindow  # noqa: E402
-from desk.temp_ui import DOC_TEMPLATE, TEMPUI_DOC_VERSION, _NEW_FEATURES_DOC  # noqa: E402
+from desk.temp_ui import DOC_TEMPLATE, CURRENT_TAGS, _NEW_FEATURES_DOC  # noqa: E402
 
 passed = 0
 failed = 0
@@ -67,7 +67,7 @@ class _WindowLogCapture:
 
 
 def test_version_bumped():
-    check("TEMPUI_DOC_VERSION is bumped to at least 28", TEMPUI_DOC_VERSION >= 28)
+    check("changelog still covers this feature (version-20)", "version-20" in CURRENT_TAGS)
 
 
 def test_doc_states_the_real_required_heading_shape():

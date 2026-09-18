@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -13,8 +14,8 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 from desk.temp_ui import (  # noqa: E402
     BUILD_WIDGET_SCRIPT_FILENAME,
     CUSTOM_WIDGETS_DOC_FILENAME,
+    CURRENT_TAGS,
     SPLIT_DOC_CONTENT,
-    TEMPUI_DOC_VERSION,
     ensure_docs_current,
     render_static_doc,
     write_tempui_docs,
@@ -38,10 +39,10 @@ def check(name, condition):
 check("scripts/build_widget.py no longer exists", not (REPO_ROOT / "scripts" / "build_widget.py").exists())
 check("DeskWindow._seed_build_widget_script no longer exists", not hasattr(DeskWindow, "_seed_build_widget_script"))
 check("build_widget.py registered in SPLIT_DOC_CONTENT", BUILD_WIDGET_SCRIPT_FILENAME in SPLIT_DOC_CONTENT)
-check("TEMPUI_DOC_VERSION bumped to at least 17", TEMPUI_DOC_VERSION >= 17)
+check("changelog still covers this feature (version-10)", "version-10" in CURRENT_TAGS)
 
 breaking = SPLIT_DOC_CONTENT["tempui-breaking-changes.md"]
-check("breaking-changes doc has a Version 17 entry", "## Version 17" in breaking)
+check("breaking-changes doc has a Version 17 entry", "### Version 17" in breaking)
 check("Version 17 entry mentions the relocation", ".desk_temp/build_widget.py" in breaking and "scripts/build_widget.py" in breaking)
 
 custom_widgets_doc = SPLIT_DOC_CONTENT[CUSTOM_WIDGETS_DOC_FILENAME]
@@ -99,11 +100,12 @@ def test_ensure_docs_current_refreshes_a_stale_script():
         write_tempui_docs(temp_dir)
         script_path = temp_dir / BUILD_WIDGET_SCRIPT_FILENAME
         script_path.write_text("# an old, stale copy of the script\n")
-        # Simulate an older version by rewriting the main doc's own
-        # version marker down, matching how ensure_docs_current detects
-        # staleness for the whole set.
+        # Simulate a project stuck on an old tag set by dropping every
+        # tag comment from the main doc, matching how ensure_docs_current
+        # detects staleness for the whole set (a doc with no tag
+        # comments at all is always treated as out of date).
         doc_path = temp_dir / "desk-temporary-ui.md"
-        stale_text = doc_path.read_text().replace(f"version: {TEMPUI_DOC_VERSION}", "version: 1")
+        stale_text = re.sub(r"<!-- desk-temporary-ui\.md tag: .+? -->\n?", "", doc_path.read_text())
         doc_path.write_text(stale_text)
         ensure_docs_current(temp_dir)
         check("ensure_docs_current refreshes a stale script back to current content", script_path.read_text() == SPLIT_DOC_CONTENT[BUILD_WIDGET_SCRIPT_FILENAME])

@@ -18,7 +18,7 @@ from desk.claude_session import ClaudeSession  # noqa: E402
 from desk.temp_ui import (  # noqa: E402
     NEW_FEATURES_DOC_FILENAME,
     SPLIT_DOC_CONTENT,
-    TEMPUI_DOC_VERSION,
+    CURRENT_TAGS,
     render_static_doc,
 )
 
@@ -106,7 +106,7 @@ check(
 
 # ---------- Docs ----------
 
-check("TEMPUI_DOC_VERSION bumped to at least 42", TEMPUI_DOC_VERSION >= 42)
+check("changelog still covers this feature (version-40)", "version-40" in CURRENT_TAGS)
 
 doc_template = render_static_doc()
 check("main doc has a new Environment variables section", "## Environment variables" in doc_template)

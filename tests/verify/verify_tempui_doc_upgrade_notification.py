@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import tempfile
 import time
@@ -16,10 +17,10 @@ from desk.shell.temp_ui_manager import TempUiManager  # noqa: E402
 from desk.shell.window import DeskWindow  # noqa: E402
 from desk.shell.promoted_widget_source_watcher import PromotedWidgetSourceWatcher  # noqa: E402
 from desk.temp_ui import (  # noqa: E402
+    CURRENT_TAGS,
     DOC_FILENAME,
     SCRATCH_DOC_FILENAME,
     TEMP_UI_DIRNAME,
-    TEMPUI_DOC_VERSION,
     ensure_docs_current,
     write_tempui_docs,
 )
@@ -60,41 +61,42 @@ def poll_until(predicate, timeout=8.0):
     return False
 
 
-def _downgrade_version(temp_dir: Path, old_version: int) -> None:
+def _downgrade_tags(temp_dir: Path, has_tags: set) -> None:
     """Simulates a pre-existing, genuinely stale .desk_temp: writes a
-    fully current doc set, then rewrites just the main doc's own
-    embedded version marker down to old_version -- the same "downgrade
-    a real version marker" approach verify_ensure_build_widget_script
-    .py already uses to simulate staleness."""
+    fully current doc set, then rewrites the main doc's own tag
+    comments down to just `has_tags` -- a project that has already
+    seen those tags and no others."""
     doc_path = temp_dir / DOC_FILENAME
-    text = doc_path.read_text()
-    text = text.replace(f"version: {TEMPUI_DOC_VERSION} ", f"version: {old_version} ")
+    text = re.sub(r"<!-- desk-temporary-ui\.md tag: .+? -->\n?", "", doc_path.read_text())
+    tag_lines = "\n".join(f"<!-- desk-temporary-ui.md tag: {tag} -->" for tag in has_tags)
+    text = text.replace("# Temporary UI\n", f"# Temporary UI\n\n{tag_lines}\n", 1)
     doc_path.write_text(text)
 
 
-# ---------- ensure_docs_current's own new (rewrote, previous_version) return value ----------
+# ---------- ensure_docs_current's own (rewrote, missing_tags) return value ----------
 
 
 def test_ensure_docs_current_return_value():
     with tempfile.TemporaryDirectory() as d:
         temp_dir = Path(d)
 
-        check("brand-new (no doc at all) -> (False, None)", ensure_docs_current(temp_dir) == (False, None))
+        check("brand-new (no doc at all) -> (False, frozenset())", ensure_docs_current(temp_dir) == (False, frozenset()))
 
         write_tempui_docs(temp_dir)
-        check("already fully current -> (False, None)", ensure_docs_current(temp_dir) == (False, None))
+        check("already fully current -> (False, frozenset())", ensure_docs_current(temp_dir) == (False, frozenset()))
 
         (temp_dir / SCRATCH_DOC_FILENAME).unlink()
-        rewrote, previous_version = ensure_docs_current(temp_dir)
-        check("current version but a missing split file -> rewrote True", rewrote is True)
-        check("current version but a missing split file -> previous_version None (just a repair, not a convention change)", previous_version is None)
+        rewrote, missing_tags = ensure_docs_current(temp_dir)
+        check("current tags but a missing split file -> rewrote True", rewrote is True)
+        check("current tags but a missing split file -> missing_tags empty (just a repair, not a convention change)", missing_tags == frozenset())
         check("the missing split file is actually restored", (temp_dir / SCRATCH_DOC_FILENAME).is_file())
 
-        _downgrade_version(temp_dir, TEMPUI_DOC_VERSION - 3)
-        rewrote2, previous_version2 = ensure_docs_current(temp_dir)
-        check("a genuinely stale version -> rewrote True", rewrote2 is True)
-        check("a genuinely stale version -> previous_version is the real old version", previous_version2 == TEMPUI_DOC_VERSION - 3)
-        check("the main doc is rewritten to the current version", f"version: {TEMPUI_DOC_VERSION} " in (temp_dir / DOC_FILENAME).read_text())
+        has_tags = set(CURRENT_TAGS) - {"version-30", "version-40"}
+        _downgrade_tags(temp_dir, has_tags)
+        rewrote2, missing_tags2 = ensure_docs_current(temp_dir)
+        check("genuinely missing tags -> rewrote True", rewrote2 is True)
+        check("genuinely missing tags -> missing_tags is the real missing set", missing_tags2 == frozenset({"version-30", "version-40"}))
+        check("the main doc is rewritten with every current tag", set(re.findall(r"<!-- desk-temporary-ui\.md tag: (.+?) -->", (temp_dir / DOC_FILENAME).read_text())) == set(CURRENT_TAGS))
 
 
 test_ensure_docs_current_return_value()
@@ -103,14 +105,14 @@ test_ensure_docs_current_return_value()
 # ---------- TempUiManager.provision: notification only for a real convention change ----------
 
 
-def test_provision_stale_doc_notifies_and_places_a_real_scratch_widget():
+def test_provision_stale_doc_notifies_and_places_a_real_markdown_widget():
     with tempfile.TemporaryDirectory() as d:
         directory = Path(d)
         temp_dir = directory / TEMP_UI_DIRNAME
         temp_dir.mkdir()
         write_tempui_docs(temp_dir)
-        old_version = TEMPUI_DOC_VERSION - 2
-        _downgrade_version(temp_dir, old_version)
+        missing = {"version-30", "version-40"}
+        _downgrade_tags(temp_dir, set(CURRENT_TAGS) - missing)
 
         mgr = TempUiManager()
         added = []
@@ -118,41 +120,47 @@ def test_provision_stale_doc_notifies_and_places_a_real_scratch_widget():
 
         result = mgr.provision(directory, lambda: True, lambda: True)
         check("provision returns the real temp_dir", result == temp_dir)
-        check("the main doc is actually rewritten to the current version", f"version: {TEMPUI_DOC_VERSION} " in (temp_dir / DOC_FILENAME).read_text())
+        check(
+            "the main doc is actually rewritten with every current tag",
+            set(re.findall(r"<!-- desk-temporary-ui\.md tag: (.+?) -->", (temp_dir / DOC_FILENAME).read_text())) == set(CURRENT_TAGS),
+        )
 
         pump(1.0)
-        check("provision emits exactly one file_added for the upgrade notification", len(added) == 1)
+        check("provision emits exactly one file_added for the upgrade notification, never one per tag", len(added) == 1)
         if added:
             note_path = added[0]
             check("the notification note is a real file under temp_dir", note_path.parent == temp_dir and note_path.is_file())
             note_text = note_path.read_text()
-            check("the note starts with the Scratch keyword", note_text.startswith("Scratch "))
-            check("the note mentions the real old version", str(old_version) in note_text)
-            check("the note mentions the real new version", str(TEMPUI_DOC_VERSION) in note_text)
-            check("the note points at tempui-breaking-changes.md", "tempui-breaking-changes.md" in note_text)
+            check("the note starts with the Markdown keyword (real content, not a plain Scratch pointer)", note_text.startswith("Markdown "))
+            check("the note names both missing tags", "version-30" in note_text and "version-40" in note_text)
+            check("the note does NOT mention a tag this project already had", "version-00" not in note_text)
 
             # Real downstream effect, not just "the signal fired" --
             # the same _FakeWindow-with-real-_place_widget shape
             # tests/verify/verify_discuss_parking_lot_item.py already
-            # uses for an equivalent notification-click check.
+            # uses for an equivalent notification-click check. Markdown
+            # notes place the real, built-in Markdown widget.
             current_context.set_current_desk_directory(directory)
             widget_info = WidgetInfo(
-                id="scratch",
-                path=Path("widgets/scratch"),
+                id="markdown",
+                path=Path("widgets/markdown"),
                 kind="python",
-                name="Scratch",
+                name="Markdown",
                 entry="widget.py",
                 capabilities=[],
-                default_size=(360, 320),
+                default_size=(900, 700),
             )
-            win = _FakeWindow(directory, widgets={"scratch": widget_info})
+            win = _FakeWindow(directory, widgets={"markdown": widget_info})
             win._activate_temp_ui(note_path)
             frame = win.find_frame_by_instance_id(note_path.name)
-            check("a real Scratch widget frame was actually placed for the notification", frame is not None)
+            check("a real Markdown widget frame was actually placed for the notification", frame is not None)
             if frame is not None:
                 content = frame.content.current
-                check("the placed Scratch widget's label matches the note's own first line", content.label_text == "Desk's tempui conventions changed")
-                check("the placed Scratch widget's body mentions both versions", str(old_version) in content.body.toPlainText() and str(TEMPUI_DOC_VERSION) in content.body.toPlainText())
+                check("the placed Markdown widget's label matches the note's own first line", content._label.text() == "Desk's tempui conventions changed")
+                check(
+                    "the placed Markdown widget's content mentions both missing tags",
+                    "version-30" in content._tempui_content and "version-40" in content._tempui_content,
+                )
             current_context.set_current_desk_directory(None)
         mgr.stop()
 
@@ -188,7 +196,33 @@ def test_provision_current_but_missing_split_file_repairs_without_notification()
         check("a missing split file is actually repaired by provision", (temp_dir / SCRATCH_DOC_FILENAME).is_file())
 
         pump(1.0)
-        check("no notification for a repair-only refresh (version already current)", added == [])
+        check("no notification for a repair-only refresh (tags already current)", added == [])
+        mgr.stop()
+
+
+def test_provision_no_tags_at_all_repairs_without_notification():
+    """A doc set that predates tag-tracking entirely (no tag comments,
+    no legacy version comment either) is always out of date, but there
+    is nothing real to diff against -- silently topped up, same as the
+    old TEMPUI_DOC_VERSION-era "no version note" case."""
+    with tempfile.TemporaryDirectory() as d:
+        directory = Path(d)
+        temp_dir = directory / TEMP_UI_DIRNAME
+        temp_dir.mkdir()
+        (temp_dir / DOC_FILENAME).write_text("# Temporary UI\n\nAncient, pre-tracking content.\n")
+
+        mgr = TempUiManager()
+        added = []
+        mgr.file_added.connect(lambda p: added.append(p))
+
+        mgr.provision(directory, lambda: True, lambda: True)
+        check(
+            "the doc is actually refreshed with every current tag",
+            set(re.findall(r"<!-- desk-temporary-ui\.md tag: (.+?) -->", (temp_dir / DOC_FILENAME).read_text())) == set(CURRENT_TAGS),
+        )
+
+        pump(1.0)
+        check("no notification for a doc with nothing to diff against", added == [])
         mgr.stop()
 
 
@@ -233,9 +267,10 @@ _FakeWindow.open_widget = DeskWindow.open_widget
 _FakeWindow.open_widget_content = DeskWindow.open_widget_content
 
 
-test_provision_stale_doc_notifies_and_places_a_real_scratch_widget()
+test_provision_stale_doc_notifies_and_places_a_real_markdown_widget()
 test_provision_brand_new_desk_temp_no_notification()
 test_provision_current_but_missing_split_file_repairs_without_notification()
+test_provision_no_tags_at_all_repairs_without_notification()
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

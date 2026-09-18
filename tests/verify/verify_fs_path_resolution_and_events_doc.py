@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 app = QApplication.instance() or QApplication(sys.argv)
 
 from desk.server.runner import start_server  # noqa: E402
-from desk.temp_ui import CUSTOM_WIDGETS_DOC_FILENAME, SPLIT_DOC_CONTENT, TEMPUI_DOC_VERSION  # noqa: E402
+from desk.temp_ui import CUSTOM_WIDGETS_DOC_FILENAME, SPLIT_DOC_CONTENT, CURRENT_TAGS  # noqa: E402
 from desk.widgets import WidgetInfo  # noqa: E402
 
 passed = 0
@@ -256,7 +256,7 @@ def test_get_manifest_includes_directory():
 
 
 def test_doc_content():
-    check("TEMPUI_DOC_VERSION bumped to at least 24", TEMPUI_DOC_VERSION >= 24)
+    check("changelog still covers this feature (version-20)", "version-20" in CURRENT_TAGS)
     doc = SPLIT_DOC_CONTENT[CUSTOM_WIDGETS_DOC_FILENAME]
     check("getManifest bullet mentions directory field", "`directory`" in doc)
     check("events callout appears before fs bullet", doc.index("reach for `desk.events.*`\nfirst") < doc.index("desk.fs.readFile"))

@@ -28,7 +28,7 @@ from desk.shell.promoted_widget_source_watcher import PromotedWidgetSourceWatche
 from desk.temp_ui import (  # noqa: E402
     CUSTOM_WIDGETS_DOC_FILENAME,
     SPLIT_DOC_CONTENT,
-    TEMPUI_DOC_VERSION,
+    CURRENT_TAGS,
     CustomWidgetDefinition,
 )
 
@@ -163,7 +163,7 @@ def test_failed_registration_places_nothing():
 
 
 def test_doc_callout_and_version():
-    check("TEMPUI_DOC_VERSION bumped to at least 18", TEMPUI_DOC_VERSION >= 18)
+    check("changelog still covers this feature (version-10)", "version-10" in CURRENT_TAGS)
     doc = SPLIT_DOC_CONTENT[CUSTOM_WIDGETS_DOC_FILENAME]
     check(
         "doc has the loud no-instance-placed callout",

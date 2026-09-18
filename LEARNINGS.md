@@ -1153,3 +1153,35 @@ The general rule this implies: treat *any* watchdog `Observer` call
 call that might re-enter your own code -- never make it from inside a
 lock that your own event-handler callback (directly or transitively)
 also needs.
+
+## A single, manually-bumped integer shared by two concurrent branches from the same base collides silently at merge time, with nothing recording that it happened
+
+`src/desk/temp_ui.py`'s `TEMPUI_DOC_VERSION` (a plain `int`, bumped by
+exactly 1 per meaningful doc change, TODO `f7b1611`) looked safe because
+every *individual* bump was reviewed and correct in isolation. It wasn't
+safe across two branches: TODO `63bfd42` (pipe-chained verb DSL) and
+TODO `4eb3d9e` (promoted-widget staleness) both started from the same
+base version (43) on separate branches and each independently bumped it
+to 44 -- a completely ordinary, correct-looking change on either branch
+alone. Merging them (`9caf3c6`) required `git` to reconcile two
+`TEMPUI_DOC_VERSION = 44` assignments; whoever resolved the conflict
+renumbered one side's content to 45 (and a third, dependent bump,
+`bf32b3c`, to 46) so the two sets of changelog entries wouldn't literally
+collide -- but the ~280-line hand-written bump-log comment directly above
+the constant, and `TODO.md`'s own "bumped to 44"/"bumped to 45" prose for
+those two items, were never touched by that renumbering (nothing
+automatic ties them to the constant), so they quietly went stale at
+exactly the moment of the merge, with no error, no test failure, and no
+diff anyone was likely to scrutinize for it.
+
+The general lesson: a single global counter (version number, sequence id,
+anything meant to be "the next one") that's bumped by hand on more than
+one active branch is a merge hazard *by construction*, not just a style
+nit -- the value itself can be reconciled mechanically, but any prose
+that asserts what the value's history was (a changelog, a bump-log
+comment, a commit message) can't be, and nothing will flag the mismatch
+afterward. Prefer a scheme where each contributor mints their own
+unique identifier (e.g. a hash derived from content or a timestamp,
+`desk.temp_ui.generate_tag`, TODO `6839365`) instead of incrementing a
+shared counter, whenever two branches minting one concurrently is a real
+possibility.

@@ -18,7 +18,7 @@ app = QApplication.instance() or QApplication(sys.argv)
 
 from desk.server.bridge_client import BRIDGE_CLIENT_TEMPLATE  # noqa: E402
 from desk.server.runner import start_server  # noqa: E402
-from desk.temp_ui import CUSTOM_WIDGETS_DOC_FILENAME, SPLIT_DOC_CONTENT, TEMPUI_DOC_VERSION  # noqa: E402
+from desk.temp_ui import CUSTOM_WIDGETS_DOC_FILENAME, SPLIT_DOC_CONTENT, CURRENT_TAGS  # noqa: E402
 from desk.widgets import WidgetInfo  # noqa: E402
 
 passed = 0
@@ -181,7 +181,7 @@ def test_bridge_client_declares_editor_namespace():
 
 
 def test_doc_content():
-    check("TEMPUI_DOC_VERSION bumped to at least 16", TEMPUI_DOC_VERSION >= 16)
+    check("changelog still covers this feature (version-10)", "version-10" in CURRENT_TAGS)
     doc = SPLIT_DOC_CONTENT[CUSTOM_WIDGETS_DOC_FILENAME]
     check("doc lists the editor capability", "desk.editor.openOrScrap" in doc and "capability `editor`" in doc)
     check("doc lists the filetypes capability", "desk.filetypes.get()" in doc and "capability `filetypes`" in doc)

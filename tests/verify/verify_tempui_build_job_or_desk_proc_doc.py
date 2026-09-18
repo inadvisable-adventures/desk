@@ -11,7 +11,7 @@ from desk.temp_ui import (  # noqa: E402
     DESK_PROC_DOC_FILENAME,
     JOBS_DOC_FILENAME,
     SPLIT_DOC_CONTENT,
-    TEMPUI_DOC_VERSION,
+    CURRENT_TAGS,
     render_static_doc,
 )
 
@@ -29,7 +29,7 @@ def check(name, condition):
         print(f"FAIL: {name}")
 
 
-check("TEMPUI_DOC_VERSION bumped to at least 39", TEMPUI_DOC_VERSION >= 39)
+check("changelog still covers this feature (version-30)", "version-30" in CURRENT_TAGS)
 
 main_doc = render_static_doc()
 check("main doc's build-script paragraph mentions build_job_or_desk_proc.py", "build_job_or_desk_proc.py" in main_doc)

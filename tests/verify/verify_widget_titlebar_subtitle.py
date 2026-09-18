@@ -25,7 +25,7 @@ from desk.server.bridge_client import BRIDGE_CLIENT_TEMPLATE  # noqa: E402
 from desk.server.runner import start_server  # noqa: E402
 from desk.shell.widget_frame import WidgetFrame  # noqa: E402
 from desk.shell.window import DeskWindow  # noqa: E402
-from desk.temp_ui import CUSTOM_WIDGETS_DOC_FILENAME, SPLIT_DOC_CONTENT, TEMPUI_DOC_VERSION  # noqa: E402
+from desk.temp_ui import CUSTOM_WIDGETS_DOC_FILENAME, SPLIT_DOC_CONTENT, CURRENT_TAGS  # noqa: E402
 
 passed = 0
 failed = 0
@@ -120,7 +120,7 @@ def test_bridge_client_declares_self_setSubtitle():
 
 
 def test_doc_content():
-    check("TEMPUI_DOC_VERSION bumped to at least 30", TEMPUI_DOC_VERSION >= 30)
+    check("changelog still covers this feature (version-30)", "version-30" in CURRENT_TAGS)
     doc = SPLIT_DOC_CONTENT[CUSTOM_WIDGETS_DOC_FILENAME]
     check("doc documents desk.self.setSubtitle", "desk.self.setSubtitle(text)" in doc)
     new_features_doc = SPLIT_DOC_CONTENT["tempui-new-features.md"]

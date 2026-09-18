@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -10,10 +11,12 @@ from desk.temp_ui import (  # noqa: E402
     CUSTOM_WIDGETS_DOC_FILENAME,
     NEW_FEATURES_DOC_FILENAME,
     SPLIT_DOC_CONTENT,
-    TEMPUI_DOC_VERSION,
+    CURRENT_TAG_SET,
+    CURRENT_TAGS,
     _CUSTOM_WIDGETS_DOC,
+    _canonicalize_tags,
     ensure_docs_current,
-    parse_doc_version,
+    parse_doc_tags,
     write_tempui_docs,
 )
 
@@ -36,7 +39,7 @@ def check(name, condition):
 
 
 def test_version_bumped():
-    check("TEMPUI_DOC_VERSION is bumped to at least 27", TEMPUI_DOC_VERSION >= 27)
+    check("changelog still covers this feature (version-20)", "version-20" in CURRENT_TAGS)
 
 
 def test_stale_claim_removed():
@@ -78,21 +81,22 @@ def test_new_storage_mechanism_scoped_correctly():
 
 def test_new_features_doc_has_version_27_entry():
     new_features_doc = SPLIT_DOC_CONTENT[NEW_FEATURES_DOC_FILENAME]
-    check("tempui-new-features.md has a Version 27 entry", "## Version 27" in new_features_doc)
+    check("tempui-new-features.md has a Version 27 entry", "### Version 27" in new_features_doc)
     check(
         "the Version 27 entry mentions the storage claim correction",
-        "persist" in new_features_doc.split("## Version 27")[1].split("## Version 26")[0]
-        if "## Version 27" in new_features_doc
+        "persist" in new_features_doc.split("### Version 27")[1].split("### Version 26")[0]
+        if "### Version 27" in new_features_doc
         else False,
     )
 
 
 def test_ensure_docs_current_still_works_with_new_version():
-    """Real, non-mocked: an existing project's doc set on an older
-    version gets rewritten to the current version, and the caller
-    learns the real previous version -- reusing the exact scenario
+    """Real, non-mocked: an existing project's doc set missing some
+    tags gets rewritten to the current tag set, and the caller learns
+    the real missing tags -- reusing the exact scenario
     verify_tempui_doc_versioning.py/verify_tempui_doc_upgrade_notification.py
-    already establish, just confirming the bump itself didn't break it."""
+    already establish, just confirming this file's own changes didn't
+    break it."""
     with tempfile.TemporaryDirectory() as d:
         temp_dir = Path(d)
         write_tempui_docs(temp_dir)
@@ -104,19 +108,31 @@ def test_ensure_docs_current_still_works_with_new_version():
         )
 
         doc_path = temp_dir / "desk-temporary-ui.md"
-        stale_text = doc_path.read_text().replace(f"version: {TEMPUI_DOC_VERSION}", "version: 20")
+        # Simulate a project that predates tag-tracking entirely: drop
+        # every tag comment and reintroduce the legacy `version: 20`
+        # comment -- _legacy_version_tags(20) migrates that to
+        # {version-00, version-10, version-20} (bucket-granularity, not
+        # exact-version), so version-30/version-40/the new tag should
+        # come back as missing.
+        stale_text = re.sub(r"<!-- desk-temporary-ui\.md tag: .+? -->\n?", "", doc_path.read_text())
+        stale_text = stale_text.replace(
+            "# Temporary UI\n", "# Temporary UI\n\n<!-- desk-temporary-ui.md version: 20 -->\n", 1
+        )
         doc_path.write_text(stale_text)
 
-        rewrote, previous_version = ensure_docs_current(temp_dir)
-        check("ensure_docs_current detects the stale (downgraded) version and rewrites", rewrote is True)
-        check("ensure_docs_current reports the real previous version", previous_version == 20)
+        rewrote, missing_tags = ensure_docs_current(temp_dir)
+        check("ensure_docs_current detects the stale (downgraded) tag set and rewrites", rewrote is True)
+        check(
+            "ensure_docs_current reports the real missing tags",
+            missing_tags == CURRENT_TAG_SET - _canonicalize_tags({"version-00", "version-10", "version-20"}),
+        )
         check(
             "ensure_docs_current rewrites tempui-custom-widgets.md with the corrected text",
             "no other storage available" not in custom_widgets_path.read_text(),
         )
         check(
-            "the rewritten main doc embeds the current version",
-            parse_doc_version(doc_path.read_text()) == TEMPUI_DOC_VERSION,
+            "the rewritten main doc embeds every current tag",
+            parse_doc_tags(doc_path.read_text()) == set(CURRENT_TAGS),
         )
 
 

@@ -1,4 +1,4 @@
-# TODO `6839365`: replace TEMPUI_DOC_VERSION with a tag-based changelog
+# TODO `6839365`: replace TEMPUI_DOC_VERSION with a tag-based changelog (COMPLETED)
 
 ## Summary
 

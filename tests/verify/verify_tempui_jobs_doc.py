@@ -9,7 +9,7 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 from desk.temp_ui import (  # noqa: E402
     JOBS_DOC_FILENAME,
     SPLIT_DOC_CONTENT,
-    TEMPUI_DOC_VERSION,
+    CURRENT_TAGS,
     render_static_doc,
 )
 
@@ -27,7 +27,7 @@ def check(name, condition):
         print(f"FAIL: {name}")
 
 
-check("TEMPUI_DOC_VERSION bumped to at least 31", TEMPUI_DOC_VERSION >= 31)
+check("changelog still covers this feature (version-30)", "version-30" in CURRENT_TAGS)
 
 main_doc = render_static_doc()
 check("main doc's file-type list mentions Job", "`Job`" in main_doc)

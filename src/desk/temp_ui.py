@@ -1,5 +1,6 @@
 import re
 import shutil
+import time
 import uuid
 from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
@@ -61,290 +62,152 @@ APP_DSL_DIRNAME = "app_dsl"
 # provisioned -- an older Desk directory otherwise keeps whatever
 # stale copy it got at creation time forever, even after this file's
 # own content has since improved (a new DSL section, a correction).
-# TEMPUI_DOC_VERSION (TODO f7b1611) is a plain, manually-bumped
-# integer that fixes this: bump it by exactly 1 any time DOC_TEMPLATE's
-# static content changes in a way that would matter to an agent
-# reading it (a new section, a real correction) -- NOT for whitespace
-# -only tidying, and NOT for the separate, dynamically-generated
-# custom-widgets section (TODO 91b3f42), which is already kept in sync
-# on its own regardless of this version. There's no reliable automatic
-# way to detect "did this edit change the doc's *meaning*" (a typo fix
-# and a new DSL section can touch the same number of lines) -- a human
-# decides at edit time, the same spirit as this project's own
-# permanent TODO item ids (assigned once, never recomputed). See
-# ensure_docs_current, called before a Desk is opened.
 #
-# TODO e57ce5f: this one version number now stands for the *whole* set
-# of tempui-*.md files (SPLIT_DOC_CONTENT below), not just this one --
-# bump it for a meaningful change to any of them, and don't add a
-# separate version note to any split file (there isn't one to add).
+# TODO 6839365: this used to be tracked with a single, manually-bumped
+# integer, TEMPUI_DOC_VERSION (TODO f7b1611) -- see git history before
+# this TODO for the old mechanism and its own ~280-line bump-log
+# comment, kept immediately above the constant itself. That scheme had
+# a real structural problem: it's one global counter, so two
+# workstreams bumping it independently on separate branches (e.g. TODO
+# 63bfd42 and TODO 4eb3d9e, both starting from version 43 and both
+# bumping to "44") collide, and merging silently renumbers one side --
+# with nothing recording that it happened. That's exactly what
+# happened here: the bump-log comment (and TODO.md's own "bumped to
+# 44"/"bumped to 45" prose for those two items) still says 44, two
+# behind the real, post-merge 46.
 #
-# TODO 6f9c51b: bumped 6 -> 7 for a new "Sending and receiving named
-# messages" section in _CUSTOM_WIDGETS_DOC (the events capability).
+# Replaced with **tags** (Tag/generate_tag below): each meaningful
+# change to this doc set gets its own tag -- a short, human-written
+# summary suffixed with a 6-digit, non-semantic hash generated from
+# the tag's creation timestamp, so two tags minted concurrently on
+# different branches never collide and there's nothing to reconcile at
+# merge time. CURRENT_TAGS is the full set of tags a fully up-to-date
+# .desk_temp has -- the tag-based replacement for "the current
+# version." A project's own doc set records which tags *it* has seen
+# as one `<!-- desk-temporary-ui.md tag: ... -->` comment per tag,
+# right under the title (see DOC_TEMPLATE) -- ensure_docs_current
+# diffs the two sets, rather than comparing two integers, so "what's
+# new" for a given project is always the literal set of tags it's
+# missing, never a full historical range it has to re-read from
+# scratch (see also TempUiManager._notify_docs_upgraded/
+# render_new_tags_digest, which turn that missing set directly into
+# the doc-upgrade notification's own content).
 #
-# TODO f693275: bumped 7 -> 8 for a new `Capability` DefineWidget DSL
-# line in _CUSTOM_WIDGETS_DOC (a DefineWidget widget can now declare
-# Bridge API capabilities, e.g. to use events.*).
+# A group of tags can later be **collapsed** into one new tag, to keep
+# this doc set's own footprint from growing forever: fold the
+# collapsed tags' descriptions (in _BREAKING_CHANGES/_NEW_FEATURES
+# below) into the new tag's own entry, delete the old entries, remove
+# the old tag ids from CURRENT_TAGS and add the new one, and record
+# each old id -> new id in TAG_COLLAPSES -- a project that already has
+# every tag that got collapsed is then recognized (via
+# _canonicalize_tags) as already having the tag they collapsed into,
+# so it never shows up as newly missing, and the next time that
+# project's doc set is refreshed it's written with the new id, not the
+# old ones ("an instance no longer 'has' the removed tags").
 #
-# TODO 9767c1a: bumped 8 -> 9 for a new "Inspecting another widget"
-# section in _CUSTOM_WIDGETS_DOC (the introspect capability).
-#
-# TODO 6e731c1: bumped 9 -> 10 for a new `OpenImage` keyword (its own
-# new tempui-image.md split doc, linked from the main file's intro
-# list) -- a dropped image is now saved into .desk_temp and displayed
-# through it, but it's a general DSL capability like every other
-# keyword, not only reachable via drag-and-drop.
-#
-# TODO b324217: bumped 10 -> 11 for a new "Authoring from real source"
-# section in _CUSTOM_WIDGETS_DOC (the custom_widget_src/<name>/ +
-# scripts/build_widget.py pattern).
-#
-# TODO 5ff02d2: bumped 11 -> 12 for a callout in _CUSTOM_WIDGETS_DOC
-# that DefineWidget only registers a kind, and doesn't place an
-# instance except the auto-placed first one.
-#
-# TODO c892403: bumped 12 -> 13 for _CUSTOM_WIDGETS_DOC's Bridge API
-# section: getManifest's new content-hash/directory fields, events
-# given top billing in the capability list, and fs's new relative-path
-# resolution behavior.
-#
-# TODO 59c5a70: bumped 13 -> 14 for _CUSTOM_WIDGETS_DOC's "Authoring
-# from real source" section: the recommended pre-promotion source
-# location moved from custom_widget_src/<name>/ to
-# .desk_temp/widgets/<name>/, plus a new note (in both that section and
-# "Promoting a defined widget to the Desk") that promotion moves the
-# source directory to desk_widgets/<name>/.
-#
-# TODO 7462cdb: bumped 14 -> 15 for two new files,
-# tempui-breaking-changes.md/tempui-new-features.md, plus a new
-# DOC_TEMPLATE paragraph pointing to them. See the going-forward
-# convention noted alongside _BREAKING_CHANGES_DOC/_NEW_FEATURES_DOC
-# below: any future bump that's breaking or adds a capability should
-# add a matching entry to one of those two docs, in the same commit as
-# the bump.
-#
-# TODO 2da314f: bumped 15 -> 16 for two new Bridge API capabilities in
-# _CUSTOM_WIDGETS_DOC's capability list: `editor` (new this TODO) and
-# `filetypes` (TODO b5d52c0's own capability, which should have been
-# documented here -- and this version bumped -- back when it was
-# introduced, but wasn't; backfilled now rather than left undocumented
-# indefinitely).
-#
-# TODO 029047b: bumped 16 -> 17 -- the "Authoring from real source"
-# build script moved from a one-time-seeded scripts/build_widget.py to
-# .desk_temp/build_widget.py, refreshed automatically alongside the
-# rest of this doc set instead of going stale forever after a single
-# copy. Breaking for any project with an existing seeded copy at the
-# old location.
-#
-# TODO dafbaab: bumped 17 -> 18 -- reverted TODO 5ff02d2's
-# auto-place-one-instance-for-a-brand-new-keyword behavior entirely
-# (too confusing in practice, per direct user feedback); simplified
-# _CUSTOM_WIDGETS_DOC's callout accordingly (DefineWidget never places
-# an instance by itself, full stop, no auto-placed exception anymore).
-# Breaking for any project/agent that had learned to rely on the
-# now-removed auto-placement.
-#
-# TODO 359684f: bumped 18 -> 19 for a new Bridge API capability in
-# _CUSTOM_WIDGETS_DOC's capability list: `popups` (show a desk-internal
-# message+buttons popup, replacing the widget-triggered QMessageBox
-# call sites that used to render as real top-level windows misplaced
-# under canvas zoom/pan).
-#
-# TODO fd713a5: bumped 19 -> 20 -- desk.filetypes.get()/.set(entries)'s
-# capability description in _CUSTOM_WIDGETS_DOC now mentions the new
-# `git-diff` file-type-registry role (alongside view/edit/consume/
-# produce), and a new Git Diff Viewer widget consumes it.
-#
-# TODO 54d8c18: bumped 20 -> 21 for a new Bridge API capability in
-# _CUSTOM_WIDGETS_DOC's capability list: `transforms` (run a transform
-# -- convert data of one named type into another, e.g. a Mermaid
-# diagram into SVG -- see design-docs/transforms.md).
-#
-# TODO 31db3f6: bumped 21 -> 22 -- "Authoring from real source"'s
-# widget.json field list now documents an optional `capabilities` key,
-# which the generated .desk_temp/build_widget.py itself now reads and
-# emits as `Capability<TAB>name` lines (previously silently ignored,
-# forcing an easy-to-forget hand-edit of the generated tempui file
-# after every build).
-#
-# TODO 3b1ef3d: bumped 22 -> 23 for a new "Reusable UI components"
-# section in _CUSTOM_WIDGETS_DOC -- .desk_temp/shared-components/, a
-# small library of ready-made UI mini-components refreshed alongside
-# the rest of this doc set (see sync_shared_components).
-#
-# TODO ad20867: bumped 23 -> 24 -- desk.fs.writeFile now creates any
-# missing parent directories before writing (previously silently
-# rejected a write to a not-yet-existing directory).
-#
-# TODO d4368bd: bumped 24 -> 25 for a new shared-components/ entry,
-# document-editor-base -- a base class for a title-to-path, auto-load/
-# auto-save file-backed document editor. "Reusable UI components"'s own
-# text also updated to note that whether a component recommends
-# importing it as a separate file vs. copying its source directly
-# depends on the component (see that section's own explanation).
-#
-# TODO e42469e: bumped 26 -> 27 -- "The Desk Bridge API" section's
-# claim that no browser storage persists a kind:"html" widget's page
-# across a reload/Desk restart was true when written but went stale
-# once TODO a5f66cc gave each widget instance its own persistent
-# QWebEngineProfile; corrected to state that real per-instance storage
-# does persist now, while still recommending getLocalStorage/
-# setLocalStorage (its data lives in the portable .desk file, unlike
-# the newer per-instance storage, which is .desk_temp-scoped and
-# deleted with the widget instance).
-#
-# TODO 1b7e500: bumped 27 -> 28 -- "Questions for the user"'s described
-# QUESTIONS.md heading format ("## <short summary>") never matched
-# what questions_file.py's actual parser requires (a leading literal
-# "TODO", backtick-wrapped id(s)) -- corrected to state the real
-# required shape and that an entry must reference at least one TODO.md
-# item id (this mechanism was always scoped to TODO-blocking
-# questions, not general free-standing ones, but the doc never said
-# so). A heading in the old, documented-but-never-actually-accepted
-# shape still silently fails to parse as before -- this bump fixes the
-# doc, not the parser's own strictness.
-#
-# TODO e86a31b: bumped 28 -> 29 -- the generated .desk_temp/build_widget.py
-# now (a) warns to stderr if a stale scripts/build_widget.py sibling
-# also exists in the project (from before TODO 029047b moved this
-# mechanism here), since such a copy can silently defeat a fix already
-# shipped here (e.g. TODO 31db3f6's capabilities emission) with
-# nothing telling the project so; (b) deletes any other DefineWidget
-# file for the same keyword immediately after a successful build,
-# instead of accumulating one leftover file per rebuild forever.
-#
-# TODO 3cd90cf: bumped 29 -> 30 -- new `desk.self.setSubtitle(text)`
-# Bridge API call, documented in the "self.*" list above: lets a
-# widget instance put its own state into its own titlebar, alongside
-# getManifest/getLocalStorage/setLocalStorage.
-#
-# TODO d7e66f6: bumped 30 -> 31 -- new `Job` tempui DSL keyword: run a
-# one-time script with real widget-context capabilities (notably
-# Bridge API access for a `kind: "html"` Job) without building a full
-# `DefineWidget`/`widgets/<id>/` registration. New split doc,
-# tempui-jobs.md; the main file-type list above gained a matching
-# bullet (eight built-in file types -> nine).
-#
-# TODO 48e3b39: bumped 31 -> 32 -- new `.desk_temp/app_dsl/` tool (not
-# a new tempui DSL keyword -- a separate, real-source codegen tool,
-# same "Authoring from real source" section as build_widget.py):
-# schema + parser + codegen for a multi-component widget's own
-# wiring/layout/event-table code, generalized from a hand-written SPA
-# structure. Standalone-build output only so far -- see the doc's own
-# note and PARKINGLOT.md for the open Desk-widget-target gap.
-#
-# TODO 1e032f3: bumped 32 -> 33 -- app_dsl gained a second codegen
-# output mode, `--mode=global` (plain global scripts, no
-# `import`/`export` at all), so its output can now actually feed into
-# this same "Authoring from real source" section's `build_widget.py`
-# pipeline for a Desk-widget build -- closing the gap the version 32
-# bump above left open. Doc note updated accordingly.
-#
-# TODO f68383f: bumped 33 -> 34 -- new `desk.state.*` Bridge API calls
-# (capability `state`): a shared, project-scoped key/value store any
-# widget can read or write, with change notification via the existing
-# `desk.events` channel (`desk.state.changed`) and a bounded per-key
-# history. New "Shared, project-scoped state" section; capability list
-# above gained `state`. Non-validated core only -- schema declaration/
-# validation is a separate, later TODO (6e1c2fe).
-#
-# TODO af7898b: bumped 34 -> 35 -- desk.state.* keys can now be
-# validated: a widget declares a schema for a key via a new
-# `state_schema` widget.json field (or `StateSchema<TAB>key<TAB>
-# type_expr` DefineWidget line), and every `set` to that key is checked
-# against it. `get`/`set` also gained an optional, non-validated-only
-# `typeHint` parameter for call-site-local best-effort coercion. New
-# "Validated vs. non-validated keys" subsection; a conflicting schema
-# declaration fails a widget's own load with a clickable notification
-# and a new `desk_widget_loading_errors` field on self.getManifest().
-#
-# TODO 9aef267: bumped 35 -> 36 -- a desk.state.* schema can now also
-# be declared "top-level," independent of any widget's manifest, in a
-# standalone JSON file at `.desk_temp/schemas/` or `./desk-schemas/`
-# (the latter never created by Desk itself, only watched for and
-# picked up once it exists). "Validated vs. non-validated keys"
-# subsection updated with the file format and both locations.
-#
-# TODO 5242aeb: bumped 36 -> 37 -- no new call, just a stronger warning
-# on the existing `desk.popups.show` bullet: use it, not the browser's
-# own `alert()`/`confirm()`/`prompt()`, for any alert/confirmation --
-# those are real, separate OS-level dialogs with no connection to
-# Desk's own canvas chrome. Prompted by a real bug where a kind:
-# "python" widget's own raw `QMessageBox` (the equivalent native-dialog
-# mistake on the Python side) rendered as a detached macOS window.
-#
-# TODO 97bd090: bumped 37 -> 38 for a new `DeskProc` tempui DSL
-# keyword: a one-time Python script with real, in-process access to
-# Desk's own live shell (reveal/screenshot a placed widget instance),
-# distinct from a `Job`'s capability-scoped-or-unsandboxed-but-passive
-# execution -- a `DeskProc`'s script gets a curated `deskproc.*` API for
-# safely acting on the shell from its own background thread. New split
-# doc, tempui-desk-proc.md; the main file-type list above gained a
-# matching bullet (nine built-in file types -> ten).
-#
-# TODO 49e3732: bumped 38 -> 39 -- not a new DSL keyword, a new
-# authoring convenience: `.desk_temp/build_job_or_desk_proc.py`
-# (mirroring `build_widget.py`) packages a plain script into a
-# ready-to-drop `Job`/`DeskProc` tempui file, removing the hand-rolled
-# base64-encode-and-chunk step an author previously had to write from
-# scratch every time. `tempui-jobs.md`/`tempui-desk-proc.md` and this
-# file's own "There's also `build_widget.py`" paragraph now mention it.
-#
-# TODO 7dca383: bumped 39 -> 40 for Installed Jobs: a durable, versioned
-# alternative to the ephemeral `Job` mechanism, installed once (via the
-# new `desk_install_job` MCP tool) from real source at
-# `desk-installed-jobs/<name>/main.py` and re-run any number of times
-# (via `desk_run_installed_job`) with no further approval prompt. Not a
-# dropped-tempui-file DSL keyword -- installation happens via an MCP
-# tool call, not a file drop -- so this is a new split doc,
-# tempui-installed-jobs.md, referenced from this file's own "a few more
-# files" paragraph below, not the main file-type list above.
-#
-# TODO 888b537: bumped 40 -> 41 -- a new Bridge API capability,
-# `installed_jobs`, letting a `kind: "html"` widget run an already
-# -Installed Job too (`desk.installedJobs.run(name, configPath)`), not
-# just an agent via `desk_run_installed_job`. New bullet in "The Desk
-# Bridge API" section; `Job`'s own closed Capability-name list gained
-# `installed_jobs`. No DSL change.
-#
-# TODO b9d3de5: bumped 41 -> 42 for a new "Environment variables"
-# section in DOC_TEMPLATE, documenting `DESK_WIDGET_INSTANCE_ID` (the
-# widget-hosted-agent's own placed instance id) -- not a DSL/Bridge API
-# change, but new static content an agent reading this doc needs to
-# know about, same as any other DOC_TEMPLATE addition.
-#
-# TODO 13f4ad5: bumped 42 -> 43 -- a source-backed `DefineWidget`'s
-# generated file now carries a `SourcePath` line recording its
-# authoring source directory (fixing a promotion bug where relocating
-# that directory was guessed from `keyword` instead, which almost
-# never matches the real, kebab-case directory name), and a promoted
-# source-backed widget no longer bakes `html_b64` into the `.desk`
-# file -- it's rebuilt on demand into a gitignored
-# `desk_widgets/<name>/.build/` cache instead. "Authoring from real
-# source"/"Promoting a defined widget to the Desk" updated; new
-# changelog entries in both split docs (this is both a bugfix/new
-# capability and a breaking change -- rebuilding on demand means `tsc`
-# must be available wherever such a Desk is subsequently opened, not
-# just where it was authored).
-#
-# TODO 4eb3d9e: bumped 43 -> 44 -- a promoted widget's own
-# `desk_widgets/<name>/` source directory is now watched directly for
-# changes: editing it marks every already-placed instance `[STALE]`
-# the same way a still-`.desk_temp`-sourced `DefineWidget`'s own live
-# edits already do, no rebuild step required first. "Authoring from
-# real source"'s "Once promoted ..." paragraph no longer tells you to
-# re-run `build_widget.py desk_widgets/<name>` for further edits --
-# that workflow never actually worked post-promotion (silently
-# rejected, no error surfaced anywhere) and is no longer needed at
-# all; new changelog entries in both split docs.
-TEMPUI_DOC_VERSION = 46
-_DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
-_DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
+# TODO 6839365: every version 1-46 from the old scheme was migrated
+# once, in bulk, into five coarse decade-bucket tags (version-00 ..
+# version-40, each covering ten consecutive old version numbers) --
+# not because a decade is a good scope for a *new* tag (a new tag
+# should be small and specific, one change), but because that's what
+# the old per-version entries already were: dozens of them, most a
+# short paragraph, not worth re-litigating individually one by one.
+# See plans/tempui-doc-tags.md for the exact mapping. A project that
+# only ever had the old integer version tracked (no tag comments at
+# all) is migrated the same way, lazily, the next time it's opened --
+# see _legacy_version_tags: versions were always cumulative, so a
+# project at (say) version 25 already implies version-00/version-10/
+# version-20, not just its own version-20 bucket alone.
+@dataclass(frozen=True)
+class Tag:
+    """A single tempui doc-set tag (TODO 6839365) -- `id` is what's
+    actually stored/compared everywhere (CURRENT_TAGS, a project's own
+    doc comments, _BREAKING_CHANGES/_NEW_FEATURES dict keys);
+    `summary`/`hash` are kept only for introspection, never compared
+    directly."""
+
+    summary: str
+    hash: str = ""
+
+    @property
+    def id(self) -> str:
+        return f"{self.summary} #{self.hash}" if self.hash else self.summary
+
+
+def generate_tag(summary: str, *, now: float | None = None) -> Tag:
+    """Mints a fresh tag: `summary` must be a concise, 10-50 character
+    description of the change (raises ValueError otherwise). The
+    6-digit hash is derived from `now` (real wall-clock time by
+    default; injectable for tests) purely to make the id unique --
+    it's not meant to be decoded back into a timestamp, and two tags
+    generated in the same millisecond can still collide (astronomically
+    unlikely for genuinely separate workstreams in practice, and
+    harmless even then beyond a cosmetic duplicate id)."""
+    if not 10 <= len(summary) <= 50:
+        raise ValueError(f"tag summary must be 10-50 characters, got {len(summary)}: {summary!r}")
+    timestamp = now if now is not None else time.time()
+    tag_hash = f"{int(timestamp * 1000) % 1_000_000:06d}"
+    return Tag(summary=summary, hash=tag_hash)
+
+
+def _legacy_version_tags(version: int) -> frozenset[str]:
+    """Migration path (TODO 6839365) for a project whose doc set
+    predates tag-tracking entirely and only has the old integer
+    TEMPUI_DOC_VERSION-era `version: N` comment. Versions were always
+    cumulative (a project at version 42 had already incorporated
+    everything through version 42), so this returns every decade
+    -bucket tag up through `version`'s own bucket, not just that one
+    bucket alone -- e.g. version 25 -> {version-00, version-10,
+    version-20}, matching what that project actually already knew."""
+    bucket = (version // 10) * 10
+    return frozenset(f"version-{b:02d}" for b in range(0, bucket + 1, 10))
+
+
+def _canonicalize_tags(tags: Collection[str]) -> frozenset[str]:
+    """Resolves every tag in `tags` through TAG_COLLAPSES (chained, in
+    case an already-collapsed tag is collapsed again later) to its
+    current, non-collapsed id -- used to compare a project's own
+    known-tags set against CURRENT_TAGS without the comparison being
+    thrown off by an old id a since-performed collapse retired."""
+    result = set()
+    for tag in tags:
+        current = tag
+        seen: set[str] = set()
+        while current in TAG_COLLAPSES and current not in seen:
+            seen.add(current)
+            current = TAG_COLLAPSES[current]
+        result.add(current)
+    return frozenset(result)
+
+
+# TAG_COLLAPSES: old tag id -> the tag id it was collapsed into (TODO
+# 6839365, see the design comment above) -- empty until the first real
+# collapse happens.
+TAG_COLLAPSES: dict[str, str] = {}
+
+# CURRENT_TAGS: every tag a from-scratch .desk_temp is created with --
+# the tag-based replacement for the old single TEMPUI_DOC_VERSION
+# integer's role as "the current baseline." Order is chronological
+# (oldest first); it doesn't affect staleness comparisons (a plain
+# set, via CURRENT_TAG_SET below), only display order (newest-first)
+# in _BREAKING_CHANGES/_NEW_FEATURES and the doc-upgrade notification.
+CURRENT_TAGS: tuple[str, ...] = (
+    "version-00",
+    "version-10",
+    "version-20",
+    "version-30",
+    "version-40",
+    "tagged changelog, no version numbers #252348",
+)
+CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
+_DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
+_TAG_LINE_RE = re.compile(r"<!-- desk-temporary-ui\.md tag: (.+?) -->")
+_LEGACY_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
 DOC_TEMPLATE = """# Temporary UI
 
-<!-- desk-temporary-ui.md version: {{TEMPUI_DOC_VERSION}} -- do not edit this line by hand; Desk uses it to detect when this file's own main content (and the other tempui-*.md files it references) is out of date and needs refreshing. -->
+<!-- desk-temporary-ui.md tags -- do not edit these lines by hand; Desk uses them to detect which tempui doc-set tags this project has already seen, and to refresh this file's own main content (and the other tempui-*.md files it references) when it's missing any. -->
+{{TEMPUI_DOC_TAGS}}
 
 This directory holds "temporary UI" files: a lightweight way for an
 agent (or any external process) to ask a question through Desk's own
@@ -389,13 +252,14 @@ Every file named above lives in this same directory.
 
 A few more files live here too, but aren't DSL file types (nothing
 writes one directly): [tempui-breaking-changes.md](./tempui-breaking-changes.md)
-and [tempui-new-features.md](./tempui-new-features.md) — reverse
--chronological changelogs of this doc set itself, each entry tagged
-with the `TEMPUI_DOC_VERSION` it was introduced in. If you're picking
-up a project that was built against an older Desk, check these first:
-read from the top down until you reach a version you already know,
-and you'll have an exact, actionable punch list instead of needing to
-re-read this whole doc set and diff it against memory. There's also
+and [tempui-new-features.md](./tempui-new-features.md) — changelogs of
+this doc set itself, one section per tag (see the tag comments right
+under this file's own title). If you're picking up a project that was
+built against an older Desk, a doc-upgrade notification (if you got
+one) already names exactly which tags are new to this project — read
+just those sections and you'll have an exact, actionable punch list
+instead of needing to re-read this whole doc set and diff it against
+memory. There's also
 `build_widget.py` — not a doc at all, but a ready-to-run script; see
 "Authoring from real source" in `tempui-custom-widgets.md`. Likewise
 `build_job_or_desk_proc.py` — packages a plain script into a
@@ -504,8 +368,8 @@ file.
 # The less-general DSL sections split out of DOC_TEMPLATE (TODO
 # e57ce5f), each a sibling file in the same .desk_temp directory as
 # desk-temporary-ui.md, linked from its intro above. None of these
-# carry their own version note -- TEMPUI_DOC_VERSION covers the whole
-# set (see the comment on that constant). Grouped by feature area, not
+# carry their own tag comments -- CURRENT_TAGS covers the whole set
+# (see the comment on that constant). Grouped by feature area, not
 # strictly one keyword per file: OpenMarkdown/Markdown already
 # cross-reference each other; DefineWidget/invocation/promotion/the
 # Bridge API are one cohesive feature, not four unrelated ones.
@@ -513,7 +377,7 @@ file.
 _LIGHTNING_ROUND_DOC = """# TempUI DSL: LightningRound
 
 See `desk-temporary-ui.md` (in this same directory) for this
-directory's own overview and its shared version number -- this file
+directory's own overview and its current set of tags -- this file
 just covers the `LightningRound` keyword.
 
 For asking the *same* multiple-choice question repeatedly over a list of
@@ -567,7 +431,7 @@ LRItem	quick	unanswered
 _MARKDOWN_DOC = """# TempUI DSL: OpenMarkdown and Markdown
 
 See `desk-temporary-ui.md` (in this same directory) for this
-directory's own overview and its shared version number -- this file
+directory's own overview and its current set of tags -- this file
 just covers the `OpenMarkdown` and `Markdown` keywords.
 
 ## OpenMarkdown
@@ -628,7 +492,7 @@ tempui-bound instance stays open, unaffected.
 _IMAGE_DOC = """# TempUI DSL: OpenImage
 
 See `desk-temporary-ui.md` (in this same directory) for this
-directory's own overview and its shared version number -- this file
+directory's own overview and its current set of tags -- this file
 just covers the `OpenImage` keyword.
 
 For telling Desk to open an image file in the Image Viewer widget — a
@@ -662,7 +526,7 @@ just-performed drop).
 _SCRATCH_DOC = """# TempUI DSL: Scratch
 
 See `desk-temporary-ui.md` (in this same directory) for this
-directory's own overview and its shared version number -- this file
+directory's own overview and its current set of tags -- this file
 just covers the `Scratch` keyword.
 
 For giving Desk arbitrary free-form notes to show in a Scratch widget —
@@ -691,7 +555,7 @@ established earlier in the current conversation.
 _CUSTOM_WIDGETS_DOC = """# TempUI DSL: DefineWidget
 
 See `desk-temporary-ui.md` (in this same directory) for this
-directory's own overview and its shared version number -- this file
+directory's own overview and its current set of tags -- this file
 covers the `DefineWidget` keyword, invoking a widget it defines,
 promoting one to the Desk, and the Bridge API your widget's own JS can
 call.
@@ -1244,7 +1108,7 @@ sufficient on its own.
 _DISCUSS_PARKING_LOT_ITEM_DOC = """# TempUI DSL: DiscussParkingLotItem
 
 See `desk-temporary-ui.md` (in this same directory) for this
-directory's own overview and its shared version number -- this file
+directory's own overview and its current set of tags -- this file
 just covers the `DiscussParkingLotItem` keyword.
 
 For having Desk kick off a **brand-new** `claude` session specifically
@@ -1288,7 +1152,7 @@ this file.
 _JOBS_DOC = """# TempUI DSL: Job
 
 See `desk-temporary-ui.md` (in this same directory) for this
-directory's own overview and its shared version number -- this file
+directory's own overview and its current set of tags -- this file
 just covers the `Job` keyword.
 
 For running a **one-time script** with real widget-context
@@ -1384,7 +1248,7 @@ for entry in jobs_dir.iterdir() if jobs_dir.is_dir() else []:
 _DESK_PROC_DOC = """# TempUI DSL: DeskProc
 
 See `desk-temporary-ui.md` (in this same directory) for this
-directory's own overview and its shared version number -- this file
+directory's own overview and its current set of tags -- this file
 just covers the `DeskProc` keyword.
 
 For running a **one-time Python script** with real, in-process access
@@ -1485,7 +1349,7 @@ print(f"screenshot saved: {result}")
 _INSTALLED_JOBS_DOC = """# Installed Jobs
 
 See `desk-temporary-ui.md` (in this same directory) for this
-directory's own overview and its shared version number -- this file
+directory's own overview and its current set of tags -- this file
 covers Installed Jobs, which are **not** a tempui-DSL file type (there
 is no dropped-file keyword for this -- see that overview's own "a few
 more files" paragraph).
@@ -1558,34 +1422,36 @@ your source under `desk-installed-jobs/<name>/` is left on disk, so
 installing the same name again later just re-approves it.
 """
 
-# TODO 7462cdb: reverse-chronological changelogs for the whole tempui
-# doc set, tagged by the TEMPUI_DOC_VERSION each entry was introduced
-# in -- not DSL-keyword-triggered file types themselves (nothing writes
-# one of these directly), just reference docs generated/refreshed the
-# same way every other SPLIT_DOC_CONTENT entry is. Lets an agent
-# relaunched under a newer Desk see exactly what changed since the
-# version its own project was built against, instead of re-reading the
-# whole doc set and manually diffing it against memory. Backfilled from
-# this file's own TEMPUI_DOC_VERSION bump-log comments above -- only
-# versions 7 onward have one; earlier bumps predate that practice.
+# TODO 6839365: reverse-chronological-by-tag changelogs for the whole
+# tempui doc set -- _BREAKING_CHANGES/_NEW_FEATURES below are dicts
+# (tag id -> markdown body, no leading heading), not opaque strings:
+# this is what lets render_new_tags_digest build a real excerpt for
+# exactly the tags a given project is missing, instead of a pointer
+# telling the reader to go read the whole file themselves.
+# _render_changelog_doc turns each dict into the actual
+# tempui-breaking-changes.md/tempui-new-features.md file content
+# (SPLIT_DOC_CONTENT below), one `## <tag id>` section per entry,
+# newest-first per CURRENT_TAGS order.
 #
-# Going forward: any bump that reflects a breaking change or a new
-# capability should add a matching entry to whichever of these two docs
-# applies, in the same commit as the bump -- see also
-# development-process.md's "When working on Desk itself" section (TODO
-# 1a96c9f), which makes this an explicit instruction for anyone working
-# on Desk, not just a habit to remember from this comment alone.
-_BREAKING_CHANGES_DOC = """# TempUI: Breaking Changes
-
-See `desk-temporary-ui.md` (in this same directory) for this
-directory's own overview and its shared version number. Entries here
-are listed newest-first, each tagged with the `TEMPUI_DOC_VERSION` that
-introduced the change -- read from the top down until you reach a
-version your own project was already built against, and stop.
-
-Versions 1-6 predate this changelog and aren't individually recorded.
-
-## Version 44
+# Going forward: any new tag that reflects a breaking change or a new
+# capability should add a matching entry to whichever of these two
+# dicts applies (or both), in the same commit that adds the tag to
+# CURRENT_TAGS -- see also development-process.md's "When working on
+# Desk itself" section, which makes this an explicit instruction for
+# anyone working on Desk, not just a habit to remember from this
+# comment alone.
+#
+# TODO 6839365: versions 1-46 from the old TEMPUI_DOC_VERSION scheme
+# were migrated in bulk into five decade-bucket tags (version-00 ..
+# version-40) -- see plans/tempui-doc-tags.md for why buckets-of-ten
+# rather than a real per-tag migration, and _legacy_version_tags for
+# how an old project's own single `version: N` comment maps onto these
+# same buckets. Every original bullet is preserved verbatim, nested
+# under its own `### Version N` sub-heading where a bucket holds more
+# than one old version -- not rewritten/summarized, to avoid silently
+# dropping something in translation.
+_BREAKING_CHANGES: dict[str, str] = {
+    "version-40": """### Version 44
 - "Authoring from real source"'s post-promotion instructions changed:
   do **not** re-run `build_widget.py` against `desk_widgets/<name>/`
   for further edits anymore -- it never actually worked there (it
@@ -1594,7 +1460,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   file up, silently). Just edit `desk_widgets/<name>/`'s own files
   directly and save instead -- see the Version 44 new-features entry.
 
-## Version 43
+### Version 43
 - A promoted, source-backed `DefineWidget` (see "Authoring from real
   source" in `tempui-custom-widgets.md`) no longer bakes its compiled
   `html_b64` into the `.desk` file at promote time -- it's rebuilt
@@ -1606,8 +1472,8 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   originally authored/promoted on. A hand-authored, inline-only
   `DefineWidget` (no source directory) is unaffected -- it still bakes
   `html_b64` exactly as before.
-
-## Version 18
+""",
+    "version-10": """### Version 18
 - `DefineWidget` no longer auto-places one instance the first time a
   brand-new keyword is registered (this reverts the Version 12 new
   -features entry below) -- it now behaves like every other tempui
@@ -1618,7 +1484,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   separate tempui file whose entire first line is just the keyword --
   see "Invoking a defined widget" in `tempui-custom-widgets.md`).
 
-## Version 17
+### Version 17
 - The "Authoring from real source" build script moved from a one-time
   -seeded `scripts/build_widget.py` to `.desk_temp/build_widget.py`,
   refreshed automatically alongside this doc set from now on instead
@@ -1627,7 +1493,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   `.desk_temp/build_widget.py` instead (it always has the current
   content; `scripts/build_widget.py` will not be updated further).
 
-## Version 14
+### Version 14
 - `DefineWidget` widget authoring source moved from a project-root
   `custom_widget_src/<name>/` to `.desk_temp/widgets/<name>/` (see
   "Authoring from real source" in `tempui-custom-widgets.md`). Move any
@@ -1637,19 +1503,31 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   argument. Promoting a widget (the `[TEMPUI]` titlebar button) now also
   moves its source directory again, to `desk_widgets/<name>/` at the
   project root.
-"""
+""",
+}
 
-_NEW_FEATURES_DOC = """# TempUI: New Features
-
-See `desk-temporary-ui.md` (in this same directory) for this
-directory's own overview and its shared version number. Entries here
-are listed newest-first, each tagged with the `TEMPUI_DOC_VERSION` that
-introduced it -- read from the top down until you reach a version your
-own project was already built against, and stop.
-
-Versions 1-6 predate this changelog and aren't individually recorded.
-
-## Version 46
+_NEW_FEATURES: dict[str, str] = {
+    "tagged changelog, no version numbers #252348": """- Replaced `TEMPUI_DOC_VERSION` (a single, manually-bumped integer) with
+  a tag-based scheme: a tag is a short, human-written summary plus an
+  appended 6-digit, non-semantic hash generated from its creation
+  timestamp (`generate_tag`), so two tags minted concurrently on
+  different branches never collide the way two `TEMPUI_DOC_VERSION`
+  bumps from the same base version once did in practice. A
+  `.desk_temp` project now tracks which tags it has seen (a set), not
+  a single version number; groups of tags can later be collapsed into
+  one new tag (`TAG_COLLAPSES`) to keep this changelog's own footprint
+  bounded. The doc-upgrade notification (when a project is missing
+  tags this Desk already has) is now a single notification -- never
+  more than one, and never zero
+  unless there's genuinely nothing new -- and clicking it opens a
+  Markdown widget with the real descriptions of exactly the missing
+  tags, not a static pointer telling you to go read this file
+  yourself. Every version 1-46 from the old scheme was migrated in
+  bulk into five decade-bucket tags, `version-00` (versions 1-9)
+  through `version-40` (40-46) -- see those tags' own entries above/
+  below for the changes they cover.
+""",
+    "version-40": """### Version 46
 - `desk_run_pipeline`'s pipeline DSL gains a `map` stage: `map +| verb1
   | verb2 |+` -- everything between the `+|`/`|+` delimiters is itself
   a full sub-pipeline in this same syntax (including a nested `map`).
@@ -1660,7 +1538,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   succeed fails the whole `map` stage, naming which item and why -- no
   partial results.
 
-## Version 45
+### Version 45
 - A new `desk_run_pipeline` MCP tool: runs a pipe-chained verb DSL
   pipeline (a single `|`-separated string of built-in verb calls --
   `reveal_widget`, `screenshot_widget`, `screenshot_desk`,
@@ -1670,7 +1548,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   of chaining several separate MCP tool calls by hand. Not a tempui-DSL
   file type -- see the tool's own description for its syntax.
 
-## Version 44
+### Version 44
 - A promoted, source-backed widget's `desk_widgets/<name>/` source
   directory is now watched directly for changes. Editing it (and
   saving) marks every already-placed instance `[STALE]` -- the same
@@ -1680,7 +1558,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   (`tsc`) and reloads. See "Authoring from real source" in
   `tempui-custom-widgets.md`.
 
-## Version 43
+### Version 43
 - A source-backed `DefineWidget`'s authoring source directory is now
   recorded durably at build time (a new `SourcePath` line / the
   `source_path` field), surviving promotion, save/reload, and even a
@@ -1690,7 +1568,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   which is the common case. See "Authoring from real source" in
   `tempui-custom-widgets.md`.
 
-## Version 42
+### Version 42
 - A new "Environment variables" section: the agent behind a `claude`/
   `Claude (Desk)` widget can now read its own placed widget instance
   id directly from its environment as `DESK_WIDGET_INSTANCE_ID`,
@@ -1699,7 +1577,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   server's own tools (e.g. `desk_reveal_widget`) remain the way to
   answer anything dynamic (current placements, live state).
 
-## Version 41
+### Version 41
 - A new Bridge API capability, `installed_jobs`:
   `desk.installedJobs.run(name, configPath)` lets a `kind: "html"`
   widget run an already-Installed Job too (see `tempui-installed-jobs.md`),
@@ -1710,7 +1588,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   a job expected to run longer belongs on the MCP/agent path instead.
   `Job`'s own closed capability-name list gained `installed_jobs` too.
 
-## Version 40
+### Version 40
 - Installed Jobs: a durable, versioned alternative to the ephemeral
   `Job` mechanism for a script you expect to run repeatedly. Write real
   source to `desk-installed-jobs/<name>/main.py`, then call the new
@@ -1722,8 +1600,8 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   you've installed, with per-row "View Source" and "Uninstall" (source
   is kept on disk either way). Not a tempui-DSL file type -- see
   `tempui-installed-jobs.md`.
-
-## Version 39
+""",
+    "version-30": """### Version 39
 - A new authoring convenience script,
   `.desk_temp/build_job_or_desk_proc.py` (mirroring `build_widget.py`):
   packages a plain script into a ready-to-drop `Job`/`DeskProc` tempui
@@ -1732,7 +1610,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   files themselves are unchanged, this just removes the authoring
   ceremony. See `tempui-jobs.md`/`tempui-desk-proc.md`.
 
-## Version 38
+### Version 38
 - A new `DeskProc` tempui DSL keyword: a one-time Python script with
   real, in-process access to Desk's own live shell -- reveal a placed
   widget instance (the same action as its titlebar eye button),
@@ -1746,7 +1624,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   ordinary tempui placement notification at a glance. See
   `tempui-desk-proc.md`.
 
-## Version 37
+### Version 37
 - `desk.popups.show(...)`'s own doc now explicitly warns against using
   the browser's raw `alert()`/`confirm()`/`prompt()` for an
   alert/confirmation instead -- always use `desk.popups.show`, the
@@ -1754,7 +1632,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   real bug where the Python-side equivalent mistake (a raw
   `QMessageBox`) rendered as a detached macOS window.
 
-## Version 36
+### Version 36
 - A `desk.state.*` schema can now also be declared "top-level,"
   independent of any widget's manifest: a plain JSON file, `{"<key>":
   "<type expression>", ...}`, at `.desk_temp/schemas/` (ephemeral,
@@ -1763,7 +1641,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   moment it's picked up, live-updated on edit, cleared on delete. See
   "Validated vs. non-validated keys" in `tempui-custom-widgets.md`.
 
-## Version 35
+### Version 35
 - `desk.state.*` keys can now be validated: declare a schema for a key
   via a `state_schema` field in a real `widgets/<id>/widget.json` (or a
   `StateSchema<TAB>key<TAB>type_expr` `DefineWidget` line), and every
@@ -1776,7 +1654,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   `self.getManifest()` gains a `desk_widget_loading_errors` array with
   the same message).
 
-## Version 34
+### Version 34
 - New `desk.state.*` Bridge API calls (capability `state`): a shared,
   project-scoped key/value store any widget can read (`get`,
   `getHistory`) or write (`set`), with change notification via the
@@ -1786,7 +1664,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   `tempui-custom-widgets.md`. No schema/type checking on state keys in
   this version -- values are opaque JSON.
 
-## Version 33
+### Version 33
 - `app_dsl`'s `build.py` gained a `--mode=global` output mode
   (alongside the existing, still-default `--mode=module`) -- plain
   global scripts, no `import`/`export` at all, for feeding into
@@ -1796,7 +1674,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   see `app_dsl/README.md`. Closes the gap Version 32's own entry
   below left open.
 
-## Version 32
+### Version 32
 - New `.desk_temp/app_dsl/` tool -- a schema + parser + codegen tool
   for a multi-component widget's own wiring/layout/event-table code
   (generalized from a hand-written SPA structure), not a new tempui
@@ -1805,7 +1683,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   build target isn't wired into `build_widget.py`'s own packaging
   pipeline yet (see `PARKINGLOT.md`).
 
-## Version 31
+### Version 31
 - New `Job` tempui DSL keyword -- run a one-time script with real
   widget-context capabilities (notably Bridge API access for a
   `kind: "html"` Job, previously unreachable outside a real
@@ -1815,7 +1693,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   important caveat about what "Done" actually means for a `kind:
   "html"` Job.
 
-## Version 30
+### Version 30
 - New `desk.self.setSubtitle(text)` Bridge API call -- lets a widget
   instance put its own state (e.g. which document it's editing) into
   its own titlebar, alongside the existing `getManifest`/
@@ -1825,8 +1703,8 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   Needs no capability declaration (same as `getLocalStorage`/
   `setLocalStorage`) and isn't persisted -- call it again on every
   fresh page load once your own state is restored.
-
-## Version 29
+""",
+    "version-20": """### Version 29
 - `.desk_temp/build_widget.py` now warns to stderr, at the start of
   every run, if a `scripts/build_widget.py` also exists in the
   project -- a copy from before this mechanism moved to `.desk_temp/`
@@ -1842,7 +1720,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   several stale same-keyword files left behind could make an old one
   "win" again).
 
-## Version 28
+### Version 28
 - "Questions for the user" corrected: the documented `QUESTIONS.md`
   heading format (`## <short summary>`) never actually matched what
   the real parser requires. The real, required shape starts with a
@@ -1855,7 +1733,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   old documented example) is silently not recognized as a question at
   all.
 
-## Version 27
+### Version 27
 - "The Desk Bridge API" section's storage guidance corrected:
   previously stated flatly that no browser storage (cookies,
   `localStorage`, `IndexedDB`) persists a `kind: "html"` widget's page
@@ -1871,7 +1749,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   project checkout and is deleted outright the moment the widget
   instance is permanently removed.
 
-## Version 26
+### Version 26
 - `.desk_temp/build_widget.py` now concatenates a multi-file widget's
   compiled `.js` output in the order `tsconfig.json`'s own top-level
   `"files"` array lists them (base classes before subclasses), instead
@@ -1883,7 +1761,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   alphabetical-order behavior, correct for the common single-file
   widget). See "Authoring from real source" above.
 
-## Version 25
+### Version 25
 - New `shared-components/document-editor-base` entry: a base class
   (`DocumentEditorBase<Doc>`) for a title-to-path, auto-load/auto-save
   file-backed document editor -- see its own `README.md`. Unlike
@@ -1893,12 +1771,12 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   project's own `build_widget.py` -- see the "Reusable UI components"
   section above).
 
-## Version 24
+### Version 24
 - `desk.fs.writeFile` now creates any missing parent directories before
   writing (like `mkdir -p`) — a write to a not-yet-existing directory
   previously rejected silently, with no visible error.
 
-## Version 23
+### Version 23
 - New "Reusable UI components" section: `.desk_temp/shared-components/`
   holds a small library of ready-made, dependency-free UI components
   for "Authoring from real source" (starting with `hsv-color-picker`),
@@ -1906,7 +1784,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   component's file directly, or copy+paste+modify it into a widget's
   own source -- both are intended, accepted ways to use them.
 
-## Version 22
+### Version 22
 - "Authoring from real source"'s `widget.json` now supports an
   optional `"capabilities": [...]` key -- `.desk_temp/build_widget.py`
   reads it and emits one `Capability<TAB>name` line per entry into the
@@ -1917,7 +1795,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   at runtime). Omit the key entirely for a widget that needs no
   capabilities -- unchanged, the default.
 
-## Version 21
+### Version 21
 - `desk.transforms.run(transformId, input, config)` (capability
   `transforms`): runs a transform -- a new entity, separate from a
   widget: converts data of one named type into another
@@ -1926,7 +1804,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   `config` is optional, only meaningful to a transform that declares
   `has_config: true`.
 
-## Version 20
+### Version 20
 - `desk.filetypes.get()`/`.set(entries)` (capability `filetypes`): file
   type registry entries can now declare a `"git-diff"` role alongside
   the existing `view`/`edit`/`consume`/`produce` ones -- a built-in Git
@@ -1934,8 +1812,8 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   this role (git diff is meaningful for any file type, not just
   specific extensions), so registering a `git-diff` handler is only
   needed to override that default for a particular type.
-
-## Version 19
+""",
+    "version-10": """### Version 19
 - `desk.popups.show(title, message, buttons, default)` (capability
   `popups`): shows a desk-internal popup -- a small `WidgetFrame`
   placed on the canvas, not a real OS window -- with `message` and one
@@ -1943,7 +1821,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   (or returns `null` if dismissed via its close button/Escape).
   `default` (optional) names the pre-selected/Enter-triggered button.
 
-## Version 16
+### Version 16
 - `desk.editor.openOrScrap(path)` (capability `editor`): open an
   appropriate editor for `path`, or place an explanatory Scratch note
   if nothing can open it -- the same fallback service a `kind:
@@ -1954,11 +1832,11 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   documented here or version-bumped until now): read/edit the file
   type registry; `get()` also subscribes you to future edits.
 
-## Version 14
+### Version 14
 - See `tempui-breaking-changes.md`'s own Version 14 entry -- the
   authoring-source relocation is breaking, not additive.
 
-## Version 13
+### Version 13
 - `desk.self.getManifest()` now also returns `content_hash` (the
   currently-registered definition's content hash, for a `DefineWidget`
   widget) and `directory` (the current Desk's own directory).
@@ -1972,42 +1850,107 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   cross-widget signaling (a documentation reordering, not a behavior
   change).
 
-## Version 12
+### Version 12
 - `DefineWidget` now auto-places one instance the first time a
   genuinely new keyword is registered from a live-added tempui file
   (re-registering an already-known keyword, or a bulk rescan at
   startup/Desk-switch, still doesn't place anything -- use the
   separate keyword-only invocation file for an additional instance).
 
-## Version 11
+### Version 11
 - A repeatable way to author a `DefineWidget` widget from real
   TypeScript source (a small per-widget source directory + the seeded
   `scripts/build_widget.py`) instead of hand-writing inline JS --
   see "Authoring from real source" in `tempui-custom-widgets.md`.
 
-## Version 10
+### Version 10
 - New `OpenImage` keyword: open an existing image file in the Image
   Viewer widget. See `tempui-image.md`.
-
-## Version 9
+""",
+    "version-00": """### Version 9
 - New "Inspecting another widget" capability
   (`desk.introspect.snapshot(targetInstanceId)`, capability
   `introspect`): a DOM tree snapshot and console log of another placed
   widget instance, gated by a one-time user confirmation dialog.
 
-## Version 8
+### Version 8
 - A `DefineWidget` file can now declare `Capability<TAB>name` lines,
   granting its widget kind Bridge API capabilities (`workspace`, `fs`,
   `widgets`, `events`, ...) the same way a real `widgets/<id>/
   widget.json` manifest's own `capabilities` list does.
 
-## Version 7
+### Version 7
 - `desk.events.*` (capability `events`): Desk's own event message
   channel -- `subscribe`/`unsubscribe`/`publish`/`onMessage`, for
   telling another widget instance "something happened" without either
   needing to know the other exists. See "Sending and receiving named
   messages" in `tempui-custom-widgets.md`.
-"""
+""",
+}
+
+
+def _render_changelog_doc(title: str, entries: dict[str, str], intro: str) -> str:
+    """Renders _BREAKING_CHANGES/_NEW_FEATURES (or any tag_id -> body
+    dict shaped like them) into a standalone Markdown doc -- one `##
+    <tag id>` section per entry, newest-first per CURRENT_TAGS order
+    (an entry whose tag isn't in CURRENT_TAGS at all, which shouldn't
+    normally happen, sorts after every entry that is, in dict order)."""
+    known_order = {tag: i for i, tag in enumerate(CURRENT_TAGS)}
+    ordered_ids = sorted(entries, key=lambda tag_id: -known_order.get(tag_id, -1))
+    sections = [f"## {tag_id}\n{entries[tag_id].rstrip()}" for tag_id in ordered_ids]
+    return f"{title}\n\n{intro.strip()}\n\n" + "\n\n".join(sections) + "\n"
+
+
+_BREAKING_CHANGES_DOC = _render_changelog_doc(
+    "# TempUI: Breaking Changes",
+    _BREAKING_CHANGES,
+    """See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its current set of tags -- entries here
+are listed newest-first, one section per tag, each tagged with the tag
+id that introduced the change. If a doc-upgrade notification named
+specific tags, read just those sections here (and in
+tempui-new-features.md) -- there's no need to read from the top.
+Versions 1-6 (from this doc's pre-tag history) predate this changelog
+and aren't individually recorded.""",
+)
+
+_NEW_FEATURES_DOC = _render_changelog_doc(
+    "# TempUI: New Features",
+    _NEW_FEATURES,
+    """See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its current set of tags -- entries here
+are listed newest-first, one section per tag, each tagged with the tag
+id that introduced it. If a doc-upgrade notification named specific
+tags, read just those sections here (and in tempui-breaking-changes.md)
+-- there's no need to read from the top.
+Versions 1-6 (from this doc's pre-tag history) predate this changelog
+and aren't individually recorded.""",
+)
+
+
+def render_new_tags_digest(tags: Collection[str]) -> str:
+    """Markdown body summarizing exactly `tags`' own
+    _BREAKING_CHANGES/_NEW_FEATURES entries (newest-first per
+    CURRENT_TAGS order) -- used by TempUiManager._notify_docs_upgraded
+    to build the doc-upgrade notification's actual content, as
+    distinct from _render_changelog_doc's whole-history output."""
+    known_order = {tag: i for i, tag in enumerate(CURRENT_TAGS)}
+    ordered = sorted(set(tags), key=lambda tag_id: -known_order.get(tag_id, -1))
+    sections = []
+    for tag_id in ordered:
+        breaking = _BREAKING_CHANGES.get(tag_id)
+        feature = _NEW_FEATURES.get(tag_id)
+        if breaking is None and feature is None:
+            continue
+        parts = [f"## {tag_id}"]
+        if breaking is not None:
+            parts.append(f"**Breaking changes:**\n\n{breaking.strip()}")
+        if feature is not None:
+            parts.append(f"**New features:**\n\n{feature.strip()}")
+        sections.append("\n\n".join(parts))
+    if not sections:
+        return "No changelog details recorded for these tags."
+    return "\n\n".join(sections)
 
 # TODO 029047b: the "Authoring from real source" build script (TODO
 # b324217), moved here from a one-time-seeded scripts/build_widget.py
@@ -2474,21 +2417,33 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
 
 
 def render_static_doc() -> str:
-    """DOC_TEMPLATE with its version placeholder filled in (TODO
-    f7b1611) -- plain string substitution, not str.format(): the
-    template is free-form Markdown prose that could plausibly contain
-    a literal `{`/`}` some day (e.g. a JSON example), which .format()
-    would silently misinterpret as a field reference."""
-    return DOC_TEMPLATE.replace(_DOC_VERSION_PLACEHOLDER, str(TEMPUI_DOC_VERSION))
+    """DOC_TEMPLATE with its tag-comment block filled in (TODO
+    6839365, was a single version placeholder pre-tags, TODO f7b1611)
+    -- plain string substitution, not str.format(): the template is
+    free-form Markdown prose that could plausibly contain a literal
+    `{`/`}` some day (e.g. a JSON example), which .format() would
+    silently misinterpret as a field reference."""
+    tag_lines = "\n".join(f"<!-- desk-temporary-ui.md tag: {tag} -->" for tag in CURRENT_TAGS)
+    return DOC_TEMPLATE.replace(_DOC_TAGS_PLACEHOLDER, tag_lines)
 
 
-def parse_doc_version(text: str) -> int | None:
-    """Extracts the integer version from desk-temporary-ui.md's own
-    version note (TODO f7b1611) -- None if the note is missing
-    entirely (an unversioned file, including every file written before
-    this TODO, is always treated as out of date) or malformed."""
-    match = _DOC_VERSION_RE.search(text)
-    return int(match.group(1)) if match is not None else None
+def parse_doc_tags(text: str) -> set[str] | None:
+    """Extracts the set of tags desk-temporary-ui.md's own header
+    records it has already seen (TODO 6839365, one `<!-- ...tag: ...
+    -->` comment per tag). Falls back to migrating a pre-tags file's
+    old single `<!-- ...version: N -->` comment (TODO f7b1611) via
+    _legacy_version_tags if there's no tag comment at all. Returns
+    None only when neither is present -- a file that predates *any*
+    tracking, always treated as out of date (see ensure_docs_current),
+    the same as an unparseable/missing version note always was
+    pre-tags."""
+    tag_lines = _TAG_LINE_RE.findall(text)
+    if tag_lines:
+        return set(tag_lines)
+    legacy_match = _LEGACY_VERSION_RE.search(text)
+    if legacy_match is not None:
+        return set(_legacy_version_tags(int(legacy_match.group(1))))
+    return None
 
 
 def write_tempui_docs(temp_dir: Path) -> None:
@@ -2503,21 +2458,23 @@ def write_tempui_docs(temp_dir: Path) -> None:
         (temp_dir / filename).write_text(content)
 
 
-def ensure_docs_current(temp_dir: Path) -> tuple[bool, int | None]:
+def ensure_docs_current(temp_dir: Path) -> tuple[bool, frozenset[str]]:
     """Refreshes the *whole* tempui doc set in place if stale (TODO
     e57ce5f, generalizing TODO f7b1611 once the docs split across
-    multiple files) -- called before opening a Desk (see
+    multiple files; TODO 6839365 for the move from a single version
+    integer to a tag set) -- called before opening a Desk (see
     desk.shell.temp_ui_manager.TempUiManager.provision), right
     alongside the analogous check TODO 91b3f42 already does for the
     dynamic custom-widgets section. A no-op if desk-temporary-ui.md
     doesn't exist at all (nothing to refresh -- first creation is
     `provision`'s own job, via write_tempui_docs).
 
-    The main file's version note stands for the *entire* set, per the
+    The main file's tag comments stand for the *entire* set, per the
     request -- so this refreshes everything (not just the main file)
-    if either its version doesn't match, *or* any split file is
-    missing (e.g. a user deleted one) -- there's no per-file staleness
-    concept to check independently.
+    if the known-tags set (after resolving any TAG_COLLAPSES) doesn't
+    cover CURRENT_TAGS, *or* any split file is missing (e.g. a user
+    deleted one) -- there's no per-file staleness concept to check
+    independently.
 
     Preserves the main file's custom-widgets section verbatim if
     present (extracted before rewriting, re-appended after) -- "be
@@ -2528,28 +2485,29 @@ def ensure_docs_current(temp_dir: Path) -> tuple[bool, int | None]:
     afterward in the real startup/Desk-switch flow and inserts a fresh
     section regardless.
 
-    Returns (rewrote, previous_version) (TODO 7c7b676): rewrote is True
-    whenever write_tempui_docs actually ran. previous_version is the
-    doc set's own embedded version *before* this call, but only when
-    it's a real, parseable version that actually differs from
-    TEMPUI_DOC_VERSION -- None otherwise (nothing rewrote, the version
-    already matched but a split file was merely missing, or the doc
-    predates version-tracking entirely and has no version to report) --
-    none of those are "a convention changed" in the sense
+    Returns (rewrote, missing_tags) (TODO 7c7b676, TODO 6839365):
+    rewrote is True whenever write_tempui_docs actually ran.
+    missing_tags is CURRENT_TAGS minus the doc's own (canonicalized)
+    known tags, but only when the doc had *some* real tag information
+    to diff against -- an empty frozenset otherwise (nothing rewrote
+    and every tag already matched, a split file was merely missing, or
+    the doc predates tag-tracking entirely and has nothing to diff)
+    -- none of those are "the tag set changed" in the sense
     TempUiManager.provision's own caller cares about, just "the file
     set was topped up/repaired." Lets the caller distinguish a real
     convention upgrade worth telling the user about from routine
     repair, without re-deriving the same comparison twice."""
     doc_path = temp_dir / DOC_FILENAME
     if not doc_path.is_file():
-        return False, None
+        return False, frozenset()
     text = doc_path.read_text()
-    doc_version = parse_doc_version(text)
-    version_current = doc_version == TEMPUI_DOC_VERSION
+    known_tags = parse_doc_tags(text)
+    canonical_known = _canonicalize_tags(known_tags) if known_tags is not None else frozenset()
+    tags_current = known_tags is not None and CURRENT_TAG_SET <= canonical_known
     all_split_docs_present = all((temp_dir / filename).is_file() for filename in SPLIT_DOC_CONTENT)
-    if version_current and all_split_docs_present:
-        return False, None
-    previous_version = doc_version if not version_current else None
+    if tags_current and all_split_docs_present:
+        return False, frozenset()
+    missing_tags = frozenset(CURRENT_TAG_SET - canonical_known) if known_tags is not None else frozenset()
     custom_section = None
     if CUSTOM_WIDGETS_SECTION_START in text and CUSTOM_WIDGETS_SECTION_END in text:
         start = text.index(CUSTOM_WIDGETS_SECTION_START)
@@ -2558,7 +2516,7 @@ def ensure_docs_current(temp_dir: Path) -> tuple[bool, int | None]:
     write_tempui_docs(temp_dir)
     if custom_section is not None:
         doc_path.write_text(doc_path.read_text().rstrip("\n") + "\n\n" + custom_section + "\n")
-    return True, previous_version
+    return True, missing_tags
 
 
 def _repo_shared_components_dir() -> Path:
