@@ -6,7 +6,7 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
-ee1a474. Bug: `desk.temp_ui._legacy_version_tags` (TODO `6839365`) treats a
+ee1a474. COMPLETED: Bug: `desk.temp_ui._legacy_version_tags` (TODO `6839365`) treats a
    legacy project's own decade bucket as already fully known (e.g.
    version 44 -> knows `version-00` through `version-40`), but a bucket
    covers ten version numbers and a project isn't necessarily at the
@@ -24,6 +24,40 @@ ee1a474. Bug: `desk.temp_ui._legacy_version_tags` (TODO `6839365`) treats a
 
    Prioritized per direct user request.
    [planned: legacy-version-bucket-not-fully-known.md]
+
+   COMPLETED: Implemented per the plan -- `_legacy_version_tags` now
+   returns `range(0, bucket, 10)` (every bucket *strictly below* the
+   project's own) instead of `range(0, bucket + 1, 10)`; e.g. version
+   25 now migrates to `{version-00, version-10}` only, not
+   `{version-00, version-10, version-20}`, and any version in the 40s
+   now always comes back missing `version-40` on next open. Updated the
+   stale nearby comment (above the `Tag` class) that described the old,
+   bucket-inclusive behavior.
+
+   While investigating, also addressed a related report: an agent that
+   opened `tempui-new-features.md`/`tempui-breaking-changes.md`
+   directly (rather than via the doc-upgrade notification) mistook a
+   tag's section existing there for a personalized "this is new to
+   you" signal -- those two files are the complete, unfiltered history
+   (every tag, identical content for every project) and always have
+   been; only the one-time doc-upgrade notification is project
+   -specific. Reworded `DOC_TEMPLATE`'s pointer paragraph and both
+   files' own intros to say this explicitly, rather than only
+   describing what the notification does and leaving the reader to
+   infer the files themselves are not filtered.
+
+   `tests/verify/verify_tempui_doc_versioning.py`'s
+   `test_legacy_version_tags_cumulative_buckets` rewritten (retitled
+   `test_legacy_version_tags_excludes_own_bucket`) for the corrected
+   values, with more boundary cases (bucket floor/ceiling).
+   `tests/verify/verify_tempui_storage_claim_fix.py`'s legacy-version
+   -20 simulation now computes its expected missing-tags set by calling
+   `_legacy_version_tags(20)` directly instead of hardcoding the
+   (now-wrong) literal set, so it can't silently drift out of sync with
+   the function again.
+
+   Verified: full `tests/verify/` regression suite (141 non-`disabled_`
+   scripts) passes, 0 failures.
 
 6839365. COMPLETED: Replace `src/desk/temp_ui.py`'s `TEMPUI_DOC_VERSION` (a single,
    manually-bumped integer) with a tag-based scheme: a tag is a short

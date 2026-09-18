@@ -115,9 +115,12 @@ APP_DSL_DIRNAME = "app_dsl"
 # See plans/tempui-doc-tags.md for the exact mapping. A project that
 # only ever had the old integer version tracked (no tag comments at
 # all) is migrated the same way, lazily, the next time it's opened --
-# see _legacy_version_tags: versions were always cumulative, so a
-# project at (say) version 25 already implies version-00/version-10/
-# version-20, not just its own version-20 bucket alone.
+# see _legacy_version_tags: versions were cumulative, so a project at
+# (say) version 25 already implies version-00/version-10, but NOT its
+# own version-20 bucket (TODO ee1a474) -- being somewhere inside a
+# bucket doesn't mean being at its top, and old version numbers
+# weren't reliably unique besides, so a project's own bucket is always
+# reported missing rather than assumed already known.
 @dataclass(frozen=True)
 class Tag:
     """A single tempui doc-set tag (TODO 6839365) -- `id` is what's
@@ -151,16 +154,25 @@ def generate_tag(summary: str, *, now: float | None = None) -> Tag:
 
 
 def _legacy_version_tags(version: int) -> frozenset[str]:
-    """Migration path (TODO 6839365) for a project whose doc set
-    predates tag-tracking entirely and only has the old integer
-    TEMPUI_DOC_VERSION-era `version: N` comment. Versions were always
-    cumulative (a project at version 42 had already incorporated
-    everything through version 42), so this returns every decade
-    -bucket tag up through `version`'s own bucket, not just that one
-    bucket alone -- e.g. version 25 -> {version-00, version-10,
-    version-20}, matching what that project actually already knew."""
+    """Migration path (TODO 6839365, corrected by TODO ee1a474) for a
+    project whose doc set predates tag-tracking entirely and only has
+    the old integer TEMPUI_DOC_VERSION-era `version: N` comment.
+    Versions were cumulative (a project at version 42 had already
+    incorporated everything through version 42), so every decade
+    -bucket tag *strictly below* `version`'s own bucket is safely
+    already known -- but NOT that bucket itself: a bucket covers ten
+    version numbers (e.g. version-40 covers 40-49), and being
+    somewhere inside it doesn't mean being at its top, so a project at
+    version 42 hasn't necessarily seen whatever changed at versions
+    43-46. Old version numbers also weren't reliably unique (the exact
+    TODO 6839365 root cause: two branches both bumped to "44" on
+    different content), so a project's own bucket can never be trusted
+    as fully known regardless of which number inside it it reports --
+    it's always left out, so it always comes back missing and its real
+    changelog content surfaces in the doc-upgrade notification. E.g.
+    version 25 -> {version-00, version-10} only, not version-20."""
     bucket = (version // 10) * 10
-    return frozenset(f"version-{b:02d}" for b in range(0, bucket + 1, 10))
+    return frozenset(f"version-{b:02d}" for b in range(0, bucket, 10))
 
 
 def _canonicalize_tags(tags: Collection[str]) -> frozenset[str]:
@@ -252,14 +264,20 @@ Every file named above lives in this same directory.
 
 A few more files live here too, but aren't DSL file types (nothing
 writes one directly): [tempui-breaking-changes.md](./tempui-breaking-changes.md)
-and [tempui-new-features.md](./tempui-new-features.md) — changelogs of
-this doc set itself, one section per tag (see the tag comments right
-under this file's own title). If you're picking up a project that was
-built against an older Desk, a doc-upgrade notification (if you got
-one) already names exactly which tags are new to this project — read
-just those sections and you'll have an exact, actionable punch list
-instead of needing to re-read this whole doc set and diff it against
-memory. There's also
+and [tempui-new-features.md](./tempui-new-features.md) — the complete,
+unfiltered changelogs of this doc set itself, one section per tag, every
+tag Desk has ever introduced, the same for every project regardless of
+which tags that particular project has already seen (see the tag
+comments right under this file's own title for *this* project's own
+list). A tag's section simply existing in these two files is not itself
+a signal that it's new to you — most of them aren't. If you're picking
+up a project that was built against an older Desk, a doc-upgrade
+notification (if you got one) is the actual, project-specific signal: it
+names exactly which tags are new to this project, with their own
+descriptions included directly in the notification itself — read that
+first, and only open these two files yourself if you want the fuller,
+permanent record instead of re-reading this whole doc set and diffing it
+against memory. There's also
 `build_widget.py` — not a doc at all, but a ready-to-run script; see
 "Authoring from real source" in `tempui-custom-widgets.md`. Likewise
 `build_job_or_desk_proc.py` — packages a plain script into a
@@ -1907,9 +1925,19 @@ _BREAKING_CHANGES_DOC = _render_changelog_doc(
     """See `desk-temporary-ui.md` (in this same directory) for this
 directory's own overview and its current set of tags -- entries here
 are listed newest-first, one section per tag, each tagged with the tag
-id that introduced the change. If a doc-upgrade notification named
-specific tags, read just those sections here (and in
-tempui-new-features.md) -- there's no need to read from the top.
+id that introduced the change.
+
+This file is the complete, unfiltered history: every tag Desk has ever
+introduced, the same content for every project, regardless of which
+tags this particular project has already seen. A section existing here
+does **not** mean it's new to you. If you already have a doc-upgrade
+notification naming specific tags, that notification -- not this file
+-- is what tells you what's actually new; it includes each named tag's
+own description directly, so you don't need to come find it here at
+all. Open this file yourself only if you want the fuller, permanent
+record (and in tempui-new-features.md) -- there's no need to read from
+the top in that case either, just the sections for tags you don't
+already have.
 Versions 1-6 (from this doc's pre-tag history) predate this changelog
 and aren't individually recorded.""",
 )
@@ -1920,9 +1948,19 @@ _NEW_FEATURES_DOC = _render_changelog_doc(
     """See `desk-temporary-ui.md` (in this same directory) for this
 directory's own overview and its current set of tags -- entries here
 are listed newest-first, one section per tag, each tagged with the tag
-id that introduced it. If a doc-upgrade notification named specific
-tags, read just those sections here (and in tempui-breaking-changes.md)
--- there's no need to read from the top.
+id that introduced it.
+
+This file is the complete, unfiltered history: every tag Desk has ever
+introduced, the same content for every project, regardless of which
+tags this particular project has already seen. A section existing here
+does **not** mean it's new to you. If you already have a doc-upgrade
+notification naming specific tags, that notification -- not this file
+-- is what tells you what's actually new; it includes each named tag's
+own description directly, so you don't need to come find it here at
+all. Open this file yourself only if you want the fuller, permanent
+record (and in tempui-breaking-changes.md) -- there's no need to read
+from the top in that case either, just the sections for tags you don't
+already have.
 Versions 1-6 (from this doc's pre-tag history) predate this changelog
 and aren't individually recorded.""",
 )

@@ -78,14 +78,24 @@ def test_generate_tag_deterministic_and_distinct():
 # ---------- _legacy_version_tags ----------
 
 
-def test_legacy_version_tags_cumulative_buckets():
-    assert _legacy_version_tags(5) == frozenset({"version-00"})
-    assert _legacy_version_tags(20) == frozenset({"version-00", "version-10", "version-20"})
-    assert _legacy_version_tags(25) == frozenset({"version-00", "version-10", "version-20"})
-    assert _legacy_version_tags(46) == frozenset(
-        {"version-00", "version-10", "version-20", "version-30", "version-40"}
-    )
-    print("_legacy_version_tags: buckets by decade, cumulative through the project's own bucket: PASS")
+def test_legacy_version_tags_excludes_own_bucket():
+    # TODO ee1a474: a project's own bucket is never assumed fully known
+    # -- only every bucket strictly below it. A bucket covers ten
+    # version numbers, being somewhere inside one doesn't mean being at
+    # its top, and old version numbers weren't reliably unique besides
+    # (two branches once both claimed "44" on different content), so
+    # the bucket a project's own version falls into always comes back
+    # missing regardless of where in that bucket the version actually
+    # sits.
+    assert _legacy_version_tags(5) == frozenset()
+    assert _legacy_version_tags(9) == frozenset()
+    assert _legacy_version_tags(10) == frozenset({"version-00"})
+    assert _legacy_version_tags(20) == frozenset({"version-00", "version-10"})
+    assert _legacy_version_tags(25) == frozenset({"version-00", "version-10"})
+    assert _legacy_version_tags(29) == frozenset({"version-00", "version-10"})
+    assert _legacy_version_tags(42) == frozenset({"version-00", "version-10", "version-20", "version-30"})
+    assert _legacy_version_tags(46) == frozenset({"version-00", "version-10", "version-20", "version-30"})
+    print("_legacy_version_tags: buckets by decade, strictly below the project's own bucket only: PASS")
 
 
 # ---------- _canonicalize_tags / TAG_COLLAPSES ----------
@@ -322,7 +332,7 @@ def test_provision_refreshes_stale_existing_doc_set():
 
 test_generate_tag_validates_length()
 test_generate_tag_deterministic_and_distinct()
-test_legacy_version_tags_cumulative_buckets()
+test_legacy_version_tags_excludes_own_bucket()
 test_canonicalize_tags_passthrough_when_no_collapses()
 test_canonicalize_tags_resolves_chained_collapses()
 test_parse_doc_tags_present()

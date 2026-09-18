@@ -1,4 +1,4 @@
-# TODO `ee1a474`: a legacy project's own version bucket must not be assumed fully known
+# TODO `ee1a474`: a legacy project's own version bucket must not be assumed fully known (COMPLETED)
 
 ## Bug
 
