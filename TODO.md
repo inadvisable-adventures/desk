@@ -6,6 +6,34 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+6839365. Replace `src/desk/temp_ui.py`'s `TEMPUI_DOC_VERSION` (a single,
+   manually-bumped integer) with a tag-based scheme: a tag is a short
+   (10-50 character) human-written summary plus an appended 6-digit,
+   non-semantic hash generated from its creation timestamp. A
+   `.desk_temp` project tracks which tags it has seen (a set), not a
+   single version number; groups of tags can later be collapsed into
+   one new tag to keep the changelog's footprint bounded. Also: the
+   `~280`-line hand-maintained bump-log comment above the old
+   `TEMPUI_DOC_VERSION = 46` is redundant with `_BREAKING_CHANGES_DOC`/
+   `_NEW_FEATURES_DOC` just below it, and had already gone stale (stops
+   at version 44, two behind the real 46) -- root cause: two branches
+   (TODO `63bfd42`, TODO `4eb3d9e`) both independently bumped `43 -> 44`
+   from the same base, and the merge silently renumbered one side with
+   no trace in the comment log or `TODO.md`'s own "bumped to N" prose.
+   Migrate the existing changelog content into decade-bucket tags
+   (`version-00` = versions 1-9, ... `version-40` = 40-46) rather than
+   hand-summarizing it. Also fix `TempUiManager._notify_docs_upgraded`
+   so clicking the upgrade notification opens a widget showing the real
+   descriptions of the new tags, not a static pointer to a file, and so
+   there's only ever one notification (or zero), never one per tag.
+   Update `design-docs/architecture.md`'s version-stamping paragraph to
+   describe the new scheme (and fix its existing stale reference to a
+   function called `ensure_doc_version_current`, whose real name is
+   `ensure_docs_current`).
+
+   Prioritized per direct user request.
+   [planned: tempui-doc-tags.md]
+
 c393520. COMPLETED: Fix the remaining `tests/verify/` scripts that hardcode an
    absolute path to the sibling `desk` checkout
    (`/Users/mphair/inadvisable-adventures/desk`) instead of deriving
