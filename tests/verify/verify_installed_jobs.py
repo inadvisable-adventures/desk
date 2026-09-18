@@ -161,6 +161,12 @@ class _FakeWindowForRun:
     get_installed_job = DeskWindow.get_installed_job
     get_installed_job_for_run = DeskWindow.get_installed_job_for_run
     run_installed_job = DeskWindow.run_installed_job
+    # TODO 94a2fa2: run_installed_job now also calls this -- pulled in
+    # the same real-production-logic-not-reimplemented way as the three
+    # methods above. Never touches self.get_state/self._schema_registry
+    # in this file's tests (none of them write a job.json), so no
+    # further fake attributes are needed for it here.
+    _resolve_job_needs = DeskWindow._resolve_job_needs
 
 
 def test_get_installed_job_for_run_raises_for_not_installed_and_stale_hash():

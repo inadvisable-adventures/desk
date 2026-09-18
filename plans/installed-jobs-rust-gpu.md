@@ -1,4 +1,4 @@
-# `rust` kind for Installed Jobs, with confirmed GPU access and declared `desk.state` needs (TODO `94a2fa2`)
+# `rust` kind for Installed Jobs, with confirmed GPU access and declared `desk.state` needs (TODO `94a2fa2`) (COMPLETED)
 
 ## Summary
 

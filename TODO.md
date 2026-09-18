@@ -6,7 +6,7 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
-94a2fa2. Prioritized per direct user request. Add a `rust` kind for Installed Jobs (TODO
+94a2fa2. COMPLETED: Prioritized per direct user request. Add a `rust` kind for Installed Jobs (TODO
    `7dca383`), for computationally-intensive work that wants a compiled
    language and, where it makes sense, the GPU -- motivated by a
    current, real project that needs both. Before building anything:
@@ -30,6 +30,67 @@ reordered or its description edited.
    `python`-kind job gets the same declared-data path too, instead of
    only the import trick).
    [planned: installed-jobs-rust-gpu.md]
+
+   COMPLETED: Implemented per the plan. Confirmed directly (a real, live
+   `cargo build`/run, not assumed): `wgpu` on this machine's Metal
+   backend found a real adapter (Apple M2 Pro) and, beyond just
+   detecting it, actually dispatched a real WGSL compute shader against
+   a real input buffer and read back the correct doubled output --
+   documented as the recommended (not required) crate in
+   `tempui-installed-jobs.md`'s new "Rust jobs and the GPU" section.
+
+   `desk.installed_jobs`: `detect_kind` sniffs "python"/"rust" from
+   which entry file is present (never persisted -- no `.desk` schema
+   migration needed); `run_rust_job` builds on demand (`cargo build
+   --release`, mtime-cached against `Cargo.toml`/`Cargo.lock`/`src/**`,
+   same on-demand shape `desk_services.transforms` already uses for
+   TypeScript) and runs the compiled binary as a real subprocess, no
+   timeout on either step (matching this codebase's own existing
+   job-timeout philosophy, not transforms'). `_resolve_cargo_binary`
+   falls back to `~/.cargo/bin/cargo` when `shutil.which` misses it --
+   a real gap hit directly in this environment, not hypothetical.
+   `compute_version_hash` now excludes both `target/` and a root-level
+   `Cargo.lock` -- the second exclusion was found the hard way, via a
+   real second-run test failure during verification (`cargo build`
+   writes/updates `Cargo.lock` outside `target/` too), not reasoned out
+   in advance; both documented in `LEARNINGS.md`.
+
+   Declared `desk.state.*` needs: an optional `desk-installed-jobs/
+   <name>/job.json` (`{"needs": [...]}`), resolved on the GUI thread via
+   the same `get_state` `desk.state.get`'s own Bridge route uses, written
+   to `.desk_temp/installed-job-needs/<name>.json`, and handed to the job
+   as the `NEEDS_PATH` global (python, alongside the now-also-added
+   `CONFIG_PATH`-equivalent) or the `DESK_JOB_NEEDS_PATH`/
+   `DESK_JOB_CONFIG_PATH` environment variables (rust) -- kind-agnostic,
+   fully backward compatible (no `job.json` at all is a no-op).
+
+   `install_job` validates via `detect_kind` instead of a hardcoded
+   `main.py` check (both/neither entry file present is refused) and now
+   also calls the new `ensure_installed_jobs_gitignore_entry`
+   (`desk-installed-jobs/**/target/`, mirroring
+   `ensure_desk_widgets_gitignore_entry` exactly) -- at the same two
+   moments (`_provision_temp_ui`, right after a successful install).
+   `get_installed_jobs_dicts`/the Installed Jobs widget's row label show
+   kind; `_view_source` skips anything under `target/`. `desk_install_job`/
+   `desk_run_installed_job`'s MCP tool descriptions updated.
+   `tempui-installed-jobs.md` covers both kinds throughout; new tag
+   `"rust installed jobs + declared state needs #739624"` added to
+   `CURRENT_TAGS` with a matching `_NEW_FEATURES` entry.
+
+   New `tests/verify/verify_installed_jobs_rust.py` (fast, always-run --
+   a dependency-free Rust job, no crates.io fetch): 35 checks covering
+   `detect_kind`, both hash exclusions, the gitignore helper, `install_job`
+   kind validation, a real build+run end to end (including a same-binary
+   second run), `CONFIG_PATH`/`NEEDS_PATH` env vars with a real
+   `desk.state` round-trip, and stale-source refusal/reinstall. New
+   `tests/verify/disabled_verify_installed_jobs_rust_gpu.py` (disabled
+   for real build-time cost, not flakiness -- a first `wgpu` build takes
+   real crates.io fetch/compile time): the real GPU compute-shader job
+   run end to end through the actual Installed Jobs pipeline, asserting
+   the GPU-computed result -- run directly, 4/4 passing.
+
+   Verified: full `tests/verify/` regression suite (142 non-`disabled_`
+   scripts) passes, 0 failures.
 
 ee1a474. COMPLETED: Bug: `desk.temp_ui._legacy_version_tags` (TODO `6839365`) treats a
    legacy project's own decade bucket as already fully known (e.g.

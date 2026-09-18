@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from desk.git_utils import find_git_root
+from desk.installed_jobs import INSTALLED_JOBS_DIRNAME
 
 TEMP_UI_DIRNAME = ".desk_temp"
 DOC_FILENAME = "desk-temporary-ui.md"
@@ -210,6 +211,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "version-30",
     "version-40",
     "tagged changelog, no version numbers #252348",
+    "rust installed jobs + declared state needs #739624",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1380,43 +1382,140 @@ many times as you like with no further prompt at all.
 
 ## Installing
 
-Write your script to `desk-installed-jobs/<name>/main.py` (project
--root-relative, a sibling of `.desk_temp/`, not inside it -- this is
-real, durable source, not disposable cache). You can add other files
-alongside it and `import` them from `main.py` -- the job's own
-directory is put on `sys.path` for the duration of a run. There is no
-capability list and no `html` variant: `main.py` runs with the same
-unrestricted, no-sandboxing in-process access any other Python code
-already running in this process has (the same trust level a `Job`'s
-own `kind: "python"` already has).
+Two kinds, told apart purely by which file is present:
+
+- **`python`** -- write your script to
+  `desk-installed-jobs/<name>/main.py` (project-root-relative, a
+  sibling of `.desk_temp/`, not inside it -- this is real, durable
+  source, not disposable cache). You can add other files alongside it
+  and `import` them from `main.py` -- the job's own directory is put on
+  `sys.path` for the duration of a run. There is no capability list and
+  no `html` variant: `main.py` runs with the same unrestricted,
+  no-sandboxing in-process access any other Python code already running
+  in this process has (the same trust level a `Job`'s own
+  `kind: "python"` already has).
+- **`rust`** -- write a real Cargo project to
+  `desk-installed-jobs/<name>/` (`Cargo.toml` + `src/`), same
+  project-root-relative, durable-source placement. For
+  computationally-intensive work, or anything that wants the GPU -- see
+  "Rust jobs and the GPU" below. Same trust level as `python`: no
+  sandboxing, your `Cargo.toml` can depend on whatever crates it needs
+  (`cargo build` fetches and compiles them, no separate install step).
+  Having both `main.py` and `Cargo.toml` present (or neither) is a
+  install-time error, not a guess.
 
 Then call the `desk_install_job` MCP tool with `name` (the directory
 name under `desk-installed-jobs/`). This computes a version hash over
-your script's current source and registers it -- **this is the only
-approval prompt you'll see for this job.**
+your job's current source and registers it -- **this is the only
+approval prompt you'll see for this job.** For a `rust`-kind job, this
+does **not** build it yet (a first build can be slow -- see below); it
+only validates and registers.
 
 ## Running
 
 Call the `desk_run_installed_job` MCP tool with `name` and, optionally,
-`config_path` -- a path to a config file your script wants to read,
-available to it as the `CONFIG_PATH` global (a plain string, or `None`
-if you didn't pass one). A relative `config_path` resolves against the
-current Desk's own directory. There's no fixed default filename Desk
-invents on your behalf -- if you want a config file, put it wherever
-makes sense for your job and pass its path; it should generally live
-under `.desk_temp/` (ephemeral, per-project scratch space) unless
-there's a specific reason for it to live elsewhere.
+`config_path` -- a path to a config file your job wants to read. A
+relative `config_path` resolves against the current Desk's own
+directory. There's no fixed default filename Desk invents on your
+behalf -- if you want a config file, put it wherever makes sense for
+your job and pass its path; it should generally live under
+`.desk_temp/` (ephemeral, per-project scratch space) unless there's a
+specific reason for it to live elsewhere. How your job reads it depends
+on its kind:
+
+- **`python`**: the `CONFIG_PATH` global (a plain string, or `None` if
+  you didn't pass one).
+- **`rust`**: the `DESK_JOB_CONFIG_PATH` environment variable, only set
+  at all when a `config_path` was actually given (read it as
+  `std::env::var("DESK_JOB_CONFIG_PATH").ok()`).
 
 **This never prompts for approval.** That's the entire point of
 installing a job instead of dropping a fresh `Job` file every time you
-want to run it. It does mean the tool refuses to run if your script's
+want to run it. It does mean the tool refuses to run if your job's
 on-disk source no longer matches the version that was actually
-approved at install time (someone edited `main.py` after installing) --
-call `desk_install_job` again first in that case, which re-approves the
-new version.
+approved at install time (someone edited it after installing) -- call
+`desk_install_job` again first in that case, which re-approves the new
+version. For a `rust`-kind job, `cargo`'s own `target/` build output
+doesn't count as "source" for this check -- rebuilding never requires
+re-approval.
 
 The tool returns `{"ok": ..., "stdout": ..., "stderr": ..., "traceback": ...}` as JSON --
-your script's captured stdout/stderr, plus a traceback if it raised.
+your job's captured stdout/stderr, plus a Python traceback if a
+`python`-kind job raised (for `rust`, `traceback` is just a plain
+"process exited with code N" note when `ok` is `false` -- a compiled
+binary has no Python traceback to give back; put your own diagnostics
+on stderr).
+
+## Rust jobs and the GPU
+
+A `rust`-kind job is built with `cargo build --release` the first time
+it's run (not at install time -- a first build can take a while, see
+below), then cached: a later run only rebuilds if a source file
+(`Cargo.toml`/`Cargo.lock`/anything under `src/`) is newer than the
+last compiled binary. The compiled binary is then run directly as a
+real subprocess, `cwd` set to the job's own directory -- no timeout on
+either the build or the run, so a genuinely long, computationally
+-heavy job is free to actually take that long.
+
+For GPU access, use the [`wgpu`](https://crates.io/crates/wgpu) crate
+(add it to `[dependencies]` in your `Cargo.toml`) -- confirmed directly
+working on this machine: a real WGSL compute shader was authored,
+dispatched, and its output read back correctly against the real GPU
+(`Metal` backend). `wgpu` is cross-platform (Metal/Vulkan/DX12/GL) and
+is this ecosystem's most widely used GPU-compute crate, but it's a
+recommendation, not a requirement -- your `Cargo.toml` can depend on
+anything on crates.io; `cargo build` fetches and compiles it, no
+separate install step. A minimal, confirmed-working shape:
+
+```rust
+let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+    backends: wgpu::Backends::all(),
+    ..Default::default()
+});
+let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+    power_preference: wgpu::PowerPreference::HighPerformance,
+    compatible_surface: None,
+    force_fallback_adapter: false,
+})).expect("no adapter");
+let (device, queue) = pollster::block_on(adapter.request_device(&Default::default(), None))
+    .expect("no device");
+// device.create_shader_module(...) with a WGSL compute shader,
+// device.create_compute_pipeline(...), dispatch, then read a result
+// buffer back -- see wgpu's own compute example for the full pipeline
+// setup (bind groups, buffers, encoder, submit).
+```
+
+## Declaring what a job needs (`desk.state.*`)
+
+A `python`-kind job's own code runs inside this same process, so it
+can, incidentally, reach this app's live Python state via whatever it
+imports -- undocumented, fragile, and not something to rely on. A
+`rust`-kind job is a genuinely separate OS process and structurally
+*can't* reach any of that at all. Either way, the supported way for a
+job to receive data it doesn't already have is to **declare** which
+"Shared, project-scoped state" (see `tempui-custom-widgets.md`) keys it
+needs, and let Desk resolve them for you:
+
+Add `desk-installed-jobs/<name>/job.json`:
+
+```json
+{"needs": ["some_state_key", "another_state_key"]}
+```
+
+On every run, Desk resolves each listed key via the same lookup
+`desk.state.get` itself uses, and writes `{"some_state_key": {"value":
+..., "edit": ...}, "another_state_key": {"value": ..., "edit": ...}}`
+to a fresh file (a key nothing has ever `set()` comes back as `{"value":
+null, "edit": null}`, same as `desk.state.get` itself) -- handed to your
+job the same way `config_path` is:
+
+- **`python`**: the `NEEDS_PATH` global (a plain string, or `None` if
+  `job.json` is absent or declares no `needs`).
+- **`rust`**: the `DESK_JOB_NEEDS_PATH` environment variable, only set
+  when there's actually something to read.
+
+No `job.json` at all is the common case and needs no change -- every
+job written before this existed keeps working exactly as it did.
 
 ## Running from a `kind: "html"` widget
 
@@ -1432,12 +1531,14 @@ instead.
 
 ## The Installed Jobs widget
 
-Placeable like any other widget: lists every installed job (name +
-version hash), with a "View Source" button (opens each of the job's
-own files in a real editor widget) and an "Uninstall" button (behind a
-confirmation) per row. Uninstalling only removes the registration --
-your source under `desk-installed-jobs/<name>/` is left on disk, so
-installing the same name again later just re-approves it.
+Placeable like any other widget: lists every installed job (name, kind,
++ version hash), with a "View Source" button (opens each of the job's
+own files in a real editor widget -- a `rust`-kind job's `target/`
+build output is skipped, not opened one file at a time) and an
+"Uninstall" button (behind a confirmation) per row. Uninstalling only
+removes the registration -- your source under
+`desk-installed-jobs/<name>/` is left on disk, so installing the same
+name again later just re-approves it.
 """
 
 # TODO 6839365: reverse-chronological-by-tag changelogs for the whole
@@ -1525,6 +1626,25 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "rust installed jobs + declared state needs #739624": """- Installed Jobs (`tempui-installed-jobs.md`) gained a second kind,
+  `rust`: `desk-installed-jobs/<name>/Cargo.toml` (+ `src/`) instead of
+  `main.py`, built on demand (`cargo build --release`, cached until
+  source changes) and run as a real subprocess -- for
+  computationally-intensive work, or anything that wants the GPU (the
+  `wgpu` crate is confirmed working on this machine, Metal backend --
+  see the doc's own "Rust jobs and the GPU" section for a minimal
+  example). Kind is detected from which file is present, nothing new
+  to pass when installing/running.
+- Both kinds can now declare what they need from the shared
+  `desk.state.*` store instead of a `python`-kind job's only previous
+  option (an undocumented, fragile `import` into this process's own
+  live state, unavailable at all to a `rust`-kind job's separate
+  process): an optional `desk-installed-jobs/<name>/job.json` with
+  `{"needs": [<state key>, ...]}` gets each key's current value
+  resolved and handed to the job -- the `NEEDS_PATH` global for
+  `python`, the `DESK_JOB_NEEDS_PATH` environment variable for `rust`.
+  See "Declaring what a job needs" in `tempui-installed-jobs.md`.
+""",
     "tagged changelog, no version numbers #252348": """- Replaced `TEMPUI_DOC_VERSION` (a single, manually-bumped integer) with
   a tag-based scheme: a tag is a short, human-written summary plus an
   appended 6-digit, non-semantic hash generated from its creation
@@ -3265,3 +3385,40 @@ def ensure_desk_widgets_gitignore_entry(directory: Path, ask: Callable[[], bool]
         return
     prefix = existing if existing.endswith("\n") or not existing else existing + "\n"
     gitignore_path.write_text(f"{prefix}\n{GITIGNORE_COMMENT}\n{DESK_WIDGETS_BUILD_GITIGNORE_ENTRY}\n")
+
+
+# TODO 94a2fa2: the pattern covering a rust-kind Installed Job's own
+# `target/` build output, e.g. `desk-installed-jobs/gpu-sim/target/` --
+# same reasoning as DESK_WIDGETS_BUILD_GITIGNORE_ENTRY just above (a
+# project-scoped pattern, not this repo's own broader one), just for
+# cargo's build directory instead of a promoted widget's `.build/`.
+INSTALLED_JOBS_RUST_TARGET_GITIGNORE_ENTRY = f"{INSTALLED_JOBS_DIRNAME}/**/target/"
+
+
+def ensure_installed_jobs_gitignore_entry(directory: Path, ask: Callable[[], bool]) -> None:
+    """Adds INSTALLED_JOBS_RUST_TARGET_GITIGNORE_ENTRY to `directory`'s
+    git root's `.gitignore` (creating the file if it doesn't exist) if
+    it's missing -- but only if `directory/INSTALLED_JOBS_DIRNAME`
+    actually exists, mirroring ensure_desk_widgets_gitignore_entry's own
+    shape exactly (same conditional-on-the-parent-directory-existing
+    reasoning, same re-check-before-write dance for the same TODO
+    4716585 reason). Called from the same two kinds of moments
+    (DeskWindow._provision_temp_ui, and right after DeskWindow
+    .install_job succeeds) as that function -- see TODO 94a2fa2,
+    plans/installed-jobs-rust-gpu.md."""
+    if not (directory / INSTALLED_JOBS_DIRNAME).is_dir():
+        return
+    git_root = find_git_root(directory)
+    if git_root is None:
+        return
+    gitignore_path = git_root / ".gitignore"
+    existing = gitignore_path.read_text() if gitignore_path.is_file() else ""
+    if INSTALLED_JOBS_RUST_TARGET_GITIGNORE_ENTRY.rstrip("/") in _present_gitignore_entries(existing):
+        return
+    if not ask():
+        return
+    existing = gitignore_path.read_text() if gitignore_path.is_file() else ""
+    if INSTALLED_JOBS_RUST_TARGET_GITIGNORE_ENTRY.rstrip("/") in _present_gitignore_entries(existing):
+        return
+    prefix = existing if existing.endswith("\n") or not existing else existing + "\n"
+    gitignore_path.write_text(f"{prefix}\n{GITIGNORE_COMMENT}\n{INSTALLED_JOBS_RUST_TARGET_GITIGNORE_ENTRY}\n")

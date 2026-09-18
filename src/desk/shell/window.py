@@ -36,11 +36,16 @@ from desk.file_type_registry import (
 )
 from desk.installed_jobs import (
     ENTRY_FILENAME as INSTALLED_JOB_ENTRY_FILENAME,
+    INSTALLED_JOB_NEEDS_DIRNAME,
     INSTALLED_JOBS_UPDATED_EVENT,
+    JOB_MANIFEST_FILENAME,
+    RUST_MANIFEST_FILENAME,
     InstalledJobDefinition,
     compute_version_hash,
+    detect_kind as detect_installed_job_kind,
     installed_job_dir,
     resolve_config_path,
+    run_rust_job as run_rust_installed_job,
     run_script as run_installed_job_script,
 )
 from desk.file_watch import SingleFileWatcher
@@ -68,6 +73,7 @@ from desk.temp_ui import (
     CustomWidgetDefinition,
     DESK_WIDGETS_BUILD_GITIGNORE_ENTRY,
     DOC_FILENAME,
+    INSTALLED_JOBS_RUST_TARGET_GITIGNORE_ENTRY,
     JobDefinition,
     MARKDOWN_KEYWORD,
     OPEN_IMAGE_KEYWORD,
@@ -77,6 +83,7 @@ from desk.temp_ui import (
     TEMP_UI_DIRNAME,
     detect_temp_ui_kind,
     ensure_desk_widgets_gitignore_entry,
+    ensure_installed_jobs_gitignore_entry,
     is_temp_ui_filename,
     parse_define_widget,
     parse_desk_proc,
@@ -1714,10 +1721,22 @@ class DeskWindow(QMainWindow):
         Installed Jobs widget's current_context
         .get_installed_jobs_provider() initial read and its own
         INSTALLED_JOBS_UPDATED_EVENT payload, so the two never drift
-        (same reasoning as get_file_type_registry_dicts)."""
+        (same reasoning as get_file_type_registry_dicts).
+
+        TODO 94a2fa2: `kind` is re-detected from job_dir's own contents
+        here rather than read from any persisted field (there isn't
+        one -- see detect_installed_job_kind's own docstring); cheap
+        (two is_file() checks) and always current, even if a job's
+        files changed underneath an already-registered entry."""
         return sorted(
             (
-                {"name": job.name, "version_hash": job.version_hash, "installed_at": job.installed_at}
+                {
+                    "name": job.name,
+                    "version_hash": job.version_hash,
+                    "installed_at": job.installed_at,
+                    "kind": detect_installed_job_kind(installed_job_dir(self.current_desk.directory, job.name))
+                    or "unknown",
+                }
                 for job in self.current_desk.installed_jobs
             ),
             key=lambda d: d["name"],
@@ -1740,11 +1759,21 @@ class DeskWindow(QMainWindow):
         and only approval point for this job -- see
         desk.claude_session.ClaudeSession._can_use_tool's
         mcp__desk__desk_run_installed_job bypass, which relies on runs
-        never re-approving."""
+        never re-approving.
+
+        TODO 94a2fa2: validates via detect_installed_job_kind instead
+        of a hardcoded main.py check -- "python" or "rust" both count,
+        anything else (missing, or both entry files present at once)
+        is refused, same as before. Never builds a rust-kind job here
+        (see run_installed_job) -- install stays as fast as it always
+        was regardless of kind."""
         directory = installed_job_dir(self.current_desk.directory, name)
-        entry_path = directory / INSTALLED_JOB_ENTRY_FILENAME
-        if not entry_path.is_file():
-            return False, f"No {INSTALLED_JOB_ENTRY_FILENAME} found at {directory}."
+        kind = detect_installed_job_kind(directory)
+        if kind is None:
+            return False, (
+                f"No {INSTALLED_JOB_ENTRY_FILENAME} or {RUST_MANIFEST_FILENAME} found at {directory} "
+                "(or both are present, which is ambiguous)."
+            )
         version_hash = compute_version_hash(directory)
         self.current_desk.installed_jobs = [
             job for job in self.current_desk.installed_jobs if job.name != name
@@ -1758,7 +1787,15 @@ class DeskWindow(QMainWindow):
             {"jobs": self.get_installed_jobs_dicts()},
             sender_instance_id=SYSTEM_SENDER_INSTANCE_ID,
         )
-        return True, f"Installed {name!r} (version {version_hash})."
+        # TODO 94a2fa2: only ever prompts once desk-installed-jobs/
+        # actually exists, which is always true by this point.
+        ensure_installed_jobs_gitignore_entry(
+            self.current_desk.directory,
+            self._confirm_fn(
+                "Installed Jobs", f"Add “{INSTALLED_JOBS_RUST_TARGET_GITIGNORE_ENTRY}” to .gitignore?"
+            ),
+        )
+        return True, f"Installed {name!r} (kind {kind}, version {version_hash})."
 
     def uninstall_job(self, name: str) -> bool:
         """TODO 7dca383: unregisters `name` only -- the source under
@@ -1803,6 +1840,42 @@ class DeskWindow(QMainWindow):
             )
         return job
 
+    def _resolve_job_needs(self, name: str, job_dir: Path) -> str | None:
+        """TODO 94a2fa2: reads job_dir/job.json's optional "needs" list
+        (declared desk.state.* keys the job wants), resolves each via
+        self.get_state -- the exact method desk.state.get's own Bridge
+        route already calls, so this can never see a different value
+        than the widget-facing API would -- and writes {key: {"value":
+        ..., "edit": ...}, ...} to a fresh file under
+        .desk_temp/installed-job-needs/<name>.json. This is the
+        generalized, kind-agnostic alternative to a python-kind job's
+        only previous option for reaching this app's own state: an
+        undocumented, fragile import into this process's live memory,
+        structurally unavailable to a rust-kind job's separate process
+        at all. Must run on the GUI thread (the only thread get_state
+        is safe to call from) -- called synchronously from
+        run_installed_job, before the background thread that actually
+        runs the job is spawned, same as resolve_config_path just
+        below it. Returns None (writes nothing) if job.json is absent,
+        unreadable, or declares no needs -- fully backward compatible
+        with every job that predates this."""
+        manifest_path = job_dir / JOB_MANIFEST_FILENAME
+        if not manifest_path.is_file():
+            return None
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            return None
+        needs = manifest.get("needs") or []
+        if not needs:
+            return None
+        resolved = {key: self.get_state(key) for key in needs}
+        needs_dir = self.current_desk.directory / TEMP_UI_DIRNAME / INSTALLED_JOB_NEEDS_DIRNAME
+        needs_dir.mkdir(parents=True, exist_ok=True)
+        needs_path = needs_dir / f"{name}.json"
+        needs_path.write_text(json.dumps(resolved))
+        return str(needs_path)
+
     def run_installed_job(
         self, name: str, config_path: str | None, on_result: Callable[[bool, str, str, str], None]
     ) -> None:
@@ -1811,21 +1884,49 @@ class DeskWindow(QMainWindow):
         via get_installed_job_for_run (raises ValueError synchronously,
         before anything is spawned, so a caller can tell "bad request"
         from "the job ran and here's what happened"), resolves
-        config_path, then runs the job on a background thread and calls
+        config_path (and, TODO 94a2fa2, declared desk.state needs),
+        then runs the job on a background thread and calls
         on_result(ok, stdout, stderr, traceback) once, later, from that
         thread. Called from desk_mcp_server._run_installed_job_tool
         (agent-initiated) and the Bridge API's POST
         /api/bridge/installedJobs/run route (an unrelated kind:"html"
         widget-initiated, TODO 888b537) -- both entry points share this
-        one implementation rather than each running their own copy."""
+        one implementation rather than each running their own copy.
+
+        TODO 94a2fa2: dispatches on detect_installed_job_kind -- a
+        python-kind job is exec'd in-process exactly as before; a
+        rust-kind job is built (on demand, cached) and run as a real
+        subprocess by run_rust_installed_job. kind is re-detected here
+        rather than trusted from install time (nothing persists it --
+        see detect_installed_job_kind's own docstring); a None result
+        is practically unreachable (get_installed_job_for_run's hash
+        check already refuses a run whose source changed since
+        install), but reported through the normal on_result channel
+        rather than raised, since it's a job-content problem, not a
+        caller-request problem."""
         self.get_installed_job_for_run(name)  # raises ValueError; return value unused here
         job_dir = installed_job_dir(self.current_desk.directory, name)
         resolved_config_path = resolve_config_path(self.current_desk.directory, config_path)
-        script_text = (job_dir / INSTALLED_JOB_ENTRY_FILENAME).read_text()
+        resolved_needs_path = self._resolve_job_needs(name, job_dir)
+        kind = detect_installed_job_kind(job_dir)
 
-        def _run() -> None:
-            ok, stdout, stderr, tb = run_installed_job_script(script_text, job_dir, resolved_config_path)
-            on_result(ok, stdout, stderr, tb)
+        if kind == "rust":
+
+            def _run() -> None:
+                ok, stdout, stderr, tb = run_rust_installed_job(job_dir, resolved_config_path, resolved_needs_path)
+                on_result(ok, stdout, stderr, tb)
+        elif kind == "python":
+            script_text = (job_dir / INSTALLED_JOB_ENTRY_FILENAME).read_text()
+
+            def _run() -> None:
+                ok, stdout, stderr, tb = run_installed_job_script(
+                    script_text, job_dir, resolved_config_path, resolved_needs_path
+                )
+                on_result(ok, stdout, stderr, tb)
+        else:
+
+            def _run() -> None:
+                on_result(False, "", f"{name!r}'s kind could not be determined at run time.", "")
 
         threading.Thread(target=_run, daemon=True).start()
 
@@ -2067,6 +2168,16 @@ class DeskWindow(QMainWindow):
         ensure_desk_widgets_gitignore_entry(
             directory,
             self._confirm_fn("Custom Widgets", f"Add “{DESK_WIDGETS_BUILD_GITIGNORE_ENTRY}” to .gitignore?"),
+        )
+        # TODO 94a2fa2: same reasoning as the desk_widgets/ check just
+        # above, for a rust-kind Installed Job's own cargo target/
+        # build output -- covers a project that already had
+        # desk-installed-jobs/ before this check existed.
+        ensure_installed_jobs_gitignore_entry(
+            directory,
+            self._confirm_fn(
+                "Installed Jobs", f"Add “{INSTALLED_JOBS_RUST_TARGET_GITIGNORE_ENTRY}” to .gitignore?"
+            ),
         )
 
     def _provision_schema_files(self, directory: Path, temp_dir: Path | None) -> None:

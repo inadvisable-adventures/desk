@@ -222,8 +222,12 @@ async def _get_next_todo_item(args: dict[str, Any]) -> dict[str, Any]:
 @tool(
     "desk_install_job",
     "Register (or re-register, if its source changed) the Installed Job at "
-    "desk-installed-jobs/<name>/main.py -- computes its version hash and persists it to the current "
-    "Desk. This is the only approval point for this job: desk_run_installed_job never re-prompts.",
+    "desk-installed-jobs/<name>/ -- either main.py (python kind) or a Cargo.toml + src/ (rust kind, "
+    "for computationally-intensive work or GPU access via e.g. the wgpu crate; exactly one of the two "
+    "must be present). Computes its version hash and persists it to the current Desk. This is the "
+    "only approval point for this job: desk_run_installed_job never re-prompts. See "
+    "tempui-installed-jobs.md for the full picture, including job.json's optional declared "
+    "desk.state.* 'needs' list.",
     {"name": str},
 )
 async def _install_job(args: dict[str, Any]) -> dict[str, Any]:
@@ -239,11 +243,16 @@ async def _install_job(args: dict[str, Any]) -> dict[str, Any]:
 
 @tool(
     RUN_INSTALLED_JOB_TOOL_NAME,
-    "Run an already-installed job by name, optionally passing a config file path (available to the "
-    "job's own main.py as the CONFIG_PATH global; a relative path resolves against the current Desk's "
-    "own directory; omit to pass None). Never prompts for approval -- only desk_install_job does. "
-    "Refuses to run if the on-disk source no longer matches the version that was installed (call "
-    "desk_install_job again first). Returns {ok, stdout, stderr, traceback} as JSON.",
+    "Run an already-installed job by name, optionally passing a config file path (a relative path "
+    "resolves against the current Desk's own directory; omit to pass None). A python-kind job reads "
+    "it as the CONFIG_PATH global; a rust-kind job reads it as the DESK_JOB_CONFIG_PATH environment "
+    "variable, only set when given. If the job declared desk.state.* keys it needs (job.json's "
+    "'needs' list), those are resolved fresh on every run and handed to the job the same way "
+    "(NEEDS_PATH global / DESK_JOB_NEEDS_PATH env var). Never prompts for approval -- only "
+    "desk_install_job does. Refuses to run if the on-disk source no longer matches the version that "
+    "was installed (call desk_install_job again first; a rust-kind job's own target/ build output "
+    "never counts as a source change). Returns {ok, stdout, stderr, traceback} as JSON -- traceback "
+    "is a real Python traceback for python, or a plain exit-code note for rust.",
     # A hand-written JSON Schema, not the {name: type} shorthand
     # (SdkMcpTool._build_schema marks every shorthand key "required" --
     # config_path must stay genuinely optional, per this item's own
