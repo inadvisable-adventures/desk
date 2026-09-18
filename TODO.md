@@ -6,6 +6,30 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+94a2fa2. Prioritized per direct user request. Add a `rust` kind for Installed Jobs (TODO
+   `7dca383`), for computationally-intensive work that wants a compiled
+   language and, where it makes sense, the GPU -- motivated by a
+   current, real project that needs both. Before building anything:
+   confirm directly (not assumed) that a real Rust program on this
+   machine can actually drive the GPU, and what library that takes.
+   `desk-installed-jobs/<name>/` gains a second recognized shape
+   alongside today's Python-only `main.py`: a `Cargo.toml` (plus
+   `src/`), built on demand (`cargo build --release`, cached until
+   source is newer than the compiled binary, same on-demand-build shape
+   TypeScript transforms already use) and run as a real subprocess.
+   `compute_version_hash`'s directory hash needs to keep excluding
+   `cargo`'s own `target/` build output, or every build would look like
+   a source change and break "no reapproval on every run." Since a Rust
+   job runs as a genuinely separate process (unlike a `python`-kind
+   job, which incidentally still shares this same process's live memory
+   via whatever it imports, undocumented as that is), it has no way to
+   reach `desk.state.*` the way an html/python widget can -- give a job
+   a way to *declare* which state keys it needs (a small manifest;
+   exact shape TBD in planning) and have Desk resolve just those values
+   and hand them to the job before it runs, kind-agnostically (a
+   `python`-kind job gets the same declared-data path too, instead of
+   only the import trick).
+
 ee1a474. COMPLETED: Bug: `desk.temp_ui._legacy_version_tags` (TODO `6839365`) treats a
    legacy project's own decade bucket as already fully known (e.g.
    version 44 -> knows `version-00` through `version-40`), but a bucket
