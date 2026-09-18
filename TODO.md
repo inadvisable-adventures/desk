@@ -9103,6 +9103,7 @@ a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's histor
    `desk.terminal_widget`/`desk.claude_session`'s own precedent?), and
    whether it reuses `ClaudeDeskWidget`'s own UI or is meant to run
    headless/inline within the calling widget instead.
+   [planned: scoped-claude-session-api.md]
 
 ed5c62f. De-prioritized (moved to the end of the queue on request --
    priority is physical position in this file, per
