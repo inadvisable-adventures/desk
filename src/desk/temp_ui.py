@@ -327,7 +327,18 @@ APP_DSL_DIRNAME = "app_dsl"
 # capability and a breaking change -- rebuilding on demand means `tsc`
 # must be available wherever such a Desk is subsequently opened, not
 # just where it was authored).
-TEMPUI_DOC_VERSION = 45
+#
+# TODO 4eb3d9e: bumped 43 -> 44 -- a promoted widget's own
+# `desk_widgets/<name>/` source directory is now watched directly for
+# changes: editing it marks every already-placed instance `[STALE]`
+# the same way a still-`.desk_temp`-sourced `DefineWidget`'s own live
+# edits already do, no rebuild step required first. "Authoring from
+# real source"'s "Once promoted ..." paragraph no longer tells you to
+# re-run `build_widget.py desk_widgets/<name>` for further edits --
+# that workflow never actually worked post-promotion (silently
+# rejected, no error surfaced anywhere) and is no longer needed at
+# all; new changelog entries in both split docs.
+TEMPUI_DOC_VERSION = 46
 _DOC_VERSION_PLACEHOLDER = "{{TEMPUI_DOC_VERSION}}"
 _DOC_VERSION_RE = re.compile(r"<!-- desk-temporary-ui\.md version: (\d+)")
 
@@ -819,10 +830,16 @@ the same string as this (kebab-case) directory name.
 Once promoted (see "Promoting a defined widget to the Desk" below), the
 source directory moves to `desk_widgets/<name>/` at the project root —
 a permanent, non-gitignored location, matching the promoted
-definition's own move into the `.desk` file. Nothing else about the
-build process changes: re-run `python3 .desk_temp/build_widget.py
-desk_widgets/<name>` from there for any further edits, exactly as
-before.
+definition's own move into the `.desk` file. **Do not** re-run
+`build_widget.py` against it for further edits — that produces a
+`DefineWidget` tempui file, and a promoted widget's `.desk` file entry
+is no longer sourced from tempui files at all, so nothing would ever
+pick it up. Instead, just edit the files under `desk_widgets/<name>/`
+directly (`<name>.ts`, `widget.html`, ...) and save — Desk watches
+that directory itself and marks every already-placed instance
+`[STALE]`, exactly like a still-`.desk_temp`-sourced `DefineWidget`'s
+own live edits already do; click it to rebuild (`tsc`, same as before)
+and reload.
 
 ## Reusable UI components
 
@@ -1568,6 +1585,15 @@ version your own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
 
+## Version 44
+- "Authoring from real source"'s post-promotion instructions changed:
+  do **not** re-run `build_widget.py` against `desk_widgets/<name>/`
+  for further edits anymore -- it never actually worked there (it
+  writes a `DefineWidget` tempui file, and a promoted widget isn't
+  sourced from tempui files at all, so nothing ever picked the rebuilt
+  file up, silently). Just edit `desk_widgets/<name>/`'s own files
+  directly and save instead -- see the Version 44 new-features entry.
+
 ## Version 43
 - A promoted, source-backed `DefineWidget` (see "Authoring from real
   source" in `tempui-custom-widgets.md`) no longer bakes its compiled
@@ -1623,7 +1649,7 @@ own project was already built against, and stop.
 
 Versions 1-6 predate this changelog and aren't individually recorded.
 
-## Version 45
+## Version 46
 - `desk_run_pipeline`'s pipeline DSL gains a `map` stage: `map +| verb1
   | verb2 |+` -- everything between the `+|`/`|+` delimiters is itself
   a full sub-pipeline in this same syntax (including a nested `map`).
@@ -1634,7 +1660,7 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   succeed fails the whole `map` stage, naming which item and why -- no
   partial results.
 
-## Version 44
+## Version 45
 - A new `desk_run_pipeline` MCP tool: runs a pipe-chained verb DSL
   pipeline (a single `|`-separated string of built-in verb calls --
   `reveal_widget`, `screenshot_widget`, `screenshot_desk`,
@@ -1643,6 +1669,16 @@ Versions 1-6 predate this changelog and aren't individually recorded.
   each stage receiving the previous stage's real return value, instead
   of chaining several separate MCP tool calls by hand. Not a tempui-DSL
   file type -- see the tool's own description for its syntax.
+
+## Version 44
+- A promoted, source-backed widget's `desk_widgets/<name>/` source
+  directory is now watched directly for changes. Editing it (and
+  saving) marks every already-placed instance `[STALE]` -- the same
+  titlebar button a still-`.desk_temp`-sourced `DefineWidget`'s own
+  live edits already show -- with no rebuild step needed first;
+  clicking it asks for confirmation and, if confirmed, rebuilds
+  (`tsc`) and reloads. See "Authoring from real source" in
+  `tempui-custom-widgets.md`.
 
 ## Version 43
 - A source-backed `DefineWidget`'s authoring source directory is now

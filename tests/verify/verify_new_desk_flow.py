@@ -246,6 +246,18 @@ def test_provision_temp_ui_without_answers_uses_confirm():
     print("no pre-decided answers: falls back to confirm dialogs as before: PASS")
 
 
+class _FakeSourceWatcher:
+    """TODO 4eb3d9e: stands in for PromotedWidgetSourceWatcher, just
+    recording stop_all() calls -- this test cares about ordering/
+    invocation, not real file watching."""
+
+    def __init__(self):
+        self.stop_all_calls = 0
+
+    def stop_all(self):
+        self.stop_all_calls += 1
+
+
 class _OrderTrackingWindow:
     def __init__(self, directory):
         self.current_desk = type(
@@ -267,6 +279,11 @@ class _OrderTrackingWindow:
         self._event_mediator = EventMediator()
         # switch_desk also clears this Bridge API introspection-grant cache.
         self._introspect_grants = set()
+        # TODO 4eb3d9e: switch_desk also stops every active promoted
+        # -widget source watch and clears the dirty set alongside the
+        # custom-widget dicts above.
+        self._promoted_widget_source_watcher = _FakeSourceWatcher()
+        self._promoted_widget_source_dirty = {"SomeKeyword"}
 
     def save_current_desk(self):
         self.order.append("save_current_desk")
@@ -329,6 +346,11 @@ def test_switch_desk_provisions_before_loading_widgets():
         assert win.order.index("provision_temp_ui") < win.order.index("register_custom_widgets_from_desk_temp")
         assert win.order.index("register_custom_widgets_from_desk_temp") < win.order.index("load_desk_widgets")
         assert win.order.index("sync_tempui_doc") > win.order.index("load_desk_widgets")
+        # TODO 4eb3d9e: the previous Desk's promoted-widget source
+        # watches/dirty flags are torn down too, same "forget the old
+        # Desk's per-Desk state" reasoning as the dicts above.
+        assert win._promoted_widget_source_watcher.stop_all_calls == 1
+        assert win._promoted_widget_source_dirty == set()
     print("switch_desk sets current_desk_directory + provisions before loading widgets: PASS")
 
 

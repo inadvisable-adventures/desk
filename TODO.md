@@ -8722,7 +8722,7 @@ af7898b. COMPLETED: The state store's (TODO `f68383f`) schema declaration,
    `verify_relocate_promoted_widget_source.py` failure already noted
    in TODO `8df6797`'s own write-up -- no new failures.
 
-a4c3dec. Add an on-hover control in the Claude (Desk) widget's history
+a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's history
    (`widgets/claude_desk/widget.py`'s `_history`) that reloads a
    previous user-entered prompt back into `_prompt_input` (e.g. to
    edit and resend it), without breaking normal text
@@ -8730,6 +8730,47 @@ a4c3dec. Add an on-hover control in the Claude (Desk) widget's history
    `_prompt_input` while typing. Depends on TODO `78d6207`
    distinguishing user lines from the rest of the history to know
    which lines are reloadable.
+   [planned: claude-desk-history-reload-hover.md]
+
+   COMPLETED: Implemented per the plan -- `_append_history` gains a
+   `reload_text` keyword storing the bare prompt (no `"> "`/
+   `"[queued] "` display prefix) alongside each user line's existing
+   `(start, end)` highlight offsets, in a new `_history_user_entries`
+   list. A single floating `QPushButton` reload control is parented to
+   `_history.viewport()`, following `widgets/todo/widget.py`'s own
+   "open plan" button precedent (eventFilter on the viewport observing
+   `MouseMove`/`Leave` -- never consumed -- plus a
+   `verticalScrollBar().valueChanged` hide hook) since `QPlainTextEdit`
+   has no `QListWidget.itemEntered` equivalent: `cursorForPosition()`
+   maps the mouse to a document offset, `cursorRect()` positions the
+   button at the hovered entry's first line. Clicking it calls
+   `_prompt_input.setPlainText(reload_text)` (replacing, not
+   appending, matching the existing dictated-text precedent) and
+   focuses the box. The event filter is installed only on
+   `_history.viewport()`, never on `_prompt_input`, so normal typing/
+   selection there is unaffected regardless of hover state elsewhere.
+
+   New verify coverage in `tests/verify/verify_claude_desk_widget.py`
+   (+18 checks, 54 total in that file): `reload_text` defaults to the
+   full displayed text when omitted (back-compat with the one
+   pre-existing direct `is_user=True` call); the real `_send_now`/
+   `_on_send_clicked` call sites record the bare prompt, not the
+   prefixed display line; non-user lines add no reload entry;
+   `_update_reload_button` shows/hides correctly for in-range vs.
+   out-of-range positions and non-user text; `_on_reload_clicked`
+   replaces `_prompt_input`'s text with the original bare prompt and
+   is a no-op with nothing hovered; the reload button's parent is
+   confirmed to be `_history`'s own viewport.
+
+   Full `tests/verify/` suite (138 non-disabled scripts) run: no new
+   failures at all -- the `verify_relocate_promoted_widget_source.py`
+   failure noted in TODO `78d6207`/`8df6797`'s own write-ups is gone
+   now that TODO `9613bb0` fixed it. Real mouse-hover behavior in a
+   live, interactively-driven Desk window was not exercised -- the headless
+   offscreen-Qt suite covers the underlying logic directly (calling
+   `_update_reload_button`/`_on_reload_clicked` with synthetic
+   positions/state, matching this suite's existing style) but not an
+   actual on-screen hover; noted as skipped rather than claimed.
 
 93364f9. COMPLETED: Add a `[chat]` button (relabeled from this item's own earlier
    "talk to Claude about this widget" working name -- same feature,
@@ -8778,6 +8819,120 @@ a4c3dec. Add an on-hover control in the Claude (Desk) widget's history
    generated instructions describe that accurately instead. See
    `plans/widget-chat-button.md` for the full design.
    [planned: widget-chat-button.md]
+
+4eb3d9e. COMPLETED: Prioritized per direct user request. Redo the design and
+   implementation of staleness-detection and reload for **promoted**
+   custom widgets (source="desk", a real `desk_widgets/<name>/` source
+   directory recorded in `CustomWidgetDefinition.source_path`) so it
+   works the same way it already does for a still-`.desk_temp`-sourced
+   `DefineWidget` custom widget: watch the widget's own source files
+   for changes; on a detected change, show the same `[STALE]` titlebar
+   button (`_refresh_stale_indicators_for`/`WidgetFrame.set_stale`,
+   TODO `5995ffd`) on every already-placed instance; clicking it asks
+   for confirmation (mirroring `_confirm_stale_reload`'s existing
+   dialog shape) and, if confirmed, rebuilds
+   (`desk.custom_widgets.build_from_source`) and reloads.
+
+   Cites `../FEEDBACK/FEEDBACK-DESK-promoted-widgets-no-stale-marker
+   -2026-09-15-1744.md`: after promotion, `desk_widgets/<name>/`'s
+   documented post-promotion edit-rebuild workflow
+   (`tempui-custom-widgets.md`'s "for any further edits, exactly as
+   before" instruction, i.e. re-running `.desk_temp/build_widget.py`)
+   is silently rejected by `_register_custom_widget`'s own
+   `existing_source != source` guard (`"desk"` vs. `"tempui"`) --
+   logged, never surfaced to a user or agent, and the rebuilt code
+   never gets picked up at all, not even for a freshly-placed
+   instance. The report's own "Update" section found Desk-switch is
+   not a working escape hatch either: it does re-register and
+   correctly mark instances `[STALE]`, but the content served after
+   reloading past that marker is still not the edited source --
+   flagged there only as a hypothesis (a possible `outDir`/`.build`
+   cache-directory mismatch), not confirmed from source.
+
+   Whatever the redo's exact mechanism turns out to be, it must not
+   depend on `.desk_temp/build_widget.py` being re-run against an
+   already-promoted widget at all (the specific workflow the report
+   found silently broken) -- the whole point is that editing
+   `desk_widgets/<name>/`'s real source files directly is enough on
+   its own to be detected and (once confirmed) rebuilt, the same way a
+   `.desk_temp` `DefineWidget` widget's live edits already are. Also
+   correct or replace whatever in `tempui-custom-widgets.md` currently
+   documents the broken re-run workflow for a promoted widget, so it
+   stops telling people to do something that doesn't work.
+   [planned: promoted-widget-source-staleness.md]
+
+   COMPLETED: Implemented per the plan, plus one independently
+   -confirmed root-cause fix the plan's own design work turned up.
+   `desk.custom_widgets` gains `source_watch_exclusions(widget_dir)`
+   (`.build` always, plus `tsconfig.json`'s own `outDir` when
+   discoverable); new `src/desk/shell/promoted_widget_source_watcher.py`
+   (`PromotedWidgetSourceWatcher`, same `QObject`/per-key-debounced
+   shape as the existing `SchemaFileWatcher`) watches a promoted
+   widget's `desk_widgets/<name>/` directory recursively via the shared
+   `desk_services.file_watcher` service. `_register_custom_widget`
+   (re)starts that watch at its own existing tail whenever it registers
+   a `source="desk"`, source-backed definition -- the one choke point
+   every such registration path (startup, Desk switch, promotion,
+   `_resolve_promotion_source`, and this item's own confirmed rebuild)
+   already funnels through, so no call site needs to remember to wire
+   this up itself. A detected change (`_on_promoted_widget_source_changed`)
+   marks every already-placed instance `[STALE]` immediately and adds
+   the keyword to a new `_promoted_widget_source_dirty` set --
+   `_on_widget_stale_clicked` routes a dirty keyword to a new
+   `_on_promoted_widget_stale_clicked` instead of the existing hash
+   -diff path (which can't represent "stale, nothing rebuilt yet");
+   confirming (`_confirm_promoted_widget_rebuild`, split out the same
+   way `_confirm_stale_reload` already is) re-runs
+   `_register_custom_widget` itself (real `build_from_source`, fresh
+   hash, remount, `_refresh_stale_indicators_for` for every sibling
+   instance), then reloads and clears staleness for just the clicked
+   instance -- matching `_on_widget_stale_clicked`'s own existing per
+   -instance philosophy exactly. A failed rebuild shows a new, generic
+   -but-real `_notify_promoted_widget_rebuild_failed` dialog and leaves
+   the instance stale/dirty so it can be retried (deliberately not
+   plumbing `build_from_source`'s specific failure text into the UI --
+   see the plan's own "Design decisions" for why that's a scoped-down,
+   deliberate follow-up, not required here). `_place_widget` also
+   starts a freshly-placed instance `[STALE]` if its keyword is already
+   known-dirty.
+
+   Independently confirmed (not just suspected, per the report's own
+   "Update" section) root cause of "`[STALE]` shown, but stale content
+   served anyway": `ServerHandle.mount_html_widget`
+   (`src/desk/server/runner.py`) only ever *appended* a Starlette
+   route, so re-mounting an already-mounted `widget_id` at a
+   *different* directory was silently shadowed forever behind the
+   first-ever-mounted one -- reproduced directly with a standalone
+   real-server HTTP round trip before writing any fix, not assumed
+   from the report's own unconfirmed `outDir`/`.build`-mismatch
+   hypothesis. Fixed by removing any existing route named
+   `f"widget-{widget_id}"` before mounting the new one.
+
+   `tempui-custom-widgets.md`'s "Authoring from real source" corrected
+   (no more re-running `build_widget.py` against `desk_widgets/<name>/`
+   -- edit it directly instead, Desk watches it); `TEMPUI_DOC_VERSION`
+   43 -> 44; new Version 44 entries in both
+   `tempui-breaking-changes.md`/`tempui-new-features.md`.
+
+   New `tests/verify/verify_promoted_widget_source_staleness.py` (35
+   checks: `source_watch_exclusions`, real-file-watch coverage for
+   `PromotedWidgetSourceWatcher` including a real tsc end-to-end
+   rebuild-via-stale-click, and the full
+   register/mark-dirty/click/confirm/decline/fail/fresh-placement
+   matrix) and `tests/verify/verify_server_runner.py` (6 checks,
+   `mount_html_widget`'s dedup fix via a real HTTP round trip). Also
+   updated several existing test fixtures
+   (`verify_relocate_promoted_widget_source.py`,
+   `verify_new_desk_flow.py`'s `switch_desk` ordering test, and a
+   dozen others sharing the same `_FakeWindow` shape) to carry the two
+   new fields real `DeskWindow` code now touches
+   (`_promoted_widget_source_watcher`/`_promoted_widget_source_dirty`),
+   and corrected one now-stale doc-content assertion in
+   `verify_ensure_build_widget_script.py` that had been checking for
+   the exact broken re-run instruction this item removes.
+
+   Full `tests/verify/` suite (140 non-disabled scripts) run clean:
+   all pass, no failures.
 
 0529501. An API for widgets to invoke Claude with access scoped to
    only the files that widget itself has access to, rather than a full

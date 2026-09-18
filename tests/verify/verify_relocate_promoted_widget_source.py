@@ -29,6 +29,7 @@ from desk.hotreload import HotReloadBroker  # noqa: E402
 from desk.schema_registry import SchemaRegistry  # noqa: E402
 from desk.shell.canvas import WorkspaceView  # noqa: E402
 from desk.shell.window import DeskWindow  # noqa: E402
+from desk.shell.promoted_widget_source_watcher import PromotedWidgetSourceWatcher  # noqa: E402
 from desk.custom_widgets import LikelySourceCandidate  # noqa: E402
 from desk.temp_ui import (  # noqa: E402
     BUILD_WIDGET_SCRIPT_FILENAME,
@@ -121,6 +122,13 @@ class _FakeWindow:
         self._custom_widget_sources = {}
         self._custom_widget_source_paths = {}
         self._custom_widget_content_hash = {}
+        # TODO 4eb3d9e: _register_custom_widget now also (re)starts a
+        # promoted widget's own source watch at its tail -- a real
+        # instance, not a fake, since this file exercises real
+        # desk_widgets/<name>/ source directories and this test cares
+        # about promotion/relocation, not watch behavior itself.
+        self._promoted_widget_source_watcher = PromotedWidgetSourceWatcher()
+        self._promoted_widget_source_dirty = set()
         self._schema_registry = SchemaRegistry()
         self.saved = []
         self.confirmed_messages = []

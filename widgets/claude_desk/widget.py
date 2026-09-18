@@ -1,4 +1,4 @@
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -256,6 +256,31 @@ class ClaudeDeskWidget(QWidget):
         # entire argument, so earlier highlights must be tracked here
         # rather than appended to Qt's own list.
         self._history_user_selections: list[QTextEdit.ExtraSelection] = []
+        # TODO a4c3dec: (start, end, reload_text) per user line, same
+        # start/end offsets as the extra-selection highlight above --
+        # reload_text is the bare prompt (no "> "/"[queued] " display
+        # prefix), what the hover control below hands back to
+        # _prompt_input.
+        self._history_user_entries: list[tuple[int, int, str]] = []
+        # A single floating "reload" button that follows the mouse to
+        # the hovered user line, mirroring widgets/todo/widget.py's own
+        # "open plan" button (_plan_button/_on_item_entered/
+        # eventFilter/_hide_plan_button, see
+        # plans/todo-open-plan-button.md) as closely as QPlainTextEdit
+        # (no QListWidget.itemEntered equivalent) allows -- see
+        # plans/claude-desk-history-reload-hover.md. The event filter
+        # only observes MouseMove/Leave on the viewport and never
+        # consumes them, so normal click-drag text selection inside
+        # _history is untouched.
+        self._history.setMouseTracking(True)
+        self._history.viewport().setMouseTracking(True)
+        self._history.viewport().installEventFilter(self)
+        self._history.verticalScrollBar().valueChanged.connect(self._hide_reload_button)
+        self._reload_button = QPushButton("↺ Reload", self._history.viewport())
+        self._reload_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._reload_button.hide()
+        self._reload_button.clicked.connect(self._on_reload_clicked)
+        self._hovered_reload_entry: tuple[int, int, str] | None = None
 
         self._prompt_input = _PromptInput()
         self._prompt_input.setPlaceholderText("Message Claude...")
@@ -322,7 +347,7 @@ class ClaudeDeskWidget(QWidget):
         self._status_label.setText("Connecting...")
         self._set_busy(True)
         if initial_prompt:
-            self._append_history(f"> {initial_prompt}", is_user=True)
+            self._append_history(f"> {initial_prompt}", is_user=True, reload_text=initial_prompt)
         else:
             # Resuming with nothing queued to send: connect() alone
             # never fires turn_complete/session_error (there's no
@@ -448,7 +473,7 @@ class ClaudeDeskWidget(QWidget):
         if adjuster is not None and self._session_id is not None:
             adjuster(self._session_id, TASKS_PANEL_HEIGHT if checked else -TASKS_PANEL_HEIGHT)
 
-    def _append_history(self, text: str, *, is_user: bool = False) -> None:
+    def _append_history(self, text: str, *, is_user: bool = False, reload_text: str | None = None) -> None:
         self._history.appendPlainText(text)
         if not is_user:
             return
@@ -477,6 +502,65 @@ class ClaudeDeskWidget(QWidget):
         selection.format = fmt
         self._history_user_selections.append(selection)
         self._history.setExtraSelections(self._history_user_selections)
+        # TODO a4c3dec: reload_text defaults to `text` itself (the
+        # pre-existing direct is_user=True call sites/tests pass no
+        # reload_text at all) -- every real call site below passes the
+        # bare prompt explicitly.
+        self._history_user_entries.append((start, end, text if reload_text is None else reload_text))
+
+    # -- hover-triggered history reload control (TODO a4c3dec) --------
+
+    def eventFilter(self, obj, event) -> bool:
+        # Only observes MouseMove/Leave on _history's own viewport --
+        # never consumed (no event.accept()/return True), so this
+        # never interferes with _history's normal click-drag text
+        # selection, and _prompt_input is entirely untouched since the
+        # filter isn't installed there at all.
+        if obj is self._history.viewport():
+            if event.type() == QEvent.Type.MouseMove:
+                self._update_reload_button(event.position().toPoint())
+            elif event.type() == QEvent.Type.Leave:
+                self._hide_reload_button()
+        return super().eventFilter(obj, event)
+
+    def _update_reload_button(self, pos) -> None:
+        position = self._history.cursorForPosition(pos).position()
+        entry = next(
+            (candidate for candidate in self._history_user_entries if candidate[0] <= position <= candidate[1]),
+            None,
+        )
+        if entry is None:
+            self._hide_reload_button()
+            return
+        if entry != self._hovered_reload_entry:
+            self._hovered_reload_entry = entry
+            start, _end, _reload_text = entry
+            line_cursor = QTextCursor(self._history.document())
+            line_cursor.setPosition(start)
+            rect = self._history.cursorRect(line_cursor)
+            self._reload_button.adjustSize()
+            size = self._reload_button.size()
+            x = self._history.viewport().width() - size.width() - 6
+            self._reload_button.move(max(0, x), rect.top())
+        self._reload_button.show()
+        self._reload_button.raise_()
+
+    def _hide_reload_button(self) -> None:
+        self._hovered_reload_entry = None
+        self._reload_button.hide()
+
+    def _on_reload_clicked(self) -> None:
+        if self._hovered_reload_entry is None:
+            return
+        _start, _end, reload_text = self._hovered_reload_entry
+        # setPlainText, not appending/sending (TODO fe7d8f2's own
+        # dictated-text precedent) -- the user reviews/edits before
+        # anything goes to Claude; reload is "start over from this
+        # earlier prompt", not "add to what's already there".
+        self._prompt_input.setPlainText(reload_text)
+        self._prompt_input.moveCursor(QTextCursor.MoveOperation.End)
+        self._prompt_input.setFocus()
+        self._hide_reload_button()
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
@@ -504,7 +588,7 @@ class ClaudeDeskWidget(QWidget):
         self._queue_label.setVisible(True)
 
     def _send_now(self, text: str) -> None:
-        self._append_history(f"> {text}", is_user=True)
+        self._append_history(f"> {text}", is_user=True, reload_text=text)
         self._set_busy(True)
         self._session.send_prompt(text)
 
@@ -526,7 +610,7 @@ class ClaudeDeskWidget(QWidget):
         self._prompt_input.clear()
         if self._busy:
             self._message_queue.append(text)
-            self._append_history(f"[queued] {text}", is_user=True)
+            self._append_history(f"[queued] {text}", is_user=True, reload_text=text)
             self._update_queue_label()
         else:
             self._send_now(text)

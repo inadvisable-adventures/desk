@@ -14,6 +14,7 @@ from desk.shell import current_context  # noqa: E402
 from desk.shell.canvas import WorkspaceView  # noqa: E402
 from desk.shell.temp_ui_manager import TempUiManager  # noqa: E402
 from desk.shell.window import DeskWindow  # noqa: E402
+from desk.shell.promoted_widget_source_watcher import PromotedWidgetSourceWatcher  # noqa: E402
 from desk.temp_ui import (  # noqa: E402
     DOC_FILENAME,
     SCRATCH_DOC_FILENAME,
@@ -209,6 +210,10 @@ class _FakeWindow:
         self._custom_widget_definitions = {}
         self._custom_widget_sources = {}
         self._custom_widget_content_hash = {}
+        # TODO 4eb3d9e: _register_custom_widget/_place_widget/
+        # _on_widget_stale_clicked now also touch these.
+        self._promoted_widget_source_watcher = PromotedWidgetSourceWatcher()
+        self._promoted_widget_source_dirty = set()
         self.view = WorkspaceView()
         self.view.resize(800, 600)
         self.view.show()

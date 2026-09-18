@@ -24,6 +24,7 @@ from desk.desks import Desk  # noqa: E402
 from desk.hotreload import HotReloadBroker  # noqa: E402
 from desk.shell.canvas import WorkspaceView  # noqa: E402
 from desk.shell.window import DeskWindow  # noqa: E402
+from desk.shell.promoted_widget_source_watcher import PromotedWidgetSourceWatcher  # noqa: E402
 from desk.temp_ui import (  # noqa: E402
     CUSTOM_WIDGETS_DOC_FILENAME,
     SPLIT_DOC_CONTENT,
@@ -85,6 +86,10 @@ class _FakeWindow:
         self._custom_widget_content_hash = {}
 
 
+        # TODO 4eb3d9e: _register_custom_widget/_place_widget/
+        # _on_widget_stale_clicked now also touch these.
+        self._promoted_widget_source_watcher = PromotedWidgetSourceWatcher()
+        self._promoted_widget_source_dirty = set()
 _FakeWindow._register_custom_widget = DeskWindow._register_custom_widget
 _FakeWindow._refresh_stale_indicators_for = DeskWindow._refresh_stale_indicators_for
 _FakeWindow._register_custom_widgets_from_desk_temp = DeskWindow._register_custom_widgets_from_desk_temp

@@ -55,6 +55,7 @@ from desk.shell import current_context
 from desk.shell.canvas import WorkspaceView
 from desk.shell.chromium_widget import ChromiumWidget
 from desk.shell.new_desk_dialog import NewDeskDialog
+from desk.shell.promoted_widget_source_watcher import PromotedWidgetSourceWatcher
 from desk.shell.python_widget import PythonWidgetHost
 from desk.shell.schema_file_watcher import SCHEMA_FILES_DIRNAME, TOP_LEVEL_SCHEMAS_DIRNAME, SchemaFileWatcher
 from desk.shell.temp_ui_manager import TempUiManager
@@ -275,6 +276,17 @@ class DeskWindow(QMainWindow):
         # it against every already-placed instance's own
         # WidgetFrame.placed_content_hash).
         self._custom_widget_content_hash: dict[str, str] = {}
+
+        # TODO 4eb3d9e: watches each promoted (source="desk"),
+        # source-backed widget's own desk_widgets/<name>/ source
+        # directory -- a detected change marks it "dirty" here (and
+        # every already-placed instance [STALE]) until a confirmed
+        # click rebuilds it. See _register_custom_widget (who starts/
+        # restarts the watch), _on_promoted_widget_source_changed, and
+        # _on_promoted_widget_stale_clicked.
+        self._promoted_widget_source_watcher = PromotedWidgetSourceWatcher()
+        self._promoted_widget_source_watcher.changed.connect(self._on_promoted_widget_source_changed)
+        self._promoted_widget_source_dirty: set[str] = set()
 
         # kind:"html" widget-local storage (TODO 5734529): instance_id
         # -> whatever that instance's own JS last pushed via the Bridge
@@ -574,6 +586,14 @@ class DeskWindow(QMainWindow):
             if current_hash is not None:
                 frame.placed_content_hash = current_hash
                 frame.set_stale(False)
+                # TODO 4eb3d9e: ...except a promoted widget whose own
+                # source is already known-dirty (changed on disk since
+                # its last build) -- "current by construction" above
+                # only means "matches what Desk has registered," which
+                # is itself still stale relative to the real source
+                # tree in this case.
+                if widget_id in self._promoted_widget_source_dirty:
+                    frame.set_stale(True)
         return frame
 
     def _chromium_profile_dir(self, instance_id: str) -> Path:
@@ -1833,12 +1853,21 @@ class DeskWindow(QMainWindow):
         # resolve for the new one. The old mounted server route (if
         # any) is simply orphaned, not actively torn down -- harmless,
         # since removing it from self._widgets already makes it
-        # unreachable via any placement/dispatch path in this app.
+        # unreachable via any placement/dispatch path in this app; if
+        # the new Desk (or a later one) ever registers the same
+        # keyword again, mount_html_widget's own dedup (TODO 4eb3d9e)
+        # replaces the orphaned route rather than being shadowed
+        # behind it forever, the way it would have before that fix.
         for keyword in list(self._custom_widget_definitions):
             self._widgets.pop(keyword, None)
         self._custom_widget_definitions.clear()
         self._custom_widget_sources.clear()
         self._custom_widget_source_paths.clear()
+        # TODO 4eb3d9e: every active promoted-widget source watch
+        # belonged to the Desk being left -- same reasoning as every
+        # other per-Desk dict cleared here.
+        self._promoted_widget_source_watcher.stop_all()
+        self._promoted_widget_source_dirty.clear()
         # Per-instance state (TODO 5734529), meaningless once
         # view.clear_widgets() above already destroyed the frames it
         # belonged to -- cleared here so it doesn't accumulate stale
@@ -2598,6 +2627,18 @@ class DeskWindow(QMainWindow):
         self._handle.mount_html_widget(keyword, directory, info)
         self.view.set_widget_catalog(self._widgets)
         self._refresh_stale_indicators_for(keyword)
+        # TODO 4eb3d9e: every registration path for a promoted,
+        # source-backed widget funnels through here (startup, Desk
+        # switch, promotion, _resolve_promotion_source, and this
+        # item's own confirm-triggered rebuild) -- (re-)starting the
+        # source watch at this single choke point means a source_path
+        # relocation is automatically picked up next time, with no
+        # separate invalidation step. A hand-authored, inline-only
+        # definition (no source_path) has no source tree to watch.
+        if source == "desk" and definition.source_path is not None:
+            widget_dir = self.current_desk.directory / definition.source_path
+            if widget_dir.is_dir():
+                self._promoted_widget_source_watcher.watch(keyword, widget_dir)
         return True
 
     def _refresh_stale_indicators_for(self, keyword: str) -> None:
@@ -2626,10 +2667,21 @@ class DeskWindow(QMainWindow):
         only `frame.content` directly, never via
         `HotReloadBroker.widget_changed` -- that would reload every
         placed instance of this keyword, defeating the whole point of a
-        per-instance choice."""
+        per-instance choice.
+
+        TODO 4eb3d9e: a keyword whose source is known-dirty (its own
+        desk_widgets/<name>/ source changed on disk, detected by
+        PromotedWidgetSourceWatcher, but nothing has been rebuilt yet)
+        routes to _on_promoted_widget_stale_clicked instead -- the
+        hash-diff check below can't represent "stale, but no fresh
+        hash exists yet to diff against" (current_hash would still
+        equal frame.placed_content_hash, since nothing has rebuilt)."""
         if not isinstance(frame.content, ChromiumWidget):
             return
         keyword = frame.content.widget_id
+        if keyword in self._promoted_widget_source_dirty:
+            self._on_promoted_widget_stale_clicked(frame, keyword)
+            return
         current_hash = self._custom_widget_content_hash.get(keyword)
         if current_hash is None or current_hash == frame.placed_content_hash:
             # Nothing stale anymore -- e.g. already reloaded, or the
@@ -2655,6 +2707,77 @@ class DeskWindow(QMainWindow):
         box.addButton("Keep for Now", QMessageBox.ButtonRole.RejectRole)
         box.exec()
         return box.clickedButton() is reload_button
+
+    def _on_promoted_widget_source_changed(self, keyword: str) -> None:
+        """PromotedWidgetSourceWatcher.changed's handler (TODO 4eb3d9e):
+        a promoted widget's own source directory changed on disk.
+        Marks every already-placed instance [STALE] immediately --
+        unlike _refresh_stale_indicators_for, this never rebuilds (no
+        fresh content_hash to compute yet); that only happens if/when
+        the user actually clicks [STALE] and confirms, in
+        _on_promoted_widget_stale_clicked below."""
+        self._promoted_widget_source_dirty.add(keyword)
+        for frame in self.view._frames:
+            if frame.content.widget_id == keyword:
+                frame.set_stale(True)
+
+    def _on_promoted_widget_stale_clicked(self, frame: WidgetFrame, keyword: str) -> None:
+        """The rebuild half of TODO 4eb3d9e: confirms, then rebuilds by
+        re-running the exact same _register_custom_widget path every
+        other registration already uses (build_from_source, a fresh
+        content_hash, a remount, and _refresh_stale_indicators_for for
+        every *other* already-placed instance of this keyword -- which
+        correctly stay [STALE] until each is individually clicked too,
+        matching _on_widget_stale_clicked's own per-instance
+        philosophy above), then reloads and clears staleness for just
+        this clicked instance."""
+        if not self._confirm_promoted_widget_rebuild(keyword):
+            return
+        definition = self._custom_widget_definitions.get(keyword)
+        if definition is None or not self._register_custom_widget(definition, source="desk"):
+            self._notify_promoted_widget_rebuild_failed(keyword)
+            return
+        self._promoted_widget_source_dirty.discard(keyword)
+        frame.content.reload()
+        frame.placed_content_hash = self._custom_widget_content_hash.get(keyword)
+        frame.set_stale(False)
+
+    def _confirm_promoted_widget_rebuild(self, keyword: str) -> bool:
+        """Split out so headless verification can monkeypatch just this
+        one method instead of driving a real modal QMessageBox --
+        mirrors _confirm_stale_reload above. No before/after hashes to
+        show (unlike _confirm_stale_reload) -- nothing's been rebuilt
+        yet at this point."""
+        definition = self._custom_widget_definitions.get(keyword)
+        label = definition.label if definition is not None else keyword
+        box = QMessageBox(self)
+        box.setWindowTitle("Widget Source Changed")
+        box.setText(f"“{label}”’s own source files have changed on disk since it was last built.")
+        box.setInformativeText("Rebuild it now and reload this instance?")
+        rebuild_button = box.addButton("Rebuild Now", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Keep for Now", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        return box.clickedButton() is rebuild_button
+
+    def _notify_promoted_widget_rebuild_failed(self, keyword: str) -> None:
+        """Split out so headless verification can monkeypatch just this
+        one method instead of driving a real modal QMessageBox --
+        mirrors _confirm_widget_error_dismissed below. Deliberately
+        generic (build_from_source's own specific failure reason is
+        only logged, not plumbed through here -- see
+        plans/promoted-widget-source-staleness.md's own "Design
+        decisions" for why that's a deliberately scoped-down follow
+        -up, not required here): still a real, visible signal where
+        today (TODO 4eb3d9e's own motivating report) there is none at
+        all."""
+        definition = self._custom_widget_definitions.get(keyword)
+        label = definition.label if definition is not None else keyword
+        box = QMessageBox(self)
+        box.setWindowTitle("Rebuild Failed")
+        box.setText(f"Failed to rebuild “{label}”.")
+        box.setInformativeText("Check Desk's own log output for details. The instance is still marked stale, so you can try again.")
+        box.addButton("OK", QMessageBox.ButtonRole.AcceptRole)
+        box.exec()
 
     def _on_widget_error_clicked(self, frame: WidgetFrame) -> None:
         """The `[ERROR]` titlebar button's handler (TODO d4d6c71): shows

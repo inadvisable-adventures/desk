@@ -32,6 +32,7 @@ from desk.shell.chromium_widget import ChromiumWidget  # noqa: E402
 from desk.shell.python_widget import PythonWidgetHost  # noqa: E402
 from desk.shell.widget_frame import WidgetFrame  # noqa: E402
 from desk.shell.window import DeskWindow  # noqa: E402
+from desk.shell.promoted_widget_source_watcher import PromotedWidgetSourceWatcher  # noqa: E402
 from desk.widgets import WidgetInfo  # noqa: E402
 
 passed = 0
@@ -80,6 +81,10 @@ class _FakeWindow:
         self._custom_widget_sources = {}
         self._custom_widget_definitions = {}
         self._custom_widget_content_hash = {}
+        # TODO 4eb3d9e: _register_custom_widget/_place_widget/
+        # _on_widget_stale_clicked now also touch these.
+        self._promoted_widget_source_watcher = PromotedWidgetSourceWatcher()
+        self._promoted_widget_source_dirty = set()
         self._schema_registry = SchemaRegistry()
         self.confirm_calls = []
 

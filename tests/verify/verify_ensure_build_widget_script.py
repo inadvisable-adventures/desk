@@ -50,8 +50,16 @@ check(
     "python3 .desk_temp/build_widget.py .desk_temp/widgets/<name>" in custom_widgets_doc,
 )
 check(
-    "custom-widgets doc's post-promotion example also updated",
-    "python3 .desk_temp/build_widget.py\ndesk_widgets/<name>" in custom_widgets_doc,
+    # TODO 4eb3d9e: this used to check that the post-promotion example
+    # told you to re-run build_widget.py against desk_widgets/<name>
+    # -- that instruction never actually worked (silently rejected,
+    # see plans/promoted-widget-source-staleness.md) and is now
+    # actively wrong to follow, since Desk watches desk_widgets/<name>/
+    # directly instead. Checks the opposite now: that stale advice is
+    # gone and the real, working guidance replaced it.
+    "custom-widgets doc's post-promotion example no longer tells you to re-run build_widget.py",
+    "python3 .desk_temp/build_widget.py\ndesk_widgets/<name>" not in custom_widgets_doc
+    and "no longer sourced from tempui files" in custom_widgets_doc,
 )
 check("custom-widgets doc no longer tells you to run scripts/build_widget.py", "scripts/build_widget.py" not in custom_widgets_doc)
 

@@ -52,12 +52,37 @@ class ServerHandle:
         self.routes fresh on every request, not from some compiled
         -at-startup table, so appending here (the same call
         create_app's own startup-time mounting loop makes) takes effect
-        for the very next request."""
+        for the very next request.
+
+        TODO 4eb3d9e: re-mounting an already-mounted widget_id (a live
+        re-registration -- Desk switch, a DefineWidget live edit, a
+        promoted widget's rebuild-on-demand) first removes any existing
+        route of the same name. Confirmed directly (not just suspected):
+        Starlette's Router.mount only ever *appends* a route and
+        resolves requests by walking routes in registration order, so
+        without this, a second mount_html_widget call for the same
+        widget_id at a *different* directory is silently shadowed
+        forever behind the first one ever registered -- every later
+        request keeps serving the original (now stale) directory's
+        content, regardless of what's mounted afterward. This stayed
+        invisible for a still-tempui-sourced DefineWidget widget (its
+        own materialize() always reuses one fixed cache directory, so a
+        "remount" just re-serves the same path with fresher bytes
+        already on disk) and mostly invisible for an in-place promoted
+        -widget rebuild too (build_from_source also writes to a fixed,
+        stable path across rebuilds) -- but not for the one moment the
+        mounted directory itself actually changes, e.g. right after
+        promotion moves a widget from its pre-promotion materialized
+        path to desk_widgets/<name>/.build/."""
         self.widgets[widget_id] = info
+        name = f"widget-{widget_id}"
+        self._app.router.routes[:] = [
+            route for route in self._app.router.routes if getattr(route, "name", None) != name
+        ]
         self._app.mount(
             f"/widgets/{widget_id}",
             StaticFiles(directory=directory, html=True),
-            name=f"widget-{widget_id}",
+            name=name,
         )
 
     def stop(self, timeout: float = 5.0) -> None:
