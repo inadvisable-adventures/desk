@@ -6,6 +6,25 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+ee1a474. Bug: `desk.temp_ui._legacy_version_tags` (TODO `6839365`) treats a
+   legacy project's own decade bucket as already fully known (e.g.
+   version 44 -> knows `version-00` through `version-40`), but a bucket
+   covers ten version numbers and a project isn't necessarily at the
+   top of its own -- worse, old version numbers weren't reliably
+   unique (the exact TODO `6839365` root cause: two branches both
+   claimed `44`), so a project's own bucket can never be trusted as
+   fully known regardless of which number inside it it reports.
+   Reported directly: many real projects on old version numbers in the
+   40s only got the new post-6839365 tag flagged as missing on open,
+   not `version-40` itself. Fix: exclude the project's own bucket from
+   `_legacy_version_tags`'s return value (every bucket *strictly
+   below* only) so it's always reported missing and its real changelog
+   content surfaces in the doc-upgrade notification. No new tag
+   needed.
+
+   Prioritized per direct user request.
+   [planned: legacy-version-bucket-not-fully-known.md]
+
 6839365. COMPLETED: Replace `src/desk/temp_ui.py`'s `TEMPUI_DOC_VERSION` (a single,
    manually-bumped integer) with a tag-based scheme: a tag is a short
    (10-50 character) human-written summary plus an appended 6-digit,
