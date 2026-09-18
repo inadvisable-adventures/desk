@@ -29,6 +29,7 @@ reordered or its description edited.
    and hand them to the job before it runs, kind-agnostically (a
    `python`-kind job gets the same declared-data path too, instead of
    only the import trick).
+   [planned: installed-jobs-rust-gpu.md]
 
 ee1a474. COMPLETED: Bug: `desk.temp_ui._legacy_version_tags` (TODO `6839365`) treats a
    legacy project's own decade bucket as already fully known (e.g.
