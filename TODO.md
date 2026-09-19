@@ -95,6 +95,37 @@ ed5c62f. COMPLETED: Re-prioritized per direct user request (previously de
    covered by the automated tests above using real Qt event objects,
    not mocks.
 
+b78e7b8. Make the session-start prompt say plainly that reading the
+   docs is orientation only. Add a sentence to `CLAUDE_WIDGET_PROMPT` in
+   both `widgets/claude_desk/widget.py` and `widgets/claude/widget.py`,
+   and to the text that adds the `development-process.md` read
+   (`DEVELOPMENT_PROCESS_FILENAME`), stating that reading these
+   documents is not itself a task and does not mean the agent should
+   start working -- e.g. picking up a `TODO.md` item or calling
+   `desk_get_next_todo_item` -- unless the user's own message
+   separately asks for it. Reword the prompt's trailing
+   `desk_get_next_todo_item` sentence (currently an unqualified "check
+   it before assuming an earlier read of TODO.md is still current") to
+   the same effect. Update the `tests/verify/` scripts that assert the
+   prompt text (`verify_claude_prompt_tempui_wording.py`,
+   `verify_dev_process_seeding.py`). Cites
+   `../FEEDBACK/FEEDBACK-DESK-onboarding-read-mistaken-for-work-request-2026-09-18-2110.md`.
+
+e501d8a. Add a callout to `tempui-custom-widgets.md` (generated from
+   `src/desk/temp_ui.py`) naming "the task's correct answer depends on
+   a human's subjective visual judgment" -- cropping/selecting a region
+   in an image, confirming a placement/composite/layout looks right,
+   disambiguating what a fixed heuristic cannot isolate -- as a signal
+   to propose a small, disposable `DefineWidget` for the user to *show*
+   the answer, even when the request did not ask for one. Say it
+   composes with automation: a cheap heuristic can seed a sensible
+   default, and the widget's own job stays narrowed to *selecting* (e.g.
+   writing the confirmed rects to a JSON file) while an ordinary script
+   does the actual work. Mint a tempui changelog tag/entry -- per the
+   user, guidance and phrasing changes in `temp_ui.py` count as
+   features. Cites
+   `../FEEDBACK/FEEDBACK-DESK-tempui-widget-for-subjective-visual-tasks-2026-08-27-1220.md`.
+
 6ab9e85. Claude (Desk) widget: an `AskUserQuestion` tool call is currently
    routed through the generic Allow/Deny permission row
    (`ClaudeSession._can_use_tool`, `widgets/claude_desk/widget.py`'s
@@ -9680,37 +9711,6 @@ db1cd65. Claude (Desk) widget: context-window awareness and manual
    (a). Cites
    `../FEEDBACK/FEEDBACK-DESK-claude-desk-progress-interrupt-compact-2026-09-18-2035.md`
    (part 3).
-
-b78e7b8. Make the session-start prompt say plainly that reading the
-   docs is orientation only. Add a sentence to `CLAUDE_WIDGET_PROMPT` in
-   both `widgets/claude_desk/widget.py` and `widgets/claude/widget.py`,
-   and to the text that adds the `development-process.md` read
-   (`DEVELOPMENT_PROCESS_FILENAME`), stating that reading these
-   documents is not itself a task and does not mean the agent should
-   start working -- e.g. picking up a `TODO.md` item or calling
-   `desk_get_next_todo_item` -- unless the user's own message
-   separately asks for it. Reword the prompt's trailing
-   `desk_get_next_todo_item` sentence (currently an unqualified "check
-   it before assuming an earlier read of TODO.md is still current") to
-   the same effect. Update the `tests/verify/` scripts that assert the
-   prompt text (`verify_claude_prompt_tempui_wording.py`,
-   `verify_dev_process_seeding.py`). Cites
-   `../FEEDBACK/FEEDBACK-DESK-onboarding-read-mistaken-for-work-request-2026-09-18-2110.md`.
-
-e501d8a. Add a callout to `tempui-custom-widgets.md` (generated from
-   `src/desk/temp_ui.py`) naming "the task's correct answer depends on
-   a human's subjective visual judgment" -- cropping/selecting a region
-   in an image, confirming a placement/composite/layout looks right,
-   disambiguating what a fixed heuristic cannot isolate -- as a signal
-   to propose a small, disposable `DefineWidget` for the user to *show*
-   the answer, even when the request did not ask for one. Say it
-   composes with automation: a cheap heuristic can seed a sensible
-   default, and the widget's own job stays narrowed to *selecting* (e.g.
-   writing the confirmed rects to a JSON file) while an ordinary script
-   does the actual work. Mint a tempui changelog tag/entry -- per the
-   user, guidance and phrasing changes in `temp_ui.py` count as
-   features. Cites
-   `../FEEDBACK/FEEDBACK-DESK-tempui-widget-for-subjective-visual-tasks-2026-08-27-1220.md`.
 
 feff1ec. Review and discuss all of the new FEEDBACK items (feedback
    submitted via the Feedback widget, `DESK_FEEDBACK-*.md` files) with
