@@ -6,6 +6,24 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+0959ff1. Prioritized per direct user request. From
+   `../FEEDBACK/FEEDBACK-DESK-no-job-to-job-invocation-2026-09-18-1600.md`:
+   there's no way for one Installed Job (TODO `7dca383`) to invoke
+   another -- every existing entry point (`desk_run_installed_job`,
+   `desk.installedJobs.run`) requires something a job's own running
+   code never has (an MCP-driving agent, or a `kind: "html"` widget's
+   Bridge API access). Scoped down deliberately, per the feedback's own
+   corrected framing: only a `python`-kind job needs to be able to
+   invoke another job -- a `rust`-kind job invoking anything is out of
+   scope, skip designing for it entirely. A `python`-kind job should be
+   able to invoke either a `python`-kind or `rust`-kind job through one
+   uniform interface -- the calling job shouldn't need to know or care
+   which kind the target is, that's Desk's own business to resolve.
+   Likely shape: a new global alongside `CONFIG_PATH`/`NEEDS_PATH` (TODO
+   `94a2fa2`), e.g. `RUN_INSTALLED_JOB(name, config_path=None)`,
+   returning the same `{"ok", "stdout", "stderr", "traceback"}` shape
+   `desk_run_installed_job` already returns.
+
 94a2fa2. COMPLETED: Prioritized per direct user request. Add a `rust` kind for Installed Jobs (TODO
    `7dca383`), for computationally-intensive work that wants a compiled
    language and, where it makes sense, the GPU -- motivated by a
