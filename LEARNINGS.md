@@ -1228,3 +1228,13 @@ unique identifier (e.g. a hash derived from content or a timestamp,
 `desk.temp_ui.generate_tag`, TODO `6839365`) instead of incrementing a
 shared counter, whenever two branches minting one concurrently is a real
 possibility.
+
+TODO-less follow-up to `a5f66cc`: the claim above that the running Desk
+app "is not at risk" was wrong for quitting a desk containing
+`kind: "html"` widgets (observed with `draw-with.desk`: "Release of
+profile requested but WebEnginePage still not deleted" then a segfault
+on every quit). `app.exec()` returning is not enough -- `main()` must
+itself delete the window and drain `DeferredDelete` (a few passes,
+since the profile's `deleteLater()` is queued by the page's
+destruction) before returning, or interpreter shutdown races
+Chromium's profile teardown. Fixed in `desk/app.py`.

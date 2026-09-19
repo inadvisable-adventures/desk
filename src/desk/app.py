@@ -2,6 +2,7 @@ import logging
 import sys
 from pathlib import Path
 
+from PyQt6.QtCore import QCoreApplication, QEvent
 from PyQt6.QtWidgets import QApplication
 
 from desk import __version__
@@ -57,4 +58,28 @@ def main() -> int:
     # never racing a cancel() against an already-stopped Observer.
     app.aboutToQuit.connect(get_service().stop)
 
-    return app.exec()
+    exit_code = app.exec()
+
+    # Tear the window (and every ChromiumWidget in it) down explicitly,
+    # with DeferredDelete drained, *before* main() returns. Otherwise
+    # the views/pages are still alive when the interpreter starts its
+    # own shutdown, ChromiumWidget's destroyed-deferred
+    # profile.deleteLater() never gets an event loop to run in, and
+    # Chromium's per-profile teardown races interpreter exit ("Release
+    # of profile requested but WebEnginePage still not deleted" ->
+    # segfault). See LEARNINGS.md (TODO a5f66cc).
+    #
+    # The QGraphicsScene holding the embedded widgets must be cleared
+    # here too: left alone, its QGraphicsProxyWidgets are only
+    # destroyed at QApplication dealloc (interpreter exit), where a
+    # QWebEngineView's hideEvent then calls setVisible() on an
+    # already-deleted page (SIGSEGV in QWebEnginePage::setVisible).
+    window.view.scene().clear()
+    window.deleteLater()
+    del window
+    for _ in range(3):
+        # Each pass can queue further deleteLater()s (profile after page).
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        QCoreApplication.processEvents()
+
+    return exit_code
