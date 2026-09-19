@@ -6,6 +6,64 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+8b88ec2. Update the Image Viewer widget (`widgets/image_viewer/`) so the
+   currently-loaded image can be dragged *out* of it -- the reverse
+   direction of TODO `9d52dc4`'s new "Input" drop target, and of the
+   existing image-drop-onto-canvas path (TODO `6e731c1`). A
+   click-and-drag starting on the displayed image (raster or vector)
+   begins a native OS drag carrying the loaded file's own local-file
+   URL, so dropping it elsewhere -- Finder/another app, another spot
+   on the Desk canvas, or another placed widget's own drop target
+   (e.g. the Pipeline widget's "Input" box) -- all work via the same
+   existing local-file-URL drop handling those already have, no new
+   plumbing needed on the receiving side.
+
+   Prioritized per direct user request.
+   [planned: image-viewer-drag-out.md (COMPLETED)]
+
+   COMPLETED: Implemented per the plan -- `ImageViewerWidget` installs
+   itself as an event filter on `self._view_container` (the
+   `QStackedLayout` host for both `_raster_view` and `_vector_view`),
+   tracking a left-button press then starting a real `QDrag` once
+   movement crosses `QApplication.startDragDistance()`. `desk.svg_view
+   .SvgView` (shared with the Markdown widget's own Mermaid rendering,
+   which has no backing file to drag out) is untouched -- the gesture
+   lives entirely at the `ImageViewerWidget` level, the one place that
+   already tracks `self._current_path`. `_drag_mime_data()` (split out
+   from `_start_drag` so it's testable without triggering a real
+   blocking native drag loop) returns `None` with no file loaded or if
+   the loaded file no longer exists on disk, otherwise a `QMimeData`
+   carrying the file's own local-file URL -- the exact shape
+   `WorkspaceView._local_file_urls`/the Pipeline widget's `_DropTarget
+   ._local_image_url` (TODO `9d52dc4`) already read, so dropping the
+   dragged-out image onto the canvas, another placed widget's own drop
+   target, or another app (Finder, etc.) all work with no changes on
+   any receiving side. The drag cursor is a real `grab()` of whichever
+   view is currently active (raster or vector), scaled down to a
+   96px-max thumbnail -- one code path for both, no separate rendering
+   needed.
+
+   New `tests/verify/verify_image_viewer_drag_out.py` (12 checks):
+   `_drag_mime_data()`'s three cases (no file, file loaded then
+   deleted, file loaded -- raster and vector both), and the
+   event-filter gesture logic (sub-threshold move doesn't start a
+   drag; crossing the threshold starts exactly one, not a second one
+   from further movement mid-drag; a release before the threshold
+   resets tracking so a later unrelated move doesn't misfire; events
+   on an unrelated object are ignored) -- `_start_drag` patched
+   throughout so no test invokes the real, blocking `QDrag.exec()`.
+
+   Full `tests/verify/` regression suite: 145 non-`disabled_` scripts
+   (144 pre-existing + this 1 new file), 0 failures.
+
+   Not verified: actually dragging a real loaded image out of a
+   running Desk window onto Finder or another placed widget -- no
+   browser/GUI available in this environment, so this manual step was
+   skipped rather than silently omitted. Everything the gesture itself
+   depends on (the mime-data shape, the threshold-based start
+   detection) is covered by the automated tests above; only the
+   native OS drag loop `QDrag.exec()` triggers is unverified.
+
 ee1a474. COMPLETED: Bug: `desk.temp_ui._legacy_version_tags` (TODO `6839365`) treats a
    legacy project's own decade bucket as already fully known (e.g.
    version 44 -> knows `version-00` through `version-40`), but a bucket

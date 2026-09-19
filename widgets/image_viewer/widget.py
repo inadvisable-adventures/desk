@@ -1,9 +1,10 @@
 import logging
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QRectF, QSizeF, pyqtSignal
-from PyQt6.QtGui import QPainter, QPixmap
+from PyQt6.QtCore import QEvent, QMimeData, QObject, QPoint, Qt, QRectF, QSizeF, QUrl, pyqtSignal
+from PyQt6.QtGui import QDrag, QPainter, QPixmap
 from PyQt6.QtWidgets import (
+    QApplication,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -31,6 +32,11 @@ IMAGE_FILTER = (
 # dispatch already works (an SVG's XML preamble isn't cheaply
 # distinguishable from other XML-ish text formats).
 VECTOR_SUFFIXES = {".svg", ".svgz"}
+
+# TODO 8b88ec2: the drag cursor's own thumbnail is capped to this size
+# (aspect-preserving) -- a full-resolution grab() of the view would
+# make an oversized, unwieldy drag cursor for a large source image.
+_DRAG_THUMBNAIL_MAX_SIZE = 96
 
 
 def _is_vector(path: Path) -> bool:
@@ -97,6 +103,14 @@ class ImageViewerWidget(QWidget):
         self._stack.addWidget(self._vector_view)
         self._view_container = QWidget()
         self._view_container.setLayout(self._stack)
+        # TODO 8b88ec2: the loaded image can be dragged back out --
+        # watched here (not on the individual view widgets) since this
+        # is the one place that already knows self._current_path, and
+        # keeps desk.svg_view.SvgView (shared with the Markdown
+        # widget's own Mermaid rendering, which has no backing file to
+        # drag out at all) untouched.
+        self._view_container.installEventFilter(self)
+        self._drag_press_pos: QPoint | None = None
 
         self._label = QLabel()
         self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
@@ -133,6 +147,58 @@ class ImageViewerWidget(QWidget):
 
     def _active_view(self):
         return self._vector_view if self._current_path is not None and _is_vector(self._current_path) else self._raster_view
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
+        """TODO 8b88ec2: tracks a left-button press on the image view,
+        then starts a real drag-out once the movement threshold is
+        crossed -- the standard "press, then move past
+        startDragDistance()" gesture, not a plain click. Neither view
+        widget has any mouse handling of its own to conflict with
+        (confirmed directly)."""
+        if obj is self._view_container:
+            if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+                self._drag_press_pos = event.position().toPoint()
+            elif event.type() == QEvent.Type.MouseMove and self._drag_press_pos is not None:
+                if (event.position().toPoint() - self._drag_press_pos).manhattanLength() >= QApplication.startDragDistance():
+                    self._drag_press_pos = None  # clear first -- exec() below blocks until the drag ends
+                    self._start_drag()
+            elif event.type() in (QEvent.Type.MouseButtonRelease, QEvent.Type.Leave):
+                self._drag_press_pos = None
+        return super().eventFilter(obj, event)
+
+    def _drag_mime_data(self) -> QMimeData | None:
+        """`None` with no file loaded (the placeholder state) or if
+        the loaded file no longer exists on disk -- otherwise a
+        `QMimeData` carrying the loaded file's own local-file URL, the
+        same shape every existing local-file drop handler
+        (`WorkspaceView._local_file_urls`, the Pipeline widget's
+        `_DropTarget._local_image_url`, TODO 9d52dc4) already reads, so
+        nothing on any receiving side needs to change. Split out from
+        `_start_drag` so a test can exercise this without triggering a
+        real, blocking native drag loop."""
+        if self._current_path is None or not self._current_path.is_file():
+            return None
+        mime = QMimeData()
+        mime.setUrls([QUrl.fromLocalFile(str(self._current_path))])
+        return mime
+
+    def _start_drag(self) -> None:
+        mime = self._drag_mime_data()
+        if mime is None:
+            return
+        drag = QDrag(self)
+        drag.setMimeData(mime)
+        thumbnail = self._active_view().grab()
+        if not thumbnail.isNull():
+            drag.setPixmap(
+                thumbnail.scaled(
+                    _DRAG_THUMBNAIL_MAX_SIZE,
+                    _DRAG_THUMBNAIL_MAX_SIZE,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+        drag.exec(Qt.DropAction.CopyAction)
 
     def _show_placeholder(self) -> None:
         self._label.setText("(no file — click Open to choose an image file)")
