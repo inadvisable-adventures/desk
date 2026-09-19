@@ -23,6 +23,7 @@ reordered or its description edited.
    `94a2fa2`), e.g. `RUN_INSTALLED_JOB(name, config_path=None)`,
    returning the same `{"ok", "stdout", "stderr", "traceback"}` shape
    `desk_run_installed_job` already returns.
+   [planned: installed-job-to-job-invocation.md]
 
 94a2fa2. COMPLETED: Prioritized per direct user request. Add a `rust` kind for Installed Jobs (TODO
    `7dca383`), for computationally-intensive work that wants a compiled
