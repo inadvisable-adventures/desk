@@ -9502,6 +9502,39 @@ aa0ce76. Add a rotating file log for Desk's own logging
    `../FEEDBACK/FEEDBACK-DESK-html-widget-getusermedia-crash-2026-09-11-1735.md`
    (the "blank forever" symptom).
 
+8a09220. Make promotion (`DeskWindow._relocate_promoted_widget_source`,
+   `src/desk/shell/window.py`) handle a widget's `tsconfig.json`
+   dependencies, which it currently never reads. Parse `"files"` and
+   find entries resolving outside the widget's own directory; move
+   each such shared file once (deduplicating across widgets promoted
+   together), and rewrite the relative paths in the promoted widget's
+   `tsconfig.json` so they resolve from its new location -- including
+   the case where the shared file already sits at its final location
+   and only the relative path is now wrong. Tell the user what is being
+   moved/rewritten. For un-promoted peers (under `.desk_temp/widgets/`)
+   whose `tsconfig.json` references the same file, offer to either
+   promote them as well or fix up their `tsconfig.json` so it resolves
+   from the file's new location. Read the list the same way
+   `build_widget.py` does (`_read_ordered_stems`) rather than
+   re-deriving the convention. Cites
+   `../FEEDBACK/FEEDBACK-DESK-promotion-doesnt-move-shared-multifile-deps-2026-09-14-1628.md`
+   and
+   `../FEEDBACK/FEEDBACK-DESK-promoted-widget-tsconfig-path-not-fixed-up-2026-09-18-1400.md`.
+
+3d792f8. Promotion `outDir` normalization: a promoted widget is rebuilt
+   into `.build` (`SOURCE_BUILD_CACHE_DIRNAME`, `src/desk/temp_ui.py`),
+   but authors write their own `tsconfig.json` `outDir` (`out`,
+   `build`, ...). At promotion, if `outDir` doesn't match, offer via
+   the same `_confirm_fn` pattern as the `.gitignore` prompt to update
+   it. Also name `.build` as the expected `outDir` in "Authoring from
+   real source" in `tempui-custom-widgets.md`, and clear a stale `out/`
+   build cache at promotion if commit `e86a31b` doesn't already cover
+   it (a stale `out/` collided with a rebuild in the second report).
+   Cites
+   `../FEEDBACK/FEEDBACK-DESK-promotion-doesnt-move-shared-multifile-deps-2026-09-14-1628.md`
+   ("Related finding") and
+   `../FEEDBACK/FEEDBACK-DESK-promoted-widget-tsconfig-path-not-fixed-up-2026-09-18-1400.md`.
+
 feff1ec. Review and discuss all of the new FEEDBACK items (feedback
    submitted via the Feedback widget, `DESK_FEEDBACK-*.md` files) with
    the user before acting on any of them. Not designed/scoped yet --
