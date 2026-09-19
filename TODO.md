@@ -64,6 +64,160 @@ reordered or its description edited.
    detection) is covered by the automated tests above; only the
    native OS drag loop `QDrag.exec()` triggers is unverified.
 
+0959ff1. COMPLETED: Prioritized per direct user request. From
+   `../FEEDBACK/FEEDBACK-DESK-no-job-to-job-invocation-2026-09-18-1600.md`:
+   there's no way for one Installed Job (TODO `7dca383`) to invoke
+   another -- every existing entry point (`desk_run_installed_job`,
+   `desk.installedJobs.run`) requires something a job's own running
+   code never has (an MCP-driving agent, or a `kind: "html"` widget's
+   Bridge API access). Scoped down deliberately, per the feedback's own
+   corrected framing: only a `python`-kind job needs to be able to
+   invoke another job -- a `rust`-kind job invoking anything is out of
+   scope, skip designing for it entirely. A `python`-kind job should be
+   able to invoke either a `python`-kind or `rust`-kind job through one
+   uniform interface -- the calling job shouldn't need to know or care
+   which kind the target is, that's Desk's own business to resolve.
+   Likely shape: a new global alongside `CONFIG_PATH`/`NEEDS_PATH` (TODO
+   `94a2fa2`), e.g. `RUN_INSTALLED_JOB(name, config_path=None)`,
+   returning the same `{"ok", "stdout", "stderr", "traceback"}` shape
+   `desk_run_installed_job` already returns.
+   [planned: installed-job-to-job-invocation.md]
+
+   COMPLETED: Implemented per the plan. `desk.installed_jobs.run_script`
+   gained a `run_installed_job_callable` parameter, exposed to a
+   `python`-kind job's own `exec()` globals as `RUN_INSTALLED_JOB`.
+   `DeskWindow.run_installed_job`'s existing GUI-thread validation/
+   resolution step was factored out into `_prepare_installed_job_run`
+   (shared, not duplicated, with the new nested path) and its
+   kind-dispatch execution step into a module-level
+   `_dispatch_installed_job_run`. `_make_run_installed_job_callable`
+   builds a self-referential closure (arbitrary nesting depth falls out
+   of ordinary recursion, no depth bookkeeping) that reuses the
+   existing `current_context.get_gui_thread_caller()` bridge (TODO
+   `97bd090`, the same primitive `desk.pipeline_dsl`/
+   `desk_mcp_server` already use for "background thread needs a
+   GUI-thread result") for the fast prepare step only -- the actual
+   nested job execution always runs directly on the calling job's own
+   thread, keeping the same "no artificial timeout" property every
+   Installed Job run already has.
+
+   Found by reasoning through the exact call sequence before writing
+   any code (not by hitting it blind): a `python`-kind job invoking
+   another `python`-kind job re-enters `run_script`'s own `_RUN_LOCK`
+   on the same thread -- a plain `threading.Lock` is not reentrant and
+   would deadlock on the very first nested python-to-python call.
+   Fixed by making it an `RLock`; confirmed for real (not just by
+   inspection) with a live test, including three levels of nesting
+   (A invokes B invokes C) completing without hanging.
+
+   `tempui-installed-jobs.md` gained an "Invoking another job from a
+   `python`-kind job" section; new tag `"job-to-job invocation via
+   RUN_INSTALLED_JOB #181226"` added to `CURRENT_TAGS` with a matching
+   `_NEW_FEATURES` entry; `desk_install_job`'s MCP tool description
+   updated. A `rust`-kind job gets no equivalent capability at all, per
+   the feedback's own explicit scoping.
+
+   New `tests/verify/verify_installed_job_to_job_invocation.py`: 20
+   checks covering python-invokes-python (the deadlock-risk case),
+   python-invokes-rust (confirming the uniform interface actually hides
+   the kind difference), not-installed/stale-source targets returning
+   `{"ok": false, ...}` rather than raising, `config_path` passthrough,
+   three-level nesting, and graceful degradation when no GUI thread
+   caller is registered at all. `verify_installed_jobs.py`/
+   `verify_installed_jobs_rust.py`'s own `_FakeWindowForRun` stand-ins
+   updated for the refactor (two new method aliases each).
+
+   Verified: full `tests/verify/` regression suite (143 non-`disabled_`
+   scripts) passes, 0 failures. Moved
+   `../FEEDBACK/FEEDBACK-DESK-no-job-to-job-invocation-2026-09-18-1600.md`
+   to `../FEEDBACK/implemented/` -- this was its only TODO item.
+
+94a2fa2. COMPLETED: Prioritized per direct user request. Add a `rust` kind for Installed Jobs (TODO
+   `7dca383`), for computationally-intensive work that wants a compiled
+   language and, where it makes sense, the GPU -- motivated by a
+   current, real project that needs both. Before building anything:
+   confirm directly (not assumed) that a real Rust program on this
+   machine can actually drive the GPU, and what library that takes.
+   `desk-installed-jobs/<name>/` gains a second recognized shape
+   alongside today's Python-only `main.py`: a `Cargo.toml` (plus
+   `src/`), built on demand (`cargo build --release`, cached until
+   source is newer than the compiled binary, same on-demand-build shape
+   TypeScript transforms already use) and run as a real subprocess.
+   `compute_version_hash`'s directory hash needs to keep excluding
+   `cargo`'s own `target/` build output, or every build would look like
+   a source change and break "no reapproval on every run." Since a Rust
+   job runs as a genuinely separate process (unlike a `python`-kind
+   job, which incidentally still shares this same process's live memory
+   via whatever it imports, undocumented as that is), it has no way to
+   reach `desk.state.*` the way an html/python widget can -- give a job
+   a way to *declare* which state keys it needs (a small manifest;
+   exact shape TBD in planning) and have Desk resolve just those values
+   and hand them to the job before it runs, kind-agnostically (a
+   `python`-kind job gets the same declared-data path too, instead of
+   only the import trick).
+   [planned: installed-jobs-rust-gpu.md]
+
+   COMPLETED: Implemented per the plan. Confirmed directly (a real, live
+   `cargo build`/run, not assumed): `wgpu` on this machine's Metal
+   backend found a real adapter (Apple M2 Pro) and, beyond just
+   detecting it, actually dispatched a real WGSL compute shader against
+   a real input buffer and read back the correct doubled output --
+   documented as the recommended (not required) crate in
+   `tempui-installed-jobs.md`'s new "Rust jobs and the GPU" section.
+
+   `desk.installed_jobs`: `detect_kind` sniffs "python"/"rust" from
+   which entry file is present (never persisted -- no `.desk` schema
+   migration needed); `run_rust_job` builds on demand (`cargo build
+   --release`, mtime-cached against `Cargo.toml`/`Cargo.lock`/`src/**`,
+   same on-demand shape `desk_services.transforms` already uses for
+   TypeScript) and runs the compiled binary as a real subprocess, no
+   timeout on either step (matching this codebase's own existing
+   job-timeout philosophy, not transforms'). `_resolve_cargo_binary`
+   falls back to `~/.cargo/bin/cargo` when `shutil.which` misses it --
+   a real gap hit directly in this environment, not hypothetical.
+   `compute_version_hash` now excludes both `target/` and a root-level
+   `Cargo.lock` -- the second exclusion was found the hard way, via a
+   real second-run test failure during verification (`cargo build`
+   writes/updates `Cargo.lock` outside `target/` too), not reasoned out
+   in advance; both documented in `LEARNINGS.md`.
+
+   Declared `desk.state.*` needs: an optional `desk-installed-jobs/
+   <name>/job.json` (`{"needs": [...]}`), resolved on the GUI thread via
+   the same `get_state` `desk.state.get`'s own Bridge route uses, written
+   to `.desk_temp/installed-job-needs/<name>.json`, and handed to the job
+   as the `NEEDS_PATH` global (python, alongside the now-also-added
+   `CONFIG_PATH`-equivalent) or the `DESK_JOB_NEEDS_PATH`/
+   `DESK_JOB_CONFIG_PATH` environment variables (rust) -- kind-agnostic,
+   fully backward compatible (no `job.json` at all is a no-op).
+
+   `install_job` validates via `detect_kind` instead of a hardcoded
+   `main.py` check (both/neither entry file present is refused) and now
+   also calls the new `ensure_installed_jobs_gitignore_entry`
+   (`desk-installed-jobs/**/target/`, mirroring
+   `ensure_desk_widgets_gitignore_entry` exactly) -- at the same two
+   moments (`_provision_temp_ui`, right after a successful install).
+   `get_installed_jobs_dicts`/the Installed Jobs widget's row label show
+   kind; `_view_source` skips anything under `target/`. `desk_install_job`/
+   `desk_run_installed_job`'s MCP tool descriptions updated.
+   `tempui-installed-jobs.md` covers both kinds throughout; new tag
+   `"rust installed jobs + declared state needs #739624"` added to
+   `CURRENT_TAGS` with a matching `_NEW_FEATURES` entry.
+
+   New `tests/verify/verify_installed_jobs_rust.py` (fast, always-run --
+   a dependency-free Rust job, no crates.io fetch): 35 checks covering
+   `detect_kind`, both hash exclusions, the gitignore helper, `install_job`
+   kind validation, a real build+run end to end (including a same-binary
+   second run), `CONFIG_PATH`/`NEEDS_PATH` env vars with a real
+   `desk.state` round-trip, and stale-source refusal/reinstall. New
+   `tests/verify/disabled_verify_installed_jobs_rust_gpu.py` (disabled
+   for real build-time cost, not flakiness -- a first `wgpu` build takes
+   real crates.io fetch/compile time): the real GPU compute-shader job
+   run end to end through the actual Installed Jobs pipeline, asserting
+   the GPU-computed result -- run directly, 4/4 passing.
+
+   Verified: full `tests/verify/` regression suite (142 non-`disabled_`
+   scripts) passes, 0 failures.
+
 ee1a474. COMPLETED: Bug: `desk.temp_ui._legacy_version_tags` (TODO `6839365`) treats a
    legacy project's own decade bucket as already fully known (e.g.
    version 44 -> knows `version-00` through `version-40`), but a bucket
@@ -9133,7 +9287,7 @@ a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's histor
    Full `tests/verify/` suite (140 non-disabled scripts) run clean:
    all pass, no failures.
 
-0529501. An API for widgets to invoke Claude with access scoped to
+0529501. COMPLETED: An API for widgets to invoke Claude with access scoped to
    only the files that widget itself has access to, rather than a full
    unrestricted session. Motivating example: the peer `necro-4x`
    project's domain-analysis widget has a prompt text field meant to
@@ -9161,6 +9315,48 @@ a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's histor
    `desk.terminal_widget`/`desk.claude_session`'s own precedent?), and
    whether it reuses `ClaudeDeskWidget`'s own UI or is meant to run
    headless/inline within the calling widget instead.
+   [planned: scoped-claude-session-api.md]
+
+   COMPLETED: Implemented per the plan -- confirmed via real, live
+   sessions (not assumed from docs) that neither
+   `ClaudeAgentOptions(cwd=..., add_dirs=...)` nor `can_use_tool` is an
+   actual access boundary (an out-of-scope `Read` just triggers a
+   normal `permission_request` and succeeds once allowed; `can_use_tool`
+   is never consulted under `permission_mode="bypassPermissions"`
+   at all), but a `PreToolUse` hook is -- confirmed to still deny an
+   out-of-scope path even under `bypassPermissions`. `desk.claude_session
+   .ClaudeSession.start()` gained an `allowed_paths: list[Path] | None`
+   parameter; when set, the session gets a fixed, narrower `tools` list
+   (`Read`/`Write`/`Edit`/`NotebookEdit`, no `Bash` since a shell
+   command's arguments have no structured path field a hook could
+   check), no Desk MCP server, and a new `_check_path_scope` `PreToolUse`
+   hook denying any call whose `file_path`/`notebook_path` is missing or
+   resolves outside `allowed_paths`. `can_use_tool` is left wired
+   unchanged, still handling ordinary in-scope approvals through the
+   widget's existing UI. Headless by design (see the plan's "Design
+   decisions") -- no new shared UI component, since no second in-repo
+   caller exists yet (the motivating example, `necro-4x`'s widget, lives
+   outside this repo); `ClaudeSession` was already directly importable
+   by any `kind: "python"` widget, so no new `current_context.py` hook
+   was needed either. `design-docs/architecture.md`'s item 30 extended
+   with a "Scoped sessions" paragraph; new `LEARNINGS.md` entry on the
+   cwd/add_dirs/can_use_tool-vs-hook finding, since it contradicts what
+   those fields' own names/docstrings suggest.
+
+   New `tests/verify/disabled_verify_scoped_claude_session.py` (real,
+   live Claude API calls, same `disabled_` convention as
+   `disabled_verify_claude_desk_widget_claude_api.py` pending TODO
+   `9bc522b`) -- 3 tests, 9 checks, all passing: an out-of-scope `Read`
+   is denied with no `permission_request` ever firing for it, the same
+   holds under `permission_mode="bypassPermissions"` specifically (the
+   case a `cwd`/`add_dirs`-only design would have silently failed), and
+   an out-of-scope `Write` is denied without ever prompting, target file
+   never created.
+
+   Verified: full `tests/verify/` regression suite (141 non-`disabled_`
+   scripts) passes, 0 failures -- this change only adds a new opt-in
+   parameter, no existing `ClaudeSession.start()` call site changed
+   behavior.
 
 ed5c62f. De-prioritized (moved to the end of the queue on request --
    priority is physical position in this file, per

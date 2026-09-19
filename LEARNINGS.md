@@ -2,6 +2,13 @@
 
 Unexpected corner cases, non-obvious library/API behavior, and mistakes worth not repeating, recorded for whoever (human or agent) works on this codebase next. See `development-process.md`'s Learnings section for what belongs here and the workflow for adding to it.
 
+## `cargo build` writes to the project root, not just `target/` -- and `cargo`/`rustc` may not be on a launched app's own `PATH` even when `rustup` installed them
+
+Two related gotchas found while building TODO `94a2fa2`'s `rust`-kind Installed Jobs, both the kind of thing "should have been obvious" only after hitting them for real:
+
+1. **`cargo build` doesn't confine its own writes to `target/`.** The first build without an existing lockfile also writes/updates `Cargo.lock` at the project root. Any scheme that hashes a directory's contents to detect "did the source change" (this project's `compute_version_hash`, reused from the custom-widget staleness check) must exclude *both* `target/` and a root-level `Cargo.lock`, or the very first real build of a freshly-installed job silently invalidates its own just-granted approval, requiring the user to reapprove a job that never actually changed. Caught directly: `tests/verify/verify_installed_jobs_rust.py`'s own second-run check failed with exactly this `ValueError` the first time it was written (only `target/` was excluded at that point) -- not something reasoned out in advance, a real test failure. Don't assume a build tool's writes are confined to its own designated output directory; verify by actually building and re-hashing, not by reading the tool's docs for where it "puts build output."
+2. **A toolchain installed via `rustup` (or similar) isn't necessarily on every process's `PATH`.** `rustc`/`cargo` were confirmed installed (`~/.cargo/bin/`) on the machine this was developed on, but absent from `shutil.which`'s view in at least one real shell/process context on that same machine -- `rustup`'s installer typically appends to interactive shells' own startup files, which a GUI app (or a script/tool invoked some other way) won't necessarily have sourced. Don't assume `subprocess.run(["cargo", ...])` will just resolve the way it reliably does for tools this codebase already shells out to (`node`, `tsc`, `git`); check `shutil.which` first and fall back to the well-known install location (`~/.cargo/bin/cargo`) rather than letting a real, working toolchain produce a confusing `FileNotFoundError`.
+
 ## `contextlib.redirect_stdout`/`redirect_stderr` swap `sys.stdout`/`sys.stderr` process-wide, not per-thread
 
 Both temporarily reassign the module-level `sys.stdout`/`sys.stderr` for the duration of their `with` block -- which affects *every* thread in the process, not just the one that entered the context manager. A background thread capturing a script's own output this way (`desk.installed_jobs.run_script`, mirroring the pre-existing `Job` mechanism's `widgets/job_runner/widget.py`'s `_run_python_job`) will silently swallow a `print()` (or `logging` output through a `sys.stderr`-backed handler) issued by any *other* thread during that same window -- it lands in the capturing thread's `io.StringIO` buffer instead of reaching the real terminal, with no error or warning of any kind.
@@ -9,6 +16,42 @@ Both temporarily reassign the module-level `sys.stdout`/`sys.stderr` for the dur
 Caught directly while writing `tests/verify/verify_installed_jobs.py`'s non-blocking-run test (TODO `888b537`): two `check(...)` calls (which `print()`) placed between starting a background job (that does `time.sleep(0.2)` inside its own `redirect_stdout` block) and waiting for it to finish simply never appeared in the test's output -- no hang, no exception, no exit-code difference, just silently missing lines from a check count that otherwise looked internally consistent. Confirmed by isolating the exact same call outside the test harness and observing the same vanishing prints.
 
 If output performed by one thread appears to just disappear (not error, not hang) while another thread is doing anything with `contextlib.redirect_stdout`/`redirect_stderr`, suspect this first. There's no general fix beyond avoiding the pattern for anything that must run concurrently with other threads' own stdout/stderr use -- when writing a test that spans a `redirect_stdout` window on another thread, capture whatever conditions you need to check into plain variables first, and defer every `print`-performing assertion until after that window has closed (e.g. after `event.wait()`/`thread.join()` confirms the capturing block has already exited).
+
+## `ClaudeAgentOptions(cwd=..., add_dirs=...)` and `can_use_tool` are not filesystem access boundaries -- only a `PreToolUse` hook actually is
+
+Both look like they should restrict which files a session can reach --
+`cwd`/`add_dirs` are literally named "additional directories Claude can
+access," and `can_use_tool` is the SDK's own tool-approval callback.
+Neither one enforces anything by itself, confirmed directly with real
+sessions (TODO `0529501`, `plans/scoped-claude-session-api.md`):
+
+- A `Read` for an absolute path outside `cwd`/`add_dirs` doesn't error
+  or get silently blocked -- it just triggers an ordinary
+  `permission_request`, exactly like any other gated action (e.g.
+  `Write`), and succeeds once allowed. `cwd`/`add_dirs` only change
+  which calls the CLI's own heuristics treat as "ask" vs. "auto-allow";
+  they carry no security meaning on their own. (The installed
+  `claude_agent_sdk` package's own `SandboxSettings` docstring says the
+  same thing about filesystem restriction generally: it's "configured
+  via permission rules... not via these sandbox settings.")
+- `can_use_tool` is skipped entirely under
+  `permission_mode="bypassPermissions"` (its own docstring: "not
+  invoked for tool calls already permitted by... permission_mode...
+  since those never reach a prompt") -- a caller relying on it as the
+  enforcement point would have a scoping mechanism a plain mode choice
+  silently defeats.
+- A `PreToolUse` hook (`ClaudeAgentOptions(hooks={"PreToolUse": [...]})`,
+  returning `{"hookSpecificOutput": {"hookEventName": "PreToolUse",
+  "permissionDecision": "deny", ...}}`) is the actual boundary --
+  confirmed to still deny an out-of-scope path even under
+  `bypassPermissions`, the one mode `can_use_tool` can't touch at all.
+
+If something needs a real, trustable restriction on what a Claude Agent
+SDK session can touch (not just a UI-level approval gate), reach for a
+`PreToolUse` hook doing real per-call input-checking, not `cwd`/
+`add_dirs`/`sandbox`/`can_use_tool` -- and verify with a live session
+under `bypassPermissions` specifically, since that's the mode that
+silently defeats every mechanism except the hook.
 
 ## `claude_agent_sdk.tool`'s `{name: type}` shorthand schema marks *every* key required -- there's no way to declare an optional argument with it
 

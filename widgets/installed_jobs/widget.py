@@ -102,7 +102,7 @@ class InstalledJobsWidget(QWidget):
         layout.setContentsMargins(6, 4, 6, 4)
         layout.setSpacing(8)
 
-        label = QLabel(f"{job['name']}  ({job['version_hash']})")
+        label = QLabel(f"{job['name']}  [{job.get('kind', 'python')}]  ({job['version_hash']})")
         label.setWordWrap(True)
         label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         layout.addWidget(label, 1)
@@ -125,7 +125,13 @@ class InstalledJobsWidget(QWidget):
         if directory is None or opener is None:
             return
         job_dir = installed_job_dir(directory, name)
+        # TODO 94a2fa2: skip a rust-kind job's own cargo target/ build
+        # output -- opening every build artifact file one at a time
+        # (potentially thousands, after a first build) is never useful
+        # here the way opening the job's own real source files is.
         for path in sorted(p for p in job_dir.rglob("*") if p.is_file()):
+            if "target" in path.relative_to(job_dir).parts[:-1]:
+                continue
             opener(path)
 
     def _uninstall(self, name: str) -> None:

@@ -161,6 +161,22 @@ class _FakeWindowForRun:
     get_installed_job = DeskWindow.get_installed_job
     get_installed_job_for_run = DeskWindow.get_installed_job_for_run
     run_installed_job = DeskWindow.run_installed_job
+    # TODO 94a2fa2: run_installed_job now also calls this -- pulled in
+    # the same real-production-logic-not-reimplemented way as the three
+    # methods above. Never touches self.get_state/self._schema_registry
+    # in this file's tests (none of them write a job.json), so no
+    # further fake attributes are needed for it here.
+    _resolve_job_needs = DeskWindow._resolve_job_needs
+    # TODO 0959ff1: run_installed_job now goes through these two
+    # instead of its own inline logic -- same pull-the-real-method
+    # technique. _make_run_installed_job_callable's own closure is
+    # built by every run_installed_job call now, but this file's own
+    # jobs never actually call RUN_INSTALLED_JOB, so it's never
+    # invoked -- no current_context.get_gui_thread_caller() setup
+    # needed here (see verify_installed_job_to_job_invocation.py for
+    # that).
+    _prepare_installed_job_run = DeskWindow._prepare_installed_job_run
+    _make_run_installed_job_callable = DeskWindow._make_run_installed_job_callable
 
 
 def test_get_installed_job_for_run_raises_for_not_installed_and_stale_hash():
