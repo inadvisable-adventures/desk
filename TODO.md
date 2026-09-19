@@ -9712,6 +9712,80 @@ db1cd65. Claude (Desk) widget: context-window awareness and manual
    `../FEEDBACK/FEEDBACK-DESK-claude-desk-progress-interrupt-compact-2026-09-18-2035.md`
    (part 3).
 
+d0a4c7b. Fix widget stacking on the canvas (`src/desk/shell/canvas.py`).
+   (1) `Canvas.add_widget` never sets the new proxy's z-value, so a
+   freshly placed widget (e.g. one opened by a Project Files
+   double-click) can land behind others -- unlike `add_popup`, which
+   assigns a monotonically increasing `_next_popup_z`. Call
+   `bring_to_front(frame)` right after the frame is appended. (2) In
+   `mouseReleaseEvent`'s chrome-click dispatch, the
+   `kind in ("eye", "greeked")` branch only calls `zoom_to_widget`,
+   which centers a widget that may still be hidden behind another --
+   also call `bring_to_front(frame)` there. Add `tests/verify/`
+   coverage for both. Cites
+   `../FEEDBACK/FEEDBACK-DESK-widget-findability-zorder-and-overview-2026-08-16-0107.md`
+   (parts 1 and 2).
+
+53779f4. An "Open Widgets" widget: a table of every placed widget
+   instance (instance id/title/kind plus a **stale** column), where
+   double-clicking a row does what clicking that widget's eye icon does
+   (center, and bring to front per TODO `d0a4c7b`). Data flow: give
+   `Canvas` a read API (an iterable of the placed frames' instance id,
+   title, kind, stale state) so the widget can populate itself when it
+   starts, then keep it live with events rather than polling -- a
+   widget-list-changed event fired whenever `_frames` changes, and a
+   widget-stale-changed event fired when a frame's stale bit flips
+   (`WidgetFrame.set_stale`), following the event-mediator shape
+   `widgets/project_files/widget.py` uses for
+   `FILE_TYPE_REGISTRY_UPDATED_EVENT` (`bind_event_mediator`). Also a
+   **Reload all stale widgets** button that does for every stale row
+   what clicking each one's `[STALE]` tag does today
+   (`DeskWindow._on_widget_stale_clicked`). Depends on TODO `d0a4c7b`;
+   pairs with TODO `f0da2e9` (exposing `stale` to agents), which should
+   share the same live stale signal. Cites
+   `../FEEDBACK/FEEDBACK-DESK-widget-findability-zorder-and-overview-2026-08-16-0107.md`
+   (part 3).
+
+669b690. A minimap widget for navigating the Desk canvas (merged from
+   the former `PARKINGLOT.md` "Add a minimap for navigating the Desk
+   canvas" entry and the concrete scope in the feedback). Motivation
+   from the parking lot: a widget under the cursor now gets all of
+   click/right-click/wheel/pinch (TODO `3846190`/`78bfa41`), so
+   wheel-scroll no longer pans the canvas whenever the cursor is over
+   any placed widget -- a minimap gives navigation a reliable path
+   (`world-timelines`' own minimap is the reference point). Scope: a
+   scaled-down spatial map of every placed widget's position/extent
+   (like `zoom_to_fit`'s `scene().itemsBoundingRect()`), click/drag to
+   pan; action buttons **organize by type** (group same-`kind`
+   widgets), **nudge apart** (resolve overlaps so every widget is at
+   least partly visible, without a full re-tile) and **tile** (full
+   grid layout); and **undo** for whatever those move. There is no
+   undo infrastructure anywhere in Desk today, so this adds it. The
+   undo must tolerate the widget set changing between the
+   rearrangement and the undo: key the snapshot by `instance_id`,
+   restore only ids still present, skip ones closed since, and leave
+   widgets opened after the rearrangement exactly where they landed.
+   Not designed in detail yet -- the plan should settle the map's
+   rendering and interaction, and how it gets live updates (likely
+   TODO `53779f4`'s widget-list-changed event). Cites
+   `../FEEDBACK/FEEDBACK-DESK-widget-findability-zorder-and-overview-2026-08-16-0107.md`
+   (part 4).
+
+9585a5a. Investigate the report that widget shapes distort when zoomed
+   small on the Workspace Canvas -- suspected by the reporter: chrome
+   buttons counter-scaled for zoom force the frame to regrow, most
+   visibly on the Claude (Desk) widget. Static reading found no live
+   path: the mechanism was fixed by TODO `33d3e8d` (`SetNoConstraint`
+   plus `_reassert_size` and the `full -> title_only -> greeked` degrade
+   in `WidgetFrame._update_chrome_state`, `src/desk/shell/widget_frame.py`),
+   so this is unreproduced. First get a live repro: place a Claude
+   (Desk) widget and one or two other kinds, zoom out until they are
+   small, and compare against what the degrade tiers should produce at
+   that size. Then classify it as a gap in `33d3e8d`'s fix (a zoom
+   level or widget shape it did not cover), a regression since, or a
+   distinct mechanism, and file a fix item accordingly. Cites
+   `../FEEDBACK/FEEDBACK-DESK-widget-shape-distorts-at-low-zoom-2026-09-19-1500.md`.
+
 feff1ec. Review and discuss all of the new FEEDBACK items (feedback
    submitted via the Feedback widget, `DESK_FEEDBACK-*.md` files) with
    the user before acting on any of them. Not designed/scoped yet --

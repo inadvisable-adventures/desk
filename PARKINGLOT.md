@@ -396,22 +396,6 @@ This file captures thoughts and TODO items that arise during work on other thing
   second or third widget that would clearly benefit, to avoid guessing
   at the right generalization from just one example.
 
-- **Add a minimap for navigating the Desk canvas**
-
-  Originally paired with "scrolling while hovering over a widget
-  scrolls the Desk instead of the widget" — that underlying problem is
-  now fully resolved (TODO `3846190`/TODO `78bfa41`: a widget under the
-  cursor gets *all* of click/right-click/wheel/pinch, no exceptions,
-  not even for a non-scrollable widget), which means wheel-scroll is no
-  longer available as a canvas-pan gesture at all whenever the cursor
-  happens to be over any placed widget. A minimap (like
-  `world-timelines`'s) would give panning/navigating the canvas a
-  reliable way to work regardless of what's under the cursor.
-
-  Not designed yet -- parking rather than guessing at scope (what the
-  minimap should actually show/support beyond "like
-  `world-timelines`'s").
-
 - **Locked widgets still show the resize-edge cursors**
 
   A locked widget's edges shouldn't do anything (resizing is disabled
@@ -915,7 +899,7 @@ This file captures thoughts and TODO items that arise during work on other thing
      visible" side effect isn't undone by that. Not confirmed by
      direct reproduction yet, just the user's visual report.
 
-  Related: the still-unbuilt minimap idea above exists partly because
+  Related: the still-unbuilt minimap (TODO `669b690`) exists partly because
   wheel-scroll is no longer available as a canvas-pan gesture over a
   widget at all -- scrollbars flickering into view here could be
   confusing/misleading in exactly that context (looks like the canvas
