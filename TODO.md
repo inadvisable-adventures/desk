@@ -6,6 +6,95 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+ed5c62f. Re-prioritized per direct user request (previously de
+   -prioritized to the end of the queue on request -- see
+   shared_development_process.md's Item IDs section on priority being
+   physical position). Add folding/collapsing to the Claude (Desk) widget's history view
+   (`widgets/claude_desk/widget.py`'s `_history`) for tool invocations.
+   Right now `_on_tool_use`/`_on_tool_result` append a `[tool]
+   Name(args)`/`[tool result] ...` line unconditionally, with no way to
+   hide it -- a session with several tool calls (each potentially
+   carrying a large `input`/`content` payload, e.g. a `Write`'s full
+   file contents or a long `Bash` command's stdout) makes the
+   transcript hard to scan for the actual conversation. Needs a real
+   collapsed/expanded UI affordance (not just truncating text) --
+   `QPlainTextEdit` has no native per-block fold/collapse support, so
+   this likely means switching the history view to something richer
+   (a `QTreeWidget`-style structured view, or `QTextEdit` with
+   clickable custom text objects) rather than staying on today's
+   single flat plain-text log; not designed yet.
+   [planned: claude-desk-history-fold.md (COMPLETED)]
+
+   COMPLETED: The "switch to a QTreeWidget/custom text objects" guess
+   above turned out not to be necessary -- confirmed directly (a small
+   standalone script, before writing any real code) that
+   `QTextBlock.setVisible(False)` + `QTextDocument.markContentsDirty`
+   genuinely collapses a block to zero height in `QPlainTextEdit`'s
+   own layout, *and* leaves every other block's character
+   position/the document's own `characterCount()` completely
+   untouched -- the second fact is what made it safe to build this on
+   top of the existing single flat `_history` `QPlainTextEdit` at all,
+   since the pre-existing reload-hover feature (TODO `a4c3dec`) caches
+   absolute character offsets at append time and never adjusts them
+   afterward.
+
+   Implemented per the plan: a genuinely long/multi-line `[tool]`/
+   `[tool result]`/`[tool error]` entry now becomes a short,
+   always-visible header (tool name + a truncated single-line preview,
+   `_truncate_for_header`) plus a hidden-by-default "detail" block (the
+   full text) toggled by clicking the header -- extending the
+   existing `eventFilter` already installed for the reload-hover
+   feature (press+release-on-the-same-entry, to avoid misreading a
+   click-and-drag text selection that starts on a header as a
+   toggle), not a second filter. A short/single-line tool call or
+   result (the common case -- `Read`, `Glob`, a short `Bash` command)
+   is completely unchanged from before this change: no header/detail
+   split, no fold entry, no click affordance for something that
+   wouldn't hide anything. Deliberately no ▸/▾ glyph inserted into a
+   header's own text on toggle (that would shift character counts for
+   every later-appended entry, corrupting both later fold entries' and
+   the reload-hover feature's own cached offsets) -- a translucent
+   background tint (`QTextEdit.ExtraSelection`, the exact TODO
+   `78d6207` mechanism already used for user-message coloring) signals
+   collapsed vs. expanded instead, with both features' selection lists
+   now combined through one shared `_refresh_history_extra_selections`
+   (replacing `_append_history`'s previous direct
+   `setExtraSelections()` call, which would otherwise have kept
+   clobbering whichever of the two ran second). A one-time hint line
+   explains the affordance the first time it's actually used in a
+   given widget instance.
+
+   New `tests/verify/verify_claude_desk_history_fold.py` (31 checks):
+   `_truncate_for_header`'s three cases; a short tool call/result
+   creates no fold entry and renders exactly as before; a long one
+   creates exactly one fold entry, starts collapsed (detail blocks
+   `isVisible() == False`), shows a truncated header while the full
+   text remains present (just hidden) in `toPlainText()`; a real
+   simulated click (via `eventFilter`, real `QMouseEvent`s, not a
+   direct method call) toggles and a second click reverts; a
+   press-then-release-elsewhere never toggles; toggling one entry
+   leaves every other fold entry's *and* an existing reload-hover
+   entry's own stored character offsets numerically unchanged -- the
+   concrete regression this design was built to prevent, checked
+   directly; the hint line appears exactly once; the header-selection
+   list tracks exactly the currently-collapsed entries. All 54
+   pre-existing `verify_claude_desk_widget.py` checks still pass
+   unmodified (its own short-tool-call cases fall through this
+   change's "nothing to fold" branch exactly as before).
+
+   Full `tests/verify/` regression suite: 148 non-`disabled_` scripts
+   (147 pre-existing + this 1 new file), 0 failures.
+
+   Not verified: actually watching several real, large tool
+   invocations fold/collapse in a running Desk window (no browser/GUI
+   available in this environment) -- skipped rather than silently
+   omitted. The layout mechanism itself (block visibility genuinely
+   collapsing to zero height) was confirmed directly via a real
+   `QPlainTextEdit` and real layout queries before any of this was
+   built on top of it, and the click/offset-stability behavior is
+   covered by the automated tests above using real Qt event objects,
+   not mocks.
+
 8b88ec2. Update the Image Viewer widget (`widgets/image_viewer/`) so the
    currently-loaded image can be dragged *out* of it -- the reverse
    direction of TODO `9d52dc4`'s new "Input" drop target, and of the
@@ -9357,24 +9446,6 @@ a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's histor
    scripts) passes, 0 failures -- this change only adds a new opt-in
    parameter, no existing `ClaudeSession.start()` call site changed
    behavior.
-
-ed5c62f. De-prioritized (moved to the end of the queue on request --
-   priority is physical position in this file, per
-   shared_development_process.md's Item IDs section). Add
-   folding/collapsing to the Claude (Desk) widget's history view
-   (`widgets/claude_desk/widget.py`'s `_history`) for tool invocations.
-   Right now `_on_tool_use`/`_on_tool_result` append a `[tool]
-   Name(args)`/`[tool result] ...` line unconditionally, with no way to
-   hide it -- a session with several tool calls (each potentially
-   carrying a large `input`/`content` payload, e.g. a `Write`'s full
-   file contents or a long `Bash` command's stdout) makes the
-   transcript hard to scan for the actual conversation. Needs a real
-   collapsed/expanded UI affordance (not just truncating text) --
-   `QPlainTextEdit` has no native per-block fold/collapse support, so
-   this likely means switching the history view to something richer
-   (a `QTreeWidget`-style structured view, or `QTextEdit` with
-   clickable custom text objects) rather than staying on today's
-   single flat plain-text log; not designed yet.
 
 feff1ec. Review and discuss all of the new FEEDBACK items (feedback
    submitted via the Feedback widget, `DESK_FEEDBACK-*.md` files) with

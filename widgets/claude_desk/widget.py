@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from PyQt6.QtCore import QEvent, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
 from PyQt6.QtWidgets import (
@@ -110,6 +112,43 @@ PROMPT_INPUT_HEIGHT = 60
 # visually set user-authored history lines apart from everything else.
 USER_MESSAGE_COLOR = QColor("#3daee9")
 
+# TODO ed5c62f: a collapsed tool-invocation header's own background
+# tint -- a low-alpha neutral gray reads reasonably against either a
+# light or dark palette, unlike a saturated color that would need a
+# theme-aware choice. Cleared entirely (no extra-selection at all) once
+# expanded -- no separate "expanded" tint needed, matching how a
+# regular history line looks.
+FOLD_COLLAPSED_COLOR = QColor(128, 128, 128, 60)
+
+# TODO ed5c62f: a tool call/result whose formatted text already fits on
+# one line within this many characters shows in full, with no fold
+# affordance at all -- only a genuinely long/multi-line payload (e.g. a
+# Write's full file contents, a long Bash stdout) gets collapsed.
+FOLD_HEADER_PREVIEW_MAX_CHARS = 80
+
+FOLD_HINT_TEXT = "(tool call/result details are collapsed by default -- click a line to expand/collapse)"
+
+
+@dataclass
+class _FoldEntry:
+    """One collapsible tool-invocation entry in `_history` (TODO
+    `ed5c62f`). `header_start`/`header_end` are absolute character
+    offsets into `_history`'s document, computed the exact same way
+    `_append_history` already computes a user line's own start/end --
+    stable once recorded, since folding/unfolding only ever toggles
+    `QTextBlock.setVisible()` on the *detail* blocks below, which
+    (confirmed directly -- see plans/claude-desk-history-fold.md)
+    never changes the document's character positions/count at all.
+    `first_detail_block`/`last_detail_block` are `QTextBlock` numbers
+    (also stable once appended) spanning the hidden detail text, which
+    may itself be several blocks (a multi-line payload)."""
+
+    header_start: int
+    header_end: int
+    first_detail_block: int
+    last_detail_block: int
+    expanded: bool = False
+
 
 def _doc_path() -> str:
     directory = current_context.get_current_desk_directory()
@@ -130,6 +169,21 @@ def _development_process_instruction() -> str:
 
 def _format_tool_input(tool_input: dict) -> str:
     return ", ".join(f"{key}={value!r}" for key, value in tool_input.items())
+
+
+def _truncate_for_header(text: str, max_chars: int = FOLD_HEADER_PREVIEW_MAX_CHARS) -> str:
+    """`text` unchanged if it's a single line within `max_chars` --
+    the caller (`_on_tool_use`/`_on_tool_result`) compares the return
+    value against the original to decide whether there's anything left
+    to fold at all (TODO `ed5c62f`): a result equal to its input means
+    nothing was hidden, so no fold entry is created for it. Otherwise a
+    truncated, single-line preview (first line only, capped, trailing
+    "…") -- always different from the input by construction, whether
+    because it was too long or because a later line got dropped."""
+    first_line, _, rest = text.partition("\n")
+    if not rest and len(first_line) <= max_chars:
+        return text
+    return first_line[:max_chars].rstrip() + "…"
 
 
 class _PromptInput(QPlainTextEdit):
@@ -281,6 +335,14 @@ class ClaudeDeskWidget(QWidget):
         self._reload_button.hide()
         self._reload_button.clicked.connect(self._on_reload_clicked)
         self._hovered_reload_entry: tuple[int, int, str] | None = None
+
+        # TODO ed5c62f: tool-invocation fold/collapse state -- see
+        # _append_foldable_history/_toggle_fold and plans/claude-desk
+        # -history-fold.md.
+        self._history_fold_entries: list[_FoldEntry] = []
+        self._history_fold_header_selections: list[QTextEdit.ExtraSelection] = []
+        self._shown_fold_hint = False
+        self._fold_press_entry: _FoldEntry | None = None
 
         self._prompt_input = _PromptInput()
         self._prompt_input.setPlaceholderText("Message Claude...")
@@ -501,19 +563,100 @@ class ClaudeDeskWidget(QWidget):
         fmt.setFontWeight(QFont.Weight.DemiBold)
         selection.format = fmt
         self._history_user_selections.append(selection)
-        self._history.setExtraSelections(self._history_user_selections)
+        self._refresh_history_extra_selections()
         # TODO a4c3dec: reload_text defaults to `text` itself (the
         # pre-existing direct is_user=True call sites/tests pass no
         # reload_text at all) -- every real call site below passes the
         # bare prompt explicitly.
         self._history_user_entries.append((start, end, text if reload_text is None else reload_text))
 
+    # -- tool-invocation fold/collapse (TODO ed5c62f) ------------------
+
+    def _refresh_history_extra_selections(self) -> None:
+        """setExtraSelections() always *replaces* its whole argument
+        (TODO 78d6207's own pre-existing note) -- now two independent
+        features (user-message coloring, collapsed-fold-header tinting)
+        each contribute their own list, so both are combined here
+        rather than either one clobbering the other's highlights."""
+        self._history.setExtraSelections(self._history_user_selections + self._history_fold_header_selections)
+
+    def _append_foldable_history(self, header: str, detail: str) -> None:
+        """Appends `header` as a normal, always-visible history line,
+        then `detail` (which may itself span several lines/blocks) as
+        hidden-by-default detail underneath it -- clicking the header
+        toggles it (see eventFilter/_toggle_fold). Only ever called
+        once the caller has already confirmed there's real detail to
+        hide (see _truncate_for_header's own docstring); every other
+        history line still goes through the plain _append_history."""
+        if not self._shown_fold_hint:
+            self._shown_fold_hint = True
+            self._append_history(FOLD_HINT_TEXT)
+
+        document = self._history.document()
+        self._history.appendPlainText(header)
+        header_end = document.characterCount() - 1
+        header_start = header_end - len(header)
+
+        first_detail_block = document.blockCount()
+        self._history.appendPlainText(detail)
+        last_detail_block = document.blockCount() - 1
+
+        entry = _FoldEntry(header_start, header_end, first_detail_block, last_detail_block)
+        self._history_fold_entries.append(entry)
+        self._set_fold_detail_visible(entry, False)
+        self._refresh_fold_header_selections()
+
+    def _set_fold_detail_visible(self, entry: _FoldEntry, visible: bool) -> None:
+        document = self._history.document()
+        block = document.findBlockByNumber(entry.first_detail_block)
+        end_of_span = block.position()
+        while block.isValid() and block.blockNumber() <= entry.last_detail_block:
+            block.setVisible(visible)
+            end_of_span = block.position() + block.length()
+            block = block.next()
+        first_block = document.findBlockByNumber(entry.first_detail_block)
+        # Required for QPlainTextEdit's own document layout to actually
+        # redo line-height layout after a block's visibility changes --
+        # confirmed directly (plans/claude-desk-history-fold.md), not
+        # assumed to just work from setVisible() alone.
+        document.markContentsDirty(first_block.position(), end_of_span - first_block.position())
+        self._history.viewport().update()
+
+    def _refresh_fold_header_selections(self) -> None:
+        selections = []
+        for entry in self._history_fold_entries:
+            if entry.expanded:
+                continue
+            cursor = QTextCursor(self._history.document())
+            cursor.setPosition(entry.header_start)
+            cursor.setPosition(entry.header_end, QTextCursor.MoveMode.KeepAnchor)
+            selection = QTextEdit.ExtraSelection()
+            selection.cursor = cursor
+            fmt = QTextCharFormat()
+            fmt.setBackground(FOLD_COLLAPSED_COLOR)
+            selection.format = fmt
+            selections.append(selection)
+        self._history_fold_header_selections = selections
+        self._refresh_history_extra_selections()
+
+    def _fold_entry_at(self, pos) -> _FoldEntry | None:
+        position = self._history.cursorForPosition(pos).position()
+        return next(
+            (entry for entry in self._history_fold_entries if entry.header_start <= position <= entry.header_end),
+            None,
+        )
+
+    def _toggle_fold(self, entry: _FoldEntry) -> None:
+        entry.expanded = not entry.expanded
+        self._set_fold_detail_visible(entry, entry.expanded)
+        self._refresh_fold_header_selections()
+
     # -- hover-triggered history reload control (TODO a4c3dec) --------
 
     def eventFilter(self, obj, event) -> bool:
-        # Only observes MouseMove/Leave on _history's own viewport --
-        # never consumed (no event.accept()/return True), so this
-        # never interferes with _history's normal click-drag text
+        # Only observes _history's own viewport -- never consumed (no
+        # event.accept()/return True anywhere below), so none of this
+        # ever interferes with _history's normal click-drag text
         # selection, and _prompt_input is entirely untouched since the
         # filter isn't installed there at all.
         if obj is self._history.viewport():
@@ -521,6 +664,18 @@ class ClaudeDeskWidget(QWidget):
                 self._update_reload_button(event.position().toPoint())
             elif event.type() == QEvent.Type.Leave:
                 self._hide_reload_button()
+            elif event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+                # TODO ed5c62f: only recorded here, actually toggled on
+                # release (below) -- see _toggle_fold's own guard
+                # against misreading a click-and-drag text selection
+                # that happens to start on a header line as a toggle.
+                self._fold_press_entry = self._fold_entry_at(event.position().toPoint())
+            elif event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+                if self._fold_press_entry is not None and self._fold_press_entry is self._fold_entry_at(
+                    event.position().toPoint()
+                ):
+                    self._toggle_fold(self._fold_press_entry)
+                self._fold_press_entry = None
         return super().eventFilter(obj, event)
 
     def _update_reload_button(self, pos) -> None:
@@ -663,11 +818,26 @@ class ClaudeDeskWidget(QWidget):
         self._append_history(text)
 
     def _on_tool_use(self, tool_use_id: str, name: str, tool_input: dict) -> None:
-        self._append_history(f"[tool] {name}({_format_tool_input(tool_input)})")
+        # TODO ed5c62f: folded (collapsed by default) only when the
+        # full formatted args actually differ from the header's own
+        # truncated preview -- a short call (no args, or args that
+        # already fit) shows in full, exactly as before this change.
+        args_text = _format_tool_input(tool_input)
+        preview = _truncate_for_header(args_text) if args_text else ""
+        header = f"[tool] {name}({preview})"
+        if args_text and preview != args_text:
+            self._append_foldable_history(header, args_text)
+        else:
+            self._append_history(header)
 
     def _on_tool_result(self, tool_use_id: str, content: object, is_error: bool) -> None:
         marker = "tool error" if is_error else "tool result"
-        self._append_history(f"[{marker}] {content}")
+        text = str(content)
+        preview = _truncate_for_header(text)
+        if preview != text:
+            self._append_foldable_history(f"[{marker}] {preview}", text)
+        else:
+            self._append_history(f"[{marker}] {text}")
 
     def _on_permission_request(self, request_id: str, tool_name: str, tool_input: dict) -> None:
         self._pending_permissions.append((request_id, tool_name, tool_input))
