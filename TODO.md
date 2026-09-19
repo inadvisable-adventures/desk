@@ -9463,6 +9463,45 @@ a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's histor
    parameter, no existing `ClaudeSession.start()` call site changed
    behavior.
 
+2dbfd55. Handle `QWebEnginePage.featurePermissionRequested` in
+   `ChromiumWidget` (`src/desk/shell/chromium_widget.py`), which
+   currently never connects it. Deny by default so a `kind: "html"`
+   widget calling `getUserMedia` (e.g. via the Web Speech API) gets a
+   normal, catchable `NotAllowedError` instead of the blank view the
+   report saw; consider a capability-gated grant for mic/camera as a
+   follow-up (macOS also needs a microphone usage entitlement). First
+   capture a real repro on a placed widget -- the report calls "an
+   unhandled permission request causes the blanking" plausible but
+   unproven. Cites
+   `../FEEDBACK/FEEDBACK-DESK-html-widget-getusermedia-crash-2026-09-11-1735.md`
+   (suggested fix 1).
+
+b89cf17. Make `run_on_gui` and `run_on_gui_async`
+   (`src/desk/server/app.py`) translate *any* exception raised on the
+   GUI thread into an error response carrying the exception's type and
+   message, rather than only `RuntimeError`/`KeyError`/`ValueError`
+   (sync) and `RuntimeError`/`TimeoutError` (async) -- anything else
+   currently falls through to a bare, detail-free 500, e.g.
+   `introspect.snapshot` against a crashed widget. Cites
+   `../FEEDBACK/FEEDBACK-DESK-html-widget-getusermedia-crash-2026-09-11-1735.md`
+   (suggested fix 2).
+
+aa0ce76. Add a rotating file log for Desk's own logging
+   (`src/desk/app.py` currently only does `logging.basicConfig` to
+   stdout), so a traceback is recoverable after the fact and there is a
+   documented place to find it. Cites
+   `../FEEDBACK/FEEDBACK-DESK-html-widget-getusermedia-crash-2026-09-11-1735.md`
+   (suggested fix 3).
+
+5abf5a0. When a `ChromiumWidget`'s render process terminates
+   (`QWebEnginePage.renderProcessTerminated`), replace the silent blank
+   view with a "widget crashed" placeholder that has a **[RESTART]**
+   button, which reloads the widget's page. This is a new,
+   crash-specific control -- deliberately *not* the `[STALE]` tag,
+   which stays a content-hash-mismatch indicator. Cites
+   `../FEEDBACK/FEEDBACK-DESK-html-widget-getusermedia-crash-2026-09-11-1735.md`
+   (the "blank forever" symptom).
+
 feff1ec. Review and discuss all of the new FEEDBACK items (feedback
    submitted via the Feedback widget, `DESK_FEEDBACK-*.md` files) with
    the user before acting on any of them. Not designed/scoped yet --
