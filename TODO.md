@@ -9605,6 +9605,51 @@ f35466a. Make an oversized tool result (e.g. a ~776KB-base64
    `../FEEDBACK/FEEDBACK-DESK-widget-glitches-on-oversized-screenshot-json-2026-09-18-2140.md`
    (part a).
 
+f0da2e9. Expose staleness to agents: add a `stale: bool` to each
+   placed instance in `desk_state_dict()` (`src/desk/desks.py`),
+   alongside `placed_content_hash`, so `desk_list_widget_instances` and
+   `desk.workspace.getState()` report whether each instance is safe to
+   trust. Populate it from the frame's own live `_stale` bit (the one
+   the titlebar `[STALE]` indicator reads), *not* an independent hash
+   diff -- that would miss the force-`True` set by
+   `_on_promoted_widget_source_changed` (`src/desk/shell/window.py`)
+   when source changed on disk and no fresh hash exists yet. Mint a
+   tempui changelog tag/entry per `development-process.md`. Cites
+   `../FEEDBACK/FEEDBACK-DESK-agent-cannot-detect-stale-widget-instances-2026-09-17-2200.md`.
+
+83427f4. Let a `kind: "html"` widget learn which file it was opened
+   for. Add a `desk.self.getOpenedFile()` Bridge call (route,
+   `bridge_client.py`, capability handling as for the other `self`
+   calls), and set the file for the new instance on the same paths that
+   today gate on `hasattr(widget, "set_file")`
+   (`DeskWindow.open_editor_or_scrap`/`open_git_diff` in
+   `src/desk/shell/window.py`, and `widgets/project_files/widget.py`'s
+   `_open_file`) -- which silently skips an html widget, so a file-type
+   registry `view` handler that is an html widget opens empty. Chosen
+   over merging an `_openedFile` key into the widget's initial state,
+   which would leak into its persisted state. Mint a tempui changelog
+   tag/entry. Cites
+   `../FEEDBACK/FEEDBACK-DESK-html-widget-view-handler-no-file-path-2026-08-06-2353.md`.
+
+5928ae6. Give the built-in Sheet widget (`widgets/sheet/widget.py`) a
+   `set_file(path)` method that loads the TSV at `path` using the
+   parsing its `Open` button already uses, so it participates in the
+   file-type-registry view-handler dispatch like Markdown/Image Viewer/
+   Editor. Also add `.tsv` (and the other Sheet-openable suffixes) to
+   `EXTERNAL_DROP_WIDGET_BY_SUFFIX` in `src/desk/shell/window.py` so
+   dropping one opens it. Cites
+   `../FEEDBACK/FEEDBACK-DESK-sheet-widget-no-programmatic-open-2026-08-07-0302.md`.
+
+3b6de01. Add a generic tempui keyword (e.g. `OpenWithWidget<TAB>
+   widget_id<TAB>path`) that places any widget with a file loaded,
+   generalizing the one-keyword-per-widget `OpenMarkdown`/`OpenImage`
+   pattern: `set_file` for `kind: "python"` widgets, and TODO
+   `83427f4`'s `getOpenedFile` mechanism for `kind: "html"` ones.
+   Depends on TODO `83427f4`. Mint a tempui changelog tag/entry and
+   document it alongside the existing `Open*` keyword docs. Cites
+   `../FEEDBACK/FEEDBACK-DESK-sheet-widget-no-programmatic-open-2026-08-07-0302.md`
+   (suggested fix 2).
+
 feff1ec. Review and discuss all of the new FEEDBACK items (feedback
    submitted via the Feedback widget, `DESK_FEEDBACK-*.md` files) with
    the user before acting on any of them. Not designed/scoped yet --
