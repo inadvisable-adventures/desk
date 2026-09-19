@@ -6,7 +6,7 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
-0959ff1. Prioritized per direct user request. From
+0959ff1. COMPLETED: Prioritized per direct user request. From
    `../FEEDBACK/FEEDBACK-DESK-no-job-to-job-invocation-2026-09-18-1600.md`:
    there's no way for one Installed Job (TODO `7dca383`) to invoke
    another -- every existing entry point (`desk_run_installed_job`,
@@ -24,6 +24,55 @@ reordered or its description edited.
    returning the same `{"ok", "stdout", "stderr", "traceback"}` shape
    `desk_run_installed_job` already returns.
    [planned: installed-job-to-job-invocation.md]
+
+   COMPLETED: Implemented per the plan. `desk.installed_jobs.run_script`
+   gained a `run_installed_job_callable` parameter, exposed to a
+   `python`-kind job's own `exec()` globals as `RUN_INSTALLED_JOB`.
+   `DeskWindow.run_installed_job`'s existing GUI-thread validation/
+   resolution step was factored out into `_prepare_installed_job_run`
+   (shared, not duplicated, with the new nested path) and its
+   kind-dispatch execution step into a module-level
+   `_dispatch_installed_job_run`. `_make_run_installed_job_callable`
+   builds a self-referential closure (arbitrary nesting depth falls out
+   of ordinary recursion, no depth bookkeeping) that reuses the
+   existing `current_context.get_gui_thread_caller()` bridge (TODO
+   `97bd090`, the same primitive `desk.pipeline_dsl`/
+   `desk_mcp_server` already use for "background thread needs a
+   GUI-thread result") for the fast prepare step only -- the actual
+   nested job execution always runs directly on the calling job's own
+   thread, keeping the same "no artificial timeout" property every
+   Installed Job run already has.
+
+   Found by reasoning through the exact call sequence before writing
+   any code (not by hitting it blind): a `python`-kind job invoking
+   another `python`-kind job re-enters `run_script`'s own `_RUN_LOCK`
+   on the same thread -- a plain `threading.Lock` is not reentrant and
+   would deadlock on the very first nested python-to-python call.
+   Fixed by making it an `RLock`; confirmed for real (not just by
+   inspection) with a live test, including three levels of nesting
+   (A invokes B invokes C) completing without hanging.
+
+   `tempui-installed-jobs.md` gained an "Invoking another job from a
+   `python`-kind job" section; new tag `"job-to-job invocation via
+   RUN_INSTALLED_JOB #181226"` added to `CURRENT_TAGS` with a matching
+   `_NEW_FEATURES` entry; `desk_install_job`'s MCP tool description
+   updated. A `rust`-kind job gets no equivalent capability at all, per
+   the feedback's own explicit scoping.
+
+   New `tests/verify/verify_installed_job_to_job_invocation.py`: 20
+   checks covering python-invokes-python (the deadlock-risk case),
+   python-invokes-rust (confirming the uniform interface actually hides
+   the kind difference), not-installed/stale-source targets returning
+   `{"ok": false, ...}` rather than raising, `config_path` passthrough,
+   three-level nesting, and graceful degradation when no GUI thread
+   caller is registered at all. `verify_installed_jobs.py`/
+   `verify_installed_jobs_rust.py`'s own `_FakeWindowForRun` stand-ins
+   updated for the refactor (two new method aliases each).
+
+   Verified: full `tests/verify/` regression suite (143 non-`disabled_`
+   scripts) passes, 0 failures. Moved
+   `../FEEDBACK/FEEDBACK-DESK-no-job-to-job-invocation-2026-09-18-1600.md`
+   to `../FEEDBACK/implemented/` -- this was its only TODO item.
 
 94a2fa2. COMPLETED: Prioritized per direct user request. Add a `rust` kind for Installed Jobs (TODO
    `7dca383`), for computationally-intensive work that wants a compiled

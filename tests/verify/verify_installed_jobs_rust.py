@@ -208,6 +208,10 @@ class _FakeWindowForRun:
     get_installed_jobs_dicts = DeskWindow.get_installed_jobs_dicts
     get_state = DeskWindow.get_state
     _resolve_job_needs = DeskWindow._resolve_job_needs
+    # TODO 0959ff1: see verify_installed_jobs.py's own identical
+    # comment on these two.
+    _prepare_installed_job_run = DeskWindow._prepare_installed_job_run
+    _make_run_installed_job_callable = DeskWindow._make_run_installed_job_callable
 
     def save_current_desk(self) -> None:
         pass

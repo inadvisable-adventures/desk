@@ -220,6 +220,34 @@ class NewDeskProvisioning:
     create_gitignore: bool
 
 
+def _dispatch_installed_job_run(
+    kind: str | None,
+    job_dir: Path,
+    config_path: str | None,
+    needs_path: str | None,
+    run_installed_job_callable: Callable[..., dict] | None,
+) -> tuple[bool, str, str, str]:
+    """TODO 94a2fa2/0959ff1: the kind-based execution half of running
+    an Installed Job -- factored out of DeskWindow.run_installed_job so
+    it can also be called directly (never through a new background
+    thread of its own) from DeskWindow._make_run_installed_job_callable's
+    nested, job-invokes-job path, which is already running on the
+    invoking job's own background thread and wants to block that
+    thread until the invoked job finishes, not hand off to yet another
+    thread. Stateless (no DeskWindow access needed) -- everything it
+    needs was already resolved by _prepare_installed_job_run. `kind is
+    None` (practically unreachable, see that method's own docstring)
+    is reported through the normal (ok, stdout, stderr, traceback)
+    return shape rather than raised, since it's a job-content problem,
+    not a caller-request problem."""
+    if kind == "rust":
+        return run_rust_installed_job(job_dir, config_path, needs_path)
+    if kind == "python":
+        script_text = (job_dir / INSTALLED_JOB_ENTRY_FILENAME).read_text()
+        return run_installed_job_script(script_text, job_dir, config_path, needs_path, run_installed_job_callable)
+    return False, "", "job kind could not be determined at run time.", ""
+
+
 class DeskWindow(QMainWindow):
     """Owns the single currently-open Desk for this window (only one
     window exists for now, and it can only have one Desk open at a time —
@@ -1876,6 +1904,82 @@ class DeskWindow(QMainWindow):
         needs_path.write_text(json.dumps(resolved))
         return str(needs_path)
 
+    def _prepare_installed_job_run(
+        self, name: str, config_path: str | None
+    ) -> tuple[str | None, Path, str | None, str | None]:
+        """TODO 0959ff1: the GUI-thread-only half of running an
+        Installed Job, factored out of run_installed_job so it can be
+        shared with _make_run_installed_job_callable's nested,
+        job-invokes-job path below (reached via
+        current_context.get_gui_thread_caller() from a python-kind
+        job's own background thread) without a second, drifting copy.
+        Validates via get_installed_job_for_run (raises ValueError --
+        the caller decides whether that propagates or becomes an
+        {"ok": false, ...} result), resolves config_path and any
+        declared desk.state needs (TODO 94a2fa2), detects kind. Returns
+        (kind, job_dir, resolved_config_path, resolved_needs_path);
+        kind is practically never None here (get_installed_job_for_run's
+        hash check already refuses a run whose source changed since
+        install), but callers still handle it defensively."""
+        self.get_installed_job_for_run(name)  # raises ValueError; return value unused here
+        job_dir = installed_job_dir(self.current_desk.directory, name)
+        resolved_config_path = resolve_config_path(self.current_desk.directory, config_path)
+        resolved_needs_path = self._resolve_job_needs(name, job_dir)
+        kind = detect_installed_job_kind(job_dir)
+        return kind, job_dir, resolved_config_path, resolved_needs_path
+
+    def _make_run_installed_job_callable(self) -> Callable[..., dict]:
+        """TODO 0959ff1: builds the RUN_INSTALLED_JOB global handed to
+        a python-kind job's own exec() globals (see
+        desk.installed_jobs.run_script) -- a synchronous,
+        kind-agnostic "run this other Installed Job and give me its
+        result" callable, usable from that job's own code regardless of
+        whether the target is python- or rust-kind (per
+        ../FEEDBACK/FEEDBACK-DESK-no-job-to-job-invocation-2026-09-18-1600.md's
+        own request, the calling job never needs to know or care which).
+
+        Safe to call from any thread -- a python-kind job's own script
+        always runs on a background thread (run_installed_job always
+        spawns one, never runs on the GUI thread itself), so this is
+        always a legitimate "background thread needs a GUI-thread
+        -owned result" call, the same shape
+        desk.pipeline_dsl._call_gui/desk_mcp_server._call_on_gui_thread
+        already use current_context.get_gui_thread_caller() for.
+        Deliberately routes ONLY the fast GUI-thread validation/
+        resolution step (_prepare_installed_job_run) through that
+        bridge -- the actual job execution
+        (_dispatch_installed_job_run) always runs directly on the
+        calling job's own thread, never on the GUI thread, so a
+        long-running nested job keeps the exact same "no artificial
+        timeout" property every Installed Job run already has (only
+        the prepare step is bounded, by GuiBridge.call's own default
+        5s timeout -- ample for a filesystem/hash check).
+
+        The returned closure is self-referential: when the invoked job
+        is itself python-kind, it's handed this exact same closure as
+        its own RUN_INSTALLED_JOB, so arbitrary nesting depth falls out
+        of ordinary Python recursion rather than needing its own depth
+        bookkeeping. A rust-kind target gets no such callable at all --
+        out of scope per the feedback that requested this."""
+
+        def run_installed_job_from_job(name: str, config_path: str | None = None) -> dict:
+            caller = current_context.get_gui_thread_caller()
+            if caller is None:
+                return {"ok": False, "stdout": "", "stderr": "Desk's GUI thread is not reachable.", "traceback": ""}
+            try:
+                kind, job_dir, resolved_config_path, resolved_needs_path = caller(
+                    lambda: self._prepare_installed_job_run(name, config_path)
+                )
+            except ValueError as e:
+                return {"ok": False, "stdout": "", "stderr": str(e), "traceback": ""}
+            nested_callable = run_installed_job_from_job if kind == "python" else None
+            ok, stdout, stderr, tb = _dispatch_installed_job_run(
+                kind, job_dir, resolved_config_path, resolved_needs_path, nested_callable
+            )
+            return {"ok": ok, "stdout": stdout, "stderr": stderr, "traceback": tb}
+
+        return run_installed_job_from_job
+
     def run_installed_job(
         self, name: str, config_path: str | None, on_result: Callable[[bool, str, str, str], None]
     ) -> None:
@@ -1893,40 +1997,24 @@ class DeskWindow(QMainWindow):
         widget-initiated, TODO 888b537) -- both entry points share this
         one implementation rather than each running their own copy.
 
-        TODO 94a2fa2: dispatches on detect_installed_job_kind -- a
-        python-kind job is exec'd in-process exactly as before; a
-        rust-kind job is built (on demand, cached) and run as a real
-        subprocess by run_rust_installed_job. kind is re-detected here
-        rather than trusted from install time (nothing persists it --
-        see detect_installed_job_kind's own docstring); a None result
-        is practically unreachable (get_installed_job_for_run's hash
-        check already refuses a run whose source changed since
-        install), but reported through the normal on_result channel
-        rather than raised, since it's a job-content problem, not a
-        caller-request problem."""
-        self.get_installed_job_for_run(name)  # raises ValueError; return value unused here
-        job_dir = installed_job_dir(self.current_desk.directory, name)
-        resolved_config_path = resolve_config_path(self.current_desk.directory, config_path)
-        resolved_needs_path = self._resolve_job_needs(name, job_dir)
-        kind = detect_installed_job_kind(job_dir)
+        TODO 94a2fa2/0959ff1: dispatches on detect_installed_job_kind
+        via the shared _prepare_installed_job_run/
+        _dispatch_installed_job_run pair -- a python-kind job is exec'd
+        in-process exactly as before (now also handed a
+        RUN_INSTALLED_JOB global, see
+        _make_run_installed_job_callable); a rust-kind job is built (on
+        demand, cached) and run as a real subprocess by
+        run_rust_installed_job."""
+        kind, job_dir, resolved_config_path, resolved_needs_path = self._prepare_installed_job_run(
+            name, config_path
+        )
+        run_installed_job_callable = self._make_run_installed_job_callable() if kind == "python" else None
 
-        if kind == "rust":
-
-            def _run() -> None:
-                ok, stdout, stderr, tb = run_rust_installed_job(job_dir, resolved_config_path, resolved_needs_path)
-                on_result(ok, stdout, stderr, tb)
-        elif kind == "python":
-            script_text = (job_dir / INSTALLED_JOB_ENTRY_FILENAME).read_text()
-
-            def _run() -> None:
-                ok, stdout, stderr, tb = run_installed_job_script(
-                    script_text, job_dir, resolved_config_path, resolved_needs_path
-                )
-                on_result(ok, stdout, stderr, tb)
-        else:
-
-            def _run() -> None:
-                on_result(False, "", f"{name!r}'s kind could not be determined at run time.", "")
+        def _run() -> None:
+            ok, stdout, stderr, tb = _dispatch_installed_job_run(
+                kind, job_dir, resolved_config_path, resolved_needs_path, run_installed_job_callable
+            )
+            on_result(ok, stdout, stderr, tb)
 
         threading.Thread(target=_run, daemon=True).start()
 

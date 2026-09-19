@@ -54,6 +54,7 @@ import sys
 import threading
 import tomllib
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -186,11 +187,24 @@ def resolve_config_path(directory: Path, raw: str | None) -> str | None:
 # agent turn). Installed Jobs are not meant to be a high-throughput
 # concurrent system -- serializing here is a minimal, correct fix, not
 # a performance concession that costs anything in practice.
-_RUN_LOCK = threading.Lock()
+#
+# TODO 0959ff1: an RLock, not a plain Lock -- a python-kind job that
+# calls its own RUN_INSTALLED_JOB global to invoke another python-kind
+# job re-enters run_script on the exact same thread, still inside the
+# outer call's own `with _RUN_LOCK:` block. A plain Lock is not
+# reentrant and would deadlock on the very first nested python-to
+# -python invocation; RLock allows the same thread back in (only a
+# *different* thread still blocks, which is _RUN_LOCK's actual
+# purpose, per the paragraph above -- unaffected by this change).
+_RUN_LOCK = threading.RLock()
 
 
 def run_script(
-    script_text: str, job_dir: Path, config_path: str | None, needs_path: str | None = None
+    script_text: str,
+    job_dir: Path,
+    config_path: str | None,
+    needs_path: str | None = None,
+    run_installed_job_callable: Callable[[str, str | None], dict] | None = None,
 ) -> tuple[bool, str, str, str]:
     """Runs on a background thread (spawned by
     desk.shell.window.DeskWindow.run_installed_job -- never the GUI
@@ -204,8 +218,15 @@ def run_script(
     NEEDS_PATH (TODO 94a2fa2) is the same idea for a job.json-declared
     desk.state.* needs file -- see
     desk.shell.window.DeskWindow._resolve_job_needs -- None if the job
-    declared no needs. Returns (ok, stdout, stderr, traceback) rather
-    than raising, mirroring _run_python_job's own relay payload shape."""
+    declared no needs. RUN_INSTALLED_JOB (TODO 0959ff1) is the same
+    idea again, but a callable rather than a path: lets this job invoke
+    another Installed Job (python or rust) and get back the same
+    {"ok", "stdout", "stderr", "traceback"} shape
+    desk_run_installed_job itself returns -- see
+    desk.shell.window.DeskWindow._make_run_installed_job_callable for
+    what actually builds it. Returns (ok, stdout, stderr, traceback)
+    rather than raising, mirroring _run_python_job's own relay payload
+    shape."""
     stdout = io.StringIO()
     stderr = io.StringIO()
     job_dir_str = str(job_dir)
@@ -215,7 +236,12 @@ def run_script(
             with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                 exec(
                     compile(script_text, "<installed_job>", "exec"),
-                    {"__name__": "__installed_job__", "CONFIG_PATH": config_path, "NEEDS_PATH": needs_path},
+                    {
+                        "__name__": "__installed_job__",
+                        "CONFIG_PATH": config_path,
+                        "NEEDS_PATH": needs_path,
+                        "RUN_INSTALLED_JOB": run_installed_job_callable,
+                    },
                 )
             return True, stdout.getvalue(), stderr.getvalue(), ""
         except Exception:

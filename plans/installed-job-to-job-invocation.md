@@ -1,4 +1,4 @@
-# Job-to-job invocation: `RUN_INSTALLED_JOB` for `python`-kind Installed Jobs (TODO `0959ff1`)
+# Job-to-job invocation: `RUN_INSTALLED_JOB` for `python`-kind Installed Jobs (TODO `0959ff1`) (COMPLETED)
 
 ## Summary
 

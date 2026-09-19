@@ -225,9 +225,10 @@ async def _get_next_todo_item(args: dict[str, Any]) -> dict[str, Any]:
     "desk-installed-jobs/<name>/ -- either main.py (python kind) or a Cargo.toml + src/ (rust kind, "
     "for computationally-intensive work or GPU access via e.g. the wgpu crate; exactly one of the two "
     "must be present). Computes its version hash and persists it to the current Desk. This is the "
-    "only approval point for this job: desk_run_installed_job never re-prompts. See "
-    "tempui-installed-jobs.md for the full picture, including job.json's optional declared "
-    "desk.state.* 'needs' list.",
+    "only approval point for this job: desk_run_installed_job never re-prompts. A python-kind job's "
+    "own code can invoke another installed job (python or rust, uniformly) via its own "
+    "RUN_INSTALLED_JOB global. See tempui-installed-jobs.md for the full picture, including "
+    "job.json's optional declared desk.state.* 'needs' list.",
     {"name": str},
 )
 async def _install_job(args: dict[str, Any]) -> dict[str, Any]:

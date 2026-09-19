@@ -212,6 +212,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "version-40",
     "tagged changelog, no version numbers #252348",
     "rust installed jobs + declared state needs #739624",
+    "job-to-job invocation via RUN_INSTALLED_JOB #181226",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1517,6 +1518,38 @@ job the same way `config_path` is:
 No `job.json` at all is the common case and needs no change -- every
 job written before this existed keeps working exactly as it did.
 
+## Invoking another job from a `python`-kind job
+
+A `python`-kind job's own code gets one more global: `RUN_INSTALLED_JOB(name,
+config_path=None) -> {"ok", "stdout", "stderr", "traceback"}` -- the
+exact same shape `desk_run_installed_job` itself returns. Call it to
+run another already-installed job (`python`- or `rust`-kind, uniformly
+-- your own code never needs to know or care which) as part of your
+own job's work, e.g. a `python`-kind job doing scene setup that wants
+to hand its GPU-heavy inner loop off to a `rust`-kind job:
+
+```python
+result = RUN_INSTALLED_JOB("gpu_inner_loop", config_path="/path/to/config.json")
+if result["ok"]:
+    print(result["stdout"])
+else:
+    print("nested job failed:", result["stderr"])
+```
+
+Same no-reapproval/stale-source-refusal rules apply to the nested job
+as to any other run -- a failure there (not installed, or its source
+changed since its own install) comes back as `{"ok": false, ...}`,
+never as a Python exception raised into your own code. Nesting is
+unrestricted -- a `python`-kind job invoked this way gets its own
+`RUN_INSTALLED_JOB` too, so it can invoke a further job in turn, to
+whatever depth you actually write.
+
+**Only `python`-kind jobs can invoke another job.** A `rust`-kind job
+has no equivalent -- it's a real, separate OS process with no path
+back into Desk's own state to make this call at all. If you need a
+`rust`-kind job's own inner work broken into steps, structure that
+inside the Rust program itself.
+
 ## Running from a `kind: "html"` widget
 
 An unrelated `kind: "html"` widget (declaring the `installed_jobs`
@@ -1626,6 +1659,20 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "job-to-job invocation via RUN_INSTALLED_JOB #181226": """- A `python`-kind Installed Job's own code can now invoke another
+  Installed Job -- `python`- or `rust`-kind, uniformly, your own code
+  never needs to know or care which -- via a new global,
+  `RUN_INSTALLED_JOB(name, config_path=None) -> {"ok", "stdout",
+  "stderr", "traceback"}` (the exact shape `desk_run_installed_job`
+  itself returns). A failure in the nested job (not installed, or its
+  source changed since its own install) comes back as `{"ok": false,
+  ...}`, never a raised exception. Nesting is unrestricted -- an
+  invoked `python`-kind job gets its own `RUN_INSTALLED_JOB` too. Only
+  `python`-kind jobs can invoke another job -- a `rust`-kind job has no
+  equivalent, being a real, separate OS process with no path back into
+  Desk's own state to make this call at all. See "Invoking another job
+  from a `python`-kind job" in `tempui-installed-jobs.md`.
+""",
     "rust installed jobs + declared state needs #739624": """- Installed Jobs (`tempui-installed-jobs.md`) gained a second kind,
   `rust`: `desk-installed-jobs/<name>/Cargo.toml` (+ `src/`) instead of
   `main.py`, built on demand (`cargo build --release`, cached until
