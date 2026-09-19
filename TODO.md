@@ -9535,6 +9535,46 @@ aa0ce76. Add a rotating file log for Desk's own logging
    ("Related finding") and
    `../FEEDBACK/FEEDBACK-DESK-promoted-widget-tsconfig-path-not-fixed-up-2026-09-18-1400.md`.
 
+90dd6e6. Extend `desk.mermaid`'s parser (`src/desk/mermaid.py`): add
+   stadium nodes `id(["label"])`, unpiped inline edge labels
+   `A -- label --> B` (today the label text is folded into the
+   preceding node's token, so the error points at the wrong place), and
+   quoted labels (`A["a [b] c"]`, standard Mermaid) so a label can
+   contain its own delimiter characters. Document the exact supported
+   grammar, including what is deliberately unsupported, in the
+   module's docstring and in `tempui-markdown.md`. Cites
+   `../FEEDBACK/FEEDBACK-DESK-mermaid-parser-rejects-standard-syntax-2026-09-18-2220.md`.
+
+9fe03a1. Split the Markdown widget's single Mermaid fallback message
+   (`widgets/markdown/widget.py`, `_build_mermaid_widget`/
+   `_mermaid_fallback_widget`) into distinct cases: no transform
+   registered for the diagram kind (say what is missing), a
+   `desk.mermaid.MermaidParseError` (show its own message, which today
+   is discarded), and any other transform failure. This revisits TODO
+   `a9e2ba7`'s decision to collapse all failures into
+   "(unsupported or unparseable Mermaid diagram)"; update the affected
+   `tests/verify/` scripts (e.g. `verify_markdown_mermaid_transforms.py`).
+   Cites
+   `../FEEDBACK/FEEDBACK-DESK-mermaid-parser-rejects-standard-syntax-2026-09-18-2220.md`
+   and
+   `../FEEDBACK/FEEDBACK-DESK-mermaid-rendering-fails-silently-without-project-transforms-2026-09-18-2000.md`.
+
+05f2222. Have Desk discover its own bundled `desk_transforms/` (today
+   `desk.transforms.discover_transforms_with_errors` scans only the
+   current project's `.desk_temp/transforms/` and `desk_transforms/`),
+   as a third, lowest-precedence location scanned first so a project's
+   own transform with the same id still wins. That way the Markdown
+   widget's Mermaid rendering (`mermaid_flowchart_svg`,
+   `mermaid_state_svg`) works in every project with nothing copied
+   into it, keeping new projects free of files they did not ask for.
+   Make sure the Transform Manager widget (TODO `b5e15cf`) shows the
+   new location, and document the dependency/behavior in
+   `tempui-markdown.md`, `desk-temporary-ui.md`, and
+   `design-docs/transforms.md`. Cites
+   `../FEEDBACK/FEEDBACK-DESK-mermaid-rendering-fails-silently-without-project-transforms-2026-09-18-2000.md`
+   (suggestions 2 and 3; the report explicitly does not want
+   auto-scaffolding).
+
 feff1ec. Review and discuss all of the new FEEDBACK items (feedback
    submitted via the Feedback widget, `DESK_FEEDBACK-*.md` files) with
    the user before acting on any of them. Not designed/scoped yet --
