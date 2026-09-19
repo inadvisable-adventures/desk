@@ -9650,6 +9650,37 @@ f0da2e9. Expose staleness to agents: add a `stale: bool` to each
    `../FEEDBACK/FEEDBACK-DESK-sheet-widget-no-programmatic-open-2026-08-07-0302.md`
    (suggested fix 2).
 
+db2402c. Claude (Desk) widget: (1) a live token-usage indicator. Add a
+   `ClaudeSession` signal (e.g. `token_usage`) emitted from
+   `_handle_message` whenever an `AssistantMessage` carries a non-`None`
+   `.usage` (currently ignored), and show it where `_set_busy`
+   (`widgets/claude_desk/widget.py`) sets "Working..." -- e.g.
+   "Working... (↑1.2k ↓340 tokens)". Forward `ResultMessage.usage`/
+   `.model_usage` in the existing `turn_complete` payload for a final
+   tally. (2) An **Interrupt** button, shown only while `_busy`, above
+   the Send/Queue button, wired to a new `ClaudeSession.interrupt()`
+   that calls the SDK's `client.interrupt()` on the session's loop (the
+   `send_prompt`/`set_permission_mode` pattern); use
+   `ResultMessage.terminal_reason` to tell an interrupted turn from a
+   normal or errored one in the status text. Cites
+   `../FEEDBACK/FEEDBACK-DESK-claude-desk-progress-interrupt-compact-2026-09-18-2035.md`
+   (parts 1 and 2).
+
+db1cd65. Claude (Desk) widget: context-window awareness and manual
+   compaction. (a) Poll `ClaudeSDKClient.get_context_usage()` after each
+   `turn_complete`, emit a `context_usage` signal, and mark the widget
+   (e.g. a status-label color or badge) once `percentage` nears
+   `autoCompactThreshold`. (b) An always-available **Compact now**
+   button next to the model dropdown, confirming first via a
+   label-plus-buttons row modeled on `_permission_row` rather than a
+   modal dialog. The SDK has no programmatic compact method: first
+   verify against a real session whether sending the literal
+   `/compact` through `client.query()` works; if it does not, file the
+   need as an upstream `claude_agent_sdk` feature request and ship only
+   (a). Cites
+   `../FEEDBACK/FEEDBACK-DESK-claude-desk-progress-interrupt-compact-2026-09-18-2035.md`
+   (part 3).
+
 feff1ec. Review and discuss all of the new FEEDBACK items (feedback
    submitted via the Feedback widget, `DESK_FEEDBACK-*.md` files) with
    the user before acting on any of them. Not designed/scoped yet --
