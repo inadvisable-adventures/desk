@@ -6,6 +6,22 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+6ab9e85. Claude (Desk) widget: an `AskUserQuestion` tool call is currently
+   routed through the generic Allow/Deny permission row
+   (`ClaudeSession._can_use_tool`, `widgets/claude_desk/widget.py`'s
+   `_show_next_permission`), which renders its structured input as a
+   repr dump and can only return allow/deny with `updated_input=None`
+   -- so clicking "Allow" delivers no answer and the turn can hang.
+   Recognize the question tool, render a real question UI (question
+   text, clickable options, multi-select, free-text), and return the
+   answers via `PermissionResultAllow.updated_input` (`answers`:
+   question text -> chosen label, multi-select comma-separated, per
+   the bundled CLI's own schema). Cites
+   `../FEEDBACK/FEEDBACK-DESK-claude-desk-question-vs-permission-hang-2026-09-18-2356.md`.
+
+   Prioritized per direct user request (started from TODO `feff1ec`).
+   [planned: claude-desk-ask-user-question.md]
+
 8b88ec2. Update the Image Viewer widget (`widgets/image_viewer/`) so the
    currently-loaded image can be dragged *out* of it -- the reverse
    direction of TODO `9d52dc4`'s new "Input" drop target, and of the
