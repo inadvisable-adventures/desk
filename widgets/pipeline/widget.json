@@ -1,0 +1,7 @@
+{
+  "name": "Pipeline",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": [],
+  "default_size": { "width": 620, "height": 640 }
+}

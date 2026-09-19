@@ -13,7 +13,14 @@ executes it fail-fast, returning the plan's own `{"ok", "stages",
 -pipeline between its `+|`/`|+` delimiters once per item of a list
 -shaped piped value, recombining the per-item results into a new list.
 See `desk.shell.desk_mcp_server`'s `desk_run_pipeline` tool for the one
-transport wired up so far.
+transport wired up so far. `run_pipeline` also takes an optional
+`initial_value` (TODO `9d52dc4`) to seed the first stage with
+something other than `None`.
+
+`parse_pipeline(text) -> list[StageInfo]` (TODO `9d52dc4`) exposes
+just the parse step -- a pipeline's structure without running it --
+for a caller (the Pipeline widget's Mermaid diagram, so far) that
+needs the shape, not the result.
 """
 
 import base64
@@ -23,7 +30,11 @@ import shlex
 import traceback
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+from PyQt6.QtGui import QImage
 
 from desk.shell import current_context
 from desk.temp_ui import TEMP_UI_DIRNAME
@@ -295,15 +306,57 @@ def _execute_stages(stages: list[_ParsedStage], piped_value: Any, registry: dict
     }
 
 
-def run_pipeline(text: str, registry: dict[str, Callable] | None = None) -> dict:
+def run_pipeline(
+    text: str, registry: dict[str, Callable] | None = None, initial_value: Any = None
+) -> dict:
     """Parses and runs a full pipeline string. Raises `ValueError`
     immediately for a structural problem (Sec. 6) before any stage
     runs. Otherwise always returns the result-contract dict, never
-    raises for a stage's own runtime failure."""
+    raises for a stage's own runtime failure. `initial_value` (TODO
+    `9d52dc4`, the Pipeline widget's drag-and-dropped "Input") is what
+    the first stage receives as its piped value -- `None` (the
+    pre-existing, still-default behavior every other caller keeps
+    getting) means "no real input," exactly as before."""
     if registry is None:
         registry = VERB_REGISTRY
     stages = _parse_stages(text, registry)
-    return _execute_stages(stages, None, registry)
+    return _execute_stages(stages, initial_value, registry)
+
+
+@dataclass
+class StageInfo:
+    """A pipeline's parsed *structure*, without running anything --
+    the same grammar `run_pipeline` uses, minus `_ParsedStage`'s
+    `py_source` (a `py:` stage is only ever shown as a fixed "N. py:"
+    label by the Pipeline widget's diagram, TODO `9d52dc4`, never
+    rendered as decoded source). Public and stable so a caller other
+    than `run_pipeline` itself (so far, just that widget) can build
+    something from a pipeline's shape without duplicating any grammar
+    logic here."""
+
+    kind: str  # "verb" | "py" | "map"
+    verb: str | None = None
+    args: list[str] | None = None
+    sub_stages: list["StageInfo"] | None = None
+
+
+def _to_stage_info(stage: _ParsedStage) -> StageInfo:
+    return StageInfo(
+        kind=stage.kind,
+        verb=stage.verb,
+        args=list(stage.args) if stage.args is not None else None,
+        sub_stages=[_to_stage_info(s) for s in stage.sub_stages] if stage.sub_stages is not None else None,
+    )
+
+
+def parse_pipeline(text: str, registry: dict[str, Callable] | None = None) -> list[StageInfo]:
+    """Parses (never executes) `text` into a list of `StageInfo` --
+    this *is* `run_pipeline`'s own parse step, exposed on its own.
+    Raises the same `ValueError`s `run_pipeline` raises upfront, for
+    the same reasons."""
+    if registry is None:
+        registry = VERB_REGISTRY
+    return [_to_stage_info(s) for s in _parse_stages(text, registry)]
 
 
 # -- Built-in verb registry (Sec. 4's illustrative starter catalog, all
@@ -364,10 +417,73 @@ def open_image(piped: dict) -> dict:
     return {"ok": True}
 
 
+_IMAGE_CHANNELS: tuple[str, ...] = ("R", "G", "B")
+# Format_RGBA8888 is Qt's one *byte-ordered* 32-bit image format: the
+# in-memory byte order is always R, G, B, A on every platform (unlike
+# Format_ARGB32, a packed-int format whose byte order depends on host
+# endianness) -- so these offsets need no endianness handling. Each
+# tuple names the two byte offsets to zero to keep only that channel
+# (plus alpha, offset 3, always left alone).
+_CHANNEL_ZERO_OFFSETS: dict[str, tuple[int, int]] = {
+    "R": (1, 2),
+    "G": (0, 2),
+    "B": (0, 1),
+}
+
+
+def split_channels(piped: dict) -> list[dict]:
+    """Splits `piped["path"]` into a 3-item `[{"path", "channel"}, ...]`
+    list, R/G/B order (TODO `9d52dc4`): each result is a full image of
+    the same type/size/content as the source, except with the other
+    two color channels zeroed out (alpha untouched) -- an R-channel
+    result looks like the source rendered in red only, etc. Each
+    entry's "path" is exactly the shape `open_image` already expects,
+    so `split_channels | map +| open_image |+` displays all three
+    without either verb knowing about the other.
+
+    Uses `QImage` (already a Desk dependency via PyQt6 -- CLAUDE.md's
+    "avoid adding dependencies, prefer bespoke solutions" -- no
+    Pillow/numpy) rather than a per-pixel Python loop: a nested-loop
+    `setPixelColor` version was tried first and was slow enough on a
+    real several-megapixel photo to be a real problem, not a
+    hypothetical one, so this zeroes two of every four bytes with one
+    strided `bytearray` slice assignment per channel instead."""
+    source_path = Path(piped["path"])
+    image = QImage(str(source_path))
+    if image.isNull():
+        raise ValueError(f"not a loadable image file: {source_path}")
+    image = image.convertToFormat(QImage.Format.Format_RGBA8888)
+    width, height = image.width(), image.height()
+    bits = image.constBits()
+    bits.setsize(image.sizeInBytes())
+    raw = bytes(bits)
+
+    directory = current_context.get_current_desk_directory()
+    if directory is None:
+        raise RuntimeError("no current Desk directory to write channel images into")
+    temp_dir = directory / TEMP_UI_DIRNAME
+    if not temp_dir.is_dir():
+        raise RuntimeError("no .desk_temp directory for the current Desk")
+
+    zeros = bytes(width * height)
+    results = []
+    for channel in _IMAGE_CHANNELS:
+        buf = bytearray(raw)
+        for offset in _CHANNEL_ZERO_OFFSETS[channel]:
+            buf[offset::4] = zeros
+        channel_image = QImage(bytes(buf), width, height, image.bytesPerLine(), QImage.Format.Format_RGBA8888)
+        out_path = temp_dir / f"{uuid.uuid4().hex[:8]}-{source_path.stem}-{channel}.png"
+        if not channel_image.save(str(out_path), "PNG"):
+            raise RuntimeError(f"failed to save {channel} channel image to {out_path}")
+        results.append({"path": str(out_path), "channel": channel})
+    return results
+
+
 VERB_REGISTRY: dict[str, Callable] = {
     "reveal_widget": reveal_widget,
     "screenshot_widget": screenshot_widget,
     "screenshot_desk": screenshot_desk,
     "list_widget_instances": list_widget_instances,
     "open_image": open_image,
+    "split_channels": split_channels,
 }

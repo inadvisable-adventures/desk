@@ -290,21 +290,56 @@ class WorkspaceView(QGraphicsView):
     def _local_file_urls(mime_data) -> list:
         return [url for url in mime_data.urls() if url.isLocalFile()]
 
+    def _drop_target_widget_at(self, view_pos: QPointF) -> QWidget | None:
+        """Whichever descendant of a placed widget's own content
+        currently wants to handle a drop landing at this viewport
+        position, if any -- found via the same itemAt/childAt shape
+        _hit_test_chrome/describe_widget_at_global_pos already use, so
+        a drop target nested arbitrarily deep in a widget's own layout
+        (e.g. the Pipeline widget's "Input" box, TODO 9d52dc4) is still
+        found, not just a frame's immediate content widget. "Wants to
+        handle" is just Qt's own setAcceptDrops(True) -- no new,
+        Desk-specific opt-in mechanism -- walked up from the exact
+        child under the cursor to the frame itself, since a widget
+        commonly enables this on a specific inner child (its own drop
+        zone) rather than its whole top-level content."""
+        item = self.itemAt(view_pos.toPoint())
+        if not isinstance(item, QGraphicsProxyWidget):
+            return None
+        frame = item.widget()
+        if not isinstance(frame, WidgetFrame):
+            return None
+        scene_pos = self.mapToScene(view_pos.toPoint())
+        local_point = (scene_pos - item.pos()).toPoint()
+        widget = frame.childAt(local_point)
+        while widget is not None:
+            if widget.acceptDrops():
+                return widget
+            widget = widget.parentWidget()
+        return None
+
     def dragEnterEvent(self, event) -> None:
-        if self._local_file_urls(event.mimeData()):
+        if self._local_file_urls(event.mimeData()) and self._drop_target_widget_at(event.position()) is None:
             event.acceptProposedAction()
         else:
+            # Either no local file (defer to Qt's own default handling,
+            # as before), or a placed widget under the cursor wants this
+            # drop itself (TODO 9d52dc4) -- super()'s default
+            # QGraphicsView forwarding delivers it to that widget's own
+            # dragEnterEvent (Qt's native drag-and-drop propagation into
+            # an embedded QGraphicsProxyWidget), which decides for
+            # itself whether to actually accept it.
             super().dragEnterEvent(event)
 
     def dragMoveEvent(self, event) -> None:
-        if self._local_file_urls(event.mimeData()):
+        if self._local_file_urls(event.mimeData()) and self._drop_target_widget_at(event.position()) is None:
             event.acceptProposedAction()
         else:
             super().dragMoveEvent(event)
 
     def dropEvent(self, event) -> None:
         urls = self._local_file_urls(event.mimeData())
-        if not urls:
+        if not urls or self._drop_target_widget_at(event.position()) is not None:
             super().dropEvent(event)
             return
         paths = [Path(url.toLocalFile()) for url in urls]

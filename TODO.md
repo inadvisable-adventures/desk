@@ -10056,3 +10056,121 @@ b6abde2. De-prioritized (moved to the end of the queue on request --
    questions.
    [planned: system-clipboard-regression-tests.md]
 
+9d52dc4. Build a Pipeline widget (`kind: "python"`) that visualizes and
+   controls the execution of a pipe-chained verb DSL pipeline
+   (`desk.pipeline_dsl`, TODO `63bfd42`) as a Mermaid flowchart
+   (`desk.mermaid`, TODO `a76e723`) -- one rect node per top-level
+   stage, left to right, fed by an explicit drop target labeled
+   "Input" that accepts a drag-and-dropped image file as the
+   pipeline's own starting piped value (today `run_pipeline` always
+   starts from `None`). Since `desk.mermaid`'s flowchart support has
+   no `subgraph`/`style`/`classdef` rendering (`diagrams.md`'s "Known
+   limitations" -- confirmed directly, not assumed), a `map +| ... |+`
+   stage's own sub-pipeline can't be drawn nested inside a real box;
+   represent it instead as its own small node chain with a labeled
+   edge branching out of the `map` stage's node into it and a second
+   labeled edge back, rather than attempting a workaround the renderer
+   can't actually support.
+
+   Also add a new `split_channels` verb to the pipeline DSL's built-in
+   catalog: takes a piped `{"path": ...}` image and returns a 3-item
+   list, one per R/G/B channel, each a full image of the same
+   type/size/content as the source except with the other two color
+   channels zeroed out (alpha untouched) -- e.g. the R-channel result
+   looks like the source rendered in red only. Use it to build an
+   example pipeline, wired up as the widget's own default pipeline
+   text: split a dropped image into channels, then display all three
+   with `map` and the existing `open_image` verb (already opens a
+   `{"path": ...}` image in the Image Viewer widget via the
+   `OpenImage` tempui mechanism -- no new "display an image" verb
+   needed, confirmed by reading `pipeline_dsl.py` before assuming one
+   had to be added).
+
+   Not prioritized -- added to the end of the queue per direct user
+   request, but the user also directly asked for it to be implemented
+   out of turn, so implementing now despite its position here.
+   [planned: pipeline-widget.md (COMPLETED)]
+
+   COMPLETED: Implemented per the plan.
+
+   `src/desk/pipeline_dsl.py`: `run_pipeline` gained an `initial_value`
+   keyword param (backward compatible, defaults to `None`); new public
+   `StageInfo`/`parse_pipeline` expose the existing private parse step
+   without executing anything; new `split_channels` verb (`QImage`
+   -based, `Format_RGBA8888` for its fixed byte order, one strided
+   `bytearray` slice assignment per channel rather than a per-pixel
+   loop) added to `VERB_REGISTRY`.
+
+   `src/desk/shell/canvas.py` (`WorkspaceView`): `dragEnterEvent`/
+   `dragMoveEvent`/`dropEvent` now check `_drop_target_widget_at`
+   (itemAt/childAt, the same shape `_hit_test_chrome`/
+   `describe_widget_at_global_pos` already use) before doing the
+   existing canvas-level "open a new widget" handling -- a placed
+   widget with some descendant that called `setAcceptDrops(True)`
+   gets first refusal on a local-file drop landing on it, via Qt's own
+   native `QGraphicsProxyWidget` drag-and-drop forwarding
+   (`super()...Event(event)`); unrelated to any specific widget,
+   confirmed with a real `WorkspaceView` + real Qt drag-event sequence
+   (dragEnter/dragMove/drop), not just the delegation decision in
+   isolation.
+
+   New `widgets/pipeline/` (`kind: "python"`): a pipeline-text editor,
+   an "Input" drop target (`_DropTarget`, relies entirely on the
+   canvas change above), a Run button, and a live Mermaid-flowchart
+   diagram (`desk.svg_view.SvgView` + the existing
+   `mermaid_flowchart_svg` transform, same path the Markdown widget's
+   own Mermaid rendering uses) regenerated on every pipeline-text edit
+   (debounced) and after every Run, with per-stage OK/FAILED
+   annotations. `map`'s sub-pipeline is drawn as its own small node
+   chain with a labeled edge branching out of the `map` stage's node
+   and a second labeled edge back -- confirmed directly that
+   `desk.mermaid` has no `subgraph`/`style`/`classdef` rendering, so a
+   real nested box isn't possible with this renderer. Default pipeline
+   `split_channels | map +| open_image |+` demonstrates both the new
+   verb and reusing the existing `open_image` verb -- no second
+   "display an image" verb added; confirmed `open_image` already does
+   this via the `OpenImage` tempui mechanism before assuming one was
+   missing.
+
+   `src/desk/shell/desk_mcp_server.py`'s `desk_run_pipeline` tool
+   description gained `split_channels`. `src/desk/temp_ui.py`: minted
+   one new tag ("pipeline DSL split_channels verb + Pipeline widget
+   #307159") covering both the verb and the widget, appended to
+   `CURRENT_TAGS` with a matching `_NEW_FEATURES` entry.
+
+   New `tests/verify/verify_pipeline_dsl_split_channels.py` (24
+   checks): per-pixel channel-zeroing/alpha-preservation on a
+   hand-built test image, `ValueError`/`RuntimeError` cases,
+   registry membership, a real end-to-end `split_channels | map +|
+   open_image |+` run (three channel PNGs + three `OpenImage` tempui
+   files, each pointing at a real channel PNG), `initial_value`
+   (omitted vs. passed), and `parse_pipeline`/`StageInfo` (shape
+   matching, nested `map`, the same `ValueError` cases `run_pipeline`
+   already covers). New `tests/verify/verify_pipeline_widget.py` (30
+   checks): `_to_mermaid_flowchart` output verified by actually
+   parsing it with the real `desk.mermaid.parse` (plain pipeline, `py:`
+   stage, `map`'s branch-out/branch-back edges, nested `map`, label
+   -bracket sanitization), status annotation only on attempted stages,
+   `_DropTarget` accept/ignore + signal emission, `build()`. New
+   `tests/verify/verify_canvas_drop_delegation.py` (11 checks): a real
+   `WorkspaceView` + a full simulated drag sequence (dragEnter/
+   dragMove/drop, confirmed necessary -- a bare `dropEvent` call alone
+   never reaches an embedded widget's own handler) -- delegated vs.
+   canvas-level-handled vs. a non-accepting widget vs. a nested
+   drop-accepting descendant vs. a drop-accepting widget that itself
+   ignores the specific payload (confirmed this does *not* fall back
+   to canvas-level handling -- delegation is structural, not
+   payload-aware, a deliberate decision recorded in the plan).
+
+   Full `tests/verify/` regression suite: 144 non-`disabled_` scripts
+   (141 pre-existing + these 3 new files), 0 failures.
+
+   Not verified: actually launching Desk and dragging a real photo
+   onto the widget's "Input" box in a running GUI -- no browser/GUI
+   available in this environment, so this manual step was skipped
+   rather than silently omitted (every piece it would exercise --
+   real Qt drag-and-drop forwarding into a placed widget, and the
+   verb chain itself -- is covered by the automated tests above,
+   which do use real Qt event objects and a real `WorkspaceView`, not
+   mocks, for the drag-and-drop path specifically).
+

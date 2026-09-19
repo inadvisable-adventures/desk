@@ -210,6 +210,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "version-30",
     "version-40",
     "tagged changelog, no version numbers #252348",
+    "pipeline DSL split_channels verb + Pipeline widget #307159",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1525,6 +1526,20 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "pipeline DSL split_channels verb + Pipeline widget #307159": """- A new `desk_run_pipeline` verb, `split_channels`: takes a piped
+  `{"path": ...}` image and returns a 3-item `[{"path", "channel"},
+  ...]` list, one per R/G/B channel -- each result is a full image of
+  the same type/size/content as the source except with the other two
+  color channels zeroed out (alpha untouched), so e.g. the R-channel
+  result looks like the source rendered in red only.
+- A new **Pipeline** widget (`kind: "python"`): visualizes a pipe
+  -chained verb DSL pipeline as a Mermaid flowchart while you type it,
+  with an explicit "Input" drop target that accepts a dragged-and
+  -dropped image as the pipeline's own starting value, and a "Run"
+  button that executes it and annotates the diagram with each stage's
+  outcome. Its default pipeline, `split_channels | map +| open_image
+  |+`, demonstrates both this and the new verb above.
+""",
     "tagged changelog, no version numbers #252348": """- Replaced `TEMPUI_DOC_VERSION` (a single, manually-bumped integer) with
   a tag-based scheme: a tag is a short, human-written summary plus an
   appended 6-digit, non-semantic hash generated from its creation
