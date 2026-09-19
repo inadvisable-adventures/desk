@@ -95,7 +95,7 @@ ed5c62f. COMPLETED: Re-prioritized per direct user request (previously de
    covered by the automated tests above using real Qt event objects,
    not mocks.
 
-6ab9e85. Claude (Desk) widget: an `AskUserQuestion` tool call is currently
+6ab9e85. COMPLETED: Claude (Desk) widget: an `AskUserQuestion` tool call is currently
    routed through the generic Allow/Deny permission row
    (`ClaudeSession._can_use_tool`, `widgets/claude_desk/widget.py`'s
    `_show_next_permission`), which renders its structured input as a

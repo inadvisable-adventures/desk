@@ -736,6 +736,18 @@ Desk Bridge API.
     a second full Claude (Desk) widget instance. See
     `plans/scoped-claude-session-api.md`.
 
+    **AskUserQuestion** (TODO `6ab9e85`): `ClaudeSession._can_use_tool`
+    recognizes the CLI's `AskUserQuestion` tool by name and emits
+    `question_request(request_id, tool_input)` instead of
+    `permission_request`; the widget shows a question panel (option
+    buttons, toggle buttons for `multiSelect`, a free-text line,
+    Submit/Skip; queued one at a time) and answers via
+    `respond_to_question`. The answers (question text -> label,
+    multi-select comma-joined, free text verbatim) are returned as
+    `PermissionResultAllow.updated_input={**tool_input, "answers": ...}`
+    -- that is the only answer channel, so a plain Allow delivers
+    nothing. Skip returns a deny. `annotations`/`preview` are ignored.
+
 ### Widget Model
 
 See `design-docs/widget-ux.md` for the interactive chrome (titlebar/drag,
