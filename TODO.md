@@ -9575,6 +9575,36 @@ aa0ce76. Add a rotating file log for Desk's own logging
    (suggestions 2 and 3; the report explicitly does not want
    auto-scaffolding).
 
+94d2b94. Add an optional `max_width` (pixels) parameter to
+   `desk_screenshot_desk` and `desk_screenshot_widget`
+   (`src/desk/shell/desk_mcp_server.py`, backed by
+   `DeskWindow.screenshot_desk`/`screenshot_widget_instance`) and to the
+   matching `deskproc.screenshot_desk`/`deskproc.screenshot_widget`
+   (documented in `src/desk/temp_ui.py`). The capture is scaled down
+   proportionally (never up) before it is written to `path`; omitting
+   it keeps today's native-resolution behavior. Mint a tempui
+   changelog tag/entry per `development-process.md`, since this is a
+   new feature from an in-Desk agent's point of view. Cites
+   `../FEEDBACK/FEEDBACK-DESK-screenshot-tools-no-downsampling-option-2026-09-18-2030.md`
+   and
+   `../FEEDBACK/FEEDBACK-DESK-widget-glitches-on-oversized-screenshot-json-2026-09-18-2140.md`
+   (part b).
+
+f35466a. Make an oversized tool result (e.g. a ~776KB-base64
+   screenshot) fail locally and legibly in the Claude (Desk) widget
+   instead of leaving it glitchy. First reproduce it and classify what
+   actually happens (a caught parse error, a dead SDK transport, or a
+   UI-layer problem). Suspected cause, unverified: the SDK's
+   subprocess transport has a default 1MB `max_buffer_size`
+   (`claude_agent_sdk/_internal/transport/subprocess_cli.py`) that
+   `ClaudeSession` (`src/desk/claude_session.py`) never sets -- if
+   confirmed, raise it via `ClaudeAgentOptions`. Also make a
+   failed/unreadable message degrade to a visible per-turn error
+   with the session left usable, rather than only emitting
+   `session_error` from `_query_and_stream`. Cites
+   `../FEEDBACK/FEEDBACK-DESK-widget-glitches-on-oversized-screenshot-json-2026-09-18-2140.md`
+   (part a).
+
 feff1ec. Review and discuss all of the new FEEDBACK items (feedback
    submitted via the Feedback widget, `DESK_FEEDBACK-*.md` files) with
    the user before acting on any of them. Not designed/scoped yet --
