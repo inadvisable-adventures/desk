@@ -9786,6 +9786,78 @@ d0a4c7b. Fix widget stacking on the canvas (`src/desk/shell/canvas.py`).
    distinct mechanism, and file a fix item accordingly. Cites
    `../FEEDBACK/FEEDBACK-DESK-widget-shape-distorts-at-low-zoom-2026-09-19-1500.md`.
 
+454d718. A built-in **Recently Removed** widget, so removing a widget
+   instance no longer permanently destroys its `getLocalStorage` state.
+   Today `DeskWindow.close_widget`/`close_widget_by_instance_id`
+   (`src/desk/shell/window.py`) drop the frame and re-save, and
+   `save_desk()` fully overwrites the `.desk` file, so the removed
+   instance's state is simply gone. (1) Before that state is dropped,
+   snapshot a tombstone -- widget id/kind, instance id, label, the
+   instance's local-storage `state`, `removed_at` -- into a bounded
+   `recently_removed` list in the `.desk` file (cap on count or age,
+   whichever is simpler; the plan decides, and how the file format
+   versions the new field). (2) The widget lists tombstones (kind,
+   label, relative time) with a **Revive** button per entry. (3) Revive
+   places a brand-new instance through the normal placement path,
+   pre-seeding *its own* local-storage slot with the saved state before
+   the widget's page first calls `getLocalStorage()`, so the widget
+   cannot tell it from a reload. (4) Reviving, or aging out past the
+   cap, removes the tombstone; clearing follows Event Log's
+   confirm-then-clear pattern. Motivation: authors who remove and
+   re-place a widget to pick up rebuilt code lose all its accumulated
+   state each time. Re-verify the cited `window.py` behavior in the
+   plan, since the report's line numbers are from 2026-08-18. Cites
+   `../FEEDBACK/FEEDBACK-DESK-revive-removed-widgets-2026-08-18-1412.md`.
+
+8e4711e. `desk.documents` v1: virtualized, Desk-cached reads of large or
+   binary files. `desk.documents.open(path)` -> a server-side handle
+   (path resolved like `desk.fs.*`, content not read);
+   `desk.documents.read(handle, {offset, length})` -> `{data: base64,
+   eof}`, a raw byte-range read that is binary-safe from the start
+   (`desk.fs.readFile` decodes as UTF-8 and throws on binary);
+   `desk.documents.close(handle)`. Cache reads Desk-side keyed by
+   `(path, mtime/hash)` so a repeated range does not re-hit disk and a
+   changed file invalidates rather than serving stale bytes, stored
+   under `.desk_temp/`. No format awareness in v1 -- raw byte ranges
+   only. Same service shape as `desk_services.transforms`/`popups`,
+   reachable from `kind: "html"` widgets (Bridge API) and
+   `kind: "python"` widgets. Motivation: the only workaround today is a
+   transform (`read-file-base64`) that base64-encodes an entire file,
+   e.g. ~100MB of text for a 75MB PDF just to show page one, and
+   three widgets in one project have now reused it. Mint a tempui
+   changelog tag/entry (a new Bridge API). v2 (editing and live change
+   notifications) is parked in `PARKINGLOT.md`. Cites
+   `../FEEDBACK/FEEDBACK-DESK-virtualized-document-loader-service-2026-08-04-2043.md`.
+
+94c2566. Write a `.desk_temp` doc on porting existing app code into
+   Desk (generated from `src/desk/temp_ui.py` like the other tempui
+   docs, e.g. `tempui-porting-existing-apps.md`), linked from the main
+   tempui doc as "for more information on porting existing app code to
+   Desk", built from the decomposition process in the feedback: (1) an
+   inventory pass -- list the target project's *current* directory
+   structure directly, not from memory; (2) group pieces into a small
+   number of non-redundant "porting units", noting where two units
+   share an underlying mechanism; (3) for each unit gather two kinds of
+   grounded facts -- what the target code does (file:line) and what
+   Desk already provides for it -- and report a gap only once the
+   second comes back empty; (4) parallelize the fact-finding, one
+   read-only pass per unit, then write the proposals in one pass by one
+   author so they share a vocabulary; (5) match the destination
+   format's existing conventions by reading a real example first; (6)
+   cross-link related outputs. **While implementing this item, first do
+   a review of Desk's features that support the different things apps
+   might need** -- e.g. events (`desk.events.*`), state (`desk.state.*`,
+   `getLocalStorage`, shared project-scoped state), the file-system,
+   transforms, jobs and installed jobs, services, the file-type
+   registry, the Bridge API capabilities, `desk.documents` (TODO
+   `8e4711e`) if landed -- and fold a "what Desk gives you for X"
+   section into the doc, so step 3's "what Desk already provides" is
+   answerable from the doc itself rather than re-discovered each time.
+   Mint a tempui changelog tag/entry (per the user, doc guidance counts
+   as a feature). The feedback's "Porting Assistant" widget and
+   batch-Job ideas are deliberately not part of this item. Cites
+   `../FEEDBACK/FEEDBACK-DESK-existing-app-decomposition-process-2026-08-03-1719.md`.
+
 feff1ec. Review and discuss all of the new FEEDBACK items (feedback
    submitted via the Feedback widget, `DESK_FEEDBACK-*.md` files) with
    the user before acting on any of them. Not designed/scoped yet --

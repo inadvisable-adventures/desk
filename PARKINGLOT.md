@@ -1072,3 +1072,52 @@ This file captures thoughts and TODO items that arise during work on other thing
   `../FEEDBACK/FEEDBACK-DESK-promotion-doesnt-move-shared-multifile-deps-2026-09-14-1628.md`
   (Addendum). Related to TODO `8a09220`, which handles the dependency
   problem within the current widget-shaped layout.
+
+- **Domain Analysis as a Desk built-in**
+
+  `necro-4x`'s Domain Analysis widget (`../necro-4x/custom_widget_src/
+  domain-analysis/`, tempui keyword `DomainAnalysis`) generalized itself
+  through use: fully dynamic category definitions stored in the document,
+  multi-domain support with a picker, nothing project-specific left in
+  its code -- the shape of Desk's own content-agnostic built-ins (Sheet,
+  Markdown, Editor). Still project-local and never promoted. Needs a
+  maintainer decision before any work: adopt wholesale, extract the
+  generic core, or keep it as a reference design; then a review against
+  the bar Desk holds its built-ins to. If adopted it would inherit
+  `set_file`/`OpenWithWidget` (TODO `3b6de01`) and the editor-widget
+  base type generically. Cites
+  `../FEEDBACK/FEEDBACK-DESK-domain-analysis-as-builtin-widget-2026-08-27-1236.md`.
+
+- **A cross-project `LEARNINGS.md` catalog service**
+
+  Each project's `LEARNINGS.md` is invisible from every other project, so
+  a generic gotcha (PyQt6 painting quirks, Wikidata search ranking) is
+  rediscovered per project. Proposed: a Desk-level service (same tier as
+  `desk_services.transforms`/`popups`) that watches every known Desk
+  project's `LEARNINGS.md`, parses each `##` heading into a catalog entry
+  (heading, body, source project, mtime), stores the catalog centrally,
+  exposes it as e.g. `desk.learnings.search(query)`, plus a built-in
+  browsing widget (a natural v1 before the query API). Open decisions:
+  how Desk enumerates known projects, where central cross-project state
+  lives, the query API shape. Proactive surfacing (auto-matching a live
+  situation to an entry) is explicitly out of scope. Related to the
+  "online shared useful learnings tool" idea in the agent-memory entry
+  above. Cites
+  `../FEEDBACK/FEEDBACK-DESK-shared-learnings-catalog-service-2026-08-28-1426.md`.
+
+- **`desk.documents` v2: editing and live change notifications**
+
+  After TODO `8e4711e` (v1 virtualized reads): `desk.documents.write(
+  handle, {offset, data})` (or a patch-style call) so a widget need not
+  read a whole large file, edit client-side and write it all back, and
+  live notifications when the underlying file changes (externally or via
+  another widget's write), delivered through the existing
+  `desk.events.*` channel with a reserved name like
+  `"desk.document.changed"` (`{handle, path}`). The report's point: Desk
+  already has three separate watch-and-notify implementations
+  (`desk_services.file_watcher`/`HotReloadBroker`, the `[STALE]`
+  indicator, `SingleFileWatcher` for `QUESTIONS.md`/`TODO.md`), so this
+  should be the forcing function to generalize that shape rather than
+  add a fourth. Wait for v1's handle/cache primitives to have a real
+  second user before designing. Cites
+  `../FEEDBACK/FEEDBACK-DESK-virtualized-document-loader-service-2026-08-04-2043.md`.
