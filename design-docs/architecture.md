@@ -753,10 +753,13 @@ Desk Bridge API.
     user-authored Python services under `<project>/desk_hmsvc/<name>/
     service.py`, which must expose a module-level ASGI `app`; an
     optional `service.json` gives `description`, `autostart` and
-    `capabilities` (default `state`, `events`). Like the Local Web
+    `capabilities` (default `state`, `events`) and `external` (default
+    false). Like the Local Web
     Server, but user-written and run by Desk. Each service is its own
     subprocess (`python -m desk.hmsvc_host`, uvicorn on a loopback port
-    Desk allocates and passes as `DESK_SERVICE_PORT`), so a crashing or
+    Desk allocates and passes as `DESK_SERVICE_PORT`; `127.0.0.1`, or
+    `0.0.0.0` when `service.json` sets `"external": true` so LAN devices
+    can connect — the manager then also reports a best-effort `lan_url`), so a crashing or
     blocking service can't stall Desk. `HmsvcManager` (Qt-free,
     thread-safe, one per app run on `ServerHandle`) does discovery,
     spawn/stop/restart (stop = terminate, then kill after 3s), status
@@ -776,7 +779,8 @@ Desk Bridge API.
     (`python`) uses the manager directly via
     `current_context.get_hmsvc_manager()`. **Security:** a service is
     trusted like an Installed Job (user code in the project); its own
-    port is loopback-only but has no token. See
+    port has no token and is loopback-only unless `external` is opted
+    into, in which case anything on the local network can call it. See
     `plans/desk-hosted-microservices.md`.
 
 ### Widget Model

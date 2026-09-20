@@ -1669,8 +1669,11 @@ _NEW_FEATURES: dict[str, str] = {
   widget lists each service's status, port, pid and URL, with
   Start/Stop/Restart and a log view. An optional
   `desk_hmsvc/<name>/service.json` sets `description`, `autostart`
-  (start whenever this project opens) and `capabilities` (default
-  `["state", "events"]`; also `workspace`).
+  (start whenever this project opens), `capabilities` (default
+  `["state", "events"]`; also `workspace`) and `external` (default
+  `false`; `true` binds all interfaces so other devices on the local
+  network can reach the service -- the widget then also shows its LAN
+  URL, and `DESK_SERVICE_HOST` holds the bind address).
 - Inside a service, `from desk.hmsvc_client import desk` gives blocking
   calls to Desk itself: `desk.state_get(key)`/`state_set(key, value)`,
   `desk.events_subscribe(names)`/`events_publish(name, payload)`/
@@ -1682,8 +1685,9 @@ _NEW_FEATURES: dict[str, str] = {
   `start(name)`, `stop(name)`, `restart(name)`. Every status change is
   broadcast as the mediated event `desk.hmsvc.changed`
   (`{"services": [...]}`), so a custom widget can stay live by
-  subscribing to it. A service's own port is loopback-only but
-  unauthenticated -- another local process could call it.
+  subscribing to it. A service's own port is
+  loopback-only unless `external` is set, and unauthenticated either
+  way -- add your own auth to an external service.
 """,
     "pipeline DSL split_channels verb + Pipeline widget #307159": """- A new `desk_run_pipeline` verb, `split_channels`: takes a piped
   `{"path": ...}` image and returns a 3-item `[{"path", "channel"},

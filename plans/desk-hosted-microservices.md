@@ -19,6 +19,11 @@ Bridge capability.
   `{"description": str, "capabilities": ["state", "events", ...],
   "autostart": bool}`. Defaults: no description, `["state", "events"]`,
   `autostart: false`.
+- `service.json` `"external": true` (default false) binds `0.0.0.0`
+  instead of `127.0.0.1` so devices on the local network can connect
+  (added after the initial implementation, on request). Still
+  unauthenticated -- the service is responsible for its own auth; the
+  log, widget row and `lan_url` make the exposure visible.
 - Desk allocates the port and passes it to the host process; the service
   never picks its own. Bound to `127.0.0.1` only.
 - Environment given to the subprocess: `DESK_SERVICE_NAME`,

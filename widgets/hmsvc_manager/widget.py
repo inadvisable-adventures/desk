@@ -136,6 +136,10 @@ class HmsvcManagerWidget(QWidget):
         text = " &nbsp;·&nbsp; ".join(details)
         if service["url"]:
             text += f"<br>{service['url']}"
+        if service.get("lan_url"):
+            text += f"<br>LAN: {service['lan_url']} <span style='color:#c62828'>(external, unauthenticated)</span>"
+        elif service.get("external"):
+            text += "<br><span style='color:#c62828'>external</span>"
         if service["description"]:
             text += f"<br><i>{service['description']}</i>"
         label = QLabel(text)

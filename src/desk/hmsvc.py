@@ -64,6 +64,18 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
+def lan_address() -> str | None:
+    """Best-effort address other devices on the local network can reach
+    this machine at (no packet is actually sent), or None."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("10.255.255.255", 1))
+            address = sock.getsockname()[0]
+    except OSError:
+        return None
+    return None if address.startswith("127.") else address
+
+
 def _port_accepts(port: int) -> bool:
     try:
         with socket.create_connection(("127.0.0.1", port), timeout=0.2):
@@ -78,6 +90,7 @@ class _Service:
     description: str = ""
     capabilities: list[str] = field(default_factory=lambda: list(DEFAULT_CAPABILITIES))
     autostart: bool = False
+    external: bool = False
     status: str = STATUS_STOPPED
     port: int | None = None
     pid: int | None = None
@@ -88,17 +101,22 @@ class _Service:
     logs: deque = field(default_factory=lambda: deque(maxlen=LOG_LINE_LIMIT))
 
 
-def _read_manifest(directory: Path) -> tuple[str, list[str], bool]:
+def _read_manifest(directory: Path) -> tuple[str, list[str], bool, bool]:
     try:
         data = json.loads((directory / SERVICE_MANIFEST_FILENAME).read_text())
     except (OSError, ValueError):
-        return "", list(DEFAULT_CAPABILITIES), False
+        return "", list(DEFAULT_CAPABILITIES), False, False
     if not isinstance(data, dict):
-        return "", list(DEFAULT_CAPABILITIES), False
+        return "", list(DEFAULT_CAPABILITIES), False, False
     capabilities = data.get("capabilities", list(DEFAULT_CAPABILITIES))
     if not isinstance(capabilities, list):
         capabilities = list(DEFAULT_CAPABILITIES)
-    return str(data.get("description", "")), [str(c) for c in capabilities], bool(data.get("autostart", False))
+    return (
+        str(data.get("description", "")),
+        [str(c) for c in capabilities],
+        bool(data.get("autostart", False)),
+        bool(data.get("external", False)),
+    )
 
 
 class HmsvcManager:
@@ -167,7 +185,7 @@ class HmsvcManager:
         re-reads `service.json`, keeping runtime state for any service
         already known."""
         root = self.services_dir
-        found: dict[str, tuple[str, list[str], bool]] = {}
+        found: dict[str, tuple[str, list[str], bool, bool]] = {}
         if root is not None and root.is_dir():
             for path in sorted(root.iterdir()):
                 if path.is_dir() and (path / SERVICE_ENTRY_FILENAME).is_file():
@@ -177,16 +195,19 @@ class HmsvcManager:
                 service = self._services[name]
                 if name not in found and service.process is None:
                     del self._services[name]
-            for name, (description, capabilities, autostart) in found.items():
+            for name, (description, capabilities, autostart, external) in found.items():
                 service = self._services.setdefault(name, _Service(name=name))
                 service.description = description
                 service.capabilities = capabilities
                 service.autostart = autostart
+                service.external = external
         self._notify()
 
     # -- queries -------------------------------------------------------
 
     def _info(self, service: _Service) -> dict:
+        serving = service.port and service.status == STATUS_RUNNING
+        lan = lan_address() if serving and service.external else None
         return {
             "name": service.name,
             "description": service.description,
@@ -194,6 +215,8 @@ class HmsvcManager:
             "port": service.port,
             "pid": service.pid,
             "url": f"http://127.0.0.1:{service.port}/" if service.port and service.status == STATUS_RUNNING else None,
+            "external": service.external,
+            "lan_url": f"http://{lan}:{service.port}/" if lan else None,
             "capabilities": list(service.capabilities),
             "autostart": service.autostart,
             "started_at": service.started_at,
@@ -237,11 +260,13 @@ class HmsvcManager:
             if service.process is not None:
                 return False, f"{name!r} is already {service.status}."
             port = _free_port()
+            host = "0.0.0.0" if service.external else "127.0.0.1"
             env = dict(os.environ)
             env.update(
                 {
                     "DESK_SERVICE_NAME": name,
                     "DESK_SERVICE_PORT": str(port),
+                    "DESK_SERVICE_HOST": host,
                     "DESK_PROJECT_DIR": str(self._directory),
                     "DESK_BRIDGE_URL": self._bridge_url,
                     "DESK_BRIDGE_TOKEN": self._bridge_token,
@@ -254,7 +279,7 @@ class HmsvcManager:
             directory = self._directory / HMSVC_DIRNAME / name
             try:
                 process = subprocess.Popen(
-                    [sys.executable, "-m", "desk.hmsvc_host", str(directory), str(port)],
+                    [sys.executable, "-m", "desk.hmsvc_host", str(directory), str(port), host],
                     cwd=self._directory,
                     env=env,
                     stdin=subprocess.DEVNULL,
@@ -275,7 +300,10 @@ class HmsvcManager:
             service.started_at = time.time()
             service.exit_code = None
             service.stop_requested = False
-            service.logs.append(f"[desk] starting on port {port} (pid {process.pid})")
+            service.logs.append(
+                f"[desk] starting on {host}:{port} (pid {process.pid})"
+                + (" -- reachable from the local network, unauthenticated" if service.external else "")
+            )
         threading.Thread(target=self._read_output, args=(service, process), daemon=True).start()
         threading.Thread(target=self._supervise, args=(service, process, port), daemon=True).start()
         self._notify()

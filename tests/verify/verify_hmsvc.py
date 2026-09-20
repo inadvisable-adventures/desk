@@ -201,6 +201,39 @@ with tempfile.TemporaryDirectory() as tmp, running_server() as handle:
     check("failing service is crashed", spin_until(lambda: manager.get("broken")["status"] == "crashed"))
     check("crash traceback in logs", any("boom" in l for l in manager.get_logs("broken")))
 
+    # -- external binding ---------------------------------------------
+    import subprocess
+
+    ext = project / "desk_hmsvc" / "ext"
+    ext.mkdir()
+    (ext / "service.py").write_text(SERVICE_SOURCE)
+    (ext / "service.json").write_text(json.dumps({"external": True}))
+    manager.refresh()
+    check("local-only service reports external False", manager.get("demo")["external"] is False)
+    manager.start("demo")
+    manager.start("ext")
+    check("external service runs", spin_until(lambda: manager.get("ext")["status"] == "running"))
+    spin_until(lambda: manager.get("demo")["status"] == "running")
+
+    def listen_address(pid):
+        out = subprocess.run(["lsof", "-a", "-p", str(pid), "-iTCP", "-sTCP:LISTEN", "-nP"], capture_output=True, text=True).stdout
+        return out
+
+    ext_listen = listen_address(manager.get("ext")["pid"])
+    demo_listen = listen_address(manager.get("demo")["pid"])
+    check("external service listens on all interfaces", "*:" in ext_listen)
+    check("default service listens on loopback only", "127.0.0.1:" in demo_listen and "*:" not in demo_listen)
+    check("external log notes LAN exposure", any("local network" in l for l in manager.get_logs("ext")))
+    from desk.hmsvc import lan_address
+
+    lan = lan_address()
+    if lan is not None:
+        check("lan_url reported for external service", manager.get("ext")["lan_url"] == f"http://{lan}:{manager.get('ext')['port']}/")
+        check("service reachable via LAN address", http_get(manager.get("ext")["lan_url"]) == "hi")
+    check("no lan_url for local-only service", manager.get("demo")["lan_url"] is None)
+    manager.stop("ext")
+    manager.stop("demo")
+
     # -- widget --------------------------------------------------------
     current_context.set_hmsvc_manager(manager)
     import importlib.util
@@ -209,7 +242,7 @@ with tempfile.TemporaryDirectory() as tmp, running_server() as handle:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     widget = module.build()
-    check("widget lists both services", widget._list.count() == 2)
+    check("widget lists all services", widget._list.count() == 3)
     widget._select("broken")
     check("widget log pane shows selected logs", "boom" in widget._log_view.toPlainText())
     widget._on_mediated_event(HMSVC_CHANGED_EVENT, {"services": []}, "desk")
