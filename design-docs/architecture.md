@@ -748,6 +748,37 @@ Desk Bridge API.
     -- that is the only answer channel, so a plain Allow delivers
     nothing. Skip returns a deny. `annotations`/`preview` are ignored.
 
+31. **Desk-hosted microservices** (`desk.hmsvc`, `desk.hmsvc_host`,
+    `desk.hmsvc_client`, `widgets/hmsvc_manager/`, TODO `e75b165`) —
+    user-authored Python services under `<project>/desk_hmsvc/<name>/
+    service.py`, which must expose a module-level ASGI `app`; an
+    optional `service.json` gives `description`, `autostart` and
+    `capabilities` (default `state`, `events`). Like the Local Web
+    Server, but user-written and run by Desk. Each service is its own
+    subprocess (`python -m desk.hmsvc_host`, uvicorn on a loopback port
+    Desk allocates and passes as `DESK_SERVICE_PORT`), so a crashing or
+    blocking service can't stall Desk. `HmsvcManager` (Qt-free,
+    thread-safe, one per app run on `ServerHandle`) does discovery,
+    spawn/stop/restart (stop = terminate, then kill after 3s), status
+    (`stopped`/`starting`/`running` once the port accepts/`exited`/
+    `crashed`), a 500-line log ring buffer per service, and change
+    listeners; `DeskWindow` turns every change into the mediated event
+    `desk.hmsvc.changed`, repoints the manager in `_refresh_picker` (a
+    Desk switch stops the old Desk's services and autostarts the new
+    one's), and `ServerHandle.stop` stops them all on quit. A service
+    reaches Desk through `desk.hmsvc_client.desk` (stdlib `urllib`,
+    reading `DESK_BRIDGE_URL`/`DESK_BRIDGE_TOKEN`), which calls the
+    **existing** Bridge routes (state, events, workspace) rather than a
+    parallel API: `require_caller` accepts the synthetic widget id
+    `hmsvc:<name>` (also the mediator instance id) with capabilities
+    from `service.json`. The `hmsvc` capability exposes list/logs/
+    start/stop/restart to `html` widgets; the Microservices widget
+    (`python`) uses the manager directly via
+    `current_context.get_hmsvc_manager()`. **Security:** a service is
+    trusted like an Installed Job (user code in the project); its own
+    port is loopback-only but has no token. See
+    `plans/desk-hosted-microservices.md`.
+
 ### Widget Model
 
 See `design-docs/widget-ux.md` for the interactive chrome (titlebar/drag,
@@ -1010,6 +1041,7 @@ into each Chromium Widget's page via a `QWebEngineScript` at
 | `desk.fs.readFile(path)` / `writeFile(path, contents)` | Filesystem access | `fs` |
 | `desk.widgets.list()` / `open(widgetId, opts)` / `close(instanceId)` | Manage widget instances | `widgets` |
 | `desk.events.subscribe(names)` / `unsubscribe(names)` / `publish(name, payload)` / `onMessage(callback)` | Send/receive named messages via Desk's own mediator (TODO `6f9c51b`) | `events` |
+| `desk.hmsvc.list()` / `logs(name, limit)` / `start(name)` / `stop(name)` / `restart(name)` | Manage Desk-hosted microservices (TODO `e75b165`, item 31) | `hmsvc` |
 | `desk.introspect.snapshot(targetInstanceId)` | DOM tree + console log of *another* widget instance (TODO `9767c1a`) — the only capability that also requires a live, per-request Desk-user confirmation, not just a manifest declaration | `introspect` |
 | `desk.self.getManifest()` | A widget introspecting its own manifest | none |
 | `desk.self.getLocalStorage()` / `setLocalStorage(data)` | Persist/restore this *instance's* own state across a Desk reload (TODO `5734529`) | none |

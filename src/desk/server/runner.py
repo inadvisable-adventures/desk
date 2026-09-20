@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from desk.event_mediator import EventMediator
+from desk.hmsvc import HmsvcManager
 from desk.schema_registry import SchemaRegistry
 from desk.server.app import DEFAULT_WIDGETS_DIR, create_app
 from desk.shell.bridge import GuiBridge
@@ -31,6 +32,7 @@ class ServerHandle:
     gui_bridge: GuiBridge
     event_mediator: EventMediator
     schema_registry: SchemaRegistry
+    hmsvc_manager: HmsvcManager
     _server: uvicorn.Server
     _thread: threading.Thread
     _app: FastAPI
@@ -86,6 +88,7 @@ class ServerHandle:
         )
 
     def stop(self, timeout: float = 5.0) -> None:
+        self.hmsvc_manager.stop_all()
         self._server.should_exit = True
         self._thread.join(timeout=timeout)
 
@@ -109,7 +112,18 @@ def start_server(
     # event_mediator (TODO 6330249) so it can publish
     # desk.state.schema_changed on every successful mutation.
     schema_registry = SchemaRegistry(event_mediator)
-    app = create_app(token, widgets_dir=widgets_dir, gui_bridge=gui_bridge, event_mediator=event_mediator)
+    # TODO e75b165: same "one shared instance for the whole app run"
+    # shape; told where to find this server's Bridge API so a launched
+    # service can call back into Desk.
+    hmsvc_manager = HmsvcManager()
+    hmsvc_manager.configure_bridge(f"http://{host}:{port}", token)
+    app = create_app(
+        token,
+        widgets_dir=widgets_dir,
+        gui_bridge=gui_bridge,
+        event_mediator=event_mediator,
+        hmsvc_manager=hmsvc_manager,
+    )
 
     config = uvicorn.Config(app, host=host, port=port, log_level="warning")
     server = uvicorn.Server(config)
@@ -141,6 +155,7 @@ def start_server(
         gui_bridge=gui_bridge,
         event_mediator=event_mediator,
         schema_registry=schema_registry,
+        hmsvc_manager=hmsvc_manager,
         _server=server,
         _thread=thread,
         _app=app,

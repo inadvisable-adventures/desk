@@ -6,6 +6,19 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+e75b165. COMPLETED: Desk-hosted microservices ("hmsvc"). Similar to the Local Web
+   Server Desk already runs for `kind: "html"` widgets, but authorable by
+   users: a user-written Python service, stored under `./desk_hmsvc/<name>/`
+   (project-relative, like `desk-installed-jobs/`), that Desk launches,
+   supervises, and shows in a monitoring/management widget (status, port,
+   pid, URL, start/stop/restart, log tail). A service can also use Desk
+   itself: get and send Desk events (the mediated event channel) and read/
+   write Desk state (`desk.state.*`), so custom widgets can be built that
+   manage or talk to their own service. Python-authored only for now.
+
+   Prioritized per direct user request.
+   [planned: desk-hosted-microservices.md]
+
 ed5c62f. COMPLETED: Re-prioritized per direct user request (previously de
    -prioritized to the end of the queue on request -- see
    shared_development_process.md's Item IDs section on priority being

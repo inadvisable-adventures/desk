@@ -214,6 +214,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "pipeline DSL split_channels verb + Pipeline widget #307159",
     "rust installed jobs + declared state needs #739624",
     "job-to-job invocation via RUN_INSTALLED_JOB #181226",
+    "Desk-hosted microservices (hmsvc) #285553",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1660,6 +1661,30 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "Desk-hosted microservices (hmsvc) #285553": """- Desk-hosted microservices: write a Python service at
+  `desk_hmsvc/<name>/service.py` (project-relative) exposing a
+  module-level ASGI `app` (FastAPI works), and Desk launches and
+  supervises it as its own subprocess on a Desk-allocated loopback port
+  (`DESK_SERVICE_PORT`; bind nothing yourself). A new "Microservices"
+  widget lists each service's status, port, pid and URL, with
+  Start/Stop/Restart and a log view. An optional
+  `desk_hmsvc/<name>/service.json` sets `description`, `autostart`
+  (start whenever this project opens) and `capabilities` (default
+  `["state", "events"]`; also `workspace`).
+- Inside a service, `from desk.hmsvc_client import desk` gives blocking
+  calls to Desk itself: `desk.state_get(key)`/`state_set(key, value)`,
+  `desk.events_subscribe(names)`/`events_publish(name, payload)`/
+  `events_poll(timeout)` (wrap in `asyncio.to_thread` inside an
+  `async def` handler). Services publish and receive on the same
+  mediated event channel widgets use, under sender id `hmsvc:<name>`.
+- A new Bridge API capability, `hmsvc`, lets a `kind: "html"` widget
+  manage services: `desk.hmsvc.list()`, `logs(name, limit)`,
+  `start(name)`, `stop(name)`, `restart(name)`. Every status change is
+  broadcast as the mediated event `desk.hmsvc.changed`
+  (`{"services": [...]}`), so a custom widget can stay live by
+  subscribing to it. A service's own port is loopback-only but
+  unauthenticated -- another local process could call it.
+""",
     "pipeline DSL split_channels verb + Pipeline widget #307159": """- A new `desk_run_pipeline` verb, `split_channels`: takes a piped
   `{"path": ...}` image and returns a 3-item `[{"path", "channel"},
   ...]` list, one per R/G/B channel -- each result is a full image of
