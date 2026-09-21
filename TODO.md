@@ -9532,12 +9532,13 @@ b89cf17. Make `run_on_gui` and `run_on_gui_async`
    `../FEEDBACK/FEEDBACK-DESK-html-widget-getusermedia-crash-2026-09-11-1735.md`
    (suggested fix 2).
 
-aa0ce76. Add a rotating file log for Desk's own logging
+aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    (`src/desk/app.py` currently only does `logging.basicConfig` to
    stdout), so a traceback is recoverable after the fact and there is a
    documented place to find it. Cites
    `../FEEDBACK/FEEDBACK-DESK-html-widget-getusermedia-crash-2026-09-11-1735.md`
    (suggested fix 3).
+   [planned: rotating-file-log.md (COMPLETED)]
 
 5abf5a0. When a `ChromiumWidget`'s render process terminates
    (`QWebEnginePage.renderProcessTerminated`), replace the silent blank

@@ -1329,6 +1329,16 @@ as every other Bridge GUI-thread call) ever blocks.
   per-*type*), and the Bridge API sketch's own naming already anticipated
   needing it.
 
+## Logging
+
+Desk's own logging (`desk.logging_setup`, TODO aa0ce76) writes to stderr and
+to a rotating file, `~/.desk/logs/desk.log` (1 MB per file, 5 backups),
+alongside `~/.desk/recent_desks.json`. The path is logged at startup. An
+uncaught exception's traceback is recorded there too (via
+`desk.crash_handler`), in addition to the per-project
+`.desk_temp/DESK-CRASH-*.log` file. If the log directory can't be created,
+Desk falls back to stderr-only.
+
 ## Open Questions
 
 - Whether `kind: "html"` widget SPAs should use a JS framework at all — per
