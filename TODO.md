@@ -125,7 +125,7 @@ b78e7b8. COMPLETED: Make the session-start prompt say plainly that reading the
    `../FEEDBACK/FEEDBACK-DESK-onboarding-read-mistaken-for-work-request-2026-09-18-2110.md`.
    [planned: session-start-prompt-orientation-only.md (COMPLETED)]
 
-e501d8a. Add a callout to `tempui-custom-widgets.md` (generated from
+e501d8a. COMPLETED: Add a callout to `tempui-custom-widgets.md` (generated from
    `src/desk/temp_ui.py`) naming "the task's correct answer depends on
    a human's subjective visual judgment" -- cropping/selecting a region
    in an image, confirming a placement/composite/layout looks right,
@@ -139,6 +139,7 @@ e501d8a. Add a callout to `tempui-custom-widgets.md` (generated from
    user, guidance and phrasing changes in `temp_ui.py` count as
    features. Cites
    `../FEEDBACK/FEEDBACK-DESK-tempui-widget-for-subjective-visual-tasks-2026-08-27-1220.md`.
+   [planned: tempui-subjective-visual-widget-callout.md (COMPLETED)]
 
 6ab9e85. COMPLETED: Claude (Desk) widget: an `AskUserQuestion` tool call is currently
    routed through the generic Allow/Deny permission row

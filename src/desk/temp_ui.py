@@ -215,6 +215,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "rust installed jobs + declared state needs #739624",
     "job-to-job invocation via RUN_INSTALLED_JOB #181226",
     "Desk-hosted microservices (hmsvc) #285553",
+    "widget for subjective visual tasks guidance #588265",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -598,6 +599,25 @@ one (e.g. re-saving one to fix a mistake).** Always use a separate,
 keyword-only tempui file afterward to actually see it (see "Invoking a
 defined widget" below) — the same two-step dance every use of a
 `DefineWidget` keyword requires, with no auto-placed exception.
+
+**When to propose a widget yourself.** If a task's correct answer
+depends on a human's subjective visual judgment -- cropping or selecting
+a region in an image, confirming that a placement/composite/layout looks
+right, disambiguating something a fixed heuristic cannot reliably
+isolate -- that is a signal to propose a small, disposable `DefineWidget`
+for the user to *show* you the answer (drag a box, click a point, toggle
+an option, watch a live preview), even when their request did not ask for
+one. Looking at something once and dragging a box beats a chat
+back-and-forth of describing pixel coordinates in words, and beats
+grinding on a fully automated heuristic for an inherently fuzzy target.
+This composes with automation rather than replacing it: a cheap heuristic
+can seed a sensible default inside the widget (so it does not open to an
+empty or arbitrary selection), and the widget's own job stays narrowed to
+*selecting* -- e.g. writing the confirmed rectangles to a small JSON file
+-- while an ordinary script reads that file and does the actual work
+(cropping, resizing, pasting, re-encoding at full resolution). The widget
+only needs to be a competent picker, not an editor. Propose it first
+rather than silently building it, unless the user already asked for one.
 
 Lines are **tab**-separated (like `LightningRound`), since a label may
 contain spaces:
@@ -1661,6 +1681,16 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "widget for subjective visual tasks guidance #588265": """- New guidance in `tempui-custom-widgets.md` ("When to propose a
+  widget yourself"): when a task's correct answer depends on a human's
+  subjective visual judgment (selecting/cropping a region in an image,
+  confirming a placement or layout looks right, disambiguating what a
+  fixed heuristic cannot isolate), propose a small, disposable
+  `DefineWidget` for the user to show the answer, even if they did not
+  ask for one. Combine it with automation: a heuristic seeds a default,
+  the widget only selects (e.g. writes confirmed rects to a JSON file),
+  and an ordinary script does the actual work.
+""",
     "Desk-hosted microservices (hmsvc) #285553": """- Desk-hosted microservices: write a Python service at
   `desk_hmsvc/<name>/service.py` (project-relative) exposing a
   module-level ASGI `app` (FastAPI works), and Desk launches and
