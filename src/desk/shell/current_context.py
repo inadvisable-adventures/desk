@@ -577,3 +577,18 @@ def set_widget_height_adjuster(adjuster: Callable[[str, int], None]) -> None:
 
 def get_widget_height_adjuster() -> Callable[[str, int], None] | None:
     return _widget_height_adjuster
+
+
+_hmsvc_manager = None
+
+
+def set_hmsvc_manager(manager) -> None:
+    """TODO e75b165: the shared `desk.hmsvc.HmsvcManager` (Desk-hosted
+    microservices) -- thread-safe and Qt-free, so a `python` widget
+    can call it directly. See `desk.shell.window.DeskWindow`."""
+    global _hmsvc_manager
+    _hmsvc_manager = manager
+
+
+def get_hmsvc_manager():
+    return _hmsvc_manager

@@ -34,6 +34,7 @@ from desk.file_type_registry import (
     find_git_diff_handler,
     looks_like_text_file,
 )
+from desk.hmsvc import HMSVC_CHANGED_EVENT
 from desk.installed_jobs import (
     ENTRY_FILENAME as INSTALLED_JOB_ENTRY_FILENAME,
     INSTALLED_JOB_NEEDS_DIRNAME,
@@ -336,6 +337,21 @@ class DeskWindow(QMainWindow):
         # and a subscribe from a kind:"python" widget go through the exact
         # same mediator. See _bind_event_mediator/_refresh_picker below.
         self._event_mediator = handle.event_mediator
+
+        # Desk-hosted microservices (TODO e75b165) -- shared with the
+        # Local Web Server's hmsvc Bridge routes (handle.hmsvc_manager).
+        # Any status change is broadcast as desk.hmsvc.changed so the
+        # manager widget/custom widgets stay live. Pointed at the
+        # current Desk's directory in _refresh_picker; stopped on quit
+        # by ServerHandle.stop.
+        self._hmsvc = handle.hmsvc_manager
+        self._hmsvc.add_listener(
+            lambda: self._event_mediator.publish(
+                HMSVC_CHANGED_EVENT,
+                {"services": self._hmsvc.list_services()},
+                sender_instance_id=SYSTEM_SENDER_INSTANCE_ID,
+            )
+        )
 
         # The desk.state.* schema registry (TODO af7898b) -- same
         # "one shared, runtime-only instance for the whole app run" shape
@@ -2603,6 +2619,10 @@ class DeskWindow(QMainWindow):
         # Installed Jobs widget placed after a Desk switch reads the
         # *new* Desk's own installed-jobs registry, not a stale one.
         current_context.set_installed_jobs_provider(self.get_installed_jobs_dicts)
+        # Same choke point (TODO e75b165): a Desk switch stops the old
+        # Desk's microservices and autostarts the new one's.
+        current_context.set_hmsvc_manager(self._hmsvc)
+        self._hmsvc.set_directory(self.current_desk.directory)
         current_context.set_installed_job_uninstaller(self.uninstall_job)
         # Same choke point, for the same reason (TODO 54d8c18): a
         # transform invocation after a Desk switch resolves against the

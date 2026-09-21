@@ -49,6 +49,9 @@ from desk.shell.desk_mcp_server import DESK_MCP_SERVER_NAME, RUN_INSTALLED_JOB_T
 # import lives, same reasoning as everything else here.
 TERMINAL_TASK_STATUSES = sdk.TERMINAL_TASK_STATUSES
 
+# TODO 6ab9e85: the CLI's built-in structured-question tool.
+ASK_USER_QUESTION_TOOL_NAME = "AskUserQuestion"
+
 # TODO 0529501: the fixed tool set for a scoped (allowed_paths-restricted)
 # session. Deliberately excludes Bash -- its tool_input is just
 # {"command": "..."}, with no structured path field a hook could check,
@@ -89,6 +92,9 @@ class ClaudeSession(QObject):
     tool_use = pyqtSignal(str, str, dict)  # tool_use_id, name, input
     tool_result = pyqtSignal(str, object, bool)  # tool_use_id, content, is_error
     permission_request = pyqtSignal(str, str, dict)  # request_id, tool_name, input
+    # TODO 6ab9e85: an AskUserQuestion call gets its own signal instead
+    # of permission_request -- see _can_use_tool.
+    question_request = pyqtSignal(str, dict)  # request_id, tool_input
     turn_complete = pyqtSignal(dict)  # see _handle_message's ResultMessage branch
     session_error = pyqtSignal(str)
     session_ended = pyqtSignal()
@@ -348,6 +354,21 @@ class ClaudeSession(QObject):
         assert self._loop is not None
         future = self._loop.create_future()
         self._pending_permissions[request_id] = future
+        if tool_name == ASK_USER_QUESTION_TOOL_NAME:
+            # TODO 6ab9e85: the answer channel is updated_input -- the
+            # bundled CLI expects the same input object back with
+            # `answers` (question text -> answer string) filled in. An
+            # Allow with updated_input=None would deliver no answer.
+            self.question_request.emit(request_id, tool_input)
+            answers = await future
+            del self._pending_permissions[request_id]
+            if answers is None:
+                return sdk.PermissionResultDeny(
+                    behavior="deny", message="The user declined to answer the question.", interrupt=False
+                )
+            return sdk.PermissionResultAllow(
+                behavior="allow", updated_input={**tool_input, "answers": answers}, updated_permissions=None
+            )
         self.permission_request.emit(request_id, tool_name, tool_input)
         allow, message = await future
         del self._pending_permissions[request_id]
@@ -368,6 +389,20 @@ class ClaudeSession(QObject):
             future = self._pending_permissions.get(request_id)
             if future is not None and not future.done():
                 future.set_result((allow, message))
+
+        self._loop.call_soon_threadsafe(_resolve)
+
+    def respond_to_question(self, request_id: str, answers: dict[str, str] | None) -> None:
+        """Resolves a pending question_request (TODO 6ab9e85) with
+        `answers` (question text -> answer string), or None if the user
+        skipped it. Same threading story as respond_to_permission."""
+        if self._loop is None:
+            return
+
+        def _resolve() -> None:
+            future = self._pending_permissions.get(request_id)
+            if future is not None and not future.done():
+                future.set_result(answers)
 
         self._loop.call_soon_threadsafe(_resolve)
 

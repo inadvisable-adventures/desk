@@ -1,4 +1,4 @@
-# Claude (Desk): real UI for AskUserQuestion (TODO 6ab9e85)
+# COMPLETED: Claude (Desk): real UI for AskUserQuestion (TODO 6ab9e85)
 
 ## Summary
 
@@ -61,3 +61,13 @@ Source: `../FEEDBACK/FEEDBACK-DESK-claude-desk-question-vs-permission-hang-2026-
   rather than inferring from `ToolPermissionContext`; simpler and exact.
   A second, unknown question-shaped tool would still get Allow/Deny.
 - `annotations`/`preview` are ignored in v1.
+
+## Status
+
+Completed. `tests/verify/verify_claude_desk_ask_user_question.py` covers
+session routing and single/multi/free-text/skip/queued widget behavior;
+full `tests/verify/` suite passes. Skipped: a manual live-app check of a
+real `AskUserQuestion` call (no live API/GUI session available here).
+The tempui changelog was not touched -- no agent-visible DSL/Bridge
+change. `verify_widget_chat_button.py`'s fake session gained a
+`question_request` signal.

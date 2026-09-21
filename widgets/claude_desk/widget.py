@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QPlainTextEdit,
     QPushButton,
@@ -223,6 +224,7 @@ class ClaudeDeskWidget(QWidget):
         self._session.tool_use.connect(self._on_tool_use)
         self._session.tool_result.connect(self._on_tool_result)
         self._session.permission_request.connect(self._on_permission_request)
+        self._session.question_request.connect(self._on_question_request)
         self._session.turn_complete.connect(self._on_turn_complete)
         self._session.session_error.connect(self._on_session_error)
         self._session.task_event.connect(self._on_task_event)
@@ -257,6 +259,12 @@ class ClaudeDeskWidget(QWidget):
         self.destroyed.connect(lambda: self._session.stop())
 
         self._pending_permissions: list[tuple[str, str, dict]] = []
+        # TODO 6ab9e85: queued AskUserQuestion calls, shown one at a
+        # time in _question_panel (see _show_next_question).
+        self._pending_questions: list[tuple[str, dict]] = []
+        # Per question of the one currently shown: its option buttons
+        # and free-text box, in order.
+        self._question_controls: list[tuple[str, bool, list[QPushButton], QLineEdit]] = []
 
         # TODO e1f6391: a message submitted while a turn is in flight
         # queues instead of the prompt box simply going dead -- see
@@ -367,6 +375,11 @@ class ClaudeDeskWidget(QWidget):
         self._permission_widgets = [self._permission_label, self._allow_button, self._deny_button]
         self._set_permission_row_visible(False)
 
+        self._question_panel = QWidget()
+        self._question_layout = QVBoxLayout(self._question_panel)
+        self._question_layout.setContentsMargins(0, 0, 0, 0)
+        self._question_panel.setVisible(False)
+
         top_row = QHBoxLayout()
         top_row.addWidget(self._status_label, stretch=1)
         top_row.addWidget(self._queue_label)
@@ -385,6 +398,7 @@ class ClaudeDeskWidget(QWidget):
         layout.addLayout(top_row)
         layout.addWidget(self._history, stretch=1)
         layout.addLayout(self._permission_row)
+        layout.addWidget(self._question_panel)
         layout.addLayout(prompt_row)
         # TODO f4a7872: expands from the bottom of the widget on toggle
         # (see _on_tasks_toggled) -- last in the layout, below the
@@ -872,6 +886,110 @@ class ClaudeDeskWidget(QWidget):
         self._set_busy(False)
         self._status_label.setText(f"Error: {message}")
         self._append_history(f"[error] {message}")
+
+    # -- AskUserQuestion (TODO 6ab9e85) ------------------------------
+
+    def _on_question_request(self, request_id: str, tool_input: dict) -> None:
+        self._pending_questions.append((request_id, tool_input))
+        if not self._question_panel.isVisible():
+            self._show_next_question()
+
+    def _show_next_question(self) -> None:
+        while self._question_layout.count():
+            item = self._question_layout.takeAt(0)
+            if item.widget() is not None:
+                item.widget().deleteLater()
+        self._question_controls = []
+        if not self._pending_questions:
+            self._question_panel.setVisible(False)
+            return
+        _request_id, tool_input = self._pending_questions[0]
+        for question in tool_input.get("questions", []):
+            text = str(question.get("question", ""))
+            multi = bool(question.get("multiSelect"))
+            header = QLabel(text)
+            header.setWordWrap(True)
+            self._question_layout.addWidget(header)
+            buttons: list[QPushButton] = []
+            row = QHBoxLayout()
+            for option in question.get("options", []):
+                button = QPushButton(str(option.get("label", "")))
+                button.setCheckable(True)
+                if option.get("description"):
+                    button.setToolTip(str(option["description"]))
+                button.toggled.connect(
+                    lambda checked, b=button, group=buttons, m=multi: self._on_option_toggled(b, group, m, checked)
+                )
+                buttons.append(button)
+                row.addWidget(button)
+            row.addStretch(1)
+            row_widget = QWidget()
+            row_widget.setLayout(row)
+            self._question_layout.addWidget(row_widget)
+            other = QLineEdit()
+            other.setPlaceholderText("Other (free text)...")
+            other.textChanged.connect(lambda _text: self._update_question_submit())
+            self._question_layout.addWidget(other)
+            self._question_controls.append((text, multi, buttons, other))
+        buttons_row = QHBoxLayout()
+        buttons_row.addStretch(1)
+        self._question_submit = QPushButton("Submit")
+        self._question_submit.clicked.connect(self._submit_question)
+        skip = QPushButton("Skip")
+        skip.clicked.connect(self._skip_question)
+        buttons_row.addWidget(self._question_submit)
+        buttons_row.addWidget(skip)
+        buttons_widget = QWidget()
+        buttons_widget.setLayout(buttons_row)
+        self._question_layout.addWidget(buttons_widget)
+        self._update_question_submit()
+        self._question_panel.setVisible(True)
+
+    def _on_option_toggled(self, button: QPushButton, group: list[QPushButton], multi: bool, checked: bool) -> None:
+        if checked and not multi:
+            for other in group:
+                if other is not button and other.isChecked():
+                    other.blockSignals(True)
+                    other.setChecked(False)
+                    other.blockSignals(False)
+        self._update_question_submit()
+
+    def _collect_answers(self) -> dict[str, str] | None:
+        """question text -> answer string (multi-select labels joined
+        with ", "; free text verbatim -- replacing the single-select
+        choice, appended for multi-select), or None if any question
+        has no answer yet."""
+        answers: dict[str, str] = {}
+        for text, multi, buttons, other in self._question_controls:
+            parts = [b.text() for b in buttons if b.isChecked()]
+            free = other.text().strip()
+            if free:
+                parts = parts + [free] if multi else [free]
+            if not parts:
+                return None
+            answers[text] = ", ".join(parts)
+        return answers
+
+    def _update_question_submit(self) -> None:
+        if self._question_controls:
+            self._question_submit.setEnabled(self._collect_answers() is not None)
+
+    def _submit_question(self) -> None:
+        answers = self._collect_answers()
+        if answers is None or not self._pending_questions:
+            return
+        request_id, _tool_input = self._pending_questions.pop(0)
+        self._session.respond_to_question(request_id, answers)
+        self._append_history("[question] answered: " + "; ".join(f"{q} -> {a}" for q, a in answers.items()))
+        self._show_next_question()
+
+    def _skip_question(self) -> None:
+        if not self._pending_questions:
+            return
+        request_id, _tool_input = self._pending_questions.pop(0)
+        self._session.respond_to_question(request_id, None)
+        self._append_history("[question] skipped")
+        self._show_next_question()
 
 
 def build() -> QWidget:

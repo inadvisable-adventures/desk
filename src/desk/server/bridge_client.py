@@ -113,6 +113,14 @@ BRIDGE_CLIENT_TEMPLATE = """
         pollEvents();
       },
     },
+    hmsvc: {
+      list: () => call("GET", "/api/bridge/hmsvc/list"),
+      logs: (name, limit) =>
+        call("GET", "/api/bridge/hmsvc/logs?name=" + encodeURIComponent(name) + (limit ? "&limit=" + limit : "")),
+      start: (name) => call("POST", "/api/bridge/hmsvc/start", { name }),
+      stop: (name) => call("POST", "/api/bridge/hmsvc/stop", { name }),
+      restart: (name) => call("POST", "/api/bridge/hmsvc/restart", { name }),
+    },
     introspect: {
       snapshot: (targetInstanceId) =>
         call("POST", "/api/bridge/introspect/snapshot", { target_instance_id: targetInstanceId }),

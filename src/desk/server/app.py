@@ -11,6 +11,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from desk.event_mediator import EventMediator
 from desk.file_type_registry import FILE_TYPE_REGISTRY_UPDATED_EVENT
+from desk.hmsvc import HmsvcManager, service_name_from_caller_id
 from desk.installed_jobs import INSTALLED_JOB_RUN_TIMEOUT_SECONDS
 from desk.shell.bridge import GuiBridge
 from desk.widgets import WidgetInfo, discover_widgets
@@ -194,6 +195,10 @@ class TransformsRunRequest(BaseModel):
     config: dict | None = None
 
 
+class HmsvcNameRequest(BaseModel):
+    name: str
+
+
 class InstalledJobsRunRequest(BaseModel):
     name: str
     config_path: str | None = None
@@ -213,6 +218,7 @@ def create_app(
     widgets_dir: Path = DEFAULT_WIDGETS_DIR,
     gui_bridge: GuiBridge | None = None,
     event_mediator: EventMediator | None = None,
+    hmsvc_manager: HmsvcManager | None = None,
 ) -> FastAPI:
     """Serves only kind:"html" widgets (plus the Bridge API). kind:"python"
     widgets render natively in the Shell and never go through this server —
@@ -245,6 +251,26 @@ def create_app(
 
     def require_caller(capability: str | None):
         async def dependency(x_desk_widget_id: str = Header(...)) -> WidgetInfo:
+            # TODO e75b165: a Desk-hosted microservice (desk.hmsvc)
+            # identifies itself as "hmsvc:<name>" -- not a widget at
+            # all, so it gets a synthetic WidgetInfo whose capabilities
+            # come from its own service.json.
+            service_name = service_name_from_caller_id(x_desk_widget_id)
+            if service_name is not None:
+                capabilities = hmsvc_manager.capabilities_for(service_name) if hmsvc_manager else None
+                if capabilities is None:
+                    raise HTTPException(400, f"Unknown service: {service_name!r}")
+                if capability is not None and capability not in capabilities:
+                    raise HTTPException(403, f"Service {service_name!r} lacks capability {capability!r}")
+                return WidgetInfo(
+                    id=x_desk_widget_id,
+                    path=Path("."),
+                    kind="python",
+                    name=service_name,
+                    entry="service.py",
+                    capabilities=capabilities,
+                    default_size=None,
+                )
             widget = discover_widgets(widgets_dir).get(x_desk_widget_id)
             if widget is None:
                 # Falls back to the live, GuiBridge-reachable widget
@@ -499,6 +525,35 @@ def create_app(
         loop = asyncio.get_event_loop()
         event = await loop.run_in_executor(None, mediator.poll, instance_id, timeout)
         return {"event": _event_dict(event) if event is not None else None}
+
+    # --- hmsvc (TODO e75b165) -- Desk-hosted microservices. The manager
+    # is plain thread-safe Python, so these run directly on the request
+    # thread (start/stop can block for a few seconds -> executor).
+
+    def require_hmsvc() -> HmsvcManager:
+        if hmsvc_manager is None:
+            raise HTTPException(503, "Microservice manager not available")
+        return hmsvc_manager
+
+    @app.get("/api/bridge/hmsvc/list")
+    async def hmsvc_list(widget: WidgetInfo = Depends(require_caller("hmsvc"))):
+        return {"services": require_hmsvc().list_services()}
+
+    @app.get("/api/bridge/hmsvc/logs")
+    async def hmsvc_logs(name: str, limit: int = 200, widget: WidgetInfo = Depends(require_caller("hmsvc"))):
+        return {"lines": require_hmsvc().get_logs(name, limit)}
+
+    def _hmsvc_action(action: str):
+        async def handler(body: HmsvcNameRequest, widget: WidgetInfo = Depends(require_caller("hmsvc"))):
+            manager = require_hmsvc()
+            loop = asyncio.get_event_loop()
+            ok, message = await loop.run_in_executor(None, getattr(manager, action), body.name)
+            return {"ok": ok, "message": message}
+
+        return handler
+
+    for _action in ("start", "stop", "restart"):
+        app.post(f"/api/bridge/hmsvc/{_action}")(_hmsvc_action(_action))
 
     # --- filetypes (TODO b5d52c0) -- the file type registry service.
     # get both reads the registry and subscribes the caller to future
