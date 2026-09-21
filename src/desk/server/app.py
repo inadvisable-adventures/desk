@@ -324,6 +324,11 @@ def create_app(
             # rejections, not a bug, so a 400 with the message rather
             # than a 500.
             raise HTTPException(400, str(e)) from e
+        except Exception as e:  # noqa: BLE001
+            # TODO b89cf17: anything else raised on the GUI thread
+            # (e.g. introspect.snapshot against a crashed widget) used
+            # to fall through to a bare, detail-free 500.
+            raise HTTPException(500, f"{type(e).__name__}: {e}") from e
 
     def require_mediator() -> EventMediator:
         if event_mediator is None:
@@ -627,6 +632,13 @@ def create_app(
             raise HTTPException(503, str(e)) from e
         except TimeoutError as e:
             raise HTTPException(504, str(e)) from e
+        except ValueError:
+            # Left for the calling route to translate (e.g.
+            # installedJobs.run's own not-installed/stale-hash 400).
+            raise
+        except Exception as e:  # noqa: BLE001
+            # TODO b89cf17: see run_on_gui above.
+            raise HTTPException(500, f"{type(e).__name__}: {e}") from e
 
     @app.post("/api/bridge/transforms/run")
     async def transforms_run(

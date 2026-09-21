@@ -9520,7 +9520,7 @@ a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's histor
    `../FEEDBACK/FEEDBACK-DESK-html-widget-getusermedia-crash-2026-09-11-1735.md`
    (suggested fix 1).
 
-b89cf17. Make `run_on_gui` and `run_on_gui_async`
+b89cf17. COMPLETED: Make `run_on_gui` and `run_on_gui_async`
    (`src/desk/server/app.py`) translate *any* exception raised on the
    GUI thread into an error response carrying the exception's type and
    message, rather than only `RuntimeError`/`KeyError`/`ValueError`
@@ -9528,7 +9528,7 @@ b89cf17. Make `run_on_gui` and `run_on_gui_async`
    currently falls through to a bare, detail-free 500, e.g.
    `introspect.snapshot` against a crashed widget. Cites
    `../FEEDBACK/FEEDBACK-DESK-html-widget-getusermedia-crash-2026-09-11-1735.md`
-   (suggested fix 2).
+   (suggested fix 2). [planned: run-on-gui-any-exception.md]
 
 aa0ce76. Add a rotating file log for Desk's own logging
    (`src/desk/app.py` currently only does `logging.basicConfig` to
