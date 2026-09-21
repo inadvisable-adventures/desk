@@ -108,7 +108,7 @@ ed5c62f. COMPLETED: Re-prioritized per direct user request (previously de
    covered by the automated tests above using real Qt event objects,
    not mocks.
 
-b78e7b8. Make the session-start prompt say plainly that reading the
+b78e7b8. COMPLETED: Make the session-start prompt say plainly that reading the
    docs is orientation only. Add a sentence to `CLAUDE_WIDGET_PROMPT` in
    both `widgets/claude_desk/widget.py` and `widgets/claude/widget.py`,
    and to the text that adds the `development-process.md` read
@@ -123,8 +123,9 @@ b78e7b8. Make the session-start prompt say plainly that reading the
    prompt text (`verify_claude_prompt_tempui_wording.py`,
    `verify_dev_process_seeding.py`). Cites
    `../FEEDBACK/FEEDBACK-DESK-onboarding-read-mistaken-for-work-request-2026-09-18-2110.md`.
+   [planned: session-start-prompt-orientation-only.md (COMPLETED)]
 
-e501d8a. Add a callout to `tempui-custom-widgets.md` (generated from
+e501d8a. COMPLETED: Add a callout to `tempui-custom-widgets.md` (generated from
    `src/desk/temp_ui.py`) naming "the task's correct answer depends on
    a human's subjective visual judgment" -- cropping/selecting a region
    in an image, confirming a placement/composite/layout looks right,
@@ -138,6 +139,7 @@ e501d8a. Add a callout to `tempui-custom-widgets.md` (generated from
    user, guidance and phrasing changes in `temp_ui.py` count as
    features. Cites
    `../FEEDBACK/FEEDBACK-DESK-tempui-widget-for-subjective-visual-tasks-2026-08-27-1220.md`.
+   [planned: tempui-subjective-visual-widget-callout.md (COMPLETED)]
 
 6ab9e85. COMPLETED: Claude (Desk) widget: an `AskUserQuestion` tool call is currently
    routed through the generic Allow/Deny permission row
@@ -9530,12 +9532,13 @@ b89cf17. COMPLETED: Make `run_on_gui` and `run_on_gui_async`
    `../FEEDBACK/FEEDBACK-DESK-html-widget-getusermedia-crash-2026-09-11-1735.md`
    (suggested fix 2). [planned: run-on-gui-any-exception.md]
 
-aa0ce76. Add a rotating file log for Desk's own logging
+aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    (`src/desk/app.py` currently only does `logging.basicConfig` to
    stdout), so a traceback is recoverable after the fact and there is a
    documented place to find it. Cites
    `../FEEDBACK/FEEDBACK-DESK-html-widget-getusermedia-crash-2026-09-11-1735.md`
    (suggested fix 3).
+   [planned: rotating-file-log.md (COMPLETED)]
 
 5abf5a0. COMPLETED: When a `ChromiumWidget`'s render process terminates
    (`QWebEnginePage.renderProcessTerminated`), replace the silent blank
@@ -9546,7 +9549,7 @@ aa0ce76. Add a rotating file log for Desk's own logging
    `../FEEDBACK/FEEDBACK-DESK-html-widget-getusermedia-crash-2026-09-11-1735.md`
    (the "blank forever" symptom). [planned: chromium-widget-crash-restart.md]
 
-8a09220. Make promotion (`DeskWindow._relocate_promoted_widget_source`,
+8a09220. COMPLETED: Make promotion (`DeskWindow._relocate_promoted_widget_source`,
    `src/desk/shell/window.py`) handle a widget's `tsconfig.json`
    dependencies, which it currently never reads. Parse `"files"` and
    find entries resolving outside the widget's own directory; move
@@ -9564,6 +9567,7 @@ aa0ce76. Add a rotating file log for Desk's own logging
    `../FEEDBACK/FEEDBACK-DESK-promotion-doesnt-move-shared-multifile-deps-2026-09-14-1628.md`
    and
    `../FEEDBACK/FEEDBACK-DESK-promoted-widget-tsconfig-path-not-fixed-up-2026-09-18-1400.md`.
+   [planned: promotion-tsconfig-shared-dependencies.md (COMPLETED)]
 
 3d792f8. Promotion `outDir` normalization: a promoted widget is rebuilt
    into `.build` (`SOURCE_BUILD_CACHE_DIRNAME`, `src/desk/temp_ui.py`),

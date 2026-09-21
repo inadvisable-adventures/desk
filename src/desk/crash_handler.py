@@ -25,6 +25,7 @@ Exception: pass`, and the previously-installed hook (normally Python's
 own `sys.__excepthook__`) is always still called afterward, so existing
 stderr-traceback behavior is preserved, not replaced."""
 
+import logging
 import sys
 import traceback
 from datetime import datetime
@@ -49,6 +50,11 @@ def _handle_exception(exc_type, exc_value, tb) -> None:
         text = "".join(traceback.format_exception(exc_type, exc_value, tb))
         with open(_log_path(), "a") as f:
             f.write(text)
+    except Exception:
+        pass
+    try:
+        # TODO aa0ce76: also land in Desk's rotating log.
+        logging.getLogger("desk").critical("Uncaught exception", exc_info=(exc_type, exc_value, tb))
     except Exception:
         pass
     if _previous_excepthook is not None:

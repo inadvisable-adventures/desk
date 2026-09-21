@@ -40,7 +40,11 @@ CLAUDE_WIDGET_PROMPT = (
     "detail on specific capabilities; only open one of those if you "
     "actually need that particular capability (e.g. only read "
     "tempui-lightning-round.md if you are about to run a lightning "
-    "round), not unconditionally. You also have direct MCP tools "
+    "round), not unconditionally. Reading these documents is "
+    "orientation only: it is not itself a task, and it does not mean "
+    "you should start working (for example by picking up a TODO.md "
+    "item or calling desk_get_next_todo_item) unless the message from "
+    "the user separately asks for it. You also have direct MCP tools "
     "(mcp__desk__...) for interacting with Desk's own live shell -- "
     "desk_reveal_widget, desk_screenshot_widget, desk_screenshot_desk, "
     "desk_list_widget_instances, desk_save, desk_list_todo_items, and "
@@ -48,9 +52,10 @@ CLAUDE_WIDGET_PROMPT = (
     "alternative to the Job/DeskProc tempui file-drop mechanism for "
     "exactly these actions -- prefer them over dropping a DeskProc "
     "file when one of them already covers what you need. In "
-    "particular, check desk_get_next_todo_item before assuming an "
-    "earlier read of TODO.md is still current -- another session may "
-    "have reprioritized or completed items since."
+    "particular, when the user has asked you to work on TODO items, "
+    "check desk_get_next_todo_item before assuming an earlier read of "
+    "TODO.md is still current -- another session may have "
+    "reprioritized or completed items since."
 )
 
 DEVELOPMENT_PROCESS_FILENAME = "development-process.md"
@@ -165,7 +170,7 @@ def _development_process_instruction() -> str:
     path = directory / DEVELOPMENT_PROCESS_FILENAME
     if not path.is_file():
         return ""
-    return f" This project also has its own {DEVELOPMENT_PROCESS_FILENAME} at {path} -- please read that too."
+    return f" This project also has its own {DEVELOPMENT_PROCESS_FILENAME} at {path} -- please read that too, as orientation only: reading it is not itself a task, and it does not mean you should start working on a TODO item unless the message from the user separately asks for it."
 
 
 def _format_tool_input(tool_input: dict) -> str:

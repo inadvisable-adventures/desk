@@ -215,6 +215,9 @@ CURRENT_TAGS: tuple[str, ...] = (
     "rust installed jobs + declared state needs #739624",
     "job-to-job invocation via RUN_INSTALLED_JOB #181226",
     "Desk-hosted microservices (hmsvc) #285553",
+    "widget for subjective visual tasks guidance #588265",
+    "promotion moves shared tsconfig files #586922",
+    "Desk log file at .desk_temp/logs/desk.log #236455",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -297,6 +300,17 @@ it as many times as you like via an MCP tool call with no further
 prompt. Not a dropped-tempui-file DSL keyword like the ones above --
 installation happens via an MCP tool call against a directory you
 already wrote, never via a file dropped in this directory.
+
+## Desk's own log
+
+Desk writes its own log (startup, warnings, errors, and the traceback of
+any uncaught exception) to `logs/desk.log` in this directory --
+`.desk_temp/logs/desk.log` from the project root -- rotated at about 1 MB
+with 5 older files kept (`desk.log.1` ...). Each project has its own, and
+you're welcome to read it, e.g. when something in Desk misbehaves and you
+want the underlying error rather than guessing. It only exists once Desk
+has been opened on this project with this directory present; it is
+Desk's log, not something to write to.
 
 ## Environment variables
 
@@ -599,6 +613,25 @@ keyword-only tempui file afterward to actually see it (see "Invoking a
 defined widget" below) — the same two-step dance every use of a
 `DefineWidget` keyword requires, with no auto-placed exception.
 
+**When to propose a widget yourself.** If a task's correct answer
+depends on a human's subjective visual judgment -- cropping or selecting
+a region in an image, confirming that a placement/composite/layout looks
+right, disambiguating something a fixed heuristic cannot reliably
+isolate -- that is a signal to propose a small, disposable `DefineWidget`
+for the user to *show* you the answer (drag a box, click a point, toggle
+an option, watch a live preview), even when their request did not ask for
+one. Looking at something once and dragging a box beats a chat
+back-and-forth of describing pixel coordinates in words, and beats
+grinding on a fully automated heuristic for an inherently fuzzy target.
+This composes with automation rather than replacing it: a cheap heuristic
+can seed a sensible default inside the widget (so it does not open to an
+empty or arbitrary selection), and the widget's own job stays narrowed to
+*selecting* -- e.g. writing the confirmed rectangles to a small JSON file
+-- while an ordinary script reads that file and does the actual work
+(cropping, resizing, pasting, re-encoding at full resolution). The widget
+only needs to be a competent picker, not an editor. Propose it first
+rather than silently building it, unless the user already asked for one.
+
 Lines are **tab**-separated (like `LightningRound`), since a label may
 contain spaces:
 
@@ -807,6 +840,26 @@ just on the machine it was authored/promoted on — see
 `tempui-breaking-changes.md`. A hand-authored, inline-only
 `DefineWidget` (no source directory) is unaffected: there's nothing to
 rebuild from, so it keeps today's baked-`html_b64` behavior.
+
+**Shared files a widget's `tsconfig.json` lists from outside its own
+directory** (a shared base class or DSL module in a sibling directory,
+`shared-components/...`) are handled at promotion too, since their
+relative paths would otherwise break the moment the widget's directory
+moves. Promotion reads `"files"`; a file under `.desk_temp/widgets/`
+(and not inside another widget's own directory) is moved once to the
+same relative place under `desk_widgets/` (so a shared
+`.desk_temp/widgets/_shared/x.ts` becomes `desk_widgets/_shared/x.ts`,
+and a second widget promoted later just finds it already there); a file
+already at its final location, or the regenerated
+`.desk_temp/shared-components/` mirror, stays put. The widget's own
+`tsconfig.json` `"files"` entries are then rewritten to resolve from its
+new directory, and Desk shows what it moved and rewrote. Any other
+not-yet-promoted widget whose `tsconfig.json` listed a moved file is
+offered the choice to be promoted too, have its `tsconfig.json` fixed,
+or be left alone (a left-alone widget's next rebuild will fail until its
+path is fixed). A different file with the same name already at the
+destination is never overwritten -- Desk reports it and leaves the
+widget pointing at the original. Only `"files"` is read, not `include`.
 
 ## The Desk Bridge API — what your widget's own JS can call
 
@@ -1661,6 +1714,34 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "Desk log file at .desk_temp/logs/desk.log #236455": """- Desk now keeps its own rotating log at `.desk_temp/logs/desk.log`
+  (about 1 MB per file, 5 backups), one per project: startup messages,
+  warnings, errors, and the traceback of any uncaught exception. It is
+  meant to be readable by an agent working in the project -- check it when
+  Desk misbehaves. Documented in `desk-temporary-ui.md` under "Desk's own
+  log".
+""",
+    "promotion moves shared tsconfig files #586922": """- Promoting a source-backed `DefineWidget` widget now also handles the
+  shared files its `tsconfig.json` `"files"` lists from outside its own
+  directory. A shared file under `.desk_temp/widgets/` is moved once to
+  the same relative place under `desk_widgets/`; the widget's own
+  `tsconfig.json` entries are rewritten to resolve from
+  `desk_widgets/<name>/` (including files already at their final place
+  and `.desk_temp/shared-components/`); Desk tells the user what moved
+  and what was rewritten. Other un-promoted widgets that listed a moved
+  file are offered promotion too, a `tsconfig.json` fix, or nothing. See
+  "Promoting a defined widget to the Desk" in `tempui-custom-widgets.md`.
+""",
+    "widget for subjective visual tasks guidance #588265": """- New guidance in `tempui-custom-widgets.md` ("When to propose a
+  widget yourself"): when a task's correct answer depends on a human's
+  subjective visual judgment (selecting/cropping a region in an image,
+  confirming a placement or layout looks right, disambiguating what a
+  fixed heuristic cannot isolate), propose a small, disposable
+  `DefineWidget` for the user to show the answer, even if they did not
+  ask for one. Combine it with automation: a heuristic seeds a default,
+  the widget only selects (e.g. writes confirmed rects to a JSON file),
+  and an ordinary script does the actual work.
+""",
     "Desk-hosted microservices (hmsvc) #285553": """- Desk-hosted microservices: write a Python service at
   `desk_hmsvc/<name>/service.py` (project-relative) exposing a
   module-level ASGI `app` (FastAPI works), and Desk launches and

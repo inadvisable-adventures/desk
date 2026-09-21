@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import os
 import shutil
 import threading
 import uuid
@@ -26,6 +27,13 @@ from desk.desks import (
     state_entry_dict,
 )
 from desk.jobs import materialize as materialize_job
+from desk.logging_setup import set_log_directory
+from desk.promotion_deps import (
+    apply_moves,
+    find_peer_dependents,
+    plan_dependency_relocation,
+    rewrite_files_entries,
+)
 from desk.file_type_registry import (
     FILE_TYPE_REGISTRY_UPDATED_EVENT,
     entry_from_dict,
@@ -2260,6 +2268,11 @@ class DeskWindow(QMainWindow):
             )
             ask_gitignore = self._confirm_fn("Temporary UI", f"Add “{TEMP_UI_DIRNAME}” to .gitignore?")
         temp_dir = self._temp_ui_manager.provision(directory, ask_create_dir, ask_gitignore)
+        # TODO aa0ce76: each Desk directory keeps its own log under its
+        # own .desk_temp -- (re)pointed here, after the consent prompt
+        # above, so logging never creates .desk_temp behind the user's
+        # back (None, if they declined, just detaches the file log).
+        set_log_directory(temp_dir)
         self._ensure_questions_watcher()
         self._provision_schema_files(directory, temp_dir)
         # TODO 1c67fe5: covers a project that already had desk_widgets/
@@ -3147,8 +3160,18 @@ class DeskWindow(QMainWindow):
             "definition from tempui?",
         )():
             return
-        if not self._resolve_promotion_source(definition):
+        if not self._promote_custom_widget(keyword, definition):
             return
+        self._finish_promotion(keyword, frame)
+
+    def _promote_custom_widget(self, keyword: str, definition: CustomWidgetDefinition) -> bool:
+        """The state-changing half of promotion, factored out of
+        `_on_tempui_promote_requested` (TODO 8a09220) so an un-promoted
+        peer that shares a moved dependency can be promoted by the same
+        path, with no frame involved. Returns False if the user
+        cancelled at `_resolve_promotion_source`."""
+        if not self._resolve_promotion_source(definition):
+            return False
         self.current_desk.custom_widgets.append(definition)
         self._custom_widget_sources[keyword] = "desk"
         tempui_file_path = self._custom_widget_source_paths.pop(keyword, None)
@@ -3176,18 +3199,29 @@ class DeskWindow(QMainWindow):
             definition.html_b64 = ""
             self._register_custom_widget(definition, source="desk")
         self.save_current_desk()
-        # TODO 6857997/2b2a642: the widget is now a permanent, first
-        # -class part of this Desk -- flip the already-registered
-        # WidgetInfo in place (no need to re-materialize/re-mount,
-        # neither of which promotion changes) so it's no longer
-        # excluded from the spawn menu, refresh the catalog so that
-        # takes effect immediately, and hide this frame's own button
-        # (nothing left for it to offer).
+        return True
+
+    def _finish_promotion(self, keyword: str, triggering_frame: WidgetFrame | None = None) -> None:
+        """The UI half of promotion. TODO 6857997/2b2a642: the widget is
+        now a permanent, first-class part of this Desk -- flip the
+        already-registered WidgetInfo in place (no need to
+        re-materialize/re-mount, neither of which promotion changes) so
+        it's no longer excluded from the spawn menu, refresh the catalog
+        so that takes effect immediately, and hide the [TEMPUI] button
+        on every placed instance (nothing left for it to offer; TODO
+        8a09220: every instance, since a peer promoted alongside another
+        widget has no single triggering frame)."""
         info = self._widgets.get(keyword)
         if info is not None:
             info.tempui_only = False
         self.view.set_widget_catalog(self._widgets)
-        frame.set_tempui_promotable(False)
+        if triggering_frame is not None:
+            triggering_frame.set_tempui_promotable(False)
+        for placed in self.view._frames:
+            if placed is triggering_frame:
+                continue
+            if isinstance(placed.content, ChromiumWidget) and placed.content.widget_id == keyword:
+                placed.set_tempui_promotable(False)
         self._sync_tempui_doc()
 
     def _resolve_promotion_source(self, definition: CustomWidgetDefinition) -> bool:
@@ -3352,11 +3386,95 @@ class DeskWindow(QMainWindow):
                 destination_dir,
             )
             return
+        # TODO 8a09220: files this widget's tsconfig.json lists from
+        # outside its own directory must be planned while the old
+        # directory still exists (entries are relative to it), moved
+        # before/with it, and the tsconfig rewritten once it has landed.
+        project_dir = self.current_desk.directory
+        plan = plan_dependency_relocation(project_dir, source_dir, destination_dir)
+        apply_moves(plan)
         destination_dir.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(source_dir), str(destination_dir))
         definition.source_path = (
             Path(PROMOTED_WIDGET_SRC_DIRNAME) / source_dir.name
         ).as_posix()
+        rewrote = rewrite_files_entries(destination_dir, plan.rewrites)
+        self._report_dependency_relocation(definition, destination_dir, plan, rewrote)
+        for peer in find_peer_dependents(project_dir, plan.moves):
+            self._handle_peer_dependent(peer)
+
+    def _display_path(self, path: Path) -> str:
+        try:
+            return path.relative_to(self.current_desk.directory).as_posix()
+        except ValueError:
+            return str(path)
+
+    def _report_dependency_relocation(self, definition, destination_dir: Path, plan, rewrote: bool) -> None:
+        """TODO 8a09220: tells the user what promotion did to this
+        widget's shared dependencies -- silent when there was nothing
+        to do."""
+        lines = [
+            f"Moved {self._display_path(source)} to {self._display_path(destination)}."
+            for source, destination in plan.moves.items()
+        ]
+        if rewrote:
+            lines.append(f"Updated {self._display_path(destination_dir / 'tsconfig.json')}:")
+            lines.extend(f"  {old} -> {new}" for old, new in plan.rewrites.items())
+        lines.extend(plan.notes)
+        if lines:
+            self._info(
+                "Promotion: shared dependencies",
+                f"“{definition.label}” builds from files outside its own directory.\n\n" + "\n".join(lines),
+            )
+
+    def _find_promotable_peer(self, peer_dir: Path) -> str | None:
+        """The keyword of a registered, still tempui-sourced custom
+        widget whose recorded source directory is `peer_dir`, if any."""
+        for keyword, definition in self._custom_widget_definitions.items():
+            if self._custom_widget_sources.get(keyword) != "tempui" or definition.source_path is None:
+                continue
+            if Path(os.path.normpath(self.current_desk.directory / definition.source_path)) == peer_dir:
+                return keyword
+        return None
+
+    def _choose_peer_dependent_action(self, peer, can_promote: bool) -> str:
+        """Asks what to do about an un-promoted widget that references a
+        file promotion just moved: "promote", "fix", or "leave"."""
+        name = peer.directory.name
+        box = QMessageBox(self)
+        box.setWindowTitle("Promotion: shared dependencies")
+        box.setText(
+            f"“{name}” (not yet promoted) also lists a file that was just moved, so its own "
+            "next rebuild would fail."
+        )
+        box.setInformativeText("\n".join(f"  {old} -> {new}" for old, new in peer.rewrites.items()))
+        promote_button = box.addButton("Promote It Too", QMessageBox.ButtonRole.AcceptRole) if can_promote else None
+        fix_button = box.addButton("Fix Its tsconfig.json", QMessageBox.ButtonRole.ActionRole)
+        box.addButton("Leave As Is", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        if promote_button is not None and clicked is promote_button:
+            return "promote"
+        if clicked is fix_button:
+            return "fix"
+        return "leave"
+
+    def _handle_peer_dependent(self, peer) -> None:
+        peer_keyword = self._find_promotable_peer(peer.directory)
+        action = self._choose_peer_dependent_action(peer, peer_keyword is not None)
+        name = peer.directory.name
+        if action == "promote" and peer_keyword is not None:
+            if self._promote_custom_widget(peer_keyword, self._custom_widget_definitions[peer_keyword]):
+                self._finish_promotion(peer_keyword)
+                self._info("Promotion: shared dependencies", f"Also promoted “{name}”.")
+            else:
+                self._info("Promotion: shared dependencies", f"“{name}” was not promoted; its tsconfig.json is unchanged.")
+        elif action == "fix":
+            if rewrite_files_entries(peer.directory, peer.rewrites):
+                self._info(
+                    "Promotion: shared dependencies",
+                    f"Updated {self._display_path(peer.directory / 'tsconfig.json')} so “{name}” still finds the moved file.",
+                )
 
     def _on_rename_requested(self) -> None:
         name = self._prompt_fn(

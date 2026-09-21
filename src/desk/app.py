@@ -9,13 +9,14 @@ from desk import __version__
 from desk.crash_handler import install as install_crash_handler
 from desk.desks import default_desk_path, discover_desk_files
 from desk.hotreload import HotReloadBroker
+from desk.logging_setup import configure_logging
 from desk.server.app import DEFAULT_WIDGETS_DIR
 from desk.server.runner import start_server
 from desk.shell.window import DeskWindow
 from desk.widgets import WidgetWatcher, discover_widgets
 from desk_services.file_watcher import get_service
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+configure_logging()
 logger = logging.getLogger("desk")
 
 
