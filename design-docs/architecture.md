@@ -847,6 +847,11 @@ Desk widgets, regardless of implementation language, are defined by a
   serving uses `StaticFiles(..., html=True)`, which always serves
   `index.html` specifically; a custom `entry` for `html`-kind isn't
   supported yet.
+  If a `ChromiumWidget`'s render process terminates (a crash, an OOM
+  kill), it covers itself with a "Widget crashed" placeholder with a
+  **[RESTART]** button that reloads the page (TODO 5abf5a0), and raises
+  the titlebar error indicator; this is deliberately separate from the
+  `[STALE]` tag, which only means a content-hash mismatch.
   Every request the browser makes for a widget's own page — not just the
   top-level navigation — must carry the per-launch auth token
   (`TokenAuthMiddleware`, `src/desk/server/app.py`). The top-level

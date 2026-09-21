@@ -4,9 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PyQt6 import sip
-from PyQt6.QtCore import QUrl, pyqtSignal
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal
 from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEngineScript, QWebEnginePage
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWidgets import QLabel, QPushButton, QVBoxLayout, QWidget
 
 from desk.hotreload import HotReloadBroker
 from desk.server.bridge_client import render_bridge_client
@@ -66,6 +67,35 @@ class _LoggingWebEnginePage(QWebEnginePage):
         )
         if level_name == "error":
             self.error_logged.emit(message or "")
+
+
+class _CrashedOverlay(QWidget):
+    """TODO 5abf5a0: covers a ChromiumWidget whose render process
+    terminated, in place of the silent blank view. Its [RESTART] button
+    is a crash-specific control -- deliberately not the [STALE] tag,
+    which stays a content-hash-mismatch indicator."""
+
+    restart_clicked = pyqtSignal()
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setAutoFillBackground(True)
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._label = QLabel("Widget crashed")
+        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._label.setWordWrap(True)
+        self._button = QPushButton("[RESTART]")
+        self._button.clicked.connect(self.restart_clicked)
+        layout.addWidget(self._label)
+        layout.addWidget(self._button, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.hide()
+
+    def show_crashed(self, detail: str) -> None:
+        self._label.setText(f"Widget crashed\n{detail}")
+        self.setGeometry(self.parentWidget().rect())
+        self.show()
+        self.raise_()
 
 
 class ChromiumWidget(QWebEngineView):
@@ -169,6 +199,12 @@ class ChromiumWidget(QWebEngineView):
         self.setPage(self._logging_page)
         self._logging_page.error_logged.connect(self._on_console_error)
 
+        # TODO 5abf5a0: without this, a terminated render process (a
+        # crash, an OOM kill) just leaves a blank view forever.
+        self._crashed_overlay = _CrashedOverlay(self)
+        self._crashed_overlay.restart_clicked.connect(self.reload)
+        self._logging_page.renderProcessTerminated.connect(self._on_render_process_terminated)
+
         script = QWebEngineScript()
         script.setName(f"desk-bridge-client-{widget_id}")
         script.setSourceCode(render_bridge_client(widget_id, instance_id, token))
@@ -188,6 +224,16 @@ class ChromiumWidget(QWebEngineView):
     def _on_console_error(self, message: str) -> None:
         self.error_state_changed.emit(True, message)
 
+    def _on_render_process_terminated(self, status, exit_code: int) -> None:
+        detail = f"{status.name} (exit code {exit_code})"
+        logger.warning("Render process for widget %s terminated: %s", self.widget_id, detail)
+        self._crashed_overlay.show_crashed(detail)
+        self.error_state_changed.emit(True, f"Render process terminated: {detail}")
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._crashed_overlay.setGeometry(self.rect())
+
     def reload(self) -> None:
         """Overridden (not just called) so both existing reload paths --
         the hot-reload broker (_on_widget_changed) and the [STALE]
@@ -196,6 +242,7 @@ class ChromiumWidget(QWebEngineView):
         instance's error indicator for free (TODO d4d6c71): a freshly
         (re)loaded page hasn't had a chance to log anything yet."""
         self.error_state_changed.emit(False, "")
+        self._crashed_overlay.hide()
         super().reload()
 
     def get_console_log(self) -> list[ConsoleLogEntry]:

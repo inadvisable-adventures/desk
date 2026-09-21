@@ -9537,14 +9537,14 @@ aa0ce76. Add a rotating file log for Desk's own logging
    `../FEEDBACK/FEEDBACK-DESK-html-widget-getusermedia-crash-2026-09-11-1735.md`
    (suggested fix 3).
 
-5abf5a0. When a `ChromiumWidget`'s render process terminates
+5abf5a0. COMPLETED: When a `ChromiumWidget`'s render process terminates
    (`QWebEnginePage.renderProcessTerminated`), replace the silent blank
    view with a "widget crashed" placeholder that has a **[RESTART]**
    button, which reloads the widget's page. This is a new,
    crash-specific control -- deliberately *not* the `[STALE]` tag,
    which stays a content-hash-mismatch indicator. Cites
    `../FEEDBACK/FEEDBACK-DESK-html-widget-getusermedia-crash-2026-09-11-1735.md`
-   (the "blank forever" symptom).
+   (the "blank forever" symptom). [planned: chromium-widget-crash-restart.md]
 
 8a09220. Make promotion (`DeskWindow._relocate_promoted_widget_source`,
    `src/desk/shell/window.py`) handle a widget's `tsconfig.json`
