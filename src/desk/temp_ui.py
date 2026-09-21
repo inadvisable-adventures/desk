@@ -217,6 +217,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "Desk-hosted microservices (hmsvc) #285553",
     "widget for subjective visual tasks guidance #588265",
     "promotion moves shared tsconfig files #586922",
+    "Desk log file at .desk_temp/logs/desk.log #236455",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -299,6 +300,17 @@ it as many times as you like via an MCP tool call with no further
 prompt. Not a dropped-tempui-file DSL keyword like the ones above --
 installation happens via an MCP tool call against a directory you
 already wrote, never via a file dropped in this directory.
+
+## Desk's own log
+
+Desk writes its own log (startup, warnings, errors, and the traceback of
+any uncaught exception) to `logs/desk.log` in this directory --
+`.desk_temp/logs/desk.log` from the project root -- rotated at about 1 MB
+with 5 older files kept (`desk.log.1` ...). Each project has its own, and
+you're welcome to read it, e.g. when something in Desk misbehaves and you
+want the underlying error rather than guessing. It only exists once Desk
+has been opened on this project with this directory present; it is
+Desk's log, not something to write to.
 
 ## Environment variables
 
@@ -1702,6 +1714,13 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "Desk log file at .desk_temp/logs/desk.log #236455": """- Desk now keeps its own rotating log at `.desk_temp/logs/desk.log`
+  (about 1 MB per file, 5 backups), one per project: startup messages,
+  warnings, errors, and the traceback of any uncaught exception. It is
+  meant to be readable by an agent working in the project -- check it when
+  Desk misbehaves. Documented in `desk-temporary-ui.md` under "Desk's own
+  log".
+""",
     "promotion moves shared tsconfig files #586922": """- Promoting a source-backed `DefineWidget` widget now also handles the
   shared files its `tsconfig.json` `"files"` lists from outside its own
   directory. A shared file under `.desk_temp/widgets/` is moved once to

@@ -76,3 +76,12 @@ directory) keeps its own local log, and agents may read it.
   (per-instance logs, switching, detach, no `.desk_temp` creation, rotation,
   fallback, crash-handler path) plus a wiring check on
   `_provision_temp_ui`. Full `tests/verify/` sweep re-run.
+
+## Follow-up: tempui doc note and changelog tag (per user request)
+
+Agents may read the log, so the tempui docs now say where it is: a
+"Desk's own log" section in `desk-temporary-ui.md` (`DOC_TEMPLATE` in
+`src/desk/temp_ui.py`), the tag `Desk log file at .desk_temp/logs/desk.log
+#236455` in `CURRENT_TAGS`, and a matching `_NEW_FEATURES` entry.
+Verified by `tests/verify/verify_tempui_desk_log_doc.py`, plus the existing
+`verify_tempui_*` scripts and a full `tests/verify/` sweep.
