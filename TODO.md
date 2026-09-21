@@ -9858,10 +9858,53 @@ d0a4c7b. Fix widget stacking on the canvas (`src/desk/shell/canvas.py`).
    batch-Job ideas are deliberately not part of this item. Cites
    `../FEEDBACK/FEEDBACK-DESK-existing-app-decomposition-process-2026-08-03-1719.md`.
 
-feff1ec. Review and discuss all of the new FEEDBACK items (feedback
+feff1ec. COMPLETED: Review and discuss all of the new FEEDBACK items (feedback
    submitted via the Feedback widget, `DESK_FEEDBACK-*.md` files) with
    the user before acting on any of them. Not designed/scoped yet --
    this item is just the reminder to have that discussion.
+
+   COMPLETED: Reviewed with the user, one item or related group at a
+   time. Scope: the in-repo `DESK_FEEDBACK-2026-07-13T012144.md` plus
+   the 24 top-level `../FEEDBACK/FEEDBACK-DESK-*.md` files no
+   `TODO.md`/`PARKINGLOT.md` entry cited yet. Outcomes:
+   - Already handled, archived to `../FEEDBACK/implemented/`:
+     promoted-widgets-no-stale-marker (TODO `4eb3d9e`),
+     tempui-convention-drift-notification (TODOs `6839365` and the
+     missing-source-directory commit `e518a47`),
+     webengineprofile-teardown-segfault-on-quit (commit `5056e00`,
+     confirmed with the user).
+   - `DESK_FEEDBACK-2026-07-13T012144.md` (hex_flower): already fully
+     dispositioned -- cookie fix TODO `a5f66cc`, persistence guidance
+     TODO `411d0e0`, the remaining suggestions parked in
+     `PARKINGLOT.md`. Nothing new filed.
+   - Filed as TODOs: claude-desk-question-vs-permission-hang -> `6ab9e85`;
+     html-widget-getusermedia-crash -> `2dbfd55`, `b89cf17`, `aa0ce76`,
+     `5abf5a0`; promotion-doesnt-move-shared-multifile-deps and
+     promoted-widget-tsconfig-path-not-fixed-up -> `8a09220`,
+     `3d792f8` (plus a `PARKINGLOT.md` entry for shared libraries);
+     the two mermaid files -> `90dd6e6`, `9fe03a1`, `05f2222`;
+     screenshot-tools-no-downsampling-option and
+     widget-glitches-on-oversized-screenshot-json -> `94d2b94`,
+     `f35466a`; agent-cannot-detect-stale-widget-instances ->
+     `f0da2e9`; html-widget-view-handler-no-file-path -> `83427f4`;
+     sheet-widget-no-programmatic-open -> `5928ae6`, `3b6de01`;
+     claude-desk-progress-interrupt-compact -> `db2402c`, `db1cd65`;
+     onboarding-read-mistaken-for-work-request -> `b78e7b8`;
+     tempui-widget-for-subjective-visual-tasks -> `e501d8a`
+     (`b78e7b8` and `e501d8a` prioritized on request);
+     widget-findability-zorder-and-overview -> `d0a4c7b`, `53779f4`,
+     `669b690` (absorbing the former minimap parking-lot entry);
+     widget-shape-distorts-at-low-zoom -> `9585a5a` (investigation);
+     revive-removed-widgets -> `454d718`; virtualized-document-loader-
+     service -> `8e4711e` (v1); existing-app-decomposition-process ->
+     `94c2566`.
+   - Parked in `PARKINGLOT.md`: domain-analysis-as-builtin-widget,
+     shared-learnings-catalog-service, and `desk.documents` v2.
+
+   Each `../FEEDBACK/` file moves to `implemented/` only once every
+   TODO/PARKINGLOT entry it produced is COMPLETED, per
+   `shared_development_process.md`; the files above other than the three
+   archived ones stay put until then.
 
 f165b8c. Investigate options for running Desk jobs on cloud VMs, given
    that Desk uses `claude` and many VM providers have blanket
