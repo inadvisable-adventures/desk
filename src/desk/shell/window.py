@@ -27,6 +27,7 @@ from desk.desks import (
     state_entry_dict,
 )
 from desk.jobs import materialize as materialize_job
+from desk.logging_setup import set_log_directory
 from desk.promotion_deps import (
     apply_moves,
     find_peer_dependents,
@@ -2267,6 +2268,11 @@ class DeskWindow(QMainWindow):
             )
             ask_gitignore = self._confirm_fn("Temporary UI", f"Add “{TEMP_UI_DIRNAME}” to .gitignore?")
         temp_dir = self._temp_ui_manager.provision(directory, ask_create_dir, ask_gitignore)
+        # TODO aa0ce76: each Desk directory keeps its own log under its
+        # own .desk_temp -- (re)pointed here, after the consent prompt
+        # above, so logging never creates .desk_temp behind the user's
+        # back (None, if they declined, just detaches the file log).
+        set_log_directory(temp_dir)
         self._ensure_questions_watcher()
         self._provision_schema_files(directory, temp_dir)
         # TODO 1c67fe5: covers a project that already had desk_widgets/

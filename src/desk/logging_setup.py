@@ -1,56 +1,86 @@
-"""Desk's own logging setup (TODO aa0ce76): the existing stderr output
-plus a rotating file log at `~/.desk/logs/desk.log`, so a traceback or
-warning is recoverable after the fact and there is a fixed, documented
-place to look. Desk-wide rather than per-project, alongside
-`~/.desk/recent_desks.json`.
+"""Desk's own logging setup (TODO aa0ce76): stderr output plus a
+rotating file log at `<project>/.desk_temp/logs/desk.log`, so a
+traceback or warning is recoverable after the fact and there is a fixed,
+documented place to look. Per project (each Desk directory's own
+`.desk_temp`), not Desk-wide, and deliberately readable by an agent
+working in that project.
 
-Best-effort: if the log directory can't be created or opened, Desk falls
-back to stderr-only rather than failing to start."""
+Two steps, because the project directory isn't known when logging must
+start: `configure_logging()` (stderr only, at import time) and
+`set_log_directory()` (attaches, or re-points, the file handler once a
+Desk's `.desk_temp` is known -- at startup and on every Desk switch).
+Records logged before the first `set_log_directory` reach stderr only.
+
+`.desk_temp` itself is created only by `TempUiManager.provision`, after
+asking the user -- this module never creates it, so a project that
+declined it simply gets no file log.
+
+Best-effort: if the log file can't be opened, Desk falls back to
+stderr-only rather than failing."""
 
 import logging
 import logging.handlers
 from pathlib import Path
 
-LOG_DIR = Path.home() / ".desk" / "logs"
+LOG_DIRNAME = "logs"
 LOG_FILENAME = "desk.log"
 MAX_BYTES = 1_000_000
 BACKUP_COUNT = 5
 STDERR_FORMAT = "%(levelname)s %(name)s: %(message)s"
 FILE_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
-
-def log_path(log_dir: Path | None = None) -> Path:
-    return (log_dir or LOG_DIR) / LOG_FILENAME
+logger = logging.getLogger("desk.logging_setup")
 
 
-def configure_logging(
-    log_dir: Path | None = None,
+def log_path(temp_dir: Path) -> Path:
+    return temp_dir / LOG_DIRNAME / LOG_FILENAME
+
+
+def configure_logging() -> None:
+    """Idempotent: never adds a second stderr handler."""
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    if any(getattr(h, "_desk_stderr", False) for h in root.handlers):
+        return
+    stream = logging.StreamHandler()
+    stream.setFormatter(logging.Formatter(STDERR_FORMAT))
+    stream._desk_stderr = True  # type: ignore[attr-defined]
+    root.addHandler(stream)
+
+
+def _file_handlers() -> list[logging.Handler]:
+    return [h for h in logging.getLogger().handlers if getattr(h, "_desk_file", False)]
+
+
+def set_log_directory(
+    temp_dir: Path | None,
     *,
     max_bytes: int = MAX_BYTES,
     backup_count: int = BACKUP_COUNT,
 ) -> Path | None:
-    """Idempotent: never adds a second stderr or file handler. Returns
-    the log file's path, or None if the file log couldn't be set up."""
-    root = logging.getLogger()
-    root.setLevel(logging.INFO)
-    if not any(getattr(h, "_desk_stderr", False) for h in root.handlers):
-        stream = logging.StreamHandler()
-        stream.setFormatter(logging.Formatter(STDERR_FORMAT))
-        stream._desk_stderr = True  # type: ignore[attr-defined]
-        root.addHandler(stream)
-    for handler in root.handlers:
-        if getattr(handler, "_desk_file", False):
-            return Path(handler.baseFilename)  # type: ignore[attr-defined]
-    path = log_path(log_dir)
+    """Points the file log at `temp_dir`/logs/desk.log, replacing any
+    previous file handler (closed). `temp_dir` is a project's existing
+    `.desk_temp`; None, or a directory that doesn't exist, just detaches
+    the file log. Idempotent for the same directory. Returns the log
+    file's path, or None if there is no file log."""
+    path = log_path(temp_dir) if temp_dir is not None and temp_dir.is_dir() else None
+    for handler in _file_handlers():
+        if path is not None and Path(handler.baseFilename) == path:  # type: ignore[attr-defined]
+            return path
+        logging.getLogger().removeHandler(handler)
+        handler.close()
+    if path is None:
+        return None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         file_handler = logging.handlers.RotatingFileHandler(
             path, maxBytes=max_bytes, backupCount=backup_count, encoding="utf-8"
         )
     except OSError as exc:
-        logging.getLogger("desk").warning("File logging unavailable (%s): %s", path, exc)
+        logger.warning("File logging unavailable (%s): %s", path, exc)
         return None
     file_handler.setFormatter(logging.Formatter(FILE_FORMAT))
     file_handler._desk_file = True  # type: ignore[attr-defined]
-    root.addHandler(file_handler)
+    logging.getLogger().addHandler(file_handler)
+    logger.info("Logging to %s", path)
     return path

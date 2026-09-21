@@ -54,3 +54,25 @@ Implemented as planned. Verified with the new script plus the existing
 `verify_crash_handler.py` and `verify_crash_log.py`. The feedback file
 stays in `../FEEDBACK/` because TODOs 2dbfd55, b89cf17 and 5abf5a0 from the
 same report are still open. Browser launch not needed.
+
+## Revision (per user request): per-project log under `.desk_temp/logs/`
+
+The log moved from `~/.desk/logs/desk.log` to
+`<project>/.desk_temp/logs/desk.log`: each Desk instance (project
+directory) keeps its own local log, and agents may read it.
+
+- `configure_logging()` is now stderr-only and runs at import time;
+  `set_log_directory(temp_dir)` attaches/re-points the rotating file
+  handler (closing the previous one) and is called from
+  `DeskWindow._provision_temp_ui`, i.e. at startup and on every Desk switch.
+- It is called *after* `TempUiManager.provision`, and never creates
+  `.desk_temp`: provision treats an existing `.desk_temp` as consent (it
+  skips the "create it?" prompt and seeds the docs), so pre-creating it for
+  logs would bypass that consent. A declined `.desk_temp` means stderr-only.
+- Known limitation: records emitted before the first provisioning (a few
+  startup lines) reach stderr only.
+- `.desk_temp/` is already gitignored by the provisioning flow.
+- Verification: `verify_rotating_file_log.py` rewritten for the new API
+  (per-instance logs, switching, detach, no `.desk_temp` creation, rotation,
+  fallback, crash-handler path) plus a wiring check on
+  `_provision_temp_ui`. Full `tests/verify/` sweep re-run.

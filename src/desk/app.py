@@ -16,14 +16,13 @@ from desk.shell.window import DeskWindow
 from desk.widgets import WidgetWatcher, discover_widgets
 from desk_services.file_watcher import get_service
 
-_log_file = configure_logging()
+configure_logging()
 logger = logging.getLogger("desk")
 
 
 def main() -> int:
     install_crash_handler()
     logger.info("Desk %s starting", __version__)
-    logger.info("Log file: %s", _log_file)
 
     app = QApplication(sys.argv)
 

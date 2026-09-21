@@ -1332,11 +1332,15 @@ as every other Bridge GUI-thread call) ever blocks.
 ## Logging
 
 Desk's own logging (`desk.logging_setup`, TODO aa0ce76) writes to stderr and
-to a rotating file, `~/.desk/logs/desk.log` (1 MB per file, 5 backups),
-alongside `~/.desk/recent_desks.json`. The path is logged at startup. An
-uncaught exception's traceback is recorded there too (via
-`desk.crash_handler`), in addition to the per-project
-`.desk_temp/DESK-CRASH-*.log` file. If the log directory can't be created,
+to a rotating file, `<project>/.desk_temp/logs/desk.log` (1 MB per file, 5
+backups) -- each Desk directory keeps its own log, and an agent working in
+that project can read it. The file log is (re)pointed by
+`DeskWindow._provision_temp_ui` at startup and on every Desk switch, after
+the "create `.desk_temp`?" prompt: logging never creates `.desk_temp` itself,
+so a project that declined it has stderr-only logging. Records logged before
+the first Desk is provisioned go to stderr only. An uncaught exception's
+traceback is recorded in the log too (via `desk.crash_handler`), in addition
+to the `.desk_temp/DESK-CRASH-*.log` file. If the log file can't be opened,
 Desk falls back to stderr-only.
 
 ## Open Questions
