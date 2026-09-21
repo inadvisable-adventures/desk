@@ -36,7 +36,7 @@ check("says heuristic seeds a default", "seed a sensible default" in flat)
 check("says the widget only selects, a script does the work", "writing the confirmed rectangles" in flat and "ordinary script" in flat)
 check("callout sits before the line-format list",
       _CUSTOM_WIDGETS_DOC.index("When to propose a widget yourself") < _CUSTOM_WIDGETS_DOC.index("Lines are **tab**-separated"))
-check("tag is in CURRENT_TAGS (newest last)", CURRENT_TAGS[-1] == TAG and TAG in CURRENT_TAG_SET)
+check("tag is in CURRENT_TAGS", TAG in CURRENT_TAGS and TAG in CURRENT_TAG_SET)
 check("tag has a _NEW_FEATURES entry", TAG in _NEW_FEATURES and "subjective visual judgment" in _NEW_FEATURES[TAG])
 
 print(f"\n{passed} passed, {failed} failed")

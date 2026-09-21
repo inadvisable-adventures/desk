@@ -84,11 +84,18 @@ def _read_out_dir(widget_dir: Path, tsconfig: dict) -> Path:
     return widget_dir / out_dir
 
 
+def _read_files_entries(tsconfig: dict) -> list[str]:
+    """tsconfig.json's own top-level "files" array, as written (TODO
+    8a09220: promotion needs the full relative paths, not just the
+    stems _read_ordered_stems keeps). Empty if absent."""
+    return list(tsconfig.get("files") or [])
+
+
 def _read_ordered_stems(tsconfig: dict) -> list[str] | None:
     """Mirrors .desk_temp/build_widget.py's own _read_ordered_stems --
     see that file's docstring (TODO 3fc5331) for why this matters for a
     widget split across more than one .ts file."""
-    files = tsconfig.get("files")
+    files = _read_files_entries(tsconfig)
     if not files:
         return None
     return [Path(entry).stem for entry in files]

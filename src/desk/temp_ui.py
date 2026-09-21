@@ -216,6 +216,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "job-to-job invocation via RUN_INSTALLED_JOB #181226",
     "Desk-hosted microservices (hmsvc) #285553",
     "widget for subjective visual tasks guidance #588265",
+    "promotion moves shared tsconfig files #586922",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -827,6 +828,26 @@ just on the machine it was authored/promoted on — see
 `tempui-breaking-changes.md`. A hand-authored, inline-only
 `DefineWidget` (no source directory) is unaffected: there's nothing to
 rebuild from, so it keeps today's baked-`html_b64` behavior.
+
+**Shared files a widget's `tsconfig.json` lists from outside its own
+directory** (a shared base class or DSL module in a sibling directory,
+`shared-components/...`) are handled at promotion too, since their
+relative paths would otherwise break the moment the widget's directory
+moves. Promotion reads `"files"`; a file under `.desk_temp/widgets/`
+(and not inside another widget's own directory) is moved once to the
+same relative place under `desk_widgets/` (so a shared
+`.desk_temp/widgets/_shared/x.ts` becomes `desk_widgets/_shared/x.ts`,
+and a second widget promoted later just finds it already there); a file
+already at its final location, or the regenerated
+`.desk_temp/shared-components/` mirror, stays put. The widget's own
+`tsconfig.json` `"files"` entries are then rewritten to resolve from its
+new directory, and Desk shows what it moved and rewrote. Any other
+not-yet-promoted widget whose `tsconfig.json` listed a moved file is
+offered the choice to be promoted too, have its `tsconfig.json` fixed,
+or be left alone (a left-alone widget's next rebuild will fail until its
+path is fixed). A different file with the same name already at the
+destination is never overwritten -- Desk reports it and leaves the
+widget pointing at the original. Only `"files"` is read, not `include`.
 
 ## The Desk Bridge API — what your widget's own JS can call
 
@@ -1681,6 +1702,17 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "promotion moves shared tsconfig files #586922": """- Promoting a source-backed `DefineWidget` widget now also handles the
+  shared files its `tsconfig.json` `"files"` lists from outside its own
+  directory. A shared file under `.desk_temp/widgets/` is moved once to
+  the same relative place under `desk_widgets/`; the widget's own
+  `tsconfig.json` entries are rewritten to resolve from
+  `desk_widgets/<name>/` (including files already at their final place
+  and `.desk_temp/shared-components/`); Desk tells the user what moved
+  and what was rewritten. Other un-promoted widgets that listed a moved
+  file are offered promotion too, a `tsconfig.json` fix, or nothing. See
+  "Promoting a defined widget to the Desk" in `tempui-custom-widgets.md`.
+""",
     "widget for subjective visual tasks guidance #588265": """- New guidance in `tempui-custom-widgets.md` ("When to propose a
   widget yourself"): when a task's correct answer depends on a human's
   subjective visual judgment (selecting/cropping a region in an image,
