@@ -108,7 +108,7 @@ ed5c62f. COMPLETED: Re-prioritized per direct user request (previously de
    covered by the automated tests above using real Qt event objects,
    not mocks.
 
-b78e7b8. Make the session-start prompt say plainly that reading the
+b78e7b8. COMPLETED: Make the session-start prompt say plainly that reading the
    docs is orientation only. Add a sentence to `CLAUDE_WIDGET_PROMPT` in
    both `widgets/claude_desk/widget.py` and `widgets/claude/widget.py`,
    and to the text that adds the `development-process.md` read
@@ -123,6 +123,7 @@ b78e7b8. Make the session-start prompt say plainly that reading the
    prompt text (`verify_claude_prompt_tempui_wording.py`,
    `verify_dev_process_seeding.py`). Cites
    `../FEEDBACK/FEEDBACK-DESK-onboarding-read-mistaken-for-work-request-2026-09-18-2110.md`.
+   [planned: session-start-prompt-orientation-only.md (COMPLETED)]
 
 e501d8a. Add a callout to `tempui-custom-widgets.md` (generated from
    `src/desk/temp_ui.py`) naming "the task's correct answer depends on

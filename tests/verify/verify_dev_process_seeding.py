@@ -158,6 +158,18 @@ def test_claude_prompt_mentions_file_when_present():
         assert instruction != ""
         assert "development-process.md" in instruction
         assert str(directory / "development-process.md") in instruction
+        # TODO b78e7b8: orientation only, for both widgets.
+        assert "orientation only" in instruction
+        assert "unless the message from the user separately asks for it" in instruction
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("claude_desk_widget", "widgets/claude_desk/widget.py")
+        desk_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(desk_mod)
+        desk_instruction = desk_mod._development_process_instruction()
+        assert str(directory / "development-process.md") in desk_instruction
+        assert "orientation only" in desk_instruction
+        assert "unless the message from the user separately asks for it" in desk_instruction
     print("Claude prompt instruction mentions the file when present: PASS")
 
 

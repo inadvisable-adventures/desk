@@ -13,7 +13,10 @@ CLAUDE_WIDGET_PROMPT = (
     "detail on specific capabilities; only open one of those if you "
     "actually need that particular capability (e.g. only read "
     "tempui-lightning-round.md if you are about to run a lightning "
-    "round), not unconditionally."
+    "round), not unconditionally. Reading these documents is "
+    "orientation only: it is not itself a task, and it does not mean "
+    "you should start working (for example by picking up a TODO.md "
+    "item) unless the message from the user separately asks for it."
 )
 
 # claude's --permission-mode has an "auto" choice; launching with it puts
@@ -45,7 +48,7 @@ def _development_process_instruction() -> str:
     path = directory / DEVELOPMENT_PROCESS_FILENAME
     if not path.is_file():
         return ""
-    return f" This project also has its own {DEVELOPMENT_PROCESS_FILENAME} at {path} -- please read that too."
+    return f" This project also has its own {DEVELOPMENT_PROCESS_FILENAME} at {path} -- please read that too, as orientation only: reading it is not itself a task, and it does not mean you should start working on a TODO item unless the message from the user separately asks for it."
 
 
 class ClaudeWidget(TerminalWidget):
