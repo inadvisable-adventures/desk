@@ -9511,14 +9511,14 @@ a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's histor
 
 2dbfd55. Handle `QWebEnginePage.featurePermissionRequested` in
    `ChromiumWidget` (`src/desk/shell/chromium_widget.py`), which
-   currently never connects it. Deny by default so a `kind: "html"`
-   widget calling `getUserMedia` (e.g. via the Web Speech API) gets a
-   normal, catchable `NotAllowedError` instead of the blank view the
-   report saw; consider a capability-gated grant for mic/camera as a
-   follow-up (macOS also needs a microphone usage entitlement). First
-   capture a real repro on a placed widget -- the report calls "an
-   unhandled permission request causes the blanking" plausible but
-   unproven. Cites
+   currently never connects it. A `kind: "html"` widget calling
+   `getUserMedia` (e.g. via the Web Speech API) must get a normal,
+   catchable `NotAllowedError` instead of the blank view the report
+   saw. Add a capability-gated grant for mic/camera (a manifest/
+   `DefineWidget` capability, the same coarse per-resource shape as
+   `workspace`/`fs`/`events`/...): a widget declaring it is granted the
+   permission, one without it is denied -- this is required, not a
+   follow-up (macOS also needs a microphone usage entitlement). Cites
    `../FEEDBACK/FEEDBACK-DESK-html-widget-getusermedia-crash-2026-09-11-1735.md`
    (suggested fix 1).
 
