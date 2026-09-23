@@ -361,6 +361,8 @@ _FakeWindow._display_path = DeskWindow._display_path
 _FakeWindow._report_dependency_relocation = DeskWindow._report_dependency_relocation
 _FakeWindow._find_promotable_peer = DeskWindow._find_promotable_peer
 _FakeWindow._handle_peer_dependent = DeskWindow._handle_peer_dependent
+# TODO 3d792f8: promotion also normalizes/clears the widget's own build output.
+_FakeWindow._normalize_promoted_build_output = DeskWindow._normalize_promoted_build_output
 _FakeWindow._resolve_promotion_source = DeskWindow._resolve_promotion_source
 
 

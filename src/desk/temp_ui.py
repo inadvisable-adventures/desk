@@ -219,6 +219,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "promotion moves shared tsconfig files #586922",
     "Desk log file at .desk_temp/logs/desk.log #236455",
     "media capability gates mic and camera #407103",
+    "promotion normalizes tsconfig outDir to .build #941549",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -715,7 +716,17 @@ not-yet-promoted widget's source too. Four files:
   comment `/* BUILD:COMPILED_JS */`, and the `<name-tag></name-tag>`
   element instantiation.
 - `tsconfig.json` — whatever strictness the project wants; must set
-  `compilerOptions.outDir`. For a widget split across more than one
+  `compilerOptions.outDir`. **Set it to `.build`** — the same directory
+  a promoted, source-backed widget is rebuilt into (see "Promoting a
+  defined widget to the Desk" below); `tsc`'s own raw compiled `.js`
+  output there and the final packaged `index.html` coexist in that one
+  directory just fine. Any other value still works while un-promoted
+  (`build_widget.py` reads whatever you set), but promotion will offer
+  to rewrite it to `.build` for you, and until you accept that (or set
+  it yourself), it's a second, gitignore-uncovered build directory
+  alongside `.build` — the existing `desk_widgets/**/.build/`
+  gitignore-entry prompt only ever covers `.build` itself. For a widget
+  split across more than one
   `.ts` file (e.g. a shared base class alongside the widget's own
   subclass), also set a top-level `"files"` array listing them in
   the order they must be concatenated in — base classes before the
@@ -864,6 +875,18 @@ or be left alone (a left-alone widget's next rebuild will fail until its
 path is fixed). A different file with the same name already at the
 destination is never overwritten -- Desk reports it and leaves the
 widget pointing at the original. Only `"files"` is read, not `include`.
+
+**The widget's own build output is normalized too.** If its
+`tsconfig.json` `compilerOptions.outDir` doesn't already say `.build`,
+promotion offers to rewrite it to match (the same directory Desk
+itself rebuilds the widget into, above) -- accept it, or set `.build`
+yourself from the start (see "Authoring from real source"), and there's
+only ever one build directory to gitignore, already covered by the
+`desk_widgets/**/.build/` entry. Either way, promotion also clears out
+whatever that directory currently holds, without asking -- it moved
+along with the rest of the widget's source and can only be a stale
+compile from before the move, which the very next rebuild regenerates
+from scratch.
 
 ## The Desk Bridge API — what your widget's own JS can call
 
@@ -1736,6 +1759,16 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "promotion normalizes tsconfig outDir to .build #941549": """- Promoting a source-backed `DefineWidget` widget now also normalizes
+  its build output: if its `tsconfig.json` `compilerOptions.outDir`
+  isn't already `.build` (the directory Desk itself rebuilds a promoted
+  widget into), promotion offers to rewrite it to match, and
+  unconditionally clears whatever that directory currently holds (it
+  moved along with the rest of the widget's source and can only be a
+  stale pre-move compile). "Authoring from real source" in
+  `tempui-custom-widgets.md` now names `.build` as the recommended
+  `outDir` value from the start.
+""",
     "media capability gates mic and camera #407103": """- A `kind: "html"` widget's page can now be granted real
   `getUserMedia()` (mic/camera) access: declare the new `media`
   capability (a `Capability<TAB>media` line, or `"media"` in

@@ -30,9 +30,12 @@ from desk.jobs import materialize as materialize_job
 from desk.logging_setup import set_log_directory
 from desk.promotion_deps import (
     apply_moves,
+    clear_stale_build_output,
     find_peer_dependents,
+    out_dir_mismatch,
     plan_dependency_relocation,
     rewrite_files_entries,
+    rewrite_out_dir,
 )
 from desk.file_type_registry import (
     FILE_TYPE_REGISTRY_UPDATED_EVENT,
@@ -89,6 +92,7 @@ from desk.temp_ui import (
     PROMOTED_WIDGET_SRC_DIRNAME,
     RESERVED_TEMPUI_KEYWORDS,
     SCRATCH_KEYWORD,
+    SOURCE_BUILD_CACHE_DIRNAME,
     TEMP_UI_DIRNAME,
     detect_temp_ui_kind,
     ensure_desk_widgets_gitignore_entry,
@@ -3403,6 +3407,12 @@ class DeskWindow(QMainWindow):
         self._report_dependency_relocation(definition, destination_dir, plan, rewrote)
         for peer in find_peer_dependents(project_dir, plan.moves):
             self._handle_peer_dependent(peer)
+        # TODO 3d792f8: independent of the shared-dependency handling
+        # above -- the widget's own compiled-output directory (its
+        # tsconfig.json's own outDir, distinct from .build) can only
+        # hold a stale compile at this point, and its own outDir name
+        # may not match what Desk's rebuild-on-demand mechanism expects.
+        self._normalize_promoted_build_output(definition, destination_dir)
 
     def _display_path(self, path: Path) -> str:
         try:
@@ -3427,6 +3437,44 @@ class DeskWindow(QMainWindow):
                 "Promotion: shared dependencies",
                 f"“{definition.label}” builds from files outside its own directory.\n\n" + "\n".join(lines),
             )
+
+    def _normalize_promoted_build_output(self, definition, destination_dir: Path) -> None:
+        """TODO 3d792f8: `tsconfig.json`'s own `compilerOptions.outDir`
+        (wherever `tsc` compiles raw `.js` into) is unrelated to
+        `SOURCE_BUILD_CACHE_DIRNAME` (`.build`, where
+        `build_from_source` writes the final packaged `index.html`) --
+        an author who named it something else (`out`, `build`, ...)
+        gets a second, ungitignored build directory the existing
+        `desk_widgets/**/.build/` gitignore-entry prompt never covers.
+
+        Two independent steps, neither one gated on the other:
+
+        - Clearing a stale compile is never gated behind a confirm --
+          it's pure cleanup of build output the very next rebuild
+          regenerates from scratch, the same category of thing `.build`
+          itself already is, not something to ask permission for.
+        - Normalizing the name itself *is* offered, the same
+          `_confirm_fn` pattern as the `.gitignore` prompt right next to
+          this in the caller: rewriting an author's own `tsconfig.json`
+          without asking would be its own new surprise."""
+        cleared = clear_stale_build_output(destination_dir)
+        if cleared is not None:
+            self._info(
+                "Promotion: build output",
+                f"“{definition.label}”: cleared a stale build cache at "
+                f"{self._display_path(cleared)} -- the next rebuild will recreate it fresh.",
+            )
+        mismatch = out_dir_mismatch(destination_dir)
+        if mismatch is None:
+            return
+        if not self._confirm_fn(
+            "Promotion: build output",
+            f"“{definition.label}”'s tsconfig.json builds to “{mismatch}”, but promoted "
+            f"widgets are rebuilt into “{SOURCE_BUILD_CACHE_DIRNAME}” -- update tsconfig.json "
+            "to match?",
+        )():
+            return
+        rewrite_out_dir(destination_dir, SOURCE_BUILD_CACHE_DIRNAME)
 
     def _find_promotable_peer(self, peer_dir: Path) -> str | None:
         """The keyword of a registered, still tempui-sourced custom

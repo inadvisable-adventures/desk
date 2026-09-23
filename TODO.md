@@ -9570,7 +9570,7 @@ aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    `../FEEDBACK/FEEDBACK-DESK-promoted-widget-tsconfig-path-not-fixed-up-2026-09-18-1400.md`.
    [planned: promotion-tsconfig-shared-dependencies.md (COMPLETED)]
 
-3d792f8. Promotion `outDir` normalization: a promoted widget is rebuilt
+3d792f8. COMPLETED: Promotion `outDir` normalization: a promoted widget is rebuilt
    into `.build` (`SOURCE_BUILD_CACHE_DIRNAME`, `src/desk/temp_ui.py`),
    but authors write their own `tsconfig.json` `outDir` (`out`,
    `build`, ...). At promotion, if `outDir` doesn't match, offer via
@@ -9583,6 +9583,7 @@ aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    `../FEEDBACK/FEEDBACK-DESK-promotion-doesnt-move-shared-multifile-deps-2026-09-14-1628.md`
    ("Related finding") and
    `../FEEDBACK/FEEDBACK-DESK-promoted-widget-tsconfig-path-not-fixed-up-2026-09-18-1400.md`.
+   [planned: promotion-outdir-normalization.md (COMPLETED)]
 
 90dd6e6. Extend `desk.mermaid`'s parser (`src/desk/mermaid.py`): add
    stadium nodes `id(["label"])`, unpiped inline edge labels
