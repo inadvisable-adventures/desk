@@ -220,10 +220,21 @@ def state_entry_dict(entry: StateEntry) -> dict:
     }
 
 
-def desk_state_dict(desk: Desk) -> dict:
+def desk_state_dict(desk: Desk, stale_by_instance_id: dict[str, bool] | None = None) -> dict:
     """The JSON-serializable shape of a Desk's state -- shared by
     save_desk (writes it to disk) and the Bridge API's workspace.getState
-    (returns it over HTTP), so the two never drift apart."""
+    (returns it over HTTP), so the two never drift apart.
+
+    `stale_by_instance_id` (TODO f0da2e9) is optional and omitted by
+    save_desk's own call: staleness is live, in-session UI state (the
+    same `[STALE]` titlebar bit `WidgetFrame.is_stale()` reads), never
+    persisted -- a `stale` key baked into the `.desk` file would itself
+    already be stale the moment it's read back. Only
+    `DeskWindow.get_state_dict()` (the live path -- `desk_list_widget
+    _instances`/`workspace.getState()`) passes it, so a `"stale"` key
+    appears in a widget's dict only when a caller actually has live
+    frames to ask; a persisted-then-reloaded `Desk` with no such caller
+    gets today's exact shape, unchanged."""
     return {
         "name": desk.name,
         "widgets": [
@@ -237,6 +248,11 @@ def desk_state_dict(desk: Desk) -> dict:
                 "state": w.state,
                 "locked": w.locked,
                 "placed_content_hash": w.placed_content_hash,
+                **(
+                    {"stale": stale_by_instance_id.get(w.instance_id, False)}
+                    if stale_by_instance_id is not None
+                    else {}
+                ),
             }
             for w in desk.widgets
         ],

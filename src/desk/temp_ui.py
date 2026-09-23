@@ -224,6 +224,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "mermaid fallback distinguishes failure reasons #138484",
     "bundled desk_transforms discovered automatically #576866",
     "screenshot tools accept max_width downsampling #600160",
+    "workspace getState exposes per-instance stale flag #157810",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1021,7 +1022,14 @@ built for genuine cross-widget signaling:
   `events`) — send and receive named messages to/from other widgets.
   See "Sending and receiving named messages" below.
 - `desk.workspace.getState()` (capability `workspace`) — the current
-  Desk's live widget layout.
+  Desk's live widget layout: one entry per placed instance (widget id,
+  instance id, position/size, `state`, `locked`, `placed_content_hash`)
+  plus `stale` (TODO f0da2e9) — `true` when that instance is showing
+  the titlebar `[STALE]` badge (its placed content no longer matches
+  what's currently registered/on disk, so it's still running its own
+  pre-edit code) — check it before trusting a just-edited widget's
+  behavior, the same signal a human would otherwise have to notice on
+  the canvas themselves.
 - `desk.state.get(key)` / `.set(key, value, edit)` / `.getHistory(key,
   limit)` (capability `state`) — a shared, project-scoped key/value
   store any widget can read or write. See "Shared, project-scoped
@@ -1490,10 +1498,13 @@ there is unsafe, so use these methods rather than trying to reach into
   path-resolution rules and `max_width` downsampling as above.
 - `deskproc.list_widget_instances() -> list[dict]` -- the current
   Desk's live placed-widget layout (instance ids, widget kind,
-  position, size) -- the same data `desk.workspace.getState()` already
-  exposes to a `kind: "html"` widget with the `workspace` capability,
-  provided here so a script has a real way to discover an instance id
-  rather than needing one handed in from outside.
+  position, size, and `stale` -- TODO f0da2e9, `true` when that
+  instance is showing the titlebar `[STALE]` badge and so is still
+  running its own pre-edit code) -- the same data
+  `desk.workspace.getState()` already exposes to a `kind: "html"`
+  widget with the `workspace` capability, provided here so a script
+  has a real way to discover an instance id rather than needing one
+  handed in from outside.
 
 Clicking the resulting notification places a **Desk Proc Runner**
 widget, showing your declared summary, a "View Code" button (opens
@@ -1827,6 +1838,14 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "workspace getState exposes per-instance stale flag #157810": """- `desk.workspace.getState()`, `desk_list_widget_instances` (MCP), and
+  `deskproc.list_widget_instances()` now report `stale: bool` for each
+  placed instance -- the same live signal the titlebar `[STALE]` badge
+  shows (not an independent hash diff), so an agent can tell a placed
+  instance is still running its own pre-edit code without a human
+  having to notice the badge on the canvas first. Never persisted --
+  a Desk's saved `.desk` file is unaffected.
+""",
     "screenshot tools accept max_width downsampling #600160": """- `desk_screenshot_widget`/`desk_screenshot_desk` (MCP tools) and
   `deskproc.screenshot_widget`/`deskproc.screenshot_desk` (Desk Proc)
   all take an optional `max_width` (pixels): the capture is scaled down

@@ -404,6 +404,16 @@ class _TitleBar(QWidget):
         self._stale = is_stale
         self._refresh_button_visibility()
 
+    def is_stale(self) -> bool:
+        """TODO f0da2e9: the live `[STALE]` bit itself, for a caller
+        (`DeskWindow.get_state_dict`) that needs the exact same signal
+        the titlebar button shows -- not an independent hash diff,
+        which would miss the force-`True` set by
+        `_on_promoted_widget_source_changed`
+        (`desk.shell.window.DeskWindow`) when source changed on disk
+        and no fresh hash exists yet to diff against."""
+        return self._stale
+
     def set_error(self, has_error: bool) -> None:
         """Shows/hides the clickable `[ERROR]` titlebar button (TODO
         d4d6c71) -- for a widget instance that hit an unhandled error
@@ -805,6 +815,11 @@ class WidgetFrame(QWidget):
         `desk.shell.window.DeskWindow._refresh_stale_indicators_for`."""
         self._titlebar.set_stale(is_stale)
         self._update_chrome_state()
+
+    def is_stale(self) -> bool:
+        """TODO f0da2e9: the live `[STALE]` bit currently showing on
+        this instance's own titlebar -- see `_TitleBar.is_stale`."""
+        return self._titlebar.is_stale()
 
     def set_error(self, has_error: bool, message: str = "") -> None:
         """Shows/hides the titlebar's clickable `[ERROR]` button (TODO

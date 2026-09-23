@@ -168,7 +168,10 @@ async def _screenshot_desk(args: dict[str, Any]) -> dict[str, Any]:
     "desk_list_widget_instances",
     "List the current Desk's live placed-widget layout (instance ids, widget kind, position, "
     "size) -- the same data desk.workspace.getState() already exposes to a kind:\"html\" widget "
-    "with the workspace capability.",
+    "with the workspace capability. Each entry's stale is true when that instance is showing "
+    "the titlebar [STALE] badge (its placed content no longer matches what's currently "
+    "registered/on disk) -- check it before trusting a just-edited widget's behavior; a stale "
+    "instance is still running its own pre-edit code.",
     {},
 )
 async def _list_widget_instances(args: dict[str, Any]) -> dict[str, Any]:

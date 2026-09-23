@@ -1738,8 +1738,19 @@ class DeskWindow(QMainWindow):
 
     def get_state_dict(self) -> dict:
         """The Bridge API's workspace.getState -- see
-        plans/desk-bridge-api.md."""
-        return desk_state_dict(self._capture_desk_state())
+        plans/desk-bridge-api.md. Also `desk_list_widget_instances`
+        (the MCP tool), the exact same underlying call
+        (`src/desk/server/app.py`'s own `getState` route and
+        `desk_mcp_server.py`'s `_list_widget_instances` both call this
+        one method).
+
+        TODO f0da2e9: each widget's `stale` -- the frame's own live
+        `[STALE]` bit (`WidgetFrame.is_stale()`), not an independent
+        hash diff recomputed here -- so an agent-driven caller of
+        either surface can tell a placed instance is safe to trust
+        without a human having to notice the titlebar badge first."""
+        stale_by_instance_id = {frame.instance_id: frame.is_stale() for frame in self.view._frames}
+        return desk_state_dict(self._capture_desk_state(), stale_by_instance_id)
 
     def save_current_desk(self) -> None:
         desk = self._capture_desk_state()

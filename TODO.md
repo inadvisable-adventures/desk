@@ -9663,7 +9663,7 @@ f35466a. COMPLETED: Make an oversized tool result (e.g. a ~776KB-base64
    `../FEEDBACK/FEEDBACK-DESK-widget-glitches-on-oversized-screenshot-json-2026-09-18-2140.md`
    (part a).
 
-f0da2e9. Expose staleness to agents: add a `stale: bool` to each
+f0da2e9. COMPLETED: Expose staleness to agents: add a `stale: bool` to each
    placed instance in `desk_state_dict()` (`src/desk/desks.py`),
    alongside `placed_content_hash`, so `desk_list_widget_instances` and
    `desk.workspace.getState()` report whether each instance is safe to
@@ -9672,7 +9672,9 @@ f0da2e9. Expose staleness to agents: add a `stale: bool` to each
    diff -- that would miss the force-`True` set by
    `_on_promoted_widget_source_changed` (`src/desk/shell/window.py`)
    when source changed on disk and no fresh hash exists yet. Mint a
-   tempui changelog tag/entry per `development-process.md`. Cites
+   tempui changelog tag/entry per `development-process.md`.
+   [planned: expose-stale-to-agents.md (COMPLETED)]
+   Cites
    `../FEEDBACK/FEEDBACK-DESK-agent-cannot-detect-stale-widget-instances-2026-09-17-2200.md`.
 
 83427f4. Let a `kind: "html"` widget learn which file it was opened
