@@ -600,6 +600,7 @@ class DeskWindow(QMainWindow):
                 self._handle.token,
                 self._broker,
                 self._chromium_profile_dir(instance_id),
+                capabilities=widget.capabilities,
             )
             proxy = self.view.add_widget(
                 chromium_widget, title=widget.name, pos=pos, size=size, instance_id=instance_id

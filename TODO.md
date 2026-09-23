@@ -9509,7 +9509,7 @@ a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's histor
    parameter, no existing `ClaudeSession.start()` call site changed
    behavior.
 
-2dbfd55. Handle `QWebEnginePage.featurePermissionRequested` in
+2dbfd55. COMPLETED: Handle `QWebEnginePage.featurePermissionRequested` in
    `ChromiumWidget` (`src/desk/shell/chromium_widget.py`), which
    currently never connects it. A `kind: "html"` widget calling
    `getUserMedia` (e.g. via the Web Speech API) must get a normal,
@@ -9521,6 +9521,7 @@ a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's histor
    follow-up (macOS also needs a microphone usage entitlement). Cites
    `../FEEDBACK/FEEDBACK-DESK-html-widget-getusermedia-crash-2026-09-11-1735.md`
    (suggested fix 1).
+   [planned: chromium-widget-media-permission.md (COMPLETED)]
 
 b89cf17. COMPLETED: Make `run_on_gui` and `run_on_gui_async`
    (`src/desk/server/app.py`) translate *any* exception raised on the

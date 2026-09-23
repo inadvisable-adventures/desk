@@ -218,6 +218,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "widget for subjective visual tasks guidance #588265",
     "promotion moves shared tsconfig files #586922",
     "Desk log file at .desk_temp/logs/desk.log #236455",
+    "media capability gates mic and camera #407103",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -650,7 +651,10 @@ contain spaces:
   manifest's own `capabilities` list uses. Without this, your widget's
   JS can only call the always-available `self.*` calls (see "The Desk
   Bridge API" below) — anything else (including `events.*`) fails with
-  a 403 unless you declare the matching capability here.
+  a 403 unless you declare the matching capability here. One
+  capability, `media`, isn't a Bridge API call at all -- it gates
+  whether the browser grants this widget's page `getUserMedia()`
+  (mic/camera) access; see "Media (mic/camera) access" below.
 - `StateSchema<TAB>key<TAB>type_expr` — optional, repeatable (TODO
   af7898b). Declares a validated schema for one `desk.state.*` key --
   `type_expr` is a TypeScript type expression string (see "Shared,
@@ -725,8 +729,8 @@ not-yet-promoted widget's source too. Four files:
   fields a `DefineWidget`/`Size` line above needs, plus an optional
   `"capabilities": [...]` (a list of the same coarse, resource-level
   strings a real `widgets/<id>/widget.json`'s own `capabilities` list
-  already uses -- `workspace`, `fs`, `widgets`, `events`, ...) — the
-  build script emits one `Capability<TAB>name` line per entry, so
+  already uses -- `workspace`, `fs`, `widgets`, `events`, `media`, ...)
+  — the build script emits one `Capability<TAB>name` line per entry, so
   `widget.json` is the one place a defined widget's capabilities need
   to be declared, the same way a real `kind: "python"`/`"html"`
   widget's manifest already works. Omit it entirely for a widget that
@@ -1006,6 +1010,24 @@ built for genuine cross-widget signaling:
 The calls above are almost always all a `DefineWidget` widget actually
 needs.
 
+## Media (mic/camera) access
+
+If your widget's own JS calls `navigator.mediaDevices.getUserMedia()`
+(directly, or indirectly -- e.g. the Web Speech API) it needs the
+`media` capability declared (a `Capability<TAB>media` line, or
+`"media"` in a real `widgets/<id>/widget.json`'s `"capabilities"`
+list). This is not a Bridge API HTTP call like everything else in this
+section -- it gates a real browser permission
+(`QWebEnginePage.featurePermissionRequested`) instead, so there's no
+`desk.*` call to make for it: declare the capability, then call
+`getUserMedia()` normally, exactly as you would on any other page.
+Without it declared, the request is denied and the returned `Promise`
+rejects with a normal, catchable error -- check `.catch()`, don't
+assume the call always succeeds. Every other browser permission a page
+can ask for (`Notifications`, `Geolocation`, `ClipboardReadWrite`,
+screen-capture, `MouseLock`, `LocalFontsAccess`) is always denied,
+regardless of any capability -- there is no way to grant those yet.
+
 ## Sending and receiving named messages
 
 Desk has its own built-in event message channel: a **mediator**
@@ -1249,7 +1271,7 @@ one-shot run, no more.
   same coarse Bridge API capability names a `DefineWidget`'s own
   `Capability` lines use (`workspace`, `fs`, `widgets`, `events`,
   `filetypes`, `editor`, `popups`, `transforms`, `introspect`,
-  `installed_jobs` -- see "The Desk Bridge API" in
+  `installed_jobs`, `media` -- see "The Desk Bridge API" in
   `tempui-custom-widgets.md` for what each one actually grants).
   Declare only what your script actually calls
   -- an undeclared capability's Bridge call gets a real HTTP 403, not
@@ -1714,6 +1736,17 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "media capability gates mic and camera #407103": """- A `kind: "html"` widget's page can now be granted real
+  `getUserMedia()` (mic/camera) access: declare the new `media`
+  capability (a `Capability<TAB>media` line, or `"media"` in
+  `widget.json`'s `"capabilities"`) and call `getUserMedia()` normally.
+  Without it, the request is denied and the returned `Promise` rejects
+  with a normal, catchable error, instead of the page silently hanging
+  with no error at all. Every other browser permission (Notifications,
+  Geolocation, screen-capture, ...) is still always denied, regardless
+  of capability. See "Media (mic/camera) access" in
+  `tempui-custom-widgets.md`.
+""",
     "Desk log file at .desk_temp/logs/desk.log #236455": """- Desk now keeps its own rotating log at `.desk_temp/logs/desk.log`
   (about 1 MB per file, 5 backups), one per project: startup messages,
   warnings, errors, and the traceback of any uncaught exception. It is
@@ -2968,11 +3001,11 @@ class CustomWidgetDefinition:
     the raw `keyword`); `html_b64` is the widget's entire
     implementation -- one self-contained, base64-encoded HTML
     document. `capabilities` (TODO f693275) are the Bridge API
-    capabilities (`"workspace"`, `"state"`, `"fs"`, `"widgets"`, `"events"`, ...)
-    this widget kind is allowed to use -- same coarse, resource-level
-    strings a real `widgets/<id>/widget.json`'s own `capabilities`
-    list already uses; defaults to none declared, same as a manifest
-    with no `capabilities` key. `state_schema` (TODO af7898b) is the
+    capabilities (`"workspace"`, `"state"`, `"fs"`, `"widgets"`, `"events"`,
+    `"media"`, ...) this widget kind is allowed to use -- same coarse,
+    resource-level strings a real `widgets/<id>/widget.json`'s own
+    `capabilities` list already uses; defaults to none declared, same
+    as a manifest with no `capabilities` key. `state_schema` (TODO af7898b) is the
     same key -> TypeScript-type-expression-string dict a real
     `widget.json`'s own `state_schema` field would be -- see
     desk.schema_types and plans/state-store-schema-core.md.
