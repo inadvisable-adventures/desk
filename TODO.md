@@ -9585,7 +9585,7 @@ aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    `../FEEDBACK/FEEDBACK-DESK-promoted-widget-tsconfig-path-not-fixed-up-2026-09-18-1400.md`.
    [planned: promotion-outdir-normalization.md (COMPLETED)]
 
-90dd6e6. Extend `desk.mermaid`'s parser (`src/desk/mermaid.py`): add
+90dd6e6. COMPLETED: Extend `desk.mermaid`'s parser (`src/desk/mermaid.py`): add
    stadium nodes `id(["label"])`, unpiped inline edge labels
    `A -- label --> B` (today the label text is folded into the
    preceding node's token, so the error points at the wrong place), and
@@ -9594,6 +9594,7 @@ aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    grammar, including what is deliberately unsupported, in the
    module's docstring and in `tempui-markdown.md`. Cites
    `../FEEDBACK/FEEDBACK-DESK-mermaid-parser-rejects-standard-syntax-2026-09-18-2220.md`.
+   [planned: mermaid-parser-grammar-extensions.md (COMPLETED)]
 
 9fe03a1. Split the Markdown widget's single Mermaid fallback message
    (`widgets/markdown/widget.py`, `_build_mermaid_widget`/

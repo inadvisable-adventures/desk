@@ -220,6 +220,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "Desk log file at .desk_temp/logs/desk.log #236455",
     "media capability gates mic and camera #407103",
     "promotion normalizes tsconfig outDir to .build #941549",
+    "mermaid parser: stadium, unpiped labels, quotes #183003",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -526,6 +527,35 @@ filename derived from the *rendered content's own first line*
 `investigation-summary.md`) — not from `<label>` above. Saving opens
 the new file in a separate, ordinary Markdown widget instance; this
 tempui-bound instance stays open, unaffected.
+
+## Supported Mermaid subset
+
+A fenced ` ```mermaid ` block above renders through Desk's own,
+hand-rolled Mermaid support -- a real but partial implementation, not
+the full Mermaid language. Anything outside this subset falls back to
+showing the raw source as plain text instead of rendering it or
+erroring.
+
+- **Flowchart** (`flowchart`/`graph`, any of the five directions):
+  five node shapes -- rect `id[Label]`, rounded `id(Label)`, diamond
+  `id{Label}`, circle `id((Label))`, stadium `id([Label])` -- no other
+  extended shapes (subroutine, cylinder, hexagon, ...). Edge styles
+  `-->`, `---`, `-.->`, `-.-`, with a label either piped
+  (`A -->|label| B`) or unpiped/inline (`A -- label --> B`,
+  `A -. label .-> B`, and the arrow-less equivalents `---`/`-.-`).
+- **State diagram** (`stateDiagram`/`stateDiagram-v2`): flat only --
+  `[*]` start/end pseudostates, `A --> B` / `A --> B : label`
+  transitions, `A : label` descriptions. A composite/nested `state X {
+  ... }` block is skipped (not an error), not rendered.
+- **Quoting:** any label -- inside a shape or on an edge -- may be
+  double-quoted (`id["a [b] c"]`) so it can contain its own shape's
+  delimiter characters literally. There is no other escaping mechanism
+  (no backslash escapes, no HTML entities), and quoting is optional --
+  a label with nothing special in it doesn't need it.
+- **Unsupported entirely:** any other diagram type (sequence, class,
+  ER, gantt, pie, ...), thick edges (`==>`), any node shape beyond the
+  five above, and a composite `stateDiagram` block's own nested content
+  (skipped, never rendered, not an error).
 """
 
 _IMAGE_DOC = """# TempUI DSL: OpenImage
@@ -1759,6 +1789,14 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "mermaid parser: stadium, unpiped labels, quotes #183003": """- The Mermaid subset `desk.mermaid` supports (flowchart diagrams
+  rendered from a fenced ```mermaid``` block) now also parses stadium
+  nodes (`id([Label])`), unpiped/inline edge labels (`A -- label -->
+  B`, `A -. label .-> B`, and their arrow-less equivalents), and
+  double-quoted labels that may contain their own shape's delimiter
+  characters (`id["a [b] c"]`). See "Supported Mermaid subset" in
+  `tempui-markdown.md`.
+""",
     "promotion normalizes tsconfig outDir to .build #941549": """- Promoting a source-backed `DefineWidget` widget now also normalizes
   its build output: if its `tsconfig.json` `compilerOptions.outDir`
   isn't already `.build` (the directory Desk itself rebuilds a promoted
