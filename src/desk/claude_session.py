@@ -52,6 +52,18 @@ TERMINAL_TASK_STATUSES = sdk.TERMINAL_TASK_STATUSES
 # TODO 6ab9e85: the CLI's built-in structured-question tool.
 ASK_USER_QUESTION_TOOL_NAME = "AskUserQuestion"
 
+# TODO f35466a: claude_agent_sdk's subprocess transport caps a single
+# NDJSON line read from the CLI's stdout at 1MB by default
+# (_DEFAULT_MAX_BUFFER_SIZE, subprocess_cli.py) -- confirmed the real
+# cause of a reported "widget got glitchy" incident: a large tool
+# result (e.g. a native/HiDPI desk_screenshot_desk capture,
+# base64-encoded) can exceed that on its own. Generously above even a
+# large screenshot's encoded size, while still bounded (not
+# unlimited) -- a caller that wants a smaller capture in the first
+# place has desk_screenshot_desk/desk_screenshot_widget's own
+# max_width parameter (TODO 94d2b94) for that.
+_MAX_BUFFER_SIZE = 10_000_000
+
 # TODO 0529501: the fixed tool set for a scoped (allowed_paths-restricted)
 # session. Deliberately excludes Bash -- its tool_input is just
 # {"command": "..."}, with no structured path field a hook could check,
@@ -186,6 +198,7 @@ class ClaudeSession(QObject):
             model=model,
             permission_mode=permission_mode,
             cwd=str(cwd) if cwd is not None else None,
+            max_buffer_size=_MAX_BUFFER_SIZE,
             can_use_tool=self._can_use_tool,
             # TODO 0529501: a scoped session gets a fixed, narrower tool
             # set (no Bash -- see _SCOPED_TOOLS's own comment) and no

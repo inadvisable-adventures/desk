@@ -9646,7 +9646,7 @@ aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    `../FEEDBACK/FEEDBACK-DESK-widget-glitches-on-oversized-screenshot-json-2026-09-18-2140.md`
    (part b).
 
-f35466a. Make an oversized tool result (e.g. a ~776KB-base64
+f35466a. COMPLETED: Make an oversized tool result (e.g. a ~776KB-base64
    screenshot) fail locally and legibly in the Claude (Desk) widget
    instead of leaving it glitchy. First reproduce it and classify what
    actually happens (a caught parse error, a dead SDK transport, or a
@@ -9657,7 +9657,9 @@ f35466a. Make an oversized tool result (e.g. a ~776KB-base64
    confirmed, raise it via `ClaudeAgentOptions`. Also make a
    failed/unreadable message degrade to a visible per-turn error
    with the session left usable, rather than only emitting
-   `session_error` from `_query_and_stream`. Cites
+   `session_error` from `_query_and_stream`.
+   [planned: claude-session-oversized-message-robustness.md (COMPLETED)]
+   Cites
    `../FEEDBACK/FEEDBACK-DESK-widget-glitches-on-oversized-screenshot-json-2026-09-18-2140.md`
    (part a).
 
