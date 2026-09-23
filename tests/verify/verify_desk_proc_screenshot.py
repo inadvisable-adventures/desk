@@ -1,4 +1,5 @@
 import os
+import struct
 import sys
 import tempfile
 import uuid as uuid_mod
@@ -94,6 +95,16 @@ def _write_widget_py(directory, body):
     (directory / "widget.py").write_text(body)
 
 
+def _png_dimensions(path: Path) -> tuple[int, int]:
+    """Reads width/height straight out of a PNG's own IHDR chunk (TODO
+    94d2b94) -- no image library needed, just the fixed byte layout
+    every PNG has: an 8-byte signature, then a 4-byte length + 4-byte
+    'IHDR' type, then big-endian width/height (4 bytes each)."""
+    data = path.read_bytes()
+    width, height = struct.unpack(">II", data[16:24])
+    return width, height
+
+
 _SIMPLE_WIDGET_BODY = """
 from PyQt6.QtWidgets import QLabel
 
@@ -157,6 +168,128 @@ def test_absolute_path_is_used_as_is():
             check("the file was actually written at the absolute path given", absolute_target.is_file())
 
 
+def test_max_width_scales_down_a_wider_capture_proportionally():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        directory = Path(d)
+        win = _FakeWindow(directory)
+        native_path = directory / "native.png"
+        scaled_path = directory / "scaled.png"
+        win.screenshot_desk("native.png")
+        native_width, native_height = _png_dimensions(native_path)
+        check("sanity: the canvas capture is wide enough for this test to mean anything", native_width > 100)
+
+        result = win.screenshot_desk("scaled.png", max_width=100)
+        check("screenshot_desk with max_width still returns True on success", result is True)
+        scaled_width, scaled_height = _png_dimensions(scaled_path)
+        check("the capture was scaled down to exactly max_width", scaled_width == 100)
+        check(
+            "height was scaled down proportionally, not stretched/cropped to a fixed size",
+            abs(scaled_height / scaled_width - native_height / native_width) < 0.02,
+        )
+
+
+def test_max_width_never_scales_up_a_narrower_capture():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        directory = Path(d)
+        win = _FakeWindow(directory)
+        native_path = directory / "native.png"
+        win.screenshot_desk("native.png")
+        native_width, native_height = _png_dimensions(native_path)
+
+        upscaled_path = directory / "upscaled.png"
+        win.screenshot_desk("upscaled.png", max_width=native_width * 10)
+        upscaled_width, upscaled_height = _png_dimensions(upscaled_path)
+        check(
+            "a max_width larger than the native capture is a no-op, never scales up",
+            (upscaled_width, upscaled_height) == (native_width, native_height),
+        )
+
+
+def test_omitting_max_width_is_byte_identical_to_before_this_feature():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        directory = Path(d)
+        win = _FakeWindow(directory)
+        default_path = directory / "default.png"
+        explicit_none_path = directory / "explicit_none.png"
+        win.screenshot_desk("default.png")
+        win.screenshot_desk("explicit_none.png", max_width=None)
+        check(
+            "omitting max_width and passing max_width=None produce byte-identical output (the pre-existing default)",
+            default_path.read_bytes() == explicit_none_path.read_bytes(),
+        )
+
+
+def test_max_width_also_applies_to_screenshot_widget_instance():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        directory = Path(d)
+        win = _FakeWindow(directory)
+        info = _python_widget_info(directory)
+        _write_widget_py(directory, _SIMPLE_WIDGET_BODY)
+        instance_id = uuid_mod.uuid4().hex[:8]
+        win._place_widget("ordinary_python", info, (0, 0), (400, 300), instance_id=instance_id)
+
+        native_path = directory / "widget_native.png"
+        win.screenshot_widget_instance(instance_id, "widget_native.png")
+        native_width, _ = _png_dimensions(native_path)
+        check("sanity: the widget frame capture is wide enough for this test to mean anything", native_width > 50)
+
+        scaled_path = directory / "widget_scaled.png"
+        result = win.screenshot_widget_instance(instance_id, "widget_scaled.png", max_width=40)
+        check("screenshot_widget_instance with max_width still returns True", result is True)
+        check("screenshot_widget_instance's own capture is scaled down too", _png_dimensions(scaled_path)[0] == 40)
+
+
+def test_deskprocapi_passes_max_width_through():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "desk_proc_runner_widget_test", REPO_ROOT / "widgets/desk_proc_runner/widget.py"
+    )
+    runner_widget = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner_widget)
+
+    calls = []
+
+    class _FakeMainWindow:
+        def screenshot_desk(self, path, max_width=None):
+            calls.append(("desk", path, max_width))
+            return True
+
+        def screenshot_widget_instance(self, instance_id, path, max_width=None):
+            calls.append(("widget", instance_id, path, max_width))
+            return True
+
+    from desk.shell import current_context
+
+    previous_window = current_context.get_main_window()
+    previous_caller = current_context.get_gui_thread_caller()
+    try:
+        current_context.set_main_window(_FakeMainWindow())
+        current_context.set_gui_thread_caller(lambda fn: fn())
+        api = runner_widget.DeskProcApi()
+        api.screenshot_desk("d.png", max_width=42)
+        api.screenshot_widget("inst", "w.png", max_width=7)
+    finally:
+        current_context.set_main_window(previous_window)
+        current_context.set_gui_thread_caller(previous_caller)
+
+    check(
+        "DeskProcApi.screenshot_desk/screenshot_widget pass max_width straight through to DeskWindow",
+        calls == [("desk", "d.png", 42), ("widget", "inst", "w.png", 7)],
+    )
+
+
+def test_changelog_and_doc_cover_max_width():
+    from desk.temp_ui import CURRENT_TAGS, _DESK_PROC_DOC, _NEW_FEATURES
+
+    tag = "screenshot tools accept max_width downsampling #600160"
+    check("tag is in CURRENT_TAGS with a _NEW_FEATURES entry", tag in CURRENT_TAGS and tag in _NEW_FEATURES)
+    flat = " ".join(_DESK_PROC_DOC.split())
+    check("tempui-desk-proc.md documents max_width on screenshot_widget", "screenshot_widget(instance_id: str, path: str, max_width" in flat)
+    check("tempui-desk-proc.md documents max_width on screenshot_desk", "screenshot_desk(path: str, max_width" in flat)
+    check("tempui-desk-proc.md says it never scales up", "never up" in flat)
+
+
 def test_missing_parent_directories_are_created():
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         directory = Path(d)
@@ -170,6 +303,12 @@ def test_missing_parent_directories_are_created():
 test_screenshot_widget_instance_saves_a_real_png()
 test_screenshot_widget_instance_returns_false_for_an_unknown_instance()
 test_screenshot_desk_saves_a_real_png_of_the_canvas()
+test_max_width_scales_down_a_wider_capture_proportionally()
+test_max_width_never_scales_up_a_narrower_capture()
+test_omitting_max_width_is_byte_identical_to_before_this_feature()
+test_max_width_also_applies_to_screenshot_widget_instance()
+test_deskprocapi_passes_max_width_through()
+test_changelog_and_doc_cover_max_width()
 test_relative_path_resolves_against_current_desk_directory()
 test_absolute_path_is_used_as_is()
 test_missing_parent_directories_are_created()

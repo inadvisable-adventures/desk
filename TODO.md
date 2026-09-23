@@ -9629,7 +9629,7 @@ aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    (suggestions 2 and 3; the report explicitly does not want
    auto-scaffolding).
 
-94d2b94. Add an optional `max_width` (pixels) parameter to
+94d2b94. COMPLETED: Add an optional `max_width` (pixels) parameter to
    `desk_screenshot_desk` and `desk_screenshot_widget`
    (`src/desk/shell/desk_mcp_server.py`, backed by
    `DeskWindow.screenshot_desk`/`screenshot_widget_instance`) and to the
@@ -9638,7 +9638,9 @@ aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    proportionally (never up) before it is written to `path`; omitting
    it keeps today's native-resolution behavior. Mint a tempui
    changelog tag/entry per `development-process.md`, since this is a
-   new feature from an in-Desk agent's point of view. Cites
+   new feature from an in-Desk agent's point of view.
+   [planned: screenshot-max-width.md (COMPLETED)]
+   Cites
    `../FEEDBACK/FEEDBACK-DESK-screenshot-tools-no-downsampling-option-2026-09-18-2030.md`
    and
    `../FEEDBACK/FEEDBACK-DESK-widget-glitches-on-oversized-screenshot-json-2026-09-18-2140.md`

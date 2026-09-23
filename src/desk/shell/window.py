@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PyQt6.QtCore import QPointF, Qt, QTimer
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QWidget
 
 from desk.custom_widgets import LikelySourceCandidate, build_from_source, find_likely_source_candidates, materialize
@@ -231,6 +232,18 @@ class NewDeskProvisioning:
 
     create_temp_ui: bool
     create_gitignore: bool
+
+
+def _scaled_down_pixmap(pixmap: QPixmap, max_width: int | None) -> QPixmap:
+    """TODO 94d2b94: downsamples `pixmap` proportionally to at most
+    `max_width` pixels wide -- never up, and a no-op (the same pixmap,
+    unchanged) when `max_width` is `None` or the capture is already
+    narrower, so a caller that never passes it keeps today's exact
+    native-resolution behavior. Shared by `screenshot_widget_instance`/
+    `screenshot_desk` below."""
+    if max_width is None or pixmap.width() <= max_width:
+        return pixmap
+    return pixmap.scaledToWidth(max_width, Qt.TransformationMode.SmoothTransformation)
 
 
 def _dispatch_installed_job_run(
@@ -1644,7 +1657,7 @@ class DeskWindow(QMainWindow):
         candidate = Path(path)
         return candidate if candidate.is_absolute() else self.current_desk.directory / candidate
 
-    def screenshot_widget_instance(self, instance_id: str, path: str) -> bool:
+    def screenshot_widget_instance(self, instance_id: str, path: str, max_width: int | None = None) -> bool:
         """TODO 97bd090: saves a real PNG screenshot of a specific
         placed widget instance's own frame (titlebar and content, same
         as it looks on the canvas right now) to `path` -- the
@@ -1654,16 +1667,19 @@ class DeskWindow(QMainWindow):
         not whatever a `QGraphicsProxyWidget` embedding currently
         renders it at. Returns whether a matching instance was found
         and the file was saved successfully -- never raises for a
-        missing instance or a failed save."""
+        missing instance or a failed save.
+
+        TODO 94d2b94: `max_width`, if given, downsamples the capture
+        proportionally before saving -- see `_scaled_down_pixmap`."""
         frame = self.find_frame_by_instance_id(instance_id)
         if frame is None:
             return False
-        pixmap = frame.grab()
+        pixmap = _scaled_down_pixmap(frame.grab(), max_width)
         resolved = self._resolve_desk_relative_path(path)
         resolved.parent.mkdir(parents=True, exist_ok=True)
         return pixmap.save(str(resolved), "PNG")
 
-    def screenshot_desk(self, path: str) -> bool:
+    def screenshot_desk(self, path: str, max_width: int | None = None) -> bool:
         """TODO 97bd090: saves a real PNG screenshot of the whole
         Workspace Canvas viewport (`self.view`, not `self` -- no native
         window chrome like the menu bar) to `path` -- the
@@ -1674,8 +1690,9 @@ class DeskWindow(QMainWindow):
         report that might need to show dialog/window chrome) -- for a
         Desk Proc, the canvas content is what an agent actually wants
         to see. Same path resolution/mkdir/save shape as
-        screenshot_widget_instance above."""
-        pixmap = self.view.grab()
+        screenshot_widget_instance above, including `max_width`
+        (TODO 94d2b94)."""
+        pixmap = _scaled_down_pixmap(self.view.grab(), max_width)
         resolved = self._resolve_desk_relative_path(path)
         resolved.parent.mkdir(parents=True, exist_ok=True)
         return pixmap.save(str(resolved), "PNG")

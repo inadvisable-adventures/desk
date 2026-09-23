@@ -169,12 +169,12 @@ def test_deskproc_methods_route_through_the_gui_thread_caller_hook():
                 calls.append(("zoom", instance_id))
                 return True
 
-            def screenshot_widget_instance(self, instance_id, path):
-                calls.append(("screenshot_widget", instance_id, path))
+            def screenshot_widget_instance(self, instance_id, path, max_width=None):
+                calls.append(("screenshot_widget", instance_id, path, max_width))
                 return True
 
-            def screenshot_desk(self, path):
-                calls.append(("screenshot_desk", path))
+            def screenshot_desk(self, path, max_width=None):
+                calls.append(("screenshot_desk", path, max_width))
                 return True
 
             def get_state_dict(self):
@@ -188,6 +188,10 @@ def test_deskproc_methods_route_through_the_gui_thread_caller_hook():
             "print(deskproc.reveal_widget('abc'))\n"
             "print(deskproc.screenshot_widget('abc', 'shot.png'))\n"
             "print(deskproc.screenshot_desk('desk.png'))\n"
+            # TODO 94d2b94: the new optional max_width parameter, on
+            # both screenshot methods, actually reaches DeskWindow.
+            "print(deskproc.screenshot_widget('abc', 'shot2.png', max_width=100))\n"
+            "print(deskproc.screenshot_desk('desk2.png', max_width=200))\n"
             "print(deskproc.list_widget_instances())\n"
         )
         proc_path = _write_desk_proc_file(temp_dir, "proc-e", "Exercises all four methods", script)
@@ -202,8 +206,10 @@ def test_deskproc_methods_route_through_the_gui_thread_caller_hook():
             calls
             == [
                 ("zoom", "abc"),
-                ("screenshot_widget", "abc", "shot.png"),
-                ("screenshot_desk", "desk.png"),
+                ("screenshot_widget", "abc", "shot.png", None),
+                ("screenshot_desk", "desk.png", None),
+                ("screenshot_widget", "abc", "shot2.png", 100),
+                ("screenshot_desk", "desk2.png", 200),
                 ("list",),
             ],
         )

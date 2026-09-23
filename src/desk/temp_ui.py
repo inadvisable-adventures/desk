@@ -223,6 +223,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "mermaid parser: stadium, unpiped labels, quotes #183003",
     "mermaid fallback distinguishes failure reasons #138484",
     "bundled desk_transforms discovered automatically #576866",
+    "screenshot tools accept max_width downsampling #600160",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1469,17 +1470,24 @@ there is unsafe, so use these methods rather than trying to reach into
   Workspace Canvas so the given placed widget instance fills the view,
   the same action as clicking that instance's own titlebar eye button.
   Returns whether a matching instance was found.
-- `deskproc.screenshot_widget(instance_id: str, path: str) -> bool` --
-  saves a real PNG screenshot of that instance's own placed frame
-  (titlebar and content, exactly as it looks on the canvas) to `path`.
-  A relative `path` resolves against the current Desk's own directory,
-  same as `desk.fs.writeFile`; missing parent directories are created
-  automatically. Returns whether the instance was found and the file
-  was saved successfully.
-- `deskproc.screenshot_desk(path: str) -> bool` -- saves a real PNG
-  screenshot of the whole Workspace Canvas viewport (not any native
-  window chrome around it) to `path`, same path-resolution rules as
-  above.
+- `deskproc.screenshot_widget(instance_id: str, path: str, max_width:
+  int | None = None) -> bool` -- saves a real PNG screenshot of that
+  instance's own placed frame (titlebar and content, exactly as it
+  looks on the canvas) to `path`. A relative `path` resolves against
+  the current Desk's own directory, same as `desk.fs.writeFile`;
+  missing parent directories are created automatically. `max_width`,
+  if given, scales the capture down proportionally to at most that
+  many pixels wide before saving -- never up, and omitting it keeps
+  today's native-resolution capture (often HiDPI 2x) exactly as-is; ask
+  for a smaller `max_width` when you only need "good enough to see
+  what's on screen," not a pixel-perfect native-resolution image (a
+  full native canvas capture, base64-encoded for transport, can run to
+  several hundred KB). Returns whether the instance was found and the
+  file was saved successfully.
+- `deskproc.screenshot_desk(path: str, max_width: int | None = None)
+  -> bool` -- saves a real PNG screenshot of the whole Workspace Canvas
+  viewport (not any native window chrome around it) to `path`, same
+  path-resolution rules and `max_width` downsampling as above.
 - `deskproc.list_widget_instances() -> list[dict]` -- the current
   Desk's live placed-widget layout (instance ids, widget kind,
   position, size) -- the same data `desk.workspace.getState()` already
@@ -1819,6 +1827,12 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "screenshot tools accept max_width downsampling #600160": """- `desk_screenshot_widget`/`desk_screenshot_desk` (MCP tools) and
+  `deskproc.screenshot_widget`/`deskproc.screenshot_desk` (Desk Proc)
+  all take an optional `max_width` (pixels): the capture is scaled down
+  proportionally to at most that width before saving -- never up.
+  Omitting it keeps today's native-resolution behavior exactly as-is.
+""",
     "bundled desk_transforms discovered automatically #576866": """- Desk's own `mermaid_flowchart_svg`/`mermaid_state_svg` transforms
   (used by the Markdown widget's Mermaid rendering) are now discovered
   automatically in every project -- bundled with Desk itself, scanned
