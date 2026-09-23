@@ -107,6 +107,7 @@ from desk.temp_ui import (
     parse_markdown_tempui,
     parse_open_image,
     parse_open_markdown,
+    parse_open_with_widget,
     parse_scratch,
     parse_temp_ui,
     sync_custom_widgets_doc_section,
@@ -1207,11 +1208,28 @@ class DeskWindow(QMainWindow):
         self.open_widget_content_centered(widget_id, path=path)
 
     def _bind_temp_ui_widget(self, frame: WidgetFrame, directory: Path, uuid_str: str) -> None:
+        tempui_path = directory / TEMP_UI_DIRNAME / uuid_str
+        if isinstance(frame.content, ChromiumWidget):
+            # TODO 3b6de01: the one tempui kind a restored kind:"html"
+            # instance ever needs anything re-applied for -- every other
+            # kind's own binding (set_file, set_label, ...) only exists
+            # on Python content, hence this file's usual hard
+            # PythonWidgetHost gate just below, which a ChromiumWidget
+            # would otherwise silently fail entirely.
+            try:
+                kind = detect_temp_ui_kind(tempui_path.read_text())
+            except OSError:
+                return
+            if kind.startswith("open_with_widget:"):
+                target = self._resolve_open_with_widget_target(tempui_path, directory)
+                if target is not None:
+                    self._html_widget_opened_file[frame.instance_id] = str(target)
+            return
         if not isinstance(frame.content, PythonWidgetHost):
             return
         content = frame.content.current
         if content is not None:
-            self._bind_temp_ui_content(content, directory / TEMP_UI_DIRNAME / uuid_str, directory)
+            self._bind_temp_ui_content(content, tempui_path, directory)
 
     def _bind_crash_log_widget(self, frame: WidgetFrame, directory: Path, filename: str) -> None:
         """Points a Crash Log widget instance at its log file (TODO
@@ -1556,6 +1574,20 @@ class DeskWindow(QMainWindow):
             target = self._resolve_open_image_target(tempui_path, directory)
             if target is not None:
                 content.set_file(target)
+        elif kind.startswith("open_with_widget:"):
+            # TODO 3b6de01: only ever reached for a restored/live
+            # -refreshed kind:"python" instance -- a fresh placement's
+            # own open_with_widget handling goes straight through
+            # open_widget_content's path= instead (see
+            # _activate_temp_ui), and a kind:"html" instance's own
+            # restore is handled entirely in _bind_temp_ui_widget above
+            # (this function only ever sees a PythonWidgetHost's own
+            # content, never a ChromiumWidget).
+            if not hasattr(content, "set_file"):
+                return
+            target = self._resolve_open_with_widget_target(tempui_path, directory)
+            if target is not None:
+                content.set_file(target)
         elif kind == "scratch":
             if not hasattr(content, "set_label"):
                 return
@@ -1600,6 +1632,20 @@ class DeskWindow(QMainWindow):
         if not raw:
             return None
         target = Path(raw)
+        return target if target.is_absolute() else (directory / target).resolve()
+
+    @staticmethod
+    def _resolve_open_with_widget_target(tempui_path: Path, directory: Path) -> Path | None:
+        """TODO 3b6de01: mirrors _resolve_open_markdown_target/
+        _resolve_open_image_target exactly, reading the *path* half of
+        an OpenWithWidget file's (widget_id, path) pair."""
+        try:
+            parsed = parse_open_with_widget(tempui_path.read_text())
+        except OSError:
+            return None
+        if parsed is None:
+            return None
+        target = Path(parsed[1])
         return target if target.is_absolute() else (directory / target).resolve()
 
     # -- One-shot agent Jobs (TODO d7e66f6) -------------------------------
@@ -2544,6 +2590,10 @@ class DeskWindow(QMainWindow):
                 target = parse_open_image(content_text)
                 if target:
                     text = f"Open {target}"
+            elif kind.startswith("open_with_widget:"):
+                parsed = parse_open_with_widget(content_text)
+                if parsed:
+                    text = f"Open {parsed[1]}"
             elif kind == "scratch":
                 parsed = parse_scratch(content_text)
                 if parsed and parsed[0]:
@@ -2604,7 +2654,7 @@ class DeskWindow(QMainWindow):
             return JOB_RUNNER_WIDGET_ID
         if kind == "desk_proc":
             return DESK_PROC_RUNNER_WIDGET_ID
-        if kind.startswith("custom:"):
+        if kind.startswith("open_with_widget:") or kind.startswith("custom:"):
             return kind.split(":", 1)[1]
         return QUESTION_WIDGET_ID
 
@@ -2650,6 +2700,27 @@ class DeskWindow(QMainWindow):
             line_number = parsed[1] if parsed is not None else None
             self._place_discuss_claude_widget(
                 "PARKINGLOT.md", parking_lot_line=line_number, instance_id=uuid_str
+            )
+            return
+        try:
+            kind = detect_temp_ui_kind(path.read_text())
+        except OSError:
+            kind = "question"
+        if kind.startswith("open_with_widget:"):
+            # TODO 3b6de01: unlike every other kind's own
+            # _bind_temp_ui_content dispatch below (Python-only --
+            # PythonWidgetHost.current is all it ever sees),
+            # open_widget_content's own path= (TODO 83427f4) already
+            # handles both kind:"python" (set_file) and kind:"html"
+            # (self.getOpenedFile) uniformly, so this bypasses
+            # _bind_temp_ui_content entirely.
+            target = self._resolve_open_with_widget_target(path, self.current_desk.directory)
+            self.open_widget_content(
+                widget_id,
+                pos=(center.x(), center.y()),
+                size=widget.default_size,
+                instance_id=uuid_str,
+                path=target,
             )
             return
         content = self.open_widget_content(

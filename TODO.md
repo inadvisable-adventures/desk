@@ -9704,13 +9704,15 @@ f0da2e9. COMPLETED: Expose staleness to agents: add a `stale: bool` to each
    Cites
    `../FEEDBACK/FEEDBACK-DESK-sheet-widget-no-programmatic-open-2026-08-07-0302.md`.
 
-3b6de01. Add a generic tempui keyword (e.g. `OpenWithWidget<TAB>
+3b6de01. COMPLETED: Add a generic tempui keyword (e.g. `OpenWithWidget<TAB>
    widget_id<TAB>path`) that places any widget with a file loaded,
    generalizing the one-keyword-per-widget `OpenMarkdown`/`OpenImage`
    pattern: `set_file` for `kind: "python"` widgets, and TODO
    `83427f4`'s `getOpenedFile` mechanism for `kind: "html"` ones.
    Depends on TODO `83427f4`. Mint a tempui changelog tag/entry and
-   document it alongside the existing `Open*` keyword docs. Cites
+   document it alongside the existing `Open*` keyword docs.
+   [planned: open-with-widget-tempui-keyword.md (COMPLETED)]
+   Cites
    `../FEEDBACK/FEEDBACK-DESK-sheet-widget-no-programmatic-open-2026-08-07-0302.md`
    (suggested fix 2).
 

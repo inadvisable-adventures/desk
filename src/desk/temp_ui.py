@@ -226,6 +226,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "screenshot tools accept max_width downsampling #600160",
     "workspace getState exposes per-instance stale flag #157810",
     "self.getOpenedFile for html widgets #003325",
+    "OpenWithWidget places any widget with a file #051616",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -260,6 +261,10 @@ built-in file types, distinguished by their first line's keyword:
   [tempui-markdown.md](./tempui-markdown.md).
 - `OpenImage` — open an existing image file in the Image Viewer
   widget. See [tempui-image.md](./tempui-image.md).
+- `OpenWithWidget` — place any other widget kind with a file already
+  loaded (the generic form; `OpenMarkdown`/`OpenImage` above are each a
+  fixed one-widget special case). See
+  [tempui-open-with-widget.md](./tempui-open-with-widget.md).
 - `Scratch` — arbitrary free-form notes shown in a Scratch widget. See
   [tempui-scratch.md](./tempui-scratch.md).
 - `DefineWidget` — introduce a brand-new, entirely in-browser widget
@@ -623,6 +628,48 @@ same mechanism automatically: the dropped image is copied into this
 directory first, then an `OpenImage` file pointing at the copy is
 created and opened immediately (no notification needed for your own
 just-performed drop).
+"""
+
+_OPEN_WITH_WIDGET_DOC = """# TempUI DSL: OpenWithWidget
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its current set of tags -- this file just
+covers the `OpenWithWidget` keyword.
+
+For placing *any* widget kind with a file pre-loaded — a fire-and
+-forget instruction, not a question: there is no `Answer` line, and
+Desk never writes back to this file. `OpenMarkdown`/`OpenImage`
+(above/[tempui-image.md](./tempui-image.md)) are each a fixed,
+one-keyword-per-widget special case; `OpenWithWidget` is the generic
+form, for any other widget kind that supports being opened with a
+file. This is a *pointer* to an existing file elsewhere on disk, the
+same shape as `OpenMarkdown`/`OpenImage`.
+
+- `OpenWithWidget<TAB>widget_id<TAB>path` — the first (and normally
+  only) line, **tab-separated** (like `DefineWidget`), since `path` may
+  itself contain spaces. `widget_id` is a real, currently-discovered
+  widget id (the same id `desk.workspace.getState()`/
+  `desk_list_widget_instances` report per instance, or a `DefineWidget`
+  keyword once placed at least once) — an unknown or misspelled one is
+  a silent no-op, not an error, so double-check it against a live
+  instance or the widget's own `widget.json`/`DefineWidget` line if
+  nothing happens. `path` is the file to open, absolute or relative to
+  the current Desk's own directory.
+
+Example:
+
+```
+OpenWithWidget	sheet	./derived/results.tsv
+```
+
+Clicking the notification places a new instance of `widget_id`,
+centered in the current view, with `path` already loaded — exactly as
+if you'd placed it yourself and used its own Open dialog (a
+`kind: "python"` widget implementing `set_file`) or read it back via
+`desk.self.getOpenedFile()` (a `kind: "html"` widget, TODO 83427f4).
+**Only works for a widget kind that actually supports one of those two
+mechanisms** — a widget with neither is placed with nothing loaded,
+the same as placing it any other way.
 """
 
 _SCRATCH_DOC = """# TempUI DSL: Scratch
@@ -1851,6 +1898,14 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "OpenWithWidget places any widget with a file #051616": """- New tempui DSL keyword `OpenWithWidget<TAB>widget_id<TAB>path`
+  places any widget kind with a file pre-loaded -- the generic form of
+  `OpenMarkdown`/`OpenImage`, which are each a fixed one-widget special
+  case. Works for a `kind: "python"` widget implementing `set_file`
+  (e.g. Sheet, TODO 5928ae6) and for a `kind: "html"` widget via
+  `desk.self.getOpenedFile()` (TODO 83427f4). An unknown `widget_id` is
+  a silent no-op. See `tempui-open-with-widget.md`.
+""",
     "self.getOpenedFile for html widgets #003325": """- New Bridge API call `desk.self.getOpenedFile()` -> `{ path }` -- a
   kind:"html" widget can now learn which file it was opened for (e.g.
   as the File Type Registry's registered `view`/`edit` handler for a
@@ -2920,6 +2975,7 @@ if __name__ == "__main__":
 LIGHTNING_ROUND_DOC_FILENAME = "tempui-lightning-round.md"
 MARKDOWN_DOC_FILENAME = "tempui-markdown.md"
 IMAGE_DOC_FILENAME = "tempui-image.md"
+OPEN_WITH_WIDGET_DOC_FILENAME = "tempui-open-with-widget.md"
 SCRATCH_DOC_FILENAME = "tempui-scratch.md"
 CUSTOM_WIDGETS_DOC_FILENAME = "tempui-custom-widgets.md"
 DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME = "tempui-discuss-parking-lot-item.md"
@@ -2944,6 +3000,7 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     LIGHTNING_ROUND_DOC_FILENAME: _LIGHTNING_ROUND_DOC,
     MARKDOWN_DOC_FILENAME: _MARKDOWN_DOC,
     IMAGE_DOC_FILENAME: _IMAGE_DOC,
+    OPEN_WITH_WIDGET_DOC_FILENAME: _OPEN_WITH_WIDGET_DOC,
     SCRATCH_DOC_FILENAME: _SCRATCH_DOC,
     CUSTOM_WIDGETS_DOC_FILENAME: _CUSTOM_WIDGETS_DOC,
     DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME: _DISCUSS_PARKING_LOT_ITEM_DOC,
@@ -3124,6 +3181,7 @@ class TempUiDocument:
 LIGHTNING_ROUND_KEYWORD = "LightningRound"
 OPEN_MARKDOWN_KEYWORD = "OpenMarkdown"
 OPEN_IMAGE_KEYWORD = "OpenImage"
+OPEN_WITH_WIDGET_KEYWORD = "OpenWithWidget"
 SCRATCH_KEYWORD = "Scratch"
 MARKDOWN_KEYWORD = "Markdown"
 DEFINE_WIDGET_KEYWORD = "DefineWidget"
@@ -3145,6 +3203,7 @@ RESERVED_TEMPUI_KEYWORDS = frozenset(
         "LRItem",
         OPEN_MARKDOWN_KEYWORD,
         OPEN_IMAGE_KEYWORD,
+        OPEN_WITH_WIDGET_KEYWORD,
         SCRATCH_KEYWORD,
         MARKDOWN_KEYWORD,
         DEFINE_WIDGET_KEYWORD,
@@ -3384,10 +3443,13 @@ def parse_desk_proc(text: str) -> DeskProcDefinition | None:
 def detect_temp_ui_kind(text: str, custom_keywords: Collection[str] = ()) -> str:
     """"question" (the original, default type), "lightning_round",
     "open_markdown", "open_image", "scratch", "markdown_content",
-    "define_widget", "discuss_parking_lot_item", "job", "desk_proc", or
-    (if the file's own keyword is a currently-known custom widget --
-    TODO 91b3f42) "custom:<keyword>" -- read from the first non-blank
-    line's keyword. Lets a caller
+    "define_widget", "discuss_parking_lot_item", "job", "desk_proc", a
+    dynamic "open_with_widget:<widget_id>" (TODO 3b6de01, the file's
+    own second field -- "question" instead if that field or the third
+    (the path) is missing, same tolerance a genuinely unrecognized
+    keyword already gets), or (if the file's own keyword is a
+    currently-known custom widget -- TODO 91b3f42) "custom:<keyword>"
+    -- read from the first non-blank line's keyword. Lets a caller
     that's seeing a temp-ui file for the first time (a notification, a
     saved Desk's widget state) know which widget kind to place without
     assuming "question". Named "markdown_content" (not "markdown") to
@@ -3407,6 +3469,9 @@ def detect_temp_ui_kind(text: str, custom_keywords: Collection[str] = ()) -> str
                 return "open_markdown"
             if keyword == OPEN_IMAGE_KEYWORD:
                 return "open_image"
+            if keyword == OPEN_WITH_WIDGET_KEYWORD:
+                parsed = parse_open_with_widget(text)
+                return f"open_with_widget:{parsed[0]}" if parsed is not None else "question"
             if keyword == SCRATCH_KEYWORD:
                 return "scratch"
             if keyword == MARKDOWN_KEYWORD:
@@ -3453,6 +3518,26 @@ def parse_open_image(text: str) -> str | None:
         if parts[0] == OPEN_IMAGE_KEYWORD and len(parts) > 1:
             return parts[1].strip()
         return None
+    return None
+
+
+def parse_open_with_widget(text: str) -> tuple[str, str] | None:
+    """Extracts `(widget_id, path)` from an OpenWithWidget temp-UI
+    file's first line (`OpenWithWidget<TAB>widget_id<TAB>path`, TODO
+    3b6de01) -- tab-separated, unlike parse_open_markdown/
+    parse_open_image's simpler single-space-split shape, since a path
+    (or a widget id, in principle) may itself contain spaces. Returns
+    None if the file doesn't actually start with the OpenWithWidget
+    keyword, or either field is missing/blank."""
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        if parts[0] != OPEN_WITH_WIDGET_KEYWORD:
+            return None
+        if len(parts) < 3 or not parts[1].strip() or not parts[2].strip():
+            return None
+        return parts[1].strip(), parts[2].strip()
     return None
 
 
