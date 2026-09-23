@@ -275,6 +275,7 @@ class _OrderTrackingWindow:
         # TODO 5734529: switch_desk also clears this alongside the
         # custom-widget dicts above.
         self._html_widget_local_storage = {}
+        self._html_widget_opened_file = {}
         # TODO 6f9c51b: switch_desk also calls self._event_mediator.clear_all().
         self._event_mediator = EventMediator()
         # switch_desk also clears this Bridge API introspection-grant cache.

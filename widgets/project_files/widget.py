@@ -1,4 +1,3 @@
-import logging
 from pathlib import Path
 
 from PyQt6.QtCore import QDir, QEvent, QModelIndex, QPointF, QRectF, QTimer, Qt
@@ -17,8 +16,6 @@ from PyQt6.QtWidgets import (
 from desk.file_type_registry import FILE_TYPE_REGISTRY_UPDATED_EVENT, entry_from_dict, find_view_handler
 from desk.shell import current_context
 from desk.shell.event_broker import EventSubscription
-
-logger = logging.getLogger(__name__)
 
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", "build", "dist"}
 SEARCH_DEBOUNCE_MS = 200
@@ -269,18 +266,14 @@ class ProjectFilesWidget(QWidget):
             editor_or_scrap(path)
 
     def _open_in_widget(self, opener, widget_id: str, path: Path) -> None:
-        widget = opener(widget_id)
-        if widget is not None and hasattr(widget, "set_file"):
-            # A broken set_file() must never propagate out of here
-            # (TODO 810a5d6): this runs inside a Qt slot (doubleClicked),
-            # and an uncaught exception there is fatal to the whole
-            # process in this PyQt6 setup, not just to opening this one
-            # file -- see plans/isolate-hot-reload-crash.md and
-            # LEARNINGS.md.
-            try:
-                widget.set_file(path)
-            except Exception:
-                logger.error("Failed to open %s in the %r widget", path, widget_id, exc_info=True)
+        # TODO 83427f4: opener (DeskWindow.open_widget_content_centered)
+        # now handles both set_file (kind:"python") and
+        # self.getOpenedFile (kind:"html") itself via path= --
+        # including the broken-set_file safety wrap this used to
+        # duplicate here (see plans/isolate-hot-reload-crash.md and
+        # LEARNINGS.md for why that matters: this runs inside a Qt slot,
+        # doubleClicked).
+        opener(widget_id, path=path)
 
     def bind_event_mediator(self, instance_id, mediator) -> None:
         """TODO b5d52c0: opts into `DeskWindow._bind_event_mediator`'s

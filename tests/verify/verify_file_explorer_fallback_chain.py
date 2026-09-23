@@ -112,8 +112,10 @@ class _FakeWindow:
         self.view.show()
         self.open_widget_content_calls = []
 
-    def open_widget_content(self, widget_id, pos=None, size=None, instance_id=None):
-        self.open_widget_content_calls.append({"widget_id": widget_id, "pos": pos, "size": size, "instance_id": instance_id})
+    def open_widget_content(self, widget_id, pos=None, size=None, instance_id=None, path=None):
+        self.open_widget_content_calls.append(
+            {"widget_id": widget_id, "pos": pos, "size": size, "instance_id": instance_id, "path": path}
+        )
         return "fake-content"
 
 
@@ -131,6 +133,15 @@ def test_open_widget_content_centered_computes_scene_center():
         check("widget_id passed through", call["widget_id"] == "scratch")
         check("pos is the view's current scene center", call["pos"] == (expected_center.x(), expected_center.y()))
         check("size defaults to the widget's own default_size", call["size"] == (400, 300))
+        check("path defaults to None when not given", call["path"] is None)
+
+
+def test_open_widget_content_centered_passes_path_through():
+    with tempfile.TemporaryDirectory() as d:
+        win = _FakeWindow(Path(d))
+        result = win.open_widget_content_centered("scratch", path=Path("a.txt"))
+        check("delegates to open_widget_content", result == "fake-content")
+        check("path is passed through to open_widget_content", win.open_widget_content_calls[0]["path"] == Path("a.txt"))
 
 
 def test_open_widget_content_centered_unknown_widget_id_is_noop():
@@ -149,8 +160,13 @@ class _FakeCenteredOpener:
         self.calls = []
         self.widgets_by_id = {}
 
-    def __call__(self, widget_id):
-        self.calls.append(widget_id)
+    def __call__(self, widget_id, path=None):
+        # TODO 83427f4: _open_in_widget now only calls opener(widget_id,
+        # path=path) and trusts it to handle set_file/getOpenedFile
+        # itself (moved into the real DeskWindow.open_widget_content --
+        # see verify_html_widget_opened_file.py for that coverage) --
+        # this fake just records the call, it doesn't reimplement that.
+        self.calls.append((widget_id, path))
         return self.widgets_by_id.get(widget_id)
 
 
@@ -203,8 +219,12 @@ def test_registered_view_handler_opens_that_widget():
             path = Path(d) / "a.svg"
             path.write_text("<svg></svg>")
             widget._open_file(path)
-        check("opener called with the registered view widget id", opener.calls == ["svg_viewer"])
-        check("set_file called on the viewer widget", viewer.set_file_calls == [path])
+        # TODO 83427f4: _open_in_widget's own job is now just "call the
+        # opener with the right widget id and path" -- whether that
+        # actually reaches set_file (kind:"python") or getOpenedFile
+        # (kind:"html") is the real DeskWindow.open_widget_content's own
+        # job, covered by verify_html_widget_opened_file.py instead.
+        check("opener called with the registered view widget id and the path", opener.calls == [("svg_viewer", path)])
     finally:
         current_context.set_centered_widget_opener(None)
 
@@ -261,10 +281,15 @@ def test_no_view_handler_and_no_shared_hook_registered_is_a_noop():
 
 
 def test_broken_set_file_does_not_raise():
-    # Exercises _open_in_widget's own set_file call (the "view handler
-    # found" path _open_file still handles directly) -- the edit/text
-    # -editor/scratch fallback's own broken-set_file safety now lives
-    # in DeskWindow.open_editor_or_scrap instead (TODO da4f9c0).
+    # TODO 83427f4: _open_in_widget no longer calls set_file itself at
+    # all (it only calls opener(widget_id, path=path) and trusts the
+    # opener -- DeskWindow.open_widget_content in real use -- to handle
+    # it, including the broken-set_file safety wrap; see
+    # verify_html_widget_opened_file.py for that real coverage). This
+    # keeps the shape of the older test (TODO da4f9c0's own note about
+    # where the fallback-chain's own safety net lives still applies),
+    # confirming _open_in_widget itself has nothing left to raise even
+    # when the widget the opener hands back is broken.
     class _BrokenWidget:
         def set_file(self, path):
             raise RuntimeError("boom")
@@ -294,6 +319,7 @@ test_find_view_handler_builtin_fallback()
 test_find_edit_handler_has_no_builtin_fallback()
 test_looks_like_text_file()
 test_open_widget_content_centered_computes_scene_center()
+test_open_widget_content_centered_passes_path_through()
 test_open_widget_content_centered_unknown_widget_id_is_noop()
 test_registered_view_handler_opens_that_widget()
 test_no_view_handler_delegates_to_shared_editor_or_scrap_hook()

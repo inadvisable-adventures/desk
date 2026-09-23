@@ -9677,7 +9677,7 @@ f0da2e9. COMPLETED: Expose staleness to agents: add a `stale: bool` to each
    Cites
    `../FEEDBACK/FEEDBACK-DESK-agent-cannot-detect-stale-widget-instances-2026-09-17-2200.md`.
 
-83427f4. Let a `kind: "html"` widget learn which file it was opened
+83427f4. COMPLETED: Let a `kind: "html"` widget learn which file it was opened
    for. Add a `desk.self.getOpenedFile()` Bridge call (route,
    `bridge_client.py`, capability handling as for the other `self`
    calls), and set the file for the new instance on the same paths that
@@ -9688,7 +9688,9 @@ f0da2e9. COMPLETED: Expose staleness to agents: add a `stale: bool` to each
    registry `view` handler that is an html widget opens empty. Chosen
    over merging an `_openedFile` key into the widget's initial state,
    which would leak into its persisted state. Mint a tempui changelog
-   tag/entry. Cites
+   tag/entry.
+   [planned: html-widget-learn-opened-file.md (COMPLETED)]
+   Cites
    `../FEEDBACK/FEEDBACK-DESK-html-widget-view-handler-no-file-path-2026-08-06-2353.md`.
 
 5928ae6. Give the built-in Sheet widget (`widgets/sheet/widget.py`) a

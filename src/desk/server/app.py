@@ -384,6 +384,19 @@ def create_app(
         data = await run_on_gui(lambda: gui_bridge.window.get_html_widget_local_storage(instance_id))
         return {"data": data}
 
+    @app.get("/api/bridge/self/getOpenedFile")
+    async def self_get_opened_file(instance_id: str = Depends(require_instance_id)):
+        """TODO 83427f4: lets a kind:"html" widget learn which file it
+        was opened for -- e.g. by the file type registry's view/edit
+        handler resolving to it -- the same information a built-in
+        kind:"python" viewer already gets via its own set_file(path)
+        Python method, which a ChromiumWidget has no equivalent of.
+        `path` is `null` for an instance that wasn't opened for a
+        specific file, not an error -- same shape as getLocalStorage's
+        own "empty/default for nothing-yet" convention."""
+        path = await run_on_gui(lambda: gui_bridge.window.get_opened_file_for_instance(instance_id))
+        return {"path": path}
+
     @app.post("/api/bridge/self/setLocalStorage")
     async def self_set_local_storage(
         body: SetLocalStorageRequest, instance_id: str = Depends(require_instance_id)

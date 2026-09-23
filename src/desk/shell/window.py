@@ -354,6 +354,18 @@ class DeskWindow(QMainWindow):
         # API's self.setLocalStorage. See _get_widget_local_storage/
         # _bind_widget_local_storage.
         self._html_widget_local_storage: dict[str, dict] = {}
+        # TODO 83427f4: instance_id -> the file path (as a string) that
+        # instance was opened for, e.g. by the file type registry's
+        # `view`/`edit` handler resolving to a kind:"html" widget --
+        # `open_widget_content`'s only avenue for telling such a widget
+        # anything at all (there's no Python `set_file()` method to call
+        # on a ChromiumWidget the way there is on a built-in
+        # kind:"python" viewer). Read back by the Bridge API's
+        # `self.getOpenedFile()`. Never set for a widget opened any
+        # other way (a blank canvas placement, a tempui file with no
+        # target path, ...) -- absence, not an empty string, means "not
+        # opened for a specific file."
+        self._html_widget_opened_file: dict[str, str] = {}
 
         # The event mediator message channel (TODO 6f9c51b) -- the same
         # instance the Local Web Server's Bridge API routes already use
@@ -1031,6 +1043,7 @@ class DeskWindow(QMainWindow):
         pos: tuple[float, float] | None = None,
         size: tuple[int, int] | None = None,
         instance_id: str | None = None,
+        path: Path | None = None,
     ) -> QWidget | None:
         """Like open_widget, but returns the actual widget instance built
         by the placed widget's own widget.py:build() rather than just an
@@ -1044,18 +1057,45 @@ class DeskWindow(QMainWindow):
         this stays a quiet no-op rather than propagating open_widget's
         own ValueError, unlike the Bridge API's widgets.open route,
         which wants that error surfaced) -- see
-        desk.shell.current_context's widget-opener hook."""
+        desk.shell.current_context's widget-opener hook.
+
+        TODO 83427f4: `path`, if given, tells the freshly-placed
+        instance which file it was opened for -- a `kind: "python"`
+        widget via its own `set_file(path)` (unchanged from before this
+        parameter existed, just centralized here instead of duplicated
+        at every caller), a `kind: "html"` widget via
+        `self._html_widget_opened_file` (there's no Python method to
+        call on a `ChromiumWidget`), read back by the Bridge API's
+        `self.getOpenedFile()`. A broken `set_file()` must never
+        propagate out of here (TODO 810a5d6) -- callers of this method
+        already run inside a Qt slot in every case that passes `path`
+        today, and an uncaught exception there is fatal to the whole
+        process in this PyQt6 setup."""
         try:
             instance_id = self.open_widget(widget_id, pos, size, instance_id)
         except ValueError:
             return None
         frame = self.find_frame_by_instance_id(instance_id)
-        if frame is None or not isinstance(frame.content, PythonWidgetHost):
+        if frame is None:
+            return None
+        if path is not None:
+            if isinstance(frame.content, ChromiumWidget):
+                self._html_widget_opened_file[frame.instance_id] = str(path)
+            elif isinstance(frame.content, PythonWidgetHost) and hasattr(frame.content.current, "set_file"):
+                try:
+                    frame.content.current.set_file(path)
+                except Exception:
+                    logger.error("Failed to open %s in the %r widget", path, widget_id, exc_info=True)
+        if not isinstance(frame.content, PythonWidgetHost):
             return None
         return frame.content.current
 
     def open_widget_content_centered(
-        self, widget_id: str, size: tuple[int, int] | None = None, instance_id: str | None = None
+        self,
+        widget_id: str,
+        size: tuple[int, int] | None = None,
+        instance_id: str | None = None,
+        path: Path | None = None,
     ) -> QWidget | None:
         """Like open_widget_content, but placed centered in the current
         view (TODO efdad99) instead of open_widget's own `(0, 0)`
@@ -1063,14 +1103,27 @@ class DeskWindow(QMainWindow):
         already uses. Bound to `current_context
         .set_centered_widget_opener` for a `kind: "python"` widget that
         wants this placement convention without reaching into the
-        view/scene directly."""
+        view/scene directly. `path` (TODO 83427f4) passes straight
+        through to `open_widget_content`."""
         widget = self._widgets.get(widget_id)
         if widget is None:
             return None
         center = self.view.mapToScene(self.view.viewport().rect().center())
         return self.open_widget_content(
-            widget_id, pos=(center.x(), center.y()), size=size or widget.default_size, instance_id=instance_id
+            widget_id,
+            pos=(center.x(), center.y()),
+            size=size or widget.default_size,
+            instance_id=instance_id,
+            path=path,
         )
+
+    def get_opened_file_for_instance(self, instance_id: str) -> str | None:
+        """The Bridge API's `self.getOpenedFile` (TODO 83427f4) --
+        `None` for an instance that wasn't opened for a specific file
+        (a blank canvas placement, a tempui file with no target path,
+        ...), not an error; see `_html_widget_opened_file`'s own
+        docstring in `__init__`."""
+        return self._html_widget_opened_file.get(instance_id)
 
     def show_popup(
         self, title: str, message: str, buttons: list[str], default: str | None = None
@@ -1115,17 +1168,11 @@ class DeskWindow(QMainWindow):
         if widget_id is None and looks_like_text_file(path):
             widget_id = EDITOR_WIDGET_ID
         if widget_id is not None:
-            widget = self.open_widget_content_centered(widget_id)
-            if widget is not None and hasattr(widget, "set_file"):
-                # A broken set_file() must never propagate out of here
-                # (TODO 810a5d6) -- this may run inside a Qt slot (a
-                # viewer widget's Edit button click), and an uncaught
-                # exception there is fatal to the whole process in
-                # this PyQt6 setup.
-                try:
-                    widget.set_file(path)
-                except Exception:
-                    logger.error("Failed to open %s in the %r widget", path, widget_id, exc_info=True)
+            # TODO 83427f4: open_widget_content_centered's own path=
+            # handles both set_file (kind:"python") and
+            # self.getOpenedFile (kind:"html") -- including the
+            # broken-set_file safety wrap, now centralized there.
+            self.open_widget_content_centered(widget_id, path=path)
             return
         scratch = self.open_widget_content_centered(SCRATCH_WIDGET_ID)
         if scratch is None or not hasattr(scratch, "set_label") or not hasattr(scratch, "body"):
@@ -1145,16 +1192,9 @@ class DeskWindow(QMainWindow):
         current_context.set_git_diff_opener."""
         registry = [entry_from_dict(d) for d in self.get_file_type_registry_dicts()]
         widget_id = find_git_diff_handler(registry, path)
-        widget = self.open_widget_content_centered(widget_id)
-        if widget is not None and hasattr(widget, "set_file"):
-            # A broken set_file() must never propagate out of here (TODO
-            # 810a5d6) -- this may run inside a Qt slot (Git Status'
-            # click handler), and an uncaught exception there is fatal
-            # to the whole process in this PyQt6 setup.
-            try:
-                widget.set_file(path)
-            except Exception:
-                logger.error("Failed to open %s in the %r widget", path, widget_id, exc_info=True)
+        # TODO 83427f4: see open_editor_or_scrap's own comment -- same
+        # centralized set_file/getOpenedFile handling via path=.
+        self.open_widget_content_centered(widget_id, path=path)
 
     def _bind_temp_ui_widget(self, frame: WidgetFrame, directory: Path, uuid_str: str) -> None:
         if not isinstance(frame.content, PythonWidgetHost):
@@ -2119,6 +2159,10 @@ class DeskWindow(QMainWindow):
         # belonged to -- cleared here so it doesn't accumulate stale
         # entries across many Desk switches in one long session.
         self._html_widget_local_storage.clear()
+        # Same reasoning, same spot (TODO 83427f4): every opened-file
+        # binding belonged to a frame view.clear_widgets() just
+        # destroyed too.
+        self._html_widget_opened_file.clear()
         # Same reasoning, same spot (TODO 6f9c51b): every subscription
         # belonged to a frame view.clear_widgets() just destroyed.
         self._event_mediator.clear_all()

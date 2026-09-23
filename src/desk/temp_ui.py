@@ -225,6 +225,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "bundled desk_transforms discovered automatically #576866",
     "screenshot tools accept max_width downsampling #600160",
     "workspace getState exposes per-instance stale flag #157810",
+    "self.getOpenedFile for html widgets #003325",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -999,6 +1000,18 @@ All calls are `async` (they return a `Promise`):
   call it again after restoring your own state (e.g. right after
   `getLocalStorage`) on every fresh page load, the same way you'd
   re-render your own content.
+- `desk.self.getOpenedFile()` → `{ path }` (TODO 83427f4) — the file
+  path your instance was opened for, if any — e.g. it's the registered
+  `view`/`edit` handler for a file type in the File Type Registry
+  (`desk.filetypes.set`), and the user double-clicked a matching file
+  in Project Files, or a viewer widget's own Edit button opened you
+  against a specific file. `path` is `null` for an instance placed any
+  other way (a blank canvas placement, a tempui file with no target
+  path, ...) — check for `null` rather than assuming a path is always
+  present. Call it once, early, on page load (the same "call this once
+  early" shape as `getLocalStorage`) — this is a one-shot fact about
+  how *this* instance was created, not something that changes later
+  the way `setSubtitle`'s own text can.
 
 If you're porting an existing web app/component into a `DefineWidget`
 widget, it likely already has its own persistence mechanism (custom
@@ -1838,6 +1851,15 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "self.getOpenedFile for html widgets #003325": """- New Bridge API call `desk.self.getOpenedFile()` -> `{ path }` -- a
+  kind:"html" widget can now learn which file it was opened for (e.g.
+  as the File Type Registry's registered `view`/`edit` handler for a
+  file type, opened by double-clicking a matching file in Project
+  Files, or a viewer widget's own Edit button), the same information a
+  built-in kind:"python" viewer already gets via its own set_file()
+  Python method. `path` is `null` for an instance opened any other
+  way. See "The Desk Bridge API" in `tempui-custom-widgets.md`.
+""",
     "workspace getState exposes per-instance stale flag #157810": """- `desk.workspace.getState()`, `desk_list_widget_instances` (MCP), and
   `deskproc.list_widget_instances()` now report `stale: bool` for each
   placed instance -- the same live signal the titlebar `[STALE]` badge

@@ -122,7 +122,7 @@ from desk.temp_ui import JobDefinition
 
 _current_directory: Path | None = None
 _widget_opener: Callable[[str], QWidget | None] | None = None
-_centered_widget_opener: Callable[[str], QWidget | None] | None = None
+_centered_widget_opener: Callable[[str, Path | None], QWidget | None] | None = None
 _editor_or_scrap_opener: Callable[[Path], None] | None = None
 _git_diff_opener: Callable[[Path], None] | None = None
 _transform_runner_blocking: Callable[[str, str, dict | None], str] | None = None
@@ -185,7 +185,7 @@ def get_widget_opener() -> Callable[[str], QWidget | None] | None:
     return _widget_opener
 
 
-def set_centered_widget_opener(opener: Callable[[str], QWidget | None]) -> None:
+def set_centered_widget_opener(opener: Callable[[str, Path | None], QWidget | None]) -> None:
     """Like set_widget_opener, but the opened instance is placed
     centered in the current view (TODO efdad99) -- get_widget_opener's
     own DeskWindow.open_widget_content places at (0, 0) by default,
@@ -193,12 +193,15 @@ def set_centered_widget_opener(opener: Callable[[str], QWidget | None]) -> None:
     codebase (_place_discuss_claude_widget) deliberately avoid; this
     hook gives a kind:"python" widget the same centered convention
     without needing to reach into DeskWindow's own view/scene math
-    itself."""
+    itself. `path` (TODO 83427f4, second positional arg -- `None` when
+    the caller has no file to associate with the new instance) tells a
+    kind:"python" widget via set_file and a kind:"html" widget via
+    self.getOpenedFile which file it was opened for."""
     global _centered_widget_opener
     _centered_widget_opener = opener
 
 
-def get_centered_widget_opener() -> Callable[[str], QWidget | None] | None:
+def get_centered_widget_opener() -> Callable[[str, Path | None], QWidget | None] | None:
     return _centered_widget_opener
 
 

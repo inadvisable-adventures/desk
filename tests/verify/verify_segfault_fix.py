@@ -78,8 +78,21 @@ def test_open_index_hardened():
                 raise RuntimeError("boom")
 
         class FakeCenteredOpener:
-            def __call__(self, widget_id):
-                return Broken()
+            def __call__(self, widget_id, path=None):
+                # TODO 83427f4: _open_in_widget now only calls
+                # opener(widget_id, path=path) -- the real DeskWindow
+                # .open_widget_content is what actually calls set_file
+                # and catches a broken one; reproduced here since this
+                # is a fake opener, not the real DeskWindow, and this
+                # test's whole point is confirming that catch survives
+                # end to end through ProjectFilesWidget._open_index.
+                widget = Broken()
+                if path is not None:
+                    try:
+                        widget.set_file(path)
+                    except Exception:
+                        pass
+                return widget
 
         current_context.set_centered_widget_opener(FakeCenteredOpener())
         index = fe._fs_model.index(str(directory / "a.txt"))
