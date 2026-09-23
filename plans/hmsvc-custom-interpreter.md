@@ -1,4 +1,4 @@
-# TODO 0375f64: hmsvc service.json custom interpreter (venv/python)
+# COMPLETED: TODO 0375f64: hmsvc service.json custom interpreter (venv/python)
 
 ## Summary
 

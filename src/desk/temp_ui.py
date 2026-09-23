@@ -218,6 +218,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "widget for subjective visual tasks guidance #588265",
     "promotion moves shared tsconfig files #586922",
     "Desk log file at .desk_temp/logs/desk.log #236455",
+    "hmsvc service.json custom interpreter #892147",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1714,6 +1715,21 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "hmsvc service.json custom interpreter #892147": """- A Desk-hosted microservice's `service.json` can now name its own
+  Python interpreter for the service's subprocess, instead of always
+  launching under Desk's own interpreter: `"venv"` (a project-relative
+  venv directory, resolved to `<venv>/bin/python`) or `"python"` (an
+  absolute interpreter path, for a venv living outside the project --
+  wins if both are set). Lets a service import a project's own
+  native/platform-specific dependencies (e.g. `opencv`, `pyobjc`)
+  without adding them to Desk's own shared environment. The configured
+  interpreter still needs `uvicorn` installed, since `desk.hmsvc_host`
+  (which actually serves the service's ASGI app) imports it directly.
+  Neither field set: unchanged (Desk's own interpreter). A
+  configured-but-missing interpreter fails immediately with the
+  resolved path named in the error and the service's own log, rather
+  than silently falling back.
+""",
     "Desk log file at .desk_temp/logs/desk.log #236455": """- Desk now keeps its own rotating log at `.desk_temp/logs/desk.log`
   (about 1 MB per file, 5 backups), one per project: startup messages,
   warnings, errors, and the traceback of any uncaught exception. It is
