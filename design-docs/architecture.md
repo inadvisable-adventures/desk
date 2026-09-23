@@ -1369,7 +1369,12 @@ Desk falls back to stderr-only.
   a specific widget's complexity clearly justifies one.
 - Distribution/packaging target (PyInstaller app bundle, pip-installable
   CLI, etc.) and platform scope (macOS-only first, or cross-platform from
-  day one)?
+  day one)? Whichever it ends up being, a macOS app bundle needs a
+  microphone usage entitlement/`Info.plist` string
+  (`NSMicrophoneUsageDescription`, and `NSCameraUsageDescription` for
+  camera) for the OS to grant `media`-capability widgets (TODO 2dbfd55)
+  real mic/camera access at all -- nothing to add until there's an
+  actual bundle target to add it to.
 - Exact workspace persistence location/format versioning strategy as the
   schema evolves.
 

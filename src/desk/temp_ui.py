@@ -218,6 +218,12 @@ CURRENT_TAGS: tuple[str, ...] = (
     "widget for subjective visual tasks guidance #588265",
     "promotion moves shared tsconfig files #586922",
     "Desk log file at .desk_temp/logs/desk.log #236455",
+    "media capability gates mic and camera #407103",
+    "promotion normalizes tsconfig outDir to .build #941549",
+    "mermaid parser: stadium, unpiped labels, quotes #183003",
+    "mermaid fallback distinguishes failure reasons #138484",
+    "bundled desk_transforms discovered automatically #576866",
+    "screenshot tools accept max_width downsampling #600160",
     "hmsvc service.json custom interpreter #892147",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
@@ -247,8 +253,10 @@ built-in file types, distinguished by their first line's keyword:
   repeatedly over a list of items. See
   [tempui-lightning-round.md](./tempui-lightning-round.md).
 - `OpenMarkdown` / `Markdown` — open an existing Markdown file, or
-  render Markdown content given directly in the tempui file itself.
-  See [tempui-markdown.md](./tempui-markdown.md).
+  render Markdown content given directly in the tempui file itself
+  (including a fenced ` ```mermaid ` diagram -- works out of the box in
+  every project, nothing to set up). See
+  [tempui-markdown.md](./tempui-markdown.md).
 - `OpenImage` — open an existing image file in the Image Viewer
   widget. See [tempui-image.md](./tempui-image.md).
 - `Scratch` — arbitrary free-form notes shown in a Scratch widget. See
@@ -525,6 +533,61 @@ filename derived from the *rendered content's own first line*
 `investigation-summary.md`) — not from `<label>` above. Saving opens
 the new file in a separate, ordinary Markdown widget instance; this
 tempui-bound instance stays open, unaffected.
+
+## Supported Mermaid subset
+
+A fenced ` ```mermaid ` block above renders through Desk's own,
+hand-rolled Mermaid support -- a real but partial implementation, not
+the full Mermaid language. Anything outside this subset falls back to
+showing the raw source as plain text instead of rendering it or
+erroring.
+
+- **Flowchart** (`flowchart`/`graph`, any of the five directions):
+  five node shapes -- rect `id[Label]`, rounded `id(Label)`, diamond
+  `id{Label}`, circle `id((Label))`, stadium `id([Label])` -- no other
+  extended shapes (subroutine, cylinder, hexagon, ...). Edge styles
+  `-->`, `---`, `-.->`, `-.-`, with a label either piped
+  (`A -->|label| B`) or unpiped/inline (`A -- label --> B`,
+  `A -. label .-> B`, and the arrow-less equivalents `---`/`-.-`).
+- **State diagram** (`stateDiagram`/`stateDiagram-v2`): flat only --
+  `[*]` start/end pseudostates, `A --> B` / `A --> B : label`
+  transitions, `A : label` descriptions. A composite/nested `state X {
+  ... }` block is skipped (not an error), not rendered.
+- **Quoting:** any label -- inside a shape or on an edge -- may be
+  double-quoted (`id["a [b] c"]`) so it can contain its own shape's
+  delimiter characters literally. There is no other escaping mechanism
+  (no backslash escapes, no HTML entities), and quoting is optional --
+  a label with nothing special in it doesn't need it.
+- **Unsupported entirely:** any other diagram type (sequence, class,
+  ER, gantt, pie, ...), thick edges (`==>`), any node shape beyond the
+  five above, and a composite `stateDiagram` block's own nested content
+  (skipped, never rendered, not an error).
+
+**This renders via a transform, not logic built directly into the
+widget** -- a flowchart via the `mermaid_flowchart_svg` transform, a
+state diagram via `mermaid_state_svg`. Both ship bundled with Desk
+itself and are discovered automatically in every project, with nothing
+to add and nothing copied into your project. A project can still
+override either one with its own same-id transform (in its own
+`desk_transforms/`, or `.desk_temp/transforms/` for TypeScript/
+JavaScript only) if it wants different rendering; the project's own
+copy always wins. When rendering still doesn't happen, the plain-text
+fallback names why, distinguished by its own note:
+
+- *"no `'mermaid_flowchart_svg'`/`'mermaid_state_svg'` transform
+  found"* -- only reachable in an unusual install with no bundled
+  transforms at all, or a project that deliberately overrode one with
+  something that doesn't actually work; add or fix the transform (see
+  `transforms` in the Bridge API capability list,
+  `tempui-custom-widgets.md`) rather than assuming the diagram's own
+  syntax is wrong.
+- *"Mermaid syntax error: ..."* -- the diagram itself doesn't parse;
+  fix the syntax per the subset above.
+- *"unsupported Mermaid diagram type"* -- this diagram type has no
+  transform at all, ever (not a per-project gap).
+- *"Mermaid rendering failed: ..."* / *"produced invalid SVG output"*
+  -- the transform ran but something else went wrong; the message
+  names what.
 """
 
 _IMAGE_DOC = """# TempUI DSL: OpenImage
@@ -651,7 +714,10 @@ contain spaces:
   manifest's own `capabilities` list uses. Without this, your widget's
   JS can only call the always-available `self.*` calls (see "The Desk
   Bridge API" below) — anything else (including `events.*`) fails with
-  a 403 unless you declare the matching capability here.
+  a 403 unless you declare the matching capability here. One
+  capability, `media`, isn't a Bridge API call at all -- it gates
+  whether the browser grants this widget's page `getUserMedia()`
+  (mic/camera) access; see "Media (mic/camera) access" below.
 - `StateSchema<TAB>key<TAB>type_expr` — optional, repeatable (TODO
   af7898b). Declares a validated schema for one `desk.state.*` key --
   `type_expr` is a TypeScript type expression string (see "Shared,
@@ -712,7 +778,17 @@ not-yet-promoted widget's source too. Four files:
   comment `/* BUILD:COMPILED_JS */`, and the `<name-tag></name-tag>`
   element instantiation.
 - `tsconfig.json` — whatever strictness the project wants; must set
-  `compilerOptions.outDir`. For a widget split across more than one
+  `compilerOptions.outDir`. **Set it to `.build`** — the same directory
+  a promoted, source-backed widget is rebuilt into (see "Promoting a
+  defined widget to the Desk" below); `tsc`'s own raw compiled `.js`
+  output there and the final packaged `index.html` coexist in that one
+  directory just fine. Any other value still works while un-promoted
+  (`build_widget.py` reads whatever you set), but promotion will offer
+  to rewrite it to `.build` for you, and until you accept that (or set
+  it yourself), it's a second, gitignore-uncovered build directory
+  alongside `.build` — the existing `desk_widgets/**/.build/`
+  gitignore-entry prompt only ever covers `.build` itself. For a widget
+  split across more than one
   `.ts` file (e.g. a shared base class alongside the widget's own
   subclass), also set a top-level `"files"` array listing them in
   the order they must be concatenated in — base classes before the
@@ -726,8 +802,8 @@ not-yet-promoted widget's source too. Four files:
   fields a `DefineWidget`/`Size` line above needs, plus an optional
   `"capabilities": [...]` (a list of the same coarse, resource-level
   strings a real `widgets/<id>/widget.json`'s own `capabilities` list
-  already uses -- `workspace`, `fs`, `widgets`, `events`, ...) — the
-  build script emits one `Capability<TAB>name` line per entry, so
+  already uses -- `workspace`, `fs`, `widgets`, `events`, `media`, ...)
+  — the build script emits one `Capability<TAB>name` line per entry, so
   `widget.json` is the one place a defined widget's capabilities need
   to be declared, the same way a real `kind: "python"`/`"html"`
   widget's manifest already works. Omit it entirely for a widget that
@@ -861,6 +937,18 @@ or be left alone (a left-alone widget's next rebuild will fail until its
 path is fixed). A different file with the same name already at the
 destination is never overwritten -- Desk reports it and leaves the
 widget pointing at the original. Only `"files"` is read, not `include`.
+
+**The widget's own build output is normalized too.** If its
+`tsconfig.json` `compilerOptions.outDir` doesn't already say `.build`,
+promotion offers to rewrite it to match (the same directory Desk
+itself rebuilds the widget into, above) -- accept it, or set `.build`
+yourself from the start (see "Authoring from real source"), and there's
+only ever one build directory to gitignore, already covered by the
+`desk_widgets/**/.build/` entry. Either way, promotion also clears out
+whatever that directory currently holds, without asking -- it moved
+along with the rest of the widget's source and can only be a stale
+compile from before the move, which the very next rebuild regenerates
+from scratch.
 
 ## The Desk Bridge API — what your widget's own JS can call
 
@@ -1006,6 +1094,24 @@ built for genuine cross-widget signaling:
 
 The calls above are almost always all a `DefineWidget` widget actually
 needs.
+
+## Media (mic/camera) access
+
+If your widget's own JS calls `navigator.mediaDevices.getUserMedia()`
+(directly, or indirectly -- e.g. the Web Speech API) it needs the
+`media` capability declared (a `Capability<TAB>media` line, or
+`"media"` in a real `widgets/<id>/widget.json`'s `"capabilities"`
+list). This is not a Bridge API HTTP call like everything else in this
+section -- it gates a real browser permission
+(`QWebEnginePage.featurePermissionRequested`) instead, so there's no
+`desk.*` call to make for it: declare the capability, then call
+`getUserMedia()` normally, exactly as you would on any other page.
+Without it declared, the request is denied and the returned `Promise`
+rejects with a normal, catchable error -- check `.catch()`, don't
+assume the call always succeeds. Every other browser permission a page
+can ask for (`Notifications`, `Geolocation`, `ClipboardReadWrite`,
+screen-capture, `MouseLock`, `LocalFontsAccess`) is always denied,
+regardless of any capability -- there is no way to grant those yet.
 
 ## Sending and receiving named messages
 
@@ -1250,7 +1356,7 @@ one-shot run, no more.
   same coarse Bridge API capability names a `DefineWidget`'s own
   `Capability` lines use (`workspace`, `fs`, `widgets`, `events`,
   `filetypes`, `editor`, `popups`, `transforms`, `introspect`,
-  `installed_jobs` -- see "The Desk Bridge API" in
+  `installed_jobs`, `media` -- see "The Desk Bridge API" in
   `tempui-custom-widgets.md` for what each one actually grants).
   Declare only what your script actually calls
   -- an undeclared capability's Bridge call gets a real HTTP 403, not
@@ -1365,17 +1471,24 @@ there is unsafe, so use these methods rather than trying to reach into
   Workspace Canvas so the given placed widget instance fills the view,
   the same action as clicking that instance's own titlebar eye button.
   Returns whether a matching instance was found.
-- `deskproc.screenshot_widget(instance_id: str, path: str) -> bool` --
-  saves a real PNG screenshot of that instance's own placed frame
-  (titlebar and content, exactly as it looks on the canvas) to `path`.
-  A relative `path` resolves against the current Desk's own directory,
-  same as `desk.fs.writeFile`; missing parent directories are created
-  automatically. Returns whether the instance was found and the file
-  was saved successfully.
-- `deskproc.screenshot_desk(path: str) -> bool` -- saves a real PNG
-  screenshot of the whole Workspace Canvas viewport (not any native
-  window chrome around it) to `path`, same path-resolution rules as
-  above.
+- `deskproc.screenshot_widget(instance_id: str, path: str, max_width:
+  int | None = None) -> bool` -- saves a real PNG screenshot of that
+  instance's own placed frame (titlebar and content, exactly as it
+  looks on the canvas) to `path`. A relative `path` resolves against
+  the current Desk's own directory, same as `desk.fs.writeFile`;
+  missing parent directories are created automatically. `max_width`,
+  if given, scales the capture down proportionally to at most that
+  many pixels wide before saving -- never up, and omitting it keeps
+  today's native-resolution capture (often HiDPI 2x) exactly as-is; ask
+  for a smaller `max_width` when you only need "good enough to see
+  what's on screen," not a pixel-perfect native-resolution image (a
+  full native canvas capture, base64-encoded for transport, can run to
+  several hundred KB). Returns whether the instance was found and the
+  file was saved successfully.
+- `deskproc.screenshot_desk(path: str, max_width: int | None = None)
+  -> bool` -- saves a real PNG screenshot of the whole Workspace Canvas
+  viewport (not any native window chrome around it) to `path`, same
+  path-resolution rules and `max_width` downsampling as above.
 - `deskproc.list_widget_instances() -> list[dict]` -- the current
   Desk's live placed-widget layout (instance ids, widget kind,
   position, size) -- the same data `desk.workspace.getState()` already
@@ -1729,6 +1842,63 @@ _NEW_FEATURES: dict[str, str] = {
   configured-but-missing interpreter fails immediately with the
   resolved path named in the error and the service's own log, rather
   than silently falling back.
+""",
+    "screenshot tools accept max_width downsampling #600160": """- `desk_screenshot_widget`/`desk_screenshot_desk` (MCP tools) and
+  `deskproc.screenshot_widget`/`deskproc.screenshot_desk` (Desk Proc)
+  all take an optional `max_width` (pixels): the capture is scaled down
+  proportionally to at most that width before saving -- never up.
+  Omitting it keeps today's native-resolution behavior exactly as-is.
+""",
+    "bundled desk_transforms discovered automatically #576866": """- Desk's own `mermaid_flowchart_svg`/`mermaid_state_svg` transforms
+  (used by the Markdown widget's Mermaid rendering) are now discovered
+  automatically in every project -- bundled with Desk itself, scanned
+  in addition to (and at lower precedence than) a project's own
+  `.desk_temp/transforms/`/`desk_transforms/`. Nothing is copied into
+  your project; a project that wants different rendering can still
+  override either one with its own same-id transform, which always
+  wins. The Transform Manager widget shows a bundled transform's
+  location as "Bundled with Desk" (no Promote button -- there is
+  nothing in this project to move). See "Supported Mermaid subset" in
+  `tempui-markdown.md`.
+""",
+    "mermaid fallback distinguishes failure reasons #138484": """- The Markdown widget's Mermaid fallback (shown instead of a
+  rendered diagram) now distinguishes *why*, instead of one generic
+  "unsupported or unparseable" note for every cause: no transform found
+  in this project for the diagram kind (names the specific missing
+  transform id), a Mermaid syntax error (shows its own message), an
+  unsupported diagram type, or the transform itself failing/producing
+  invalid output (shows the detail). `tempui-markdown.md`'s "Supported
+  Mermaid subset" section documents each note and that rendering
+  depends on the current project having the right transform.
+""",
+    "mermaid parser: stadium, unpiped labels, quotes #183003": """- The Mermaid subset `desk.mermaid` supports (flowchart diagrams
+  rendered from a fenced ```mermaid``` block) now also parses stadium
+  nodes (`id([Label])`), unpiped/inline edge labels (`A -- label -->
+  B`, `A -. label .-> B`, and their arrow-less equivalents), and
+  double-quoted labels that may contain their own shape's delimiter
+  characters (`id["a [b] c"]`). See "Supported Mermaid subset" in
+  `tempui-markdown.md`.
+""",
+    "promotion normalizes tsconfig outDir to .build #941549": """- Promoting a source-backed `DefineWidget` widget now also normalizes
+  its build output: if its `tsconfig.json` `compilerOptions.outDir`
+  isn't already `.build` (the directory Desk itself rebuilds a promoted
+  widget into), promotion offers to rewrite it to match, and
+  unconditionally clears whatever that directory currently holds (it
+  moved along with the rest of the widget's source and can only be a
+  stale pre-move compile). "Authoring from real source" in
+  `tempui-custom-widgets.md` now names `.build` as the recommended
+  `outDir` value from the start.
+""",
+    "media capability gates mic and camera #407103": """- A `kind: "html"` widget's page can now be granted real
+  `getUserMedia()` (mic/camera) access: declare the new `media`
+  capability (a `Capability<TAB>media` line, or `"media"` in
+  `widget.json`'s `"capabilities"`) and call `getUserMedia()` normally.
+  Without it, the request is denied and the returned `Promise` rejects
+  with a normal, catchable error, instead of the page silently hanging
+  with no error at all. Every other browser permission (Notifications,
+  Geolocation, screen-capture, ...) is still always denied, regardless
+  of capability. See "Media (mic/camera) access" in
+  `tempui-custom-widgets.md`.
 """,
     "Desk log file at .desk_temp/logs/desk.log #236455": """- Desk now keeps its own rotating log at `.desk_temp/logs/desk.log`
   (about 1 MB per file, 5 backups), one per project: startup messages,
@@ -2984,11 +3154,11 @@ class CustomWidgetDefinition:
     the raw `keyword`); `html_b64` is the widget's entire
     implementation -- one self-contained, base64-encoded HTML
     document. `capabilities` (TODO f693275) are the Bridge API
-    capabilities (`"workspace"`, `"state"`, `"fs"`, `"widgets"`, `"events"`, ...)
-    this widget kind is allowed to use -- same coarse, resource-level
-    strings a real `widgets/<id>/widget.json`'s own `capabilities`
-    list already uses; defaults to none declared, same as a manifest
-    with no `capabilities` key. `state_schema` (TODO af7898b) is the
+    capabilities (`"workspace"`, `"state"`, `"fs"`, `"widgets"`, `"events"`,
+    `"media"`, ...) this widget kind is allowed to use -- same coarse,
+    resource-level strings a real `widgets/<id>/widget.json`'s own
+    `capabilities` list already uses; defaults to none declared, same
+    as a manifest with no `capabilities` key. `state_schema` (TODO af7898b) is the
     same key -> TypeScript-type-expression-string dict a real
     `widget.json`'s own `state_schema` field would be -- see
     desk.schema_types and plans/state-store-schema-core.md.

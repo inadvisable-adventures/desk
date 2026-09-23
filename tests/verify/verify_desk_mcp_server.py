@@ -96,12 +96,12 @@ class _FakeWindow:
         self.calls.append(("zoom", instance_id))
         return instance_id == "abc"
 
-    def screenshot_widget_instance(self, instance_id, path):
-        self.calls.append(("screenshot_widget", instance_id, path))
+    def screenshot_widget_instance(self, instance_id, path, max_width=None):
+        self.calls.append(("screenshot_widget", instance_id, path, max_width))
         return instance_id == "abc"
 
-    def screenshot_desk(self, path):
-        self.calls.append(("screenshot_desk", path))
+    def screenshot_desk(self, path, max_width=None):
+        self.calls.append(("screenshot_desk", path, max_width))
         return True
 
     def get_state_dict(self):
@@ -149,11 +149,27 @@ def test_screenshot_widget_and_desk():
     window = _register_fake_window()
     result = run(_screenshot_widget.handler({"instance_id": "abc", "path": "shot.png"}))
     check("screenshot_widget returns True for a real instance", _text_of(result) == "True")
-    check("routed through with the right args", ("screenshot_widget", "abc", "shot.png") in window.calls)
+    check(
+        "routed through with the right args, max_width omitted -> None",
+        ("screenshot_widget", "abc", "shot.png", None) in window.calls,
+    )
 
     result = run(_screenshot_desk.handler({"path": "canvas.png"}))
     check("screenshot_desk returns True", _text_of(result) == "True")
-    check("routed through with the right path", ("screenshot_desk", "canvas.png") in window.calls)
+    check("routed through with the right path, max_width omitted -> None", ("screenshot_desk", "canvas.png", None) in window.calls)
+    _clear_context()
+
+
+def test_screenshot_widget_and_desk_with_max_width():
+    # TODO 94d2b94: max_width is optional (a hand-written JSON Schema,
+    # not the {name: type} shorthand that would make it required) and,
+    # when given, threads straight through to the DeskWindow methods.
+    window = _register_fake_window()
+    run(_screenshot_widget.handler({"instance_id": "abc", "path": "shot.png", "max_width": 100}))
+    check("max_width is passed through for screenshot_widget", ("screenshot_widget", "abc", "shot.png", 100) in window.calls)
+
+    run(_screenshot_desk.handler({"path": "canvas.png", "max_width": 200}))
+    check("max_width is passed through for screenshot_desk", ("screenshot_desk", "canvas.png", 200) in window.calls)
     _clear_context()
 
 
@@ -360,6 +376,7 @@ def test_todo_tools_report_a_clear_error_with_no_desk_directory_known():
 test_build_desk_mcp_server_names_all_registered_tools()
 test_reveal_widget_found_and_not_found()
 test_screenshot_widget_and_desk()
+test_screenshot_widget_and_desk_with_max_width()
 test_list_widget_instances_returns_the_real_state()
 test_save_desk_calls_save_current_desk()
 test_all_handlers_report_not_ready_with_no_gui_thread_caller()

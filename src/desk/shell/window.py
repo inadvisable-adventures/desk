@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PyQt6.QtCore import QPointF, Qt, QTimer
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QWidget
 
 from desk.custom_widgets import LikelySourceCandidate, build_from_source, find_likely_source_candidates, materialize
@@ -30,9 +31,12 @@ from desk.jobs import materialize as materialize_job
 from desk.logging_setup import set_log_directory
 from desk.promotion_deps import (
     apply_moves,
+    clear_stale_build_output,
     find_peer_dependents,
+    out_dir_mismatch,
     plan_dependency_relocation,
     rewrite_files_entries,
+    rewrite_out_dir,
 )
 from desk.file_type_registry import (
     FILE_TYPE_REGISTRY_UPDATED_EVENT,
@@ -89,6 +93,7 @@ from desk.temp_ui import (
     PROMOTED_WIDGET_SRC_DIRNAME,
     RESERVED_TEMPUI_KEYWORDS,
     SCRATCH_KEYWORD,
+    SOURCE_BUILD_CACHE_DIRNAME,
     TEMP_UI_DIRNAME,
     detect_temp_ui_kind,
     ensure_desk_widgets_gitignore_entry,
@@ -227,6 +232,18 @@ class NewDeskProvisioning:
 
     create_temp_ui: bool
     create_gitignore: bool
+
+
+def _scaled_down_pixmap(pixmap: QPixmap, max_width: int | None) -> QPixmap:
+    """TODO 94d2b94: downsamples `pixmap` proportionally to at most
+    `max_width` pixels wide -- never up, and a no-op (the same pixmap,
+    unchanged) when `max_width` is `None` or the capture is already
+    narrower, so a caller that never passes it keeps today's exact
+    native-resolution behavior. Shared by `screenshot_widget_instance`/
+    `screenshot_desk` below."""
+    if max_width is None or pixmap.width() <= max_width:
+        return pixmap
+    return pixmap.scaledToWidth(max_width, Qt.TransformationMode.SmoothTransformation)
 
 
 def _dispatch_installed_job_run(
@@ -600,6 +617,7 @@ class DeskWindow(QMainWindow):
                 self._handle.token,
                 self._broker,
                 self._chromium_profile_dir(instance_id),
+                capabilities=widget.capabilities,
             )
             proxy = self.view.add_widget(
                 chromium_widget, title=widget.name, pos=pos, size=size, instance_id=instance_id
@@ -1639,7 +1657,7 @@ class DeskWindow(QMainWindow):
         candidate = Path(path)
         return candidate if candidate.is_absolute() else self.current_desk.directory / candidate
 
-    def screenshot_widget_instance(self, instance_id: str, path: str) -> bool:
+    def screenshot_widget_instance(self, instance_id: str, path: str, max_width: int | None = None) -> bool:
         """TODO 97bd090: saves a real PNG screenshot of a specific
         placed widget instance's own frame (titlebar and content, same
         as it looks on the canvas right now) to `path` -- the
@@ -1649,16 +1667,19 @@ class DeskWindow(QMainWindow):
         not whatever a `QGraphicsProxyWidget` embedding currently
         renders it at. Returns whether a matching instance was found
         and the file was saved successfully -- never raises for a
-        missing instance or a failed save."""
+        missing instance or a failed save.
+
+        TODO 94d2b94: `max_width`, if given, downsamples the capture
+        proportionally before saving -- see `_scaled_down_pixmap`."""
         frame = self.find_frame_by_instance_id(instance_id)
         if frame is None:
             return False
-        pixmap = frame.grab()
+        pixmap = _scaled_down_pixmap(frame.grab(), max_width)
         resolved = self._resolve_desk_relative_path(path)
         resolved.parent.mkdir(parents=True, exist_ok=True)
         return pixmap.save(str(resolved), "PNG")
 
-    def screenshot_desk(self, path: str) -> bool:
+    def screenshot_desk(self, path: str, max_width: int | None = None) -> bool:
         """TODO 97bd090: saves a real PNG screenshot of the whole
         Workspace Canvas viewport (`self.view`, not `self` -- no native
         window chrome like the menu bar) to `path` -- the
@@ -1669,8 +1690,9 @@ class DeskWindow(QMainWindow):
         report that might need to show dialog/window chrome) -- for a
         Desk Proc, the canvas content is what an agent actually wants
         to see. Same path resolution/mkdir/save shape as
-        screenshot_widget_instance above."""
-        pixmap = self.view.grab()
+        screenshot_widget_instance above, including `max_width`
+        (TODO 94d2b94)."""
+        pixmap = _scaled_down_pixmap(self.view.grab(), max_width)
         resolved = self._resolve_desk_relative_path(path)
         resolved.parent.mkdir(parents=True, exist_ok=True)
         return pixmap.save(str(resolved), "PNG")
@@ -3402,6 +3424,12 @@ class DeskWindow(QMainWindow):
         self._report_dependency_relocation(definition, destination_dir, plan, rewrote)
         for peer in find_peer_dependents(project_dir, plan.moves):
             self._handle_peer_dependent(peer)
+        # TODO 3d792f8: independent of the shared-dependency handling
+        # above -- the widget's own compiled-output directory (its
+        # tsconfig.json's own outDir, distinct from .build) can only
+        # hold a stale compile at this point, and its own outDir name
+        # may not match what Desk's rebuild-on-demand mechanism expects.
+        self._normalize_promoted_build_output(definition, destination_dir)
 
     def _display_path(self, path: Path) -> str:
         try:
@@ -3426,6 +3454,44 @@ class DeskWindow(QMainWindow):
                 "Promotion: shared dependencies",
                 f"“{definition.label}” builds from files outside its own directory.\n\n" + "\n".join(lines),
             )
+
+    def _normalize_promoted_build_output(self, definition, destination_dir: Path) -> None:
+        """TODO 3d792f8: `tsconfig.json`'s own `compilerOptions.outDir`
+        (wherever `tsc` compiles raw `.js` into) is unrelated to
+        `SOURCE_BUILD_CACHE_DIRNAME` (`.build`, where
+        `build_from_source` writes the final packaged `index.html`) --
+        an author who named it something else (`out`, `build`, ...)
+        gets a second, ungitignored build directory the existing
+        `desk_widgets/**/.build/` gitignore-entry prompt never covers.
+
+        Two independent steps, neither one gated on the other:
+
+        - Clearing a stale compile is never gated behind a confirm --
+          it's pure cleanup of build output the very next rebuild
+          regenerates from scratch, the same category of thing `.build`
+          itself already is, not something to ask permission for.
+        - Normalizing the name itself *is* offered, the same
+          `_confirm_fn` pattern as the `.gitignore` prompt right next to
+          this in the caller: rewriting an author's own `tsconfig.json`
+          without asking would be its own new surprise."""
+        cleared = clear_stale_build_output(destination_dir)
+        if cleared is not None:
+            self._info(
+                "Promotion: build output",
+                f"“{definition.label}”: cleared a stale build cache at "
+                f"{self._display_path(cleared)} -- the next rebuild will recreate it fresh.",
+            )
+        mismatch = out_dir_mismatch(destination_dir)
+        if mismatch is None:
+            return
+        if not self._confirm_fn(
+            "Promotion: build output",
+            f"“{definition.label}”'s tsconfig.json builds to “{mismatch}”, but promoted "
+            f"widgets are rebuilt into “{SOURCE_BUILD_CACHE_DIRNAME}” -- update tsconfig.json "
+            "to match?",
+        )():
+            return
+        rewrite_out_dir(destination_dir, SOURCE_BUILD_CACHE_DIRNAME)
 
     def _find_promotable_peer(self, peer_dir: Path) -> str | None:
         """The keyword of a registered, still tempui-sourced custom

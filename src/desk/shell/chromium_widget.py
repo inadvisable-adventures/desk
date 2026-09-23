@@ -1,5 +1,6 @@
 import logging
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,6 +14,21 @@ from desk.hotreload import HotReloadBroker
 from desk.server.bridge_client import render_bridge_client
 
 logger = logging.getLogger("desk.shell.chromium_widget")
+
+# TODO 2dbfd55: the only QWebEnginePage.Feature values a "media"
+# capability grant covers -- getUserMedia's own mic/camera requests.
+# Every other Feature (Geolocation, Notifications, ClipboardReadWrite,
+# DesktopVideoCapture/DesktopAudioVideoCapture, MouseLock,
+# LocalFontsAccess) is out of this TODO's scope and always denied, not
+# silently ignored -- Chromium's own "never respond" default is the bug
+# being fixed here.
+_MEDIA_FEATURES = frozenset(
+    {
+        QWebEnginePage.Feature.MediaAudioCapture,
+        QWebEnginePage.Feature.MediaVideoCapture,
+        QWebEnginePage.Feature.MediaAudioVideoCapture,
+    }
+)
 
 # Bounded so a chatty page's console output can't grow this without
 # limit -- every kind:"html" widget carries one of these unconditionally
@@ -140,11 +156,18 @@ class ChromiumWidget(QWebEngineView):
         token: str,
         broker: HotReloadBroker,
         profile_dir: Path,
+        capabilities: Sequence[str] = (),
         parent=None,
     ) -> None:
         super().__init__(parent)
         self.widget_id = widget_id
         self.instance_id = instance_id
+        # TODO 2dbfd55: gates featurePermissionRequested below -- a
+        # widget's own declared "capabilities" (widget.json, or a
+        # DefineWidget's Capability lines), the same list
+        # require_caller() already checks for Bridge API routes, reused
+        # here for a Qt-level browser permission instead of an HTTP one.
+        self._capabilities = frozenset(capabilities)
 
         # A named (non-off-the-record) profile persists to disk, but
         # only under the path setPersistentStoragePath/setCachePath
@@ -204,6 +227,12 @@ class ChromiumWidget(QWebEngineView):
         self._crashed_overlay = _CrashedOverlay(self)
         self._crashed_overlay.restart_clicked.connect(self.reload)
         self._logging_page.renderProcessTerminated.connect(self._on_render_process_terminated)
+        # TODO 2dbfd55: without this, featurePermissionRequested is
+        # never answered at all -- Chromium leaves the request pending
+        # forever rather than resolving/rejecting the page's own
+        # getUserMedia() promise, which is the "blank view" the report
+        # traced this back to.
+        self._logging_page.featurePermissionRequested.connect(self._on_feature_permission_requested)
 
         script = QWebEngineScript()
         script.setName(f"desk-bridge-client-{widget_id}")
@@ -223,6 +252,30 @@ class ChromiumWidget(QWebEngineView):
 
     def _on_console_error(self, message: str) -> None:
         self.error_state_changed.emit(True, message)
+
+    def _on_feature_permission_requested(self, origin: QUrl, feature: QWebEnginePage.Feature) -> None:
+        """TODO 2dbfd55: answers every request instead of leaving it
+        pending (Chromium's own default, which never settles the page's
+        getUserMedia()/etc. promise at all). Grants only a media
+        (mic/camera) request, and only when this widget declared the
+        `media` capability; every other feature is always denied --
+        Notifications/Geolocation/ClipboardReadWrite/screen-capture/
+        MouseLock/LocalFontsAccess grants are out of this TODO's scope,
+        not silently allowed."""
+        granted = feature in _MEDIA_FEATURES and "media" in self._capabilities
+        policy = (
+            QWebEnginePage.PermissionPolicy.PermissionGrantedByUser
+            if granted
+            else QWebEnginePage.PermissionPolicy.PermissionDeniedByUser
+        )
+        logger.info(
+            "Widget %s: %s %s (capabilities=%s)",
+            self.widget_id,
+            "granted" if granted else "denied",
+            feature.name,
+            sorted(self._capabilities),
+        )
+        self._logging_page.setFeaturePermission(origin, feature, policy)
 
     def _on_render_process_terminated(self, status, exit_code: int) -> None:
         detail = f"{status.name} (exit code {exit_code})"

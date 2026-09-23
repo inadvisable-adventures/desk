@@ -23,10 +23,11 @@ from PyQt6.QtWidgets import (
 )
 
 from desk.file_watch import SingleFileWatcher
-from desk.mermaid import detect_diagram_kind
+from desk.mermaid import MermaidParseError, detect_diagram_kind, parse as parse_mermaid
 from desk.persisted_path import resolve_persisted_path
 from desk.shell import current_context
 from desk.svg_view import SvgView
+from desk_services.transforms import TransformError
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +185,9 @@ _MERMAID_TRANSFORM_ID_BY_KIND = {
 _MERMAID_MAX_HEIGHT = 560  # matches the retired MermaidDiagramWidget's own bound
 
 
+_UNKNOWN_TRANSFORM_PREFIX = "Unknown transform: "  # matches _require's own wording in desk_services.transforms.service
+
+
 def _build_mermaid_widget(content: str) -> QWidget:
     """Renders a ```mermaid fence's content by calling the Desk
     Service (TODO `a9e2ba7`, see design-docs/transforms.md) for the
@@ -195,26 +199,73 @@ def _build_mermaid_widget(content: str) -> QWidget:
     transform itself fails -- a broken/missing transform must never
     propagate out of here (TODO `810a5d6`'s reasoning: this runs while
     building a document's block widgets, an uncaught exception there
-    is fatal to the whole process in this PyQt6 setup)."""
-    transform_id = _MERMAID_TRANSFORM_ID_BY_KIND.get(detect_diagram_kind(content))
-    if transform_id is not None:
-        runner = current_context.get_transform_runner_blocking()
-        if runner is not None:
-            try:
-                svg = runner(transform_id, content, None)
-                view = SvgView()
-                if view.load(svg.encode("utf-8")) and view.is_valid():
-                    natural = view.content_size()
-                    if natural.width() > 0:
-                        height = min(_MERMAID_MAX_HEIGHT, max(60, natural.height()))
-                        view.setMinimumHeight(int(height))
-                    return view
-            except Exception:
-                logger.error("Failed to render Mermaid diagram via transform %r", transform_id, exc_info=True)
-    return _mermaid_fallback_widget(content)
+    is fatal to the whole process in this PyQt6 setup).
+
+    TODO 9fe03a1: distinguishes *why* rendering didn't happen, instead
+    of collapsing every failure into one generic note (revisits TODO
+    `a9e2ba7`'s original "collapse all of them" decision). A
+    diagram-kind-unsupported case can only ever be one thing (no
+    transform exists for it, full stop); the other two require a
+    positive signal to tell apart, obtained differently for each:
+
+    - A `MermaidParseError` is detected by calling `desk.mermaid.parse`
+      directly, in-process, ourselves, *before* invoking the transform
+      -- both Mermaid transforms are thin, synchronous, same-process
+      Python wrappers around this exact function (see
+      `desk_transforms/mermaid_flowchart_svg/transform.py`), but by the
+      time an exception it raises has round-tripped through
+      `TransformsService._invoke`'s own generic `except Exception as e:
+      on_result(None, str(e))`, it has already been flattened to a
+      plain string -- the type is gone, so there is nothing left to
+      `except MermaidParseError` against at that point. Parsing here
+      ourselves first, while the real exception object still exists,
+      is what actually recovers it. The transform then parses the same
+      (by-value, unmutated) content again -- a harmless, cheap
+      redundant parse, not a race.
+    - "no transform registered for this project" vs. "the transform
+      raised for some other reason" both surface as a flat
+      `TransformError`/`Exception` string by the time they reach here
+      (same flattening) -- distinguished the same way this codebase's
+      own tests already do (`tests/verify/verify_transforms_service.py`),
+      by the literal `"Unknown transform: "` prefix `_require`
+      (`desk_services.transforms.service`) always uses for exactly this
+      case."""
+    diagram_kind = detect_diagram_kind(content)
+    transform_id = _MERMAID_TRANSFORM_ID_BY_KIND.get(diagram_kind)
+    if transform_id is None:
+        return _mermaid_fallback_widget(
+            content, "(unsupported Mermaid diagram type -- only flowchart/graph and stateDiagram are rendered)"
+        )
+    try:
+        parse_mermaid(content)
+    except MermaidParseError as e:
+        return _mermaid_fallback_widget(content, f"(Mermaid syntax error: {e})")
+    runner = current_context.get_transform_runner_blocking()
+    if runner is None:
+        return _mermaid_fallback_widget(content, "(no Mermaid transform service available)")
+    try:
+        svg = runner(transform_id, content, None)
+    except Exception as e:  # noqa: BLE001 -- see docstring: never propagate a transform's own bug
+        logger.error("Failed to render Mermaid diagram via transform %r", transform_id, exc_info=True)
+        if isinstance(e, TransformError) and str(e).startswith(_UNKNOWN_TRANSFORM_PREFIX):
+            return _mermaid_fallback_widget(
+                content,
+                f"(no {transform_id!r} transform found in this project -- see tempui-markdown.md's "
+                "\"Supported Mermaid subset\" section)",
+            )
+        return _mermaid_fallback_widget(content, f"(Mermaid rendering failed: {e})")
+    view = SvgView()
+    if view.load(svg.encode("utf-8")) and view.is_valid():
+        natural = view.content_size()
+        if natural.width() > 0:
+            height = min(_MERMAID_MAX_HEIGHT, max(60, natural.height()))
+            view.setMinimumHeight(int(height))
+        return view
+    logger.error("Transform %r produced invalid SVG output for a Mermaid diagram", transform_id)
+    return _mermaid_fallback_widget(content, f"(the {transform_id!r} transform produced invalid SVG output)")
 
 
-def _mermaid_fallback_widget(content: str) -> QWidget:
+def _mermaid_fallback_widget(content: str, note: str) -> QWidget:
     widget = QWidget()
     layout = QVBoxLayout(widget)
     layout.setContentsMargins(0, 0, 0, 0)
@@ -223,7 +274,8 @@ def _mermaid_fallback_widget(content: str) -> QWidget:
     source_label.setFont(QFont("Menlo"))
     source_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
     layout.addWidget(source_label)
-    note_label = QLabel("(unsupported or unparseable Mermaid diagram)")
+    note_label = QLabel(note)
+    note_label.setWordWrap(True)
     note_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
     layout.addWidget(note_label)
     return widget

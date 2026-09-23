@@ -189,6 +189,8 @@ _FakeWindow._display_path = DeskWindow._display_path
 _FakeWindow._report_dependency_relocation = DeskWindow._report_dependency_relocation
 _FakeWindow._find_promotable_peer = DeskWindow._find_promotable_peer
 _FakeWindow._handle_peer_dependent = DeskWindow._handle_peer_dependent
+# TODO 3d792f8: promotion also normalizes/clears the widget's own build output.
+_FakeWindow._normalize_promoted_build_output = DeskWindow._normalize_promoted_build_output
 _FakeWindow._choose_peer_dependent_action = lambda self, peer, can_promote: self._peer_action_fn(peer, can_promote)
 _FakeWindow._sync_tempui_doc = DeskWindow._sync_tempui_doc
 _FakeWindow._place_widget = DeskWindow._place_widget
@@ -462,12 +464,15 @@ def test_no_external_files_is_silent_and_unchanged():
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
         project = Path(d)
         win = _FakeWindow(project)
-        old = _write_widget(project, "solo", ["solo.ts"])
-        before = (old / "tsconfig.json").read_text()
+        _write_widget(project, "solo", ["solo.ts"])
         path = _register(win, project, "solo", "Solo")
         _promote(win, "Solo", path)
         new = project / PROMOTED_WIDGET_SRC_DIRNAME / "solo"
-        check("no external files: tsconfig untouched", (new / "tsconfig.json").read_text() == before)
+        # TODO 3d792f8: promotion's own separate outDir-normalization step
+        # (verify_promotion_outdir_normalization.py's own concern) also
+        # touches tsconfig.json when outDir isn't already .build -- this
+        # test only cares about this TODO's own "files" entries.
+        check("no external files: 'files' entries untouched", _files_of(new) == ["solo.ts"])
         check("no external files: no dependency message", not any("shared dependencies" in t for t, _ in win.info_messages))
 
 

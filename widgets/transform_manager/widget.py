@@ -99,7 +99,7 @@ class TransformManagerWidget(QWidget):
             info.kind,
             "Yes" if info.has_config else "No",
             "Yes" if info.has_identity else "No",
-            "Local (.desk_temp)" if info.location == "desk_temp" else "Project",
+            {"bundled": "Bundled with Desk", "desk_temp": "Local (.desk_temp)"}.get(info.location, "Project"),
         )
         for column, text in enumerate(values):
             item = QTableWidgetItem(text)

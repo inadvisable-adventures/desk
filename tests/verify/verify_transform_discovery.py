@@ -111,14 +111,67 @@ def test_project_wins_id_collision():
 
 
 def test_nonexistent_directories_are_harmless():
+    # TODO 05f2222: a nonexistent desk_temp_dir/project_dir is harmless
+    # for *those two* locations specifically -- Desk's own bundled
+    # desk_transforms/ is a third, always-present location, so the two
+    # real transforms shipped there are still found regardless.
     with tempfile.TemporaryDirectory() as d:
         transforms, errors = discover_transforms_with_errors(Path(d) / "nope", Path(d) / "also_nope")
-        check("nonexistent directories produce no transforms and no errors", transforms == {} and errors == {})
+        check(
+            "nonexistent project-local directories produce no errors, and no *non-bundled* transforms",
+            errors == {} and all(info.location == "bundled" for info in transforms.values()),
+        )
 
 
 def test_none_directories_are_harmless():
     transforms, errors = discover_transforms_with_errors(None, None)
-    check("None directories produce no transforms and no errors", transforms == {} and errors == {})
+    check(
+        "None directories produce no errors, and no *non-bundled* transforms",
+        errors == {} and all(info.location == "bundled" for info in transforms.values()),
+    )
+
+
+def test_bundled_transforms_are_discovered_with_no_project_directories_at_all():
+    # TODO 05f2222: the actual fix -- Desk's own mermaid_flowchart_svg/
+    # mermaid_state_svg (desk_transforms/ at this repo's own root) are
+    # found with nothing project-side at all.
+    transforms, errors = discover_transforms_with_errors(None, None)
+    check(
+        "both of Desk's own bundled mermaid transforms are discovered",
+        {"mermaid_flowchart_svg", "mermaid_state_svg"} <= set(transforms),
+    )
+    check(
+        "they're tagged bundled, not desk_temp/project",
+        all(transforms[t].location == "bundled" for t in ("mermaid_flowchart_svg", "mermaid_state_svg")),
+    )
+
+
+def test_project_transform_overrides_a_bundled_one():
+    with tempfile.TemporaryDirectory() as d:
+        project_dir = Path(d) / "desk_transforms"
+        write_manifest(project_dir, "mermaid_flowchart_svg", {**VALID_JS_MANIFEST, "name": "Custom flowchart"})
+        transforms = discover_transforms(None, project_dir)
+        check(
+            "a project's own same-id transform overrides Desk's own bundled one",
+            transforms["mermaid_flowchart_svg"].name == "Custom flowchart"
+            and transforms["mermaid_flowchart_svg"].location == "project",
+        )
+        check(
+            "an unrelated bundled transform is untouched by that override",
+            transforms["mermaid_state_svg"].location == "bundled",
+        )
+
+
+def test_desk_temp_transform_overrides_bundled_but_loses_to_project():
+    with tempfile.TemporaryDirectory() as d:
+        desk_temp_dir = Path(d) / ".desk_temp" / "transforms"
+        write_manifest(desk_temp_dir, "mermaid_flowchart_svg", {**VALID_JS_MANIFEST, "name": "Local override"})
+        transforms = discover_transforms(desk_temp_dir, None)
+        check(
+            "a .desk_temp same-id transform overrides the bundled one when there's no project copy",
+            transforms["mermaid_flowchart_svg"].name == "Local override"
+            and transforms["mermaid_flowchart_svg"].location == "desk_temp",
+        )
 
 
 test_valid_manifest_discovered()
@@ -129,6 +182,9 @@ test_python_allowed_at_project_level()
 test_project_wins_id_collision()
 test_nonexistent_directories_are_harmless()
 test_none_directories_are_harmless()
+test_bundled_transforms_are_discovered_with_no_project_directories_at_all()
+test_project_transform_overrides_a_bundled_one()
+test_desk_temp_transform_overrides_bundled_but_loses_to_project()
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

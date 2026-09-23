@@ -113,8 +113,21 @@ async def _reveal_widget(args: dict[str, Any]) -> dict[str, Any]:
     "desk_screenshot_widget",
     "Save a real PNG screenshot of a specific placed widget instance's own frame (titlebar and "
     "content, exactly as it looks on the canvas) to path. A relative path resolves against the "
-    "current Desk's own directory. Returns whether the instance was found and the file was saved.",
-    {"instance_id": str, "path": str},
+    "current Desk's own directory. Optional max_width (pixels) scales the capture down "
+    "proportionally (never up) before saving -- omit it to keep native resolution. Returns "
+    "whether the instance was found and the file was saved.",
+    # A hand-written JSON Schema (TODO 94d2b94), not the {name: type}
+    # shorthand -- same reasoning as desk_run_installed_job's own:
+    # max_width must stay genuinely optional.
+    {
+        "type": "object",
+        "properties": {
+            "instance_id": {"type": "string"},
+            "path": {"type": "string"},
+            "max_width": {"type": "integer"},
+        },
+        "required": ["instance_id", "path"],
+    },
 )
 async def _screenshot_widget(args: dict[str, Any]) -> dict[str, Any]:
     window = current_context.get_main_window()
@@ -122,7 +135,7 @@ async def _screenshot_widget(args: dict[str, Any]) -> dict[str, Any]:
         return _text_result(_NOT_READY_MESSAGE, is_error=True)
     try:
         ok = await _call_on_gui_thread(
-            lambda: window.screenshot_widget_instance(args["instance_id"], args["path"])
+            lambda: window.screenshot_widget_instance(args["instance_id"], args["path"], args.get("max_width"))
         )
     except RuntimeError as e:
         return _text_result(str(e), is_error=True)
@@ -132,15 +145,20 @@ async def _screenshot_widget(args: dict[str, Any]) -> dict[str, Any]:
 @tool(
     "desk_screenshot_desk",
     "Save a real PNG screenshot of the whole Workspace Canvas viewport (not any native window "
-    "chrome) to path. Same path-resolution rules as desk_screenshot_widget.",
-    {"path": str},
+    "chrome) to path. Same path-resolution and optional max_width downsampling rules as "
+    "desk_screenshot_widget.",
+    {
+        "type": "object",
+        "properties": {"path": {"type": "string"}, "max_width": {"type": "integer"}},
+        "required": ["path"],
+    },
 )
 async def _screenshot_desk(args: dict[str, Any]) -> dict[str, Any]:
     window = current_context.get_main_window()
     if window is None:
         return _text_result(_NOT_READY_MESSAGE, is_error=True)
     try:
-        ok = await _call_on_gui_thread(lambda: window.screenshot_desk(args["path"]))
+        ok = await _call_on_gui_thread(lambda: window.screenshot_desk(args["path"], args.get("max_width")))
     except RuntimeError as e:
         return _text_result(str(e), is_error=True)
     return _text_result(str(ok))

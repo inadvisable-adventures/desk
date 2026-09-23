@@ -21,8 +21,13 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from desk.custom_widgets import SourceBuildError, _read_files_entries, _read_tsconfig
-from desk.temp_ui import CUSTOM_WIDGET_SRC_DIRNAME, PROMOTED_WIDGET_SRC_DIRNAME, TEMP_UI_DIRNAME
+from desk.custom_widgets import SourceBuildError, _read_files_entries, _read_out_dir, _read_tsconfig
+from desk.temp_ui import (
+    CUSTOM_WIDGET_SRC_DIRNAME,
+    PROMOTED_WIDGET_SRC_DIRNAME,
+    SOURCE_BUILD_CACHE_DIRNAME,
+    TEMP_UI_DIRNAME,
+)
 
 
 @dataclass
@@ -197,3 +202,85 @@ def find_peer_dependents(
         if rewrites:
             result.append(PeerDependent(directory=directory, rewrites=rewrites))
     return result
+
+
+# TODO 3d792f8: `SOURCE_BUILD_CACHE_DIRNAME` (.build) is where
+# `build_from_source` writes a promoted widget's final packaged
+# index.html -- a fixed constant, unrelated to tsconfig.json's own
+# `compilerOptions.outDir` (wherever `tsc` itself compiles raw .js
+# into). Confirmed directly: the two coexisting in one directory is
+# fine, since `_concatenate_compiled_js` only globs `*.js` and never
+# looks at `index.html` -- so normalizing outDir to `.build` (below) is
+# safe, not just cosmetic.
+
+
+def out_dir_mismatch(widget_dir: Path) -> str | None:
+    """The widget's own `compilerOptions.outDir` string, if set and not
+    already `SOURCE_BUILD_CACHE_DIRNAME` (`.build`) -- i.e. what to show
+    in a "normalize this?" prompt, or None if there's nothing to offer
+    (already `.build`, or the tsconfig can't be read)."""
+    current = out_dir_string(widget_dir)
+    return current if current is not None and current != SOURCE_BUILD_CACHE_DIRNAME else None
+
+
+def out_dir_string(widget_dir: Path) -> str | None:
+    """The raw `compilerOptions.outDir` string as tsconfig.json itself
+    writes it (e.g. "out"), or None if the file is missing, malformed,
+    or doesn't set it -- best-effort, same as this module's other
+    readers: promotion's own bookkeeping around this must never fail
+    the promotion itself."""
+    try:
+        return _read_tsconfig(widget_dir).get("compilerOptions", {}).get("outDir")
+    except SourceBuildError:
+        return None
+
+
+def clear_stale_build_output(widget_dir: Path) -> Path | None:
+    """Deletes the widget's own (post-move) compiled-output directory if
+    one already exists, and returns the path deleted (None if there was
+    nothing there, or the tsconfig can't be read). It can only hold a
+    stale compile -- from before the directory moved, or from before a
+    tsconfig/dependency fix -- since the very next
+    `desk.custom_widgets.build_from_source` call recreates it from
+    scratch; left alone, a stale compile has caused a real "multiple
+    compiled files named X.js" collision when a later rebuild's fresh
+    output lands in the same directory under different relative paths."""
+    try:
+        out_dir = _read_out_dir(widget_dir, _read_tsconfig(widget_dir))
+    except SourceBuildError:
+        return None
+    if not out_dir.is_dir():
+        return None
+    shutil.rmtree(out_dir)
+    return out_dir
+
+
+def rewrite_out_dir(widget_dir: Path, new_out_dir: str) -> bool:
+    """Rewrites `compilerOptions.outDir` in `widget_dir/tsconfig.json` to
+    `new_out_dir`. Same exact-string-replace-then-reparse-fallback
+    approach as `rewrite_files_entries`, to preserve the author's own
+    formatting/other keys. Returns whether the file was changed (a
+    missing/malformed tsconfig, or one already at `new_out_dir`, is a
+    no-op, not an error)."""
+    tsconfig_path = widget_dir / "tsconfig.json"
+    try:
+        text = tsconfig_path.read_text()
+        data = json.loads(text)
+    except (OSError, json.JSONDecodeError):
+        return False
+    compiler_options = data.get("compilerOptions")
+    if not isinstance(compiler_options, dict):
+        return False
+    old_out_dir = compiler_options.get("outDir")
+    if not isinstance(old_out_dir, str) or old_out_dir == new_out_dir:
+        return False
+    replaced = text.replace(json.dumps(old_out_dir), json.dumps(new_out_dir))
+    try:
+        ok = json.loads(replaced).get("compilerOptions", {}).get("outDir") == new_out_dir
+    except json.JSONDecodeError:
+        ok = False
+    if not ok:
+        compiler_options["outDir"] = new_out_dir
+        replaced = json.dumps(data, indent=2) + "\n"
+    tsconfig_path.write_text(replaced)
+    return True

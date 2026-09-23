@@ -1055,18 +1055,6 @@ This file captures thoughts and TODO items that arise during work on other thing
   speculative/disposable widgets the agent builds unprompted. Natural
   to pair with any later work generalizing `desk_widgets/` discovery.
 
-- Shared libraries as a first-class concept: a directory like
-  `_raycaster-shared/` (a `.ts` module several widgets' `tsconfig.json`
-  `"files"` reference) only fits into `.desk_temp/widgets/` /
-  `desk_widgets/` by a leading-underscore naming trick -- no
-  `widget.json`, never placed, and promotion has no idea what it is.
-  Consider a real abstraction (e.g. `desk_libs/<name>/`) with its own
-  promotion/build handling that knows "zero or more widgets depend on
-  this; never place it, never generate a `widget.json`". Cites
-  `../FEEDBACK/FEEDBACK-DESK-promotion-doesnt-move-shared-multifile-deps-2026-09-14-1628.md`
-  (Addendum). Related to TODO `8a09220`, which handles the dependency
-  problem within the current widget-shaped layout.
-
 - **Domain Analysis as a Desk built-in**
 
   `necro-4x`'s Domain Analysis widget (`../necro-4x/custom_widget_src/

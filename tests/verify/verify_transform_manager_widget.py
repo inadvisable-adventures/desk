@@ -61,6 +61,16 @@ def find_row_by_name(table, name):
     return None
 
 
+def find_error_row_text(table, directory_name):
+    # TODO 05f2222: error rows now sit alongside Desk's own always
+    # -present bundled transform rows, not alone -- can't assume row 0.
+    for row in range(table.rowCount()):
+        text = col_text(table, row, 0)
+        if text is not None and text.startswith(f"[!] {directory_name}:"):
+            return text
+    return None
+
+
 def test_populates_table_from_real_transforms():
     with tempfile.TemporaryDirectory() as d:
         desk_dir = Path(d)
@@ -125,6 +135,21 @@ def test_populates_table_from_real_transforms():
         w.deleteLater()
 
 
+def test_bundled_transform_shows_its_own_location_and_no_promote_button():
+    # TODO 05f2222: Desk's own two bundled transforms are always
+    # present, even with nothing project-local at all.
+    with tempfile.TemporaryDirectory() as d:
+        desk_dir = Path(d)
+        with patch.object(current_context, "get_current_desk_directory", return_value=desk_dir):
+            w = mod.build()
+
+        row = find_row_by_name(w._table, "Mermaid Flowchart to SVG")
+        check("a bundled transform is listed with nothing project-local at all", row is not None)
+        check("a bundled transform's own Location column reads 'Bundled with Desk'", col_text(w._table, row, 6) == "Bundled with Desk")
+        check("a bundled transform's row has no Promote button -- nothing in this project to move", w._table.cellWidget(row, mod.PROMOTE_COLUMN) is None)
+        w.deleteLater()
+
+
 def test_discovery_error_shows_as_an_error_row():
     with tempfile.TemporaryDirectory() as d:
         desk_dir = Path(d)
@@ -138,8 +163,13 @@ def test_discovery_error_shows_as_an_error_row():
         with patch.object(current_context, "get_current_desk_directory", return_value=desk_dir):
             w = mod.build()
 
-        check("nothing was discovered as a real transform", w._table.rowCount() == 1)
-        error_text = col_text(w._table, 0, 0)
+        check(
+            # TODO 05f2222: Desk's own two bundled mermaid transforms
+            # are always discovered too, alongside this one error.
+            "nothing else was discovered as a real transform besides the two Desk bundles with itself",
+            w._table.rowCount() == 3,
+        )
+        error_text = find_error_row_text(w._table, "broken_python")
         check(
             "the Python-under-.desk_temp rejection shows as a visible error row",
             error_text is not None and "broken_python" in error_text and "Python" in error_text,
@@ -210,7 +240,12 @@ def test_refresh_button_picks_up_new_transforms():
 
         with patch.object(current_context, "get_current_desk_directory", return_value=desk_dir):
             w = mod.build()
-            check("nothing discovered yet", w._table.rowCount() == 0)
+            check(
+                # TODO 05f2222: only Desk's own two bundled mermaid
+                # transforms so far -- nothing project-local yet.
+                "nothing project-local discovered yet, only Desk's own bundled transforms",
+                w._table.rowCount() == 2,
+            )
 
             write_manifest(
                 desk_temp_dir,
@@ -223,6 +258,7 @@ def test_refresh_button_picks_up_new_transforms():
 
 
 test_populates_table_from_real_transforms()
+test_bundled_transform_shows_its_own_location_and_no_promote_button()
 test_discovery_error_shows_as_an_error_row()
 test_promote_button_moves_the_real_directory_and_refreshes()
 test_declining_promote_leaves_everything_untouched()

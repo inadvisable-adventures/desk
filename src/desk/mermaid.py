@@ -7,10 +7,16 @@ renderer. Per `CLAUDE.md`'s "avoid adding dependencies, prefer bespoke
 solutions" plus direct user direction (see `plans/markdown-ex-widget
 .md`), this only supports:
 
-- **Flowchart** (`flowchart`/`graph`): basic node shapes only -- rect
-  `[Label]`, rounded `(Label)`, diamond `{Label}`, circle `((Label))`
-  -- no extended shapes (stadium, subroutine, cylinder, hexagon, ...).
-  Edge styles `-->`, `---`, `-.->`, `-.-`, with an optional `|label|`.
+- **Flowchart** (`flowchart`/`graph`): five node shapes -- rect
+  `[Label]`, rounded `(Label)`, diamond `{Label}`, circle `((Label))`,
+  stadium `([Label])` -- no other extended shapes (subroutine,
+  cylinder, hexagon, ...). Edge styles `-->`, `---`, `-.->`, `-.-`,
+  with a label either piped (`-->|label|`) or unpiped/inline
+  (`-- label -->`, `-. label .->`, and the arrow-less equivalents).
+  Any label -- inside a shape or on an edge -- may be double-quoted
+  (`id["a [b] c"]`) so it can contain its own shape's delimiter
+  characters literally; there is no other escaping mechanism (no
+  backslash escapes, no HTML entities).
 - **State diagram** (`stateDiagram`/`stateDiagram-v2`): flat only --
   `[*]` start/end pseudostates, `A --> B` / `A --> B : label`
   transitions, `A : label` descriptions. Composite/nested `state X {
@@ -81,7 +87,7 @@ class MermaidParseError(Exception):
 class Node:
     id: str
     label: str
-    shape: str  # "rect" | "rounded" | "diamond" | "circle" | "start" | "end"
+    shape: str  # "rect" | "rounded" | "diamond" | "circle" | "stadium" | "start" | "end"
 
 
 @dataclass
@@ -111,17 +117,50 @@ _STATE_HEADER = re.compile(r"^stateDiagram(-v2)?\s*$", re.IGNORECASE)
 
 _SKIP_FLOWCHART_PREFIXES = ("subgraph", "classdef", "class ", "style ", "click ", "linkstyle")
 
-_EDGE_RE = re.compile(r"(?P<op>-\.->|-\.-|-->|---)(?:\s*\|(?P<label>[^|]*)\|)?")
+# TODO 90dd6e6: unpiped inline edge labels (`A -- text --> B`, standard
+# Mermaid alongside the piped `A -->|text| B` form) sit between an
+# opening and closing token rather than after a literal operator --
+# one alternative per operator family, each with its own uniquely
+# -named group pair (Python's `re` disallows reusing a group name
+# across alternatives). Tried before the plain literal-operator
+# alternative so a label is never mistaken for part of a node id (the
+# bug this fixes: without this, `A -- text --> B`'s "-- text" was
+# folded into node A's own token instead of recognized as an edge).
+# The dotted-open alternative's `(?!>)` keeps it from also matching a
+# dotted-arrow-with-label's own `.->` closing sequence.
+_EDGE_RE = re.compile(
+    r"(?:--\s+(?P<arrow_label>.+?)\s+-->)"
+    r"|(?:--\s+(?P<open_label>.+?)\s+---)"
+    r"|(?:-\.\s*(?P<dotted_arrow_label>.+?)\s*\.->)"
+    r"|(?:-\.\s*(?P<dotted_open_label>.+?)\s*\.-(?!>))"
+    r"|(?P<op>-\.->|-\.-|-->|---)(?:\s*\|(?P<label>[^|]*)\|)?"
+)
 
+# TODO 90dd6e6: every shape's content is either double-quoted (any
+# character except a literal `"`, so a label can contain its own
+# shape's delimiter characters -- standard Mermaid, e.g. `id["a [b]
+# c"]`) or the existing unquoted class -- tried unquoted first (the
+# common case), falling back to the quoted alternative via ordinary
+# regex backtracking when the unquoted class can't reach the shape's
+# own closing delimiter. Stadium `([...])` is ordered *before* rounded
+# `(...)`: rounded's own class allows brackets, so tried first it would
+# otherwise consume `([label])` whole as a rounded node with the
+# literal label `[label]` -- alternation tries branches in order and
+# takes the first one that lets the *overall* pattern match, not the
+# most specific one. Circle already precedes rect for the equivalent
+# reason (`((` vs `[`), unaffected.
 _NODE_RE = re.compile(
     r"^(?P<id>[A-Za-z0-9_]+)\s*"
     r"(?:"
-    r"\(\((?P<circle>[^()]*)\)\)"
-    r"|\[(?P<rect>[^\[\]]*)\]"
-    r"|\((?P<rounded>[^()]*)\)"
-    r"|\{(?P<diamond>[^{}]*)\}"
+    r'\(\((?:"(?P<circle_q>[^"]*)"|(?P<circle>[^()]*))\)\)'
+    r'|\[(?:"(?P<rect_q>[^"]*)"|(?P<rect>[^\[\]]*))\]'
+    r'|\(\[(?:"(?P<stadium_q>[^"]*)"|(?P<stadium>[^\[\]()]*))\]\)'
+    r'|\((?:"(?P<rounded_q>[^"]*)"|(?P<rounded>[^()]*))\)'
+    r'|\{(?:"(?P<diamond_q>[^"]*)"|(?P<diamond>[^{}]*))\}'
     r")?$"
 )
+
+_NODE_SHAPES = ("circle", "rect", "stadium", "rounded", "diamond")
 
 _STATE_TRANSITION_RE = re.compile(
     r"^(?P<src>\[\*\]|[A-Za-z0-9_]+)\s*-->\s*(?P<dst>\[\*\]|[A-Za-z0-9_]+)"
@@ -173,11 +212,34 @@ def _parse_node_token(token: str) -> Node:
     if not match:
         raise MermaidParseError(f"unrecognized flowchart node syntax: {token!r}")
     node_id = match.group("id")
-    for shape in ("circle", "rect", "rounded", "diamond"):
-        value = match.group(shape)
+    for shape in _NODE_SHAPES:
+        # TODO 90dd6e6: `is None`, not falsy -- an intentionally empty
+        # quoted label (`id[""]`) must not be skipped in favor of the
+        # (unmatched, also None) plain group.
+        value = match.group(f"{shape}_q")
+        if value is None:
+            value = match.group(shape)
         if value is not None:
             return Node(node_id, value.strip() or node_id, shape)
     return Node(node_id, node_id, "rect")
+
+
+def _edge_match_info(m: re.Match) -> tuple[str, str | None]:
+    """TODO 90dd6e6: normalizes an `_EDGE_RE` match -- whichever
+    unpiped-label alternative matched (if any), or the plain literal
+    -operator alternative -- into the `(op, label)` shape
+    `_parse_flowchart`'s own edge-construction logic already expects,
+    unchanged since before this TODO."""
+    for op, group in (
+        ("-->", "arrow_label"),
+        ("---", "open_label"),
+        ("-.->", "dotted_arrow_label"),
+        ("-.-", "dotted_open_label"),
+    ):
+        label = m.group(group)
+        if label is not None:
+            return op, label
+    return m.group("op"), m.group("label")
 
 
 def _parse_flowchart(lines: list[str], direction: str) -> Diagram:
@@ -208,12 +270,12 @@ def _parse_flowchart(lines: list[str], direction: str) -> Diagram:
         segments.append(line[pos:])
         node_ids = [ensure_node(seg) for seg in segments]
         for i, m in enumerate(matches):
-            op = m.group("op")
+            op, label = _edge_match_info(m)
             edges.append(
                 Edge(
                     source=node_ids[i],
                     target=node_ids[i + 1],
-                    label=(m.group("label") or None) and m.group("label").strip(),
+                    label=(label or None) and label.strip(),
                     arrow=op.endswith(">"),
                     dotted=op.startswith("-."),
                 )
@@ -506,6 +568,14 @@ def _make_node_item(nl: NodeLayout, pen: QPen, fill: QColor, text_color: QColor)
     elif shape == "rounded":
         path = QPainterPath()
         radius = min(rect.width(), rect.height()) * 0.3
+        path.addRoundedRect(rect, radius, radius)
+        item = QGraphicsPathItem(path)
+    elif shape == "stadium":
+        # TODO 90dd6e6: a true pill/capsule -- radius = height / 2 fully
+        # rounds the short ends -- distinct from "rounded"'s own more
+        # moderate corner rounding above.
+        path = QPainterPath()
+        radius = rect.height() / 2
         path.addRoundedRect(rect, radius, radius)
         item = QGraphicsPathItem(path)
     else:  # "rect"

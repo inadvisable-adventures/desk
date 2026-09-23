@@ -52,17 +52,17 @@ class DeskProcApi:
             return False
         return self._call(lambda: window.zoom_to_widget_by_instance_id(instance_id))
 
-    def screenshot_widget(self, instance_id: str, path: str) -> bool:
+    def screenshot_widget(self, instance_id: str, path: str, max_width: int | None = None) -> bool:
         window = current_context.get_main_window()
         if window is None:
             return False
-        return self._call(lambda: window.screenshot_widget_instance(instance_id, path))
+        return self._call(lambda: window.screenshot_widget_instance(instance_id, path, max_width))
 
-    def screenshot_desk(self, path: str) -> bool:
+    def screenshot_desk(self, path: str, max_width: int | None = None) -> bool:
         window = current_context.get_main_window()
         if window is None:
             return False
-        return self._call(lambda: window.screenshot_desk(path))
+        return self._call(lambda: window.screenshot_desk(path, max_width))
 
     def list_widget_instances(self) -> list:
         window = current_context.get_main_window()

@@ -9557,18 +9557,19 @@ a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's histor
    the new tag/changelog entry didn't disturb anything that reads those
    structures.
 
-2dbfd55. Handle `QWebEnginePage.featurePermissionRequested` in
+2dbfd55. COMPLETED: Handle `QWebEnginePage.featurePermissionRequested` in
    `ChromiumWidget` (`src/desk/shell/chromium_widget.py`), which
-   currently never connects it. Deny by default so a `kind: "html"`
-   widget calling `getUserMedia` (e.g. via the Web Speech API) gets a
-   normal, catchable `NotAllowedError` instead of the blank view the
-   report saw; consider a capability-gated grant for mic/camera as a
-   follow-up (macOS also needs a microphone usage entitlement). First
-   capture a real repro on a placed widget -- the report calls "an
-   unhandled permission request causes the blanking" plausible but
-   unproven. Cites
+   currently never connects it. A `kind: "html"` widget calling
+   `getUserMedia` (e.g. via the Web Speech API) must get a normal,
+   catchable `NotAllowedError` instead of the blank view the report
+   saw. Add a capability-gated grant for mic/camera (a manifest/
+   `DefineWidget` capability, the same coarse per-resource shape as
+   `workspace`/`fs`/`events`/...): a widget declaring it is granted the
+   permission, one without it is denied -- this is required, not a
+   follow-up (macOS also needs a microphone usage entitlement). Cites
    `../FEEDBACK/FEEDBACK-DESK-html-widget-getusermedia-crash-2026-09-11-1735.md`
    (suggested fix 1).
+   [planned: chromium-widget-media-permission.md (COMPLETED)]
 
 b89cf17. COMPLETED: Make `run_on_gui` and `run_on_gui_async`
    (`src/desk/server/app.py`) translate *any* exception raised on the
@@ -9617,7 +9618,7 @@ aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    `../FEEDBACK/FEEDBACK-DESK-promoted-widget-tsconfig-path-not-fixed-up-2026-09-18-1400.md`.
    [planned: promotion-tsconfig-shared-dependencies.md (COMPLETED)]
 
-3d792f8. Promotion `outDir` normalization: a promoted widget is rebuilt
+3d792f8. COMPLETED: Promotion `outDir` normalization: a promoted widget is rebuilt
    into `.build` (`SOURCE_BUILD_CACHE_DIRNAME`, `src/desk/temp_ui.py`),
    but authors write their own `tsconfig.json` `outDir` (`out`,
    `build`, ...). At promotion, if `outDir` doesn't match, offer via
@@ -9630,8 +9631,9 @@ aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    `../FEEDBACK/FEEDBACK-DESK-promotion-doesnt-move-shared-multifile-deps-2026-09-14-1628.md`
    ("Related finding") and
    `../FEEDBACK/FEEDBACK-DESK-promoted-widget-tsconfig-path-not-fixed-up-2026-09-18-1400.md`.
+   [planned: promotion-outdir-normalization.md (COMPLETED)]
 
-90dd6e6. Extend `desk.mermaid`'s parser (`src/desk/mermaid.py`): add
+90dd6e6. COMPLETED: Extend `desk.mermaid`'s parser (`src/desk/mermaid.py`): add
    stadium nodes `id(["label"])`, unpiped inline edge labels
    `A -- label --> B` (today the label text is folded into the
    preceding node's token, so the error points at the wrong place), and
@@ -9640,8 +9642,9 @@ aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    grammar, including what is deliberately unsupported, in the
    module's docstring and in `tempui-markdown.md`. Cites
    `../FEEDBACK/FEEDBACK-DESK-mermaid-parser-rejects-standard-syntax-2026-09-18-2220.md`.
+   [planned: mermaid-parser-grammar-extensions.md (COMPLETED)]
 
-9fe03a1. Split the Markdown widget's single Mermaid fallback message
+9fe03a1. COMPLETED: Split the Markdown widget's single Mermaid fallback message
    (`widgets/markdown/widget.py`, `_build_mermaid_widget`/
    `_mermaid_fallback_widget`) into distinct cases: no transform
    registered for the diagram kind (say what is missing), a
@@ -9650,12 +9653,13 @@ aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    `a9e2ba7`'s decision to collapse all failures into
    "(unsupported or unparseable Mermaid diagram)"; update the affected
    `tests/verify/` scripts (e.g. `verify_markdown_mermaid_transforms.py`).
+   [planned: markdown-mermaid-fallback-messages.md (COMPLETED)]
    Cites
    `../FEEDBACK/FEEDBACK-DESK-mermaid-parser-rejects-standard-syntax-2026-09-18-2220.md`
    and
    `../FEEDBACK/FEEDBACK-DESK-mermaid-rendering-fails-silently-without-project-transforms-2026-09-18-2000.md`.
 
-05f2222. Have Desk discover its own bundled `desk_transforms/` (today
+05f2222. COMPLETED: Have Desk discover its own bundled `desk_transforms/` (today
    `desk.transforms.discover_transforms_with_errors` scans only the
    current project's `.desk_temp/transforms/` and `desk_transforms/`),
    as a third, lowest-precedence location scanned first so a project's
@@ -9666,12 +9670,14 @@ aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    Make sure the Transform Manager widget (TODO `b5e15cf`) shows the
    new location, and document the dependency/behavior in
    `tempui-markdown.md`, `desk-temporary-ui.md`, and
-   `design-docs/transforms.md`. Cites
+   `design-docs/transforms.md`.
+   [planned: bundled-desk-transforms-discovery.md (COMPLETED)]
+   Cites
    `../FEEDBACK/FEEDBACK-DESK-mermaid-rendering-fails-silently-without-project-transforms-2026-09-18-2000.md`
    (suggestions 2 and 3; the report explicitly does not want
    auto-scaffolding).
 
-94d2b94. Add an optional `max_width` (pixels) parameter to
+94d2b94. COMPLETED: Add an optional `max_width` (pixels) parameter to
    `desk_screenshot_desk` and `desk_screenshot_widget`
    (`src/desk/shell/desk_mcp_server.py`, backed by
    `DeskWindow.screenshot_desk`/`screenshot_widget_instance`) and to the
@@ -9680,13 +9686,15 @@ aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    proportionally (never up) before it is written to `path`; omitting
    it keeps today's native-resolution behavior. Mint a tempui
    changelog tag/entry per `development-process.md`, since this is a
-   new feature from an in-Desk agent's point of view. Cites
+   new feature from an in-Desk agent's point of view.
+   [planned: screenshot-max-width.md (COMPLETED)]
+   Cites
    `../FEEDBACK/FEEDBACK-DESK-screenshot-tools-no-downsampling-option-2026-09-18-2030.md`
    and
    `../FEEDBACK/FEEDBACK-DESK-widget-glitches-on-oversized-screenshot-json-2026-09-18-2140.md`
    (part b).
 
-f35466a. Make an oversized tool result (e.g. a ~776KB-base64
+f35466a. COMPLETED: Make an oversized tool result (e.g. a ~776KB-base64
    screenshot) fail locally and legibly in the Claude (Desk) widget
    instead of leaving it glitchy. First reproduce it and classify what
    actually happens (a caught parse error, a dead SDK transport, or a
@@ -9697,7 +9705,9 @@ f35466a. Make an oversized tool result (e.g. a ~776KB-base64
    confirmed, raise it via `ClaudeAgentOptions`. Also make a
    failed/unreadable message degrade to a visible per-turn error
    with the session left usable, rather than only emitting
-   `session_error` from `_query_and_stream`. Cites
+   `session_error` from `_query_and_stream`.
+   [planned: claude-session-oversized-message-robustness.md (COMPLETED)]
+   Cites
    `../FEEDBACK/FEEDBACK-DESK-widget-glitches-on-oversized-screenshot-json-2026-09-18-2140.md`
    (part a).
 
@@ -11017,4 +11027,60 @@ b6abde2. De-prioritized (moved to the end of the queue on request --
    verb chain itself -- is covered by the automated tests above,
    which do use real Qt event objects and a real `WorkspaceView`, not
    mocks, for the drag-and-drop path specifically).
+
+9bed685. Shared libraries as a first-class concept, not a directory-naming
+   trick. Today a `.ts` module shared by several widgets' own
+   `tsconfig.json` `"files"` entries only fits into `.desk_temp/widgets/`
+   / `desk_widgets/` via a leading-underscore convention (e.g.
+   `_raycaster-shared/`) -- no `widget.json`, never placed, and
+   promotion (TODO `8a09220`'s `plan_dependency_relocation`) has to
+   infer "this is shared, not a widget" from that naming trick and its
+   position in the tree, rather than from anything that actually says
+   so.
+
+   Per direct user request, two real directories instead:
+
+   - `.desk_temp/lib_shared/<name>/` -- created the same way any other
+     `.desk_temp/` content is (no separate confirmation beyond
+     `.desk_temp` itself already existing): an un-promoted, tempui-authored
+     widget's `tsconfig.json` can reference shared code here.
+   - `./desk_lib_shared/<name>/` -- project-root, permanent, **not**
+     gitignored -- created only after user confirmation (the same
+     `_confirm_fn` pattern promotion already uses for `.gitignore`
+     entries), at the point a widget's shared dependency is itself
+     promoted.
+   - A **promoted** widget's `tsconfig.json` must only ever reference
+     `./desk_lib_shared/`, never `.desk_temp/lib_shared/` -- `.desk_temp`
+     is disposable, gitignored support territory (TODO 13f4ad5's own
+     "tsc must be available wherever this Desk is later opened" already
+     assumes the source tree itself is durable; a promoted widget
+     depending on `.desk_temp` content would silently break the moment
+     that gitignored directory doesn't exist on a fresh checkout). An
+     un-promoted (tempui) widget may reference either directory.
+
+   Design/implementation questions for the plan: whether promoting a
+   widget that still depends on `.desk_temp/lib_shared/<name>/` moves
+   that shared directory into `desk_lib_shared/<name>/` automatically
+   (mirroring TODO 8a09220's existing move-then-rewrite mechanism, now
+   keyed off these two fixed directory names instead of inferring
+   "shared" from position-under-widgets/naming), or refuses/warns
+   instead and asks the author to promote the shared code first; how
+   `_final_location`/`plan_dependency_relocation`
+   (`src/desk/promotion_deps.py`) change now that "shared" is a real,
+   named location rather than inferred; whether an already-promoted
+   widget whose `tsconfig.json` is later edited to add a
+   `.desk_temp/lib_shared/` reference should be caught (a lint/warning,
+   not silently allowed) since that's exactly the state this TODO
+   exists to prevent; and how `desk_lib_shared/**/.build/`-style
+   gitignore coverage (if shared code ever needs its own build step)
+   fits alongside `DESK_WIDGETS_BUILD_GITIGNORE_ENTRY`. Update
+   "Authoring from real source" in `tempui-custom-widgets.md` to point
+   authors at `.desk_temp/lib_shared/<name>/` by name instead of "a
+   shared base class alongside the widget's own subclass" with no
+   recommended location; mint a tempui changelog tag/entry (an
+   agent-visible new convention). Cites
+   `../FEEDBACK/FEEDBACK-DESK-promotion-doesnt-move-shared-multifile-deps-2026-09-14-1628.md`
+   (Addendum). Related to TODO `8a09220`, which handles today's
+   dependency-relocation problem within the current widget-shaped
+   layout this TODO replaces.
 
