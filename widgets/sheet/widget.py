@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
@@ -14,6 +15,8 @@ from PyQt6.QtWidgets import (
 )
 
 from desk.shell import current_context
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_ROWS = 12
 DEFAULT_COLUMNS = 6
@@ -156,11 +159,35 @@ class SheetWidget(QWidget):
         self._table.blockSignals(False)
 
     def _load_file(self, path: Path) -> None:
-        self.load_tsv(path.read_text())
+        # Read before touching any widget state (TODO 810a5d6, mirroring
+        # EditorWidget._load_file's own exact reasoning): on failure, the
+        # grid/current-path are left exactly as they were -- showing a
+        # friendly message *in the grid itself* (like the read-only
+        # Markdown/Image Viewer widgets do) would risk the user then
+        # hitting Save and overwriting a real file with that message
+        # text, since this widget, like Editor and unlike those two, is
+        # editable.
+        try:
+            text = path.read_text()
+        except OSError as error:
+            logger.error("Failed to read %s", path, exc_info=True)
+            opener = current_context.get_popup_opener()
+            if opener is not None:
+                opener("Open File", f"Could not read {path.name}: {error}", ["OK"], "OK")
+            return
+        self.load_tsv(text)
         self._current_path = path
         self._last_dir = path.parent
         self._dirty = False
         self._update_label()
+
+    def set_file(self, path: Path) -> None:
+        """Public so other widgets/dispatch paths can open a file here
+        programmatically (TODO 5928ae6) -- the file-type-registry's
+        view-handler dispatch and drag-and-drop both gate on
+        `hasattr(widget, "set_file")`, matching EditorWidget's own
+        `set_file`, which is this exact one-line delegation too."""
+        self._load_file(path)
 
     def _open_file(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(

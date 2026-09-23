@@ -132,6 +132,7 @@ CLAUDE_DESK_WIDGET_ID = "claude_desk"
 QUESTIONS_WIDGET_ID = "questions"
 IMAGE_VIEWER_WIDGET_ID = "image_viewer"
 EDITOR_WIDGET_ID = "editor"
+SHEET_WIDGET_ID = "sheet"
 CRASH_LOG_WIDGET_ID = "crash_log"
 JOB_RUNNER_WIDGET_ID = "job_runner"
 DESK_PROC_RUNNER_WIDGET_ID = "desk_proc_runner"
@@ -153,9 +154,18 @@ CRASH_LOG_GLOB = "DESK-CRASH-*.log"
 # those get copy-into-.desk_temp-plus-tempui handling instead of this
 # by-reference one (TODO 6e731c1). .svg maps to Image Viewer (TODO
 # 4d21e7c folded the formerly-standalone SVG Viewer widget into it).
+# .tsv/.tab map to Sheet (TODO 5928ae6, now that it has a set_file) --
+# deliberately not .txt (Sheet's own Open-dialog filter also browses
+# it, but mapping it here would make dropping an ordinary plain-text
+# file open as a mostly-empty one-row spreadsheet instead of readable
+# text via the Editor default, a real regression for the far more
+# common case) or .csv (Sheet only ever splits/joins on a literal tab,
+# so a comma-separated file wouldn't actually parse as a table).
 EXTERNAL_DROP_WIDGET_BY_SUFFIX = {
     ".md": MARKDOWN_WIDGET_ID,
     ".svg": IMAGE_VIEWER_WIDGET_ID,
+    ".tsv": SHEET_WIDGET_ID,
+    ".tab": SHEET_WIDGET_ID,
 }
 # A dropped file with one of these suffixes (TODO 6e731c1) is copied
 # into .desk_temp and displayed through a new OpenImage tempui file

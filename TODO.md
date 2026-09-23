@@ -9693,13 +9693,15 @@ f0da2e9. COMPLETED: Expose staleness to agents: add a `stale: bool` to each
    Cites
    `../FEEDBACK/FEEDBACK-DESK-html-widget-view-handler-no-file-path-2026-08-06-2353.md`.
 
-5928ae6. Give the built-in Sheet widget (`widgets/sheet/widget.py`) a
+5928ae6. COMPLETED: Give the built-in Sheet widget (`widgets/sheet/widget.py`) a
    `set_file(path)` method that loads the TSV at `path` using the
    parsing its `Open` button already uses, so it participates in the
    file-type-registry view-handler dispatch like Markdown/Image Viewer/
    Editor. Also add `.tsv` (and the other Sheet-openable suffixes) to
    `EXTERNAL_DROP_WIDGET_BY_SUFFIX` in `src/desk/shell/window.py` so
-   dropping one opens it. Cites
+   dropping one opens it.
+   [planned: sheet-widget-set-file.md (COMPLETED)]
+   Cites
    `../FEEDBACK/FEEDBACK-DESK-sheet-widget-no-programmatic-open-2026-08-07-0302.md`.
 
 3b6de01. Add a generic tempui keyword (e.g. `OpenWithWidget<TAB>
