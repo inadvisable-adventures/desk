@@ -9596,7 +9596,7 @@ aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    `../FEEDBACK/FEEDBACK-DESK-mermaid-parser-rejects-standard-syntax-2026-09-18-2220.md`.
    [planned: mermaid-parser-grammar-extensions.md (COMPLETED)]
 
-9fe03a1. Split the Markdown widget's single Mermaid fallback message
+9fe03a1. COMPLETED: Split the Markdown widget's single Mermaid fallback message
    (`widgets/markdown/widget.py`, `_build_mermaid_widget`/
    `_mermaid_fallback_widget`) into distinct cases: no transform
    registered for the diagram kind (say what is missing), a
@@ -9605,6 +9605,7 @@ aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    `a9e2ba7`'s decision to collapse all failures into
    "(unsupported or unparseable Mermaid diagram)"; update the affected
    `tests/verify/` scripts (e.g. `verify_markdown_mermaid_transforms.py`).
+   [planned: markdown-mermaid-fallback-messages.md (COMPLETED)]
    Cites
    `../FEEDBACK/FEEDBACK-DESK-mermaid-parser-rejects-standard-syntax-2026-09-18-2220.md`
    and

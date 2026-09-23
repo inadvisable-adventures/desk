@@ -221,6 +221,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "media capability gates mic and camera #407103",
     "promotion normalizes tsconfig outDir to .build #941549",
     "mermaid parser: stadium, unpiped labels, quotes #183003",
+    "mermaid fallback distinguishes failure reasons #138484",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -556,6 +557,27 @@ erroring.
   ER, gantt, pie, ...), thick edges (`==>`), any node shape beyond the
   five above, and a composite `stateDiagram` block's own nested content
   (skipped, never rendered, not an error).
+
+**This depends on the current project having the right transform --
+it is not built into the widget itself.** A flowchart renders via the
+`mermaid_flowchart_svg` transform, a state diagram via
+`mermaid_state_svg`; a project with neither `desk_transforms/` nor
+`.desk_temp/transforms/` containing them shows the same plain-text
+fallback a genuinely broken diagram would, distinguished by its own
+note:
+
+- *"no `'mermaid_flowchart_svg'`/`'mermaid_state_svg'` transform found
+  in this project"* -- add the transform (see `transforms` in the
+  Bridge API capability list, `tempui-custom-widgets.md`, for how a
+  project acquires one) rather than assuming the diagram's own syntax
+  is wrong.
+- *"Mermaid syntax error: ..."* -- the diagram itself doesn't parse;
+  fix the syntax per the subset above.
+- *"unsupported Mermaid diagram type"* -- this diagram type has no
+  transform at all, ever (not a per-project gap).
+- *"Mermaid rendering failed: ..."* / *"produced invalid SVG output"*
+  -- the transform ran but something else went wrong; the message
+  names what.
 """
 
 _IMAGE_DOC = """# TempUI DSL: OpenImage
@@ -1789,6 +1811,16 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "mermaid fallback distinguishes failure reasons #138484": """- The Markdown widget's Mermaid fallback (shown instead of a
+  rendered diagram) now distinguishes *why*, instead of one generic
+  "unsupported or unparseable" note for every cause: no transform found
+  in this project for the diagram kind (names the specific missing
+  transform id), a Mermaid syntax error (shows its own message), an
+  unsupported diagram type, or the transform itself failing/producing
+  invalid output (shows the detail). `tempui-markdown.md`'s "Supported
+  Mermaid subset" section documents each note and that rendering
+  depends on the current project having the right transform.
+""",
     "mermaid parser: stadium, unpiped labels, quotes #183003": """- The Mermaid subset `desk.mermaid` supports (flowchart diagrams
   rendered from a fenced ```mermaid``` block) now also parses stadium
   nodes (`id([Label])`), unpiped/inline edge labels (`A -- label -->
