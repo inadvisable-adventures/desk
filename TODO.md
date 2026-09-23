@@ -9611,7 +9611,7 @@ aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    and
    `../FEEDBACK/FEEDBACK-DESK-mermaid-rendering-fails-silently-without-project-transforms-2026-09-18-2000.md`.
 
-05f2222. Have Desk discover its own bundled `desk_transforms/` (today
+05f2222. COMPLETED: Have Desk discover its own bundled `desk_transforms/` (today
    `desk.transforms.discover_transforms_with_errors` scans only the
    current project's `.desk_temp/transforms/` and `desk_transforms/`),
    as a third, lowest-precedence location scanned first so a project's
@@ -9622,7 +9622,9 @@ aa0ce76. COMPLETED: Add a rotating file log for Desk's own logging
    Make sure the Transform Manager widget (TODO `b5e15cf`) shows the
    new location, and document the dependency/behavior in
    `tempui-markdown.md`, `desk-temporary-ui.md`, and
-   `design-docs/transforms.md`. Cites
+   `design-docs/transforms.md`.
+   [planned: bundled-desk-transforms-discovery.md (COMPLETED)]
+   Cites
    `../FEEDBACK/FEEDBACK-DESK-mermaid-rendering-fails-silently-without-project-transforms-2026-09-18-2000.md`
    (suggestions 2 and 3; the report explicitly does not want
    auto-scaffolding).

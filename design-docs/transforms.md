@@ -137,23 +137,46 @@ designed further here (no current transform needs it).
 
 ### Storage & discovery
 
-Two directories are scanned, both directly (no build-artifact
-indirection — see below):
+Three directories are scanned, all directly (no build-artifact
+indirection — see below), in ascending precedence order (TODO
+`05f2222` added the first of the three; the other two are unchanged
+from v1):
 
+- **Desk's own bundled `desk_transforms/`** — this repo's own
+  top-level directory, resolved relative to the installed `desk`
+  package (`desk.transforms._repo_desk_transforms_dir`, mirroring
+  `desk.temp_ui._repo_shared_components_dir`'s exact reasoning),
+  **scanned in place, never copied into the current project**. Lowest
+  precedence, so a project can always override one of Desk's own
+  transforms (e.g. `mermaid_flowchart_svg`) with its own same-id
+  replacement. This is what makes the Markdown widget's Mermaid
+  rendering (below) work in every project with nothing project-side to
+  set up — deliberately *not* auto-scaffolded/copied into a project,
+  per direct user decision recorded against the report that led to
+  this: a brand-new project should still end up with nothing in it
+  that it didn't specifically ask for.
 - **`.desk_temp/transforms/<name>/`** — local/experimental,
   git-ignored (same `.desk_temp/` semantics as everywhere else in
   Desk). **TypeScript/JavaScript only** — `kind: "python"` is rejected
   here at discovery time (the Transform Manager shows it as an error
   row: "Python transforms aren't allowed in .desk_temp — move to
-  desk_transforms/ or rewrite in TS/JS").
+  desk_transforms/ or rewrite in TS/JS"). This restriction is specific
+  to this one location (a git-ignored scratch directory), not to
+  Python transforms generally — Desk's own bundled transforms above are
+  Python and unaffected.
 - **`desk_transforms/<name>/`** — project-level, committed to the
   repo. Python, TypeScript, or JavaScript all allowed.
 
-On a `transform_id` collision between the two, `desk_transforms/` (the
-"promoted"/authoritative location) wins — mirrors "project-level is
-more authoritative than the local scratch copy," the same relationship
-`desk_widgets/<name>/` (promoted) has to `.desk_temp/widgets/<name>/`
-(authoring-only, pre-promotion) today.
+On a `transform_id` collision, the higher-precedence location always
+wins (plain dict assignment, scanned in this order) — `desk_transforms/`
+over `.desk_temp/transforms/` over Desk's own bundled copy, mirroring
+"project-level is more authoritative than the local scratch copy," the
+same relationship `desk_widgets/<name>/` (promoted) has to
+`.desk_temp/widgets/<name>/` (authoring-only, pre-promotion) today. The
+Transform Manager widget's own Location column shows all three as
+"Project" / "Local (.desk_temp)" / "Bundled with Desk"; a bundled
+transform gets no Promote button, since there is nothing in the current
+project to move.
 
 **Why Python is disallowed in `.desk_temp/`, but not TypeScript/
 JavaScript:** a Python transform runs **in-process** — Desk `import`s
@@ -339,9 +362,14 @@ Two new transforms, each a thin wrapper around the shared engine:
   `input_type: "mermaid-state"`, expecting a `stateDiagram`/
   `stateDiagram-v2` header.
 
-Both ship at project level (`desk_transforms/`, not `.desk_temp/`)
-from day one — they're part of Desk's own built-in behavior, not a
-user's local experiment to promote later.
+Both live in this repo's own top-level `desk_transforms/`, not
+`.desk_temp/` — they're part of Desk's own built-in behavior, not a
+user's local experiment to promote later. TODO `05f2222` made this
+directory itself a real, always-scanned discovery location (see
+"Storage & discovery" above) for *every* project, not only Desk's own
+dogfood checkout where "the current project" and "Desk's own repo"
+happen to be the same directory — v1 (this section, as originally
+written) only had that single-project coincidence to rely on.
 
 `MermaidDiagramWidget` (the `QGraphicsView` subclass) is deleted —
 dead code once the Markdown widget no longer embeds a live,

@@ -222,6 +222,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "promotion normalizes tsconfig outDir to .build #941549",
     "mermaid parser: stadium, unpiped labels, quotes #183003",
     "mermaid fallback distinguishes failure reasons #138484",
+    "bundled desk_transforms discovered automatically #576866",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -250,8 +251,10 @@ built-in file types, distinguished by their first line's keyword:
   repeatedly over a list of items. See
   [tempui-lightning-round.md](./tempui-lightning-round.md).
 - `OpenMarkdown` / `Markdown` — open an existing Markdown file, or
-  render Markdown content given directly in the tempui file itself.
-  See [tempui-markdown.md](./tempui-markdown.md).
+  render Markdown content given directly in the tempui file itself
+  (including a fenced ` ```mermaid ` diagram -- works out of the box in
+  every project, nothing to set up). See
+  [tempui-markdown.md](./tempui-markdown.md).
 - `OpenImage` — open an existing image file in the Image Viewer
   widget. See [tempui-image.md](./tempui-image.md).
 - `Scratch` — arbitrary free-form notes shown in a Scratch widget. See
@@ -558,19 +561,24 @@ erroring.
   five above, and a composite `stateDiagram` block's own nested content
   (skipped, never rendered, not an error).
 
-**This depends on the current project having the right transform --
-it is not built into the widget itself.** A flowchart renders via the
-`mermaid_flowchart_svg` transform, a state diagram via
-`mermaid_state_svg`; a project with neither `desk_transforms/` nor
-`.desk_temp/transforms/` containing them shows the same plain-text
-fallback a genuinely broken diagram would, distinguished by its own
-note:
+**This renders via a transform, not logic built directly into the
+widget** -- a flowchart via the `mermaid_flowchart_svg` transform, a
+state diagram via `mermaid_state_svg`. Both ship bundled with Desk
+itself and are discovered automatically in every project, with nothing
+to add and nothing copied into your project. A project can still
+override either one with its own same-id transform (in its own
+`desk_transforms/`, or `.desk_temp/transforms/` for TypeScript/
+JavaScript only) if it wants different rendering; the project's own
+copy always wins. When rendering still doesn't happen, the plain-text
+fallback names why, distinguished by its own note:
 
-- *"no `'mermaid_flowchart_svg'`/`'mermaid_state_svg'` transform found
-  in this project"* -- add the transform (see `transforms` in the
-  Bridge API capability list, `tempui-custom-widgets.md`, for how a
-  project acquires one) rather than assuming the diagram's own syntax
-  is wrong.
+- *"no `'mermaid_flowchart_svg'`/`'mermaid_state_svg'` transform
+  found"* -- only reachable in an unusual install with no bundled
+  transforms at all, or a project that deliberately overrode one with
+  something that doesn't actually work; add or fix the transform (see
+  `transforms` in the Bridge API capability list,
+  `tempui-custom-widgets.md`) rather than assuming the diagram's own
+  syntax is wrong.
 - *"Mermaid syntax error: ..."* -- the diagram itself doesn't parse;
   fix the syntax per the subset above.
 - *"unsupported Mermaid diagram type"* -- this diagram type has no
@@ -1811,6 +1819,18 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "bundled desk_transforms discovered automatically #576866": """- Desk's own `mermaid_flowchart_svg`/`mermaid_state_svg` transforms
+  (used by the Markdown widget's Mermaid rendering) are now discovered
+  automatically in every project -- bundled with Desk itself, scanned
+  in addition to (and at lower precedence than) a project's own
+  `.desk_temp/transforms/`/`desk_transforms/`. Nothing is copied into
+  your project; a project that wants different rendering can still
+  override either one with its own same-id transform, which always
+  wins. The Transform Manager widget shows a bundled transform's
+  location as "Bundled with Desk" (no Promote button -- there is
+  nothing in this project to move). See "Supported Mermaid subset" in
+  `tempui-markdown.md`.
+""",
     "mermaid fallback distinguishes failure reasons #138484": """- The Markdown widget's Mermaid fallback (shown instead of a
   rendered diagram) now distinguishes *why*, instead of one generic
   "unsupported or unparseable" note for every cause: no transform found

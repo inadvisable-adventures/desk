@@ -16,8 +16,8 @@ app = QApplication(sys.argv)
 
 from desk.shell import current_context  # noqa: E402
 from desk.svg_view import SvgView  # noqa: E402
-from desk.temp_ui import CURRENT_TAGS, _MARKDOWN_DOC, _NEW_FEATURES  # noqa: E402
-from desk_services.transforms.service import TransformsService  # noqa: E402
+from desk.temp_ui import CURRENT_TAGS, DOC_TEMPLATE, _MARKDOWN_DOC, _NEW_FEATURES  # noqa: E402
+from desk_services.transforms.service import TransformError, TransformsService  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location("markdown_widget_mermaid_test", REPO_ROOT / "widgets/markdown/widget.py")
 markdown_widget = importlib.util.module_from_spec(_spec)
@@ -129,15 +129,18 @@ def test_mermaid_syntax_error_is_distinguished_from_a_missing_transform():
 
 
 def test_missing_transform_names_what_is_missing():
-    # TODO 9fe03a1: the actual root cause from the FEEDBACK report this
-    # cites -- a syntactically valid diagram, but this project has no
-    # desk_transforms/mermaid_flowchart_svg of its own.
-    from desk_services.transforms.service import TransformError, TransformsService
+    # TODO 9fe03a1: the "Unknown transform: " message-prefix branch
+    # itself, at the unit level -- a fake runner, not a real
+    # TransformsService, since TODO 05f2222 made mermaid_flowchart_svg/
+    # mermaid_state_svg always discoverable via Desk's own bundled
+    # desk_transforms/ (see test_bundled_transform_renders_with_nothing
+    # _copied_into_the_project below for that real end-to-end case) --
+    # there is no longer a way to make *these specific* transform ids
+    # genuinely undiscovered, which is the point of that fix.
+    def unknown_transform_runner(transform_id, content, config):
+        raise TransformError(f"Unknown transform: {transform_id!r} (call discover() first)")
 
-    service = TransformsService()
-    service.discover(None, Path(tempfile.mkdtemp()))  # empty project directory -- nothing discovered
-
-    with patch.object(current_context, "get_transform_runner_blocking", return_value=service.run_blocking):
+    with patch.object(current_context, "get_transform_runner_blocking", return_value=unknown_transform_runner):
         widget = markdown_widget._build_mermaid_widget(FLOWCHART_SOURCE)
 
     labels = find_labels(widget)
@@ -150,12 +153,69 @@ def test_missing_transform_names_what_is_missing():
         not any("syntax error" in label.text().lower() or "rendering failed" in label.text().lower() for label in labels),
     )
     # Sanity: confirm the exact string this whole distinction hinges on
-    # is really what TransformsService raises, not an assumption.
+    # is really what TransformsService raises, not an assumption --
+    # against a genuinely nonexistent id, since the two real Mermaid
+    # ids no longer qualify.
+    service = TransformsService()
+    service.discover(None, Path(tempfile.mkdtemp()))
     try:
-        service.run_blocking("mermaid_flowchart_svg", FLOWCHART_SOURCE, None)
-        check("sanity: an undiscovered transform_id raises TransformError", False)
+        service.run_blocking("totally_bogus_transform_id", FLOWCHART_SOURCE, None)
+        check("sanity: a genuinely nonexistent transform_id raises TransformError", False)
     except TransformError as e:
-        check("sanity: an undiscovered transform_id raises TransformError", str(e).startswith("Unknown transform: "))
+        check("sanity: a genuinely nonexistent transform_id raises TransformError", str(e).startswith("Unknown transform: "))
+
+
+def test_bundled_transform_renders_with_nothing_copied_into_the_project():
+    # TODO 05f2222: the actual fix for the FEEDBACK report this cites --
+    # a brand-new project with *no* desk_transforms/ and no
+    # .desk_temp/transforms/ of its own must still render Mermaid,
+    # since mermaid_flowchart_svg/mermaid_state_svg are discovered from
+    # Desk's own bundled desk_transforms/ automatically.
+    service = TransformsService()
+    empty_project = Path(tempfile.mkdtemp())
+    transforms, errors = service.discover(None, empty_project / "desk_transforms")
+    check("sanity: the empty project directory itself has nothing in it", not (empty_project / "desk_transforms").exists())
+    check("both mermaid transforms are discovered anyway, from Desk's own bundled copy", {"mermaid_flowchart_svg", "mermaid_state_svg"} <= set(transforms))
+    check("they're tagged as bundled, not project/desk_temp", all(transforms[t].location == "bundled" for t in ("mermaid_flowchart_svg", "mermaid_state_svg")))
+
+    with patch.object(current_context, "get_transform_runner_blocking", return_value=service.run_blocking):
+        flowchart_widget = markdown_widget._build_mermaid_widget(FLOWCHART_SOURCE)
+        state_widget = markdown_widget._build_mermaid_widget(STATE_SOURCE)
+
+    check(
+        "a flowchart renders as a real, valid SVG with nothing copied into the project",
+        isinstance(flowchart_widget, SvgView) and flowchart_widget.is_valid(),
+    )
+    check(
+        "a state diagram renders as a real, valid SVG with nothing copied into the project",
+        isinstance(state_widget, SvgView) and state_widget.is_valid(),
+    )
+
+
+def test_project_transform_still_overrides_the_bundled_one():
+    # TODO 05f2222: precedence -- bundled < desk_temp < project, so a
+    # project deliberately shipping its own mermaid_flowchart_svg (a
+    # customization, or a fix ahead of Desk's own next release) wins.
+    project = Path(tempfile.mkdtemp())
+    override_dir = project / "desk_transforms" / "mermaid_flowchart_svg"
+    override_dir.mkdir(parents=True)
+    (override_dir / "transform.json").write_text(
+        '{"name": "Override", "kind": "python", "entry": "transform.py", '
+        '"input_type": "mermaid-flowchart", "output_type": "svg"}'
+    )
+    (override_dir / "transform.py").write_text(
+        "def run(input_data, config):\n"
+        "    return '<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"7\" height=\"7\"></svg>'\n"
+    )
+
+    service = TransformsService()
+    transforms, errors = service.discover(None, project / "desk_transforms")
+    check("the project's own transform wins the id collision, not the bundled one", transforms["mermaid_flowchart_svg"].location == "project")
+
+    with patch.object(current_context, "get_transform_runner_blocking", return_value=service.run_blocking):
+        widget = markdown_widget._build_mermaid_widget(FLOWCHART_SOURCE)
+
+    check("the overriding project transform's own output is what actually rendered", isinstance(widget, SvgView) and widget.content_size().width() == 7)
 
 
 def test_successful_render_returns_a_valid_svg_view():
@@ -231,11 +291,14 @@ def test_real_end_to_end_via_a_real_transforms_service():
 
 
 def test_changelog_and_doc_cover_this():
-    tag = "mermaid fallback distinguishes failure reasons #138484"
-    check("tag is in CURRENT_TAGS with a _NEW_FEATURES entry", tag in CURRENT_TAGS and tag in _NEW_FEATURES)
+    fallback_tag = "mermaid fallback distinguishes failure reasons #138484"
+    bundled_tag = "bundled desk_transforms discovered automatically #576866"
+    check("fallback-reasons tag is in CURRENT_TAGS with a _NEW_FEATURES entry", fallback_tag in CURRENT_TAGS and fallback_tag in _NEW_FEATURES)
+    check("bundled-discovery tag is in CURRENT_TAGS with a _NEW_FEATURES entry", bundled_tag in CURRENT_TAGS and bundled_tag in _NEW_FEATURES)
     flat = " ".join(_MARKDOWN_DOC.split())
-    check("tempui-markdown.md says rendering depends on the project having the transform", "depends on the current project having" in flat)
-    check("tempui-markdown.md documents the missing-transform note", "transform found in this project" in flat)
+    check("tempui-markdown.md says the mermaid transforms ship bundled with Desk", "ship bundled with Desk" in flat)
+    check("tempui-markdown.md documents the missing-transform note", "transform found" in flat)
+    check("desk-temporary-ui.md's own overview mentions mermaid working out of the box", "mermaid" in DOC_TEMPLATE.lower() and "out of the box" in DOC_TEMPLATE)
 
 
 test_flowchart_calls_the_right_transform()
@@ -243,6 +306,8 @@ test_state_calls_the_right_transform()
 test_unsupported_diagram_skips_the_transform_entirely()
 test_mermaid_syntax_error_is_distinguished_from_a_missing_transform()
 test_missing_transform_names_what_is_missing()
+test_bundled_transform_renders_with_nothing_copied_into_the_project()
+test_project_transform_still_overrides_the_bundled_one()
 test_successful_render_returns_a_valid_svg_view()
 test_transform_failure_falls_back_to_plain_text()
 test_invalid_svg_output_falls_back_to_plain_text()

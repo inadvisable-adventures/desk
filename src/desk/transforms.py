@@ -41,7 +41,7 @@ class TransformInfo:
     output_type: str
     has_config: bool
     has_identity: bool
-    location: str  # "desk_temp" | "project"
+    location: str  # "bundled" | "desk_temp" | "project"
 
 
 def _load_manifest(manifest_path: Path, location: str) -> TransformInfo:
@@ -78,24 +78,50 @@ def _load_manifest(manifest_path: Path, location: str) -> TransformInfo:
     )
 
 
+def _repo_desk_transforms_dir() -> Path:
+    """This installed `desk` package's own `desk_transforms/` directory
+    (TODO 05f2222) -- resolved relative to this very file, not the
+    current working directory, mirroring `desk.temp_ui
+    ._repo_shared_components_dir`'s exact reasoning (Desk always runs
+    from its own checked-out repo, editable-installed, regardless of
+    which project's directory is currently open). Scanned in place,
+    every time -- never copied anywhere, unlike
+    `shared-components/`/`app_dsl/`'s own always-fresh mirror into
+    `.desk_temp/`: a project should never end up with files it didn't
+    specifically ask for (see the FEEDBACK report this cites, which
+    explicitly declined auto-scaffolding)."""
+    return Path(__file__).resolve().parents[2] / PROJECT_TRANSFORMS_DIRNAME
+
+
 def discover_transforms_with_errors(
     desk_temp_dir: Path | None, project_dir: Path | None
 ) -> tuple[dict[str, TransformInfo], dict[str, str]]:
-    """Scans both directories directly. `desk_temp_dir`/`project_dir`
-    may be None (no current Desk directory known yet) or simply not
-    exist -- both are treated as "nothing found there," not an error.
-    `project_dir` is scanned second, so it wins a `transform_id`
-    collision (plain dict assignment overwrites) -- the promoted/
-    authoritative location takes precedence over the local scratch
-    copy, the same relationship `desk_widgets/<name>/` has to
-    `.desk_temp/widgets/<name>/`. A subdirectory whose manifest is
-    missing/invalid is recorded in the returned errors dict (keyed by
-    directory name) instead of raised -- surfaced by the Transform
-    Manager widget (TODO `b5e15cf`), not fatal to discovering
+    """Scans three directories directly, in ascending precedence order
+    (each later one's `transform_id` overwrites an earlier one's --
+    plain dict assignment): Desk's own bundled `desk_transforms/`
+    (TODO 05f2222 -- e.g. `mermaid_flowchart_svg`/`mermaid_state_svg`,
+    which the Markdown widget's Mermaid rendering already depends on
+    unconditionally, now discoverable in every project with nothing
+    copied into it), then this project's `desk_temp_dir`, then its
+    `project_dir`. `project_dir` still wins any collision -- the
+    promoted/authoritative location takes precedence over both the
+    bundled default and the local scratch copy, the same relationship
+    `desk_widgets/<name>/` has to `.desk_temp/widgets/<name>/`.
+    `desk_temp_dir`/`project_dir` may be None (no current Desk
+    directory known yet) or simply not exist -- both are treated as
+    "nothing found there," not an error, same as a non-source install
+    with no bundled `desk_transforms/` of its own. A subdirectory whose
+    manifest is missing/invalid is recorded in the returned errors dict
+    (keyed by directory name) instead of raised -- surfaced by the
+    Transform Manager widget (TODO `b5e15cf`), not fatal to discovering
     everything else."""
     transforms: dict[str, TransformInfo] = {}
     errors: dict[str, str] = {}
-    for location, base in (("desk_temp", desk_temp_dir), ("project", project_dir)):
+    for location, base in (
+        ("bundled", _repo_desk_transforms_dir()),
+        ("desk_temp", desk_temp_dir),
+        ("project", project_dir),
+    ):
         if base is None or not base.is_dir():
             continue
         for entry in sorted(base.iterdir()):
