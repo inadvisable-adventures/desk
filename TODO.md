@@ -10972,3 +10972,59 @@ b6abde2. De-prioritized (moved to the end of the queue on request --
    which do use real Qt event objects and a real `WorkspaceView`, not
    mocks, for the drag-and-drop path specifically).
 
+9bed685. Shared libraries as a first-class concept, not a directory-naming
+   trick. Today a `.ts` module shared by several widgets' own
+   `tsconfig.json` `"files"` entries only fits into `.desk_temp/widgets/`
+   / `desk_widgets/` via a leading-underscore convention (e.g.
+   `_raycaster-shared/`) -- no `widget.json`, never placed, and
+   promotion (TODO `8a09220`'s `plan_dependency_relocation`) has to
+   infer "this is shared, not a widget" from that naming trick and its
+   position in the tree, rather than from anything that actually says
+   so.
+
+   Per direct user request, two real directories instead:
+
+   - `.desk_temp/lib_shared/<name>/` -- created the same way any other
+     `.desk_temp/` content is (no separate confirmation beyond
+     `.desk_temp` itself already existing): an un-promoted, tempui-authored
+     widget's `tsconfig.json` can reference shared code here.
+   - `./desk_lib_shared/<name>/` -- project-root, permanent, **not**
+     gitignored -- created only after user confirmation (the same
+     `_confirm_fn` pattern promotion already uses for `.gitignore`
+     entries), at the point a widget's shared dependency is itself
+     promoted.
+   - A **promoted** widget's `tsconfig.json` must only ever reference
+     `./desk_lib_shared/`, never `.desk_temp/lib_shared/` -- `.desk_temp`
+     is disposable, gitignored support territory (TODO 13f4ad5's own
+     "tsc must be available wherever this Desk is later opened" already
+     assumes the source tree itself is durable; a promoted widget
+     depending on `.desk_temp` content would silently break the moment
+     that gitignored directory doesn't exist on a fresh checkout). An
+     un-promoted (tempui) widget may reference either directory.
+
+   Design/implementation questions for the plan: whether promoting a
+   widget that still depends on `.desk_temp/lib_shared/<name>/` moves
+   that shared directory into `desk_lib_shared/<name>/` automatically
+   (mirroring TODO 8a09220's existing move-then-rewrite mechanism, now
+   keyed off these two fixed directory names instead of inferring
+   "shared" from position-under-widgets/naming), or refuses/warns
+   instead and asks the author to promote the shared code first; how
+   `_final_location`/`plan_dependency_relocation`
+   (`src/desk/promotion_deps.py`) change now that "shared" is a real,
+   named location rather than inferred; whether an already-promoted
+   widget whose `tsconfig.json` is later edited to add a
+   `.desk_temp/lib_shared/` reference should be caught (a lint/warning,
+   not silently allowed) since that's exactly the state this TODO
+   exists to prevent; and how `desk_lib_shared/**/.build/`-style
+   gitignore coverage (if shared code ever needs its own build step)
+   fits alongside `DESK_WIDGETS_BUILD_GITIGNORE_ENTRY`. Update
+   "Authoring from real source" in `tempui-custom-widgets.md` to point
+   authors at `.desk_temp/lib_shared/<name>/` by name instead of "a
+   shared base class alongside the widget's own subclass" with no
+   recommended location; mint a tempui changelog tag/entry (an
+   agent-visible new convention). Cites
+   `../FEEDBACK/FEEDBACK-DESK-promotion-doesnt-move-shared-multifile-deps-2026-09-14-1628.md`
+   (Addendum). Related to TODO `8a09220`, which handles today's
+   dependency-relocation problem within the current widget-shaped
+   layout this TODO replaces.
+
