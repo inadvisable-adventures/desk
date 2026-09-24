@@ -315,6 +315,11 @@ class _FakeWindow:
         # _on_widget_stale_clicked now also touch these.
         self._promoted_widget_source_watcher = PromotedWidgetSourceWatcher()
         self._promoted_widget_source_dirty = set()
+        # TODO 99eb1bc: _on_widget_changed_refresh_catalog now also
+        # rescans this Desk's own project widgets (desk_widgets/).
+        self._broker = HotReloadBroker()
+        self._project_widget_ids = set()
+        self._project_widget_watcher = None
         self._schema_registry = SchemaRegistry()
         self.saved = []
         self.confirmed_messages = []
@@ -657,6 +662,7 @@ def test_place_widget_shows_tempui_button_only_for_custom_widgets():
 
 
 _FakeWindow._on_widget_changed_refresh_catalog = DeskWindow._on_widget_changed_refresh_catalog
+_FakeWindow._load_project_widgets = DeskWindow._load_project_widgets
 _FakeWindow._refresh_builtin_schemas = DeskWindow._refresh_builtin_schemas
 _FakeWindow._notify_schema_conflict = DeskWindow._notify_schema_conflict
 _FakeWindow._show_schema_conflict_popup = DeskWindow._show_schema_conflict_popup

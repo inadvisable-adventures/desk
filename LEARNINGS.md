@@ -1238,3 +1238,25 @@ itself delete the window and drain `DeferredDelete` (a few passes,
 since the profile's `deleteLater()` is queued by the page's
 destruction) before returning, or interpreter shutdown races
 Chromium's profile teardown. Fixed in `desk/app.py`.
+
+TODO `99eb1bc` (project widgets under `desk_widgets/`): a new source of
+entries for `DeskWindow.self._widgets` has a real ordering constraint
+that isn't obvious from `self._widgets`' own type (`dict[str,
+WidgetInfo]`) or from `_load_desk_widgets`'s signature -- it has to be
+merged in *before* `_load_desk_widgets` runs, not after, because
+`_load_desk_widgets` resolves each saved widget instance's `widget_id`
+by a plain `self._widgets.get(state.widget_id)` and silently drops the
+instance (no error, just never placed) if that lookup misses. Got this
+backwards on the first pass here (planned to merge project widgets in
+*after* `_load_desk_widgets`, matching where the analogous discovery
+call sat in an earlier sketch) and only caught it by actually reading
+`_load_desk_widgets`'s body before wiring up the call site, not by
+inference from names/types. The same trap applies to
+`_refresh_builtin_schemas` (a widget's own `state_schema` needs it
+re-run after any new source populates `self._widgets`, or that
+source's schema silently doesn't take effect until the next unrelated
+hot-reload). General lesson: before adding a new call that populates
+`self._widgets` from anywhere, trace forward to every place that reads
+`self._widgets` synchronously afterward in the same code path (not just
+grep for "self._widgets =" assignments) -- a dict lookup that quietly
+returns `None`/misses gives no signal that ordering was wrong.

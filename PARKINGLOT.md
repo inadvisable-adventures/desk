@@ -1061,6 +1061,53 @@ This file captures thoughts and TODO items that arise during work on other thing
   speculative/disposable widgets the agent builds unprompted. Natural
   to pair with any later work generalizing `desk_widgets/` discovery.
 
+  Part (a) above shipped, `kind: "python"` only, as TODO `99eb1bc`
+  (`desk.widgets.discover_project_widgets`) -- `kind: "html"` project
+  widgets are still exactly what's described above: parked, not built,
+  since serving one needs Local Web Server route wiring `99eb1bc`
+  doesn't touch. Part (b), the `tempui-custom-widgets.md` prefer
+  -real-project-widgets-for-explicit-requests guidance line, is also
+  still unwritten either way.
+
+- **A narrower, Bridge-API-style capability surface for
+  `desk_widgets/`-sourced `kind: "python"` widgets, instead of full
+  unrestricted direct access**
+
+  Raised while implementing TODO `99eb1bc` (project-authored
+  `kind: "python"` widgets discovered from a project's own
+  `desk_widgets/<name>/`, merged into the live catalog the same way as
+  a built-in `widgets/<id>/`). Every `kind: "python"` widget -- built
+  -in or project-authored -- runs directly in the Shell's own process
+  with no isolation boundary at all (see `design-docs/architecture.md`'s
+  Security Considerations): full, unsandboxed access to Desk's own
+  live Python objects, the GUI thread, and anything importable from
+  the running process. For Desk's own bundled `widgets/`, this has
+  always been an accepted tradeoff -- it's reviewed code shipped with
+  Desk itself, the same trust level as running any of Desk's own
+  scripts directly. `99eb1bc` extends that identical trust level to
+  *project*-authored code instead (the same extension Installed Jobs
+  and `desk_hmsvc/` already made for their own corners of Desk) --
+  reasonable to ship as a starting point (matching those two
+  precedents, and because a project widget is something the project's
+  own user/agent chose to write), but a strictly bigger attack surface
+  than "Desk's own maintainers reviewed this," worth deliberately
+  narrowing later rather than leaving as the permanent, only option.
+
+  Not designed: what a `kind: "python"` analogue of the `kind: "html"`
+  Bridge API's capability-scoped surface would look like. The `html`
+  Bridge API works because a Chromium-hosted widget has no *other* way
+  to reach Desk at all except through it (its own process, its own
+  `QWebEngineView`, no ambient Python access) -- a `kind: "python"`
+  widget's `build()` is a plain Python function already running
+  in-process with the entire Shell's live object graph reachable by
+  ordinary `import`, so there's no equivalent single choke point to
+  gate. Whatever this ends up looking like, it's a real, unscoped
+  design question (likely something like: a restricted/wrapped context
+  object passed into `build()` instead of ambient imports, enforced by
+  convention rather than a hard process boundary, since Python itself
+  has no strong in-process sandboxing primitive to build on) -- not a
+  quick fix, and not attempted as part of `99eb1bc` itself.
+
 - **Domain Analysis as a Desk built-in**
 
   `necro-4x`'s Domain Analysis widget (`../necro-4x/custom_widget_src/

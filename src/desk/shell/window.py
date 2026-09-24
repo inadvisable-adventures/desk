@@ -112,7 +112,7 @@ from desk.temp_ui import (
     parse_temp_ui,
     sync_custom_widgets_doc_section,
 )
-from desk.widgets import WidgetInfo, discover_widgets
+from desk.widgets import WidgetInfo, WidgetWatcher, discover_project_widgets, discover_widgets
 
 logger = logging.getLogger(__name__)
 
@@ -360,6 +360,18 @@ class DeskWindow(QMainWindow):
         self._promoted_widget_source_watcher.changed.connect(self._on_promoted_widget_source_changed)
         self._promoted_widget_source_dirty: set[str] = set()
 
+        # Real, project-authored widget packages under this Desk's own
+        # desk_widgets/ (TODO 99eb1bc) -- the exact widgets/<id>/
+        # widget.json shape, discovered by discover_project_widgets and
+        # merged into self._widgets. Tracks which ids in self._widgets
+        # came from here (as opposed to the shared widgets_dir or a
+        # tempui-DSL custom widget), so switch_desk can drop the old
+        # Desk's own entries before loading the new one's, the same way
+        # self._custom_widget_definitions is used just above. See
+        # _load_project_widgets.
+        self._project_widget_ids: set[str] = set()
+        self._project_widget_watcher: WidgetWatcher | None = None
+
         # kind:"html" widget-local storage (TODO 5734529): instance_id
         # -> whatever that instance's own JS last pushed via the Bridge
         # API's self.setLocalStorage. See _get_widget_local_storage/
@@ -474,6 +486,14 @@ class DeskWindow(QMainWindow):
         self._register_custom_widgets_from_desk(self.current_desk)
         self._provision_temp_ui()
         self._register_custom_widgets_from_desk_temp(self.current_desk.directory)
+        self._load_project_widgets(self.current_desk)
+        # A project widget's own state_schema (TODO 99eb1bc) needs the
+        # same permanent registration a built-in gets -- re-run now that
+        # _load_project_widgets has merged them in (the one call already
+        # made above, before self._widgets held any, couldn't have seen
+        # them), and before _load_desk_widgets below places any saved
+        # instance that might rely on it.
+        self._refresh_builtin_schemas()
         self._load_desk_widgets(self.current_desk)
         self.view.set_view_state(
             self.current_desk.pan_x, self.current_desk.pan_y, self.current_desk.scale
@@ -506,6 +526,49 @@ class DeskWindow(QMainWindow):
         current_context.set_widget_height_adjuster(self.adjust_widget_instance_height)
         self._sync_tempui_doc()
         self._open_crash_log_widgets()
+
+    def _load_project_widgets(self, desk: Desk) -> None:
+        """Merges this Desk's own project-relative desk_widgets/ real
+        widget packages (TODO 99eb1bc) into self._widgets, alongside
+        the shared widgets_dir catalog and this Desk's tempui-DSL
+        custom widgets. Must run before _load_desk_widgets (which
+        resolves each saved widget instance's widget_id against
+        self._widgets) so a saved instance of a project widget still
+        restores. Re-run on every Desk switch (see switch_desk, which
+        clears the previous Desk's own entries first) and on every
+        debounced widget-changed hot reload
+        (_on_widget_changed_refresh_catalog) -- desk_widgets/ is
+        project-relative content, not baked into the .desk file, so it
+        can change under a long-running Desk session.
+
+        A project widget id that collides with an existing catalog
+        entry (a shared built-in, or a tempui custom widget) is
+        refused, logged, and left as whatever it already was --
+        mirroring _register_custom_widget's own "refuse to shadow an
+        existing id" posture -- unless that id is already this Desk's
+        own, previously-loaded project widget (a routine re-scan after
+        an edit, not a collision)."""
+        if self._widgets_dir is None:
+            return
+        project_dir = desk.directory / PROMOTED_WIDGET_SRC_DIRNAME
+        if self._project_widget_watcher is None or self._project_widget_watcher.widgets_dir != project_dir:
+            if self._project_widget_watcher is not None:
+                self._project_widget_watcher.stop()
+            self._project_widget_watcher = WidgetWatcher(project_dir, self._broker)
+        # Idempotent (a no-op once already watching, or if project_dir
+        # doesn't exist yet) -- called every time in case desk_widgets/
+        # has newly come to exist since the watcher above was created.
+        self._project_widget_watcher.start()
+        for widget_id, info in discover_project_widgets(project_dir).items():
+            if widget_id in self._widgets and widget_id not in self._project_widget_ids:
+                logger.warning(
+                    "Refusing to register project widget %r (%s): shadows an existing widget id",
+                    widget_id,
+                    info.path,
+                )
+                continue
+            self._widgets[widget_id] = info
+            self._project_widget_ids.add(widget_id)
 
     def _load_desk_widgets(self, desk: Desk) -> None:
         if desk.widgets:
@@ -2210,6 +2273,14 @@ class DeskWindow(QMainWindow):
         # other per-Desk dict cleared here.
         self._promoted_widget_source_watcher.stop_all()
         self._promoted_widget_source_dirty.clear()
+        # TODO 99eb1bc: every project widget in self._widgets belonged
+        # to the Desk being left -- same reasoning as every other
+        # per-Desk dict cleared here. The watcher itself is stopped and
+        # rebuilt (pointed at the new Desk's own desk_widgets/) inside
+        # _load_project_widgets below, not here.
+        for widget_id in list(self._project_widget_ids):
+            self._widgets.pop(widget_id, None)
+        self._project_widget_ids.clear()
         # Per-instance state (TODO 5734529), meaningless once
         # view.clear_widgets() above already destroyed the frames it
         # belonged to -- cleared here so it doesn't accumulate stale
@@ -2241,6 +2312,12 @@ class DeskWindow(QMainWindow):
         self._register_custom_widgets_from_desk(new_desk)
         self._provision_temp_ui(provisioning)
         self._register_custom_widgets_from_desk_temp(new_desk.directory)
+        self._load_project_widgets(new_desk)
+        # Same reasoning as __init__'s own call: re-register permanent
+        # desk.state.* schemas now that this Desk's own project widgets
+        # (if any) are in self._widgets, before any saved instance is
+        # placed below.
+        self._refresh_builtin_schemas()
         self._load_desk_widgets(new_desk)
         self.view.set_view_state(new_desk.pan_x, new_desk.pan_y, new_desk.scale)
         self._sync_tempui_doc()
@@ -3864,7 +3941,13 @@ class DeskWindow(QMainWindow):
         91b3f42) -- snapshot their current catalog entries first and
         merge them back in, or a hot-reload triggered by an unrelated
         real widget's own source change would otherwise silently drop
-        every custom widget from the live catalog."""
+        every custom widget from the live catalog. This Desk's own
+        project widgets (TODO 99eb1bc) don't need the same snapshot
+        -and-restore treatment: they're disk-backed just like
+        widgets_dir's own catalog, so _load_project_widgets below just
+        rescans desk_widgets/ fresh -- which is also what actually
+        picks up a project widget's own manifest/source edits, the
+        entire point of this handler firing in the first place."""
         custom_entries = {
             keyword: self._widgets[keyword]
             for keyword in self._custom_widget_definitions
@@ -3872,6 +3955,7 @@ class DeskWindow(QMainWindow):
         }
         self._widgets = discover_widgets(self._widgets_dir)
         self._widgets.update(custom_entries)
+        self._load_project_widgets(self.current_desk)
         self._refresh_builtin_schemas()
         self.view.set_widget_catalog(self._widgets)
 

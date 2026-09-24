@@ -1,10 +1,13 @@
 import json
+import logging
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from desk.hotreload import HotReloadBroker
 from desk_services.file_watcher import WatchHandle, get_service
+
+logger = logging.getLogger(__name__)
 
 DEBOUNCE_SECONDS = 0.2
 VALID_KINDS = ("python", "html")
@@ -88,6 +91,72 @@ def discover_widgets(widgets_dir: Path) -> dict[str, WidgetInfo]:
         if not path.is_dir() or not manifest_path.is_file():
             continue
         widgets[path.name] = _parse_manifest(manifest_path)
+    return widgets
+
+
+def discover_project_widgets(
+    widgets_dir: Path, *, kinds: tuple[str, ...] = ("python",)
+) -> dict[str, WidgetInfo]:
+    """Like discover_widgets, but for a project's own desk_widgets/ (TODO
+    99eb1bc) instead of Desk's shared, presumed-vetted widgets/ tree --
+    used for a real, project-authored widget package (same widget.json
+    shape as a built-in widgets/<id>/ directory) dropped straight into a
+    project, no promotion step. `kinds` restricts which `"kind"` values
+    are accepted (default: `"python"` only) -- `"html"` isn't wired up
+    yet (the Local Web Server only ever serves the shared widgets_dir
+    and tempui-DSL-registered custom widgets, see
+    ServerHandle.mount_html_widget; PARKINGLOT.md's "Default to
+    authoring an explicitly-requested widget as a real project widget"
+    is the parked follow-up for that), so a `kind: "html"` entry here is
+    skipped with an explanatory warning rather than silently doing
+    nothing or being merged into a catalog that can't actually serve it.
+
+    desk_widgets/ already has an older, unrelated tenant: a tempui-DSL
+    -promoted custom widget's durable TypeScript/HTML source (TODO
+    59c5a70), whose own widget.json is shaped `{"keyword", "label",
+    "width", "height", ...}` -- no "kind" key at all. That's the one
+    thing distinguishing the two conventions on disk, so any
+    subdirectory whose widget.json lacks "kind" entirely is silently
+    skipped here as belonging to that other convention, not treated as
+    a malformed real widget.
+
+    Also unlike discover_widgets (which happily lets _parse_manifest's
+    ValueError propagate, since Desk's own bundled widgets/ is trusted,
+    reviewed content), a directory that does declare "kind" but fails
+    to parse -- an invalid kind value, unreadable/malformed JSON -- is
+    skipped with a logged warning instead: this scans arbitrary,
+    unreviewed project content, and one project's own typo must never
+    take down widget discovery (built-in or otherwise) for every open
+    Desk."""
+    if not widgets_dir.is_dir():
+        return {}
+
+    widgets: dict[str, WidgetInfo] = {}
+    for path in sorted(widgets_dir.iterdir()):
+        manifest_path = path / "widget.json"
+        if not path.is_dir() or not manifest_path.is_file():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            logger.warning("Skipping %s: unreadable or malformed widget.json", manifest_path)
+            continue
+        if not isinstance(manifest, dict) or "kind" not in manifest:
+            # No "kind" key at all -- a promoted-tempui-widget source
+            # directory (or something else entirely), not our concern.
+            continue
+        if manifest["kind"] not in kinds:
+            logger.warning(
+                "Skipping %s: kind %r not yet supported for a project widget (only %s)",
+                manifest_path,
+                manifest["kind"],
+                ", ".join(repr(k) for k in kinds),
+            )
+            continue
+        try:
+            widgets[path.name] = _parse_manifest(manifest_path)
+        except ValueError:
+            logger.warning("Skipping %s: invalid widget.json", manifest_path, exc_info=True)
     return widgets
 
 

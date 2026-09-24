@@ -227,6 +227,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "workspace getState exposes per-instance stale flag #157810",
     "self.getOpenedFile for html widgets #003325",
     "OpenWithWidget places any widget with a file #051616",
+    "project-authored python widgets in desk_widgets #473197",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -315,6 +316,31 @@ it as many times as you like via an MCP tool call with no further
 prompt. Not a dropped-tempui-file DSL keyword like the ones above --
 installation happens via an MCP tool call against a directory you
 already wrote, never via a file dropped in this directory.
+
+## Project widgets
+
+If you want a genuinely new, permanent widget added to *this* project
+-- as opposed to a quick, speculative, in-browser widget you're trying
+out via `DefineWidget` (above) -- write it directly at
+`desk_widgets/<name>/` at the project root: a `widget.json` manifest
+and an entry file, the exact same shape a built-in Desk widget uses
+(`{"name", "kind": "python", "entry": "widget.py", "capabilities": [],
+"default_size": {"width": ..., "height": ...}}`), with `widget.py`
+exposing a `build() -> QWidget` function (real PyQt6, imported and run
+directly in Desk's own process -- see `tempui-custom-widgets.md`'s
+"Authoring from real source" if you'd rather build a `kind: "html"`
+widget instead via `DefineWidget`/promote; a `kind: "html"` entry
+written directly here isn't served yet). No tempui file, no promote
+step -- it's picked up automatically (and hot-reloads on further
+edits) the next time this Desk is opened or switched to, or shortly
+after you save it if this Desk is already open on this project.
+`desk_widgets/` also durably holds a *promoted* `DefineWidget`
+widget's own source (that `widget.json` shape has no `"kind"` key);
+the two coexist in the same directory without conflict. **Same trust
+level as any other `kind: "python"` widget: this widget's code has
+full, unsandboxed, direct access to Desk's own running process** --
+the same trust Installed Jobs' `main.py` already gets, not a
+capability-scoped surface like a `kind: "html"` widget's Bridge API.
 
 ## Desk's own log
 
@@ -1898,6 +1924,19 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "project-authored python widgets in desk_widgets #473197": """- A project's own `desk_widgets/` directory (at the project root) can
+  now hold a real `kind: "python"` widget package -- the exact same
+  `widget.json`/`entry` shape as one of Desk's own built-in
+  `widgets/<id>/` directories -- discovered and merged into the live
+  catalog automatically, no tempui `DefineWidget`/promote round-trip
+  needed. For when a widget is wanted as a genuinely new, permanent
+  part of *this* project from the start (as opposed to a speculative,
+  in-browser widget authored via tempui). `kind: "html"` isn't
+  accepted here yet -- only `"python"`. Same trust level as any other
+  `kind: "python"` widget: full, unsandboxed, in-process access to
+  Desk's own Python, the same as Installed Jobs already have. See
+  "Project widgets" in this directory's own top-level doc.
+""",
     "OpenWithWidget places any widget with a file #051616": """- New tempui DSL keyword `OpenWithWidget<TAB>widget_id<TAB>path`
   places any widget kind with a file pre-loaded -- the generic form of
   `OpenMarkdown`/`OpenImage`, which are each a fixed one-widget special

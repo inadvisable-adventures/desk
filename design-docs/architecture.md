@@ -864,6 +864,37 @@ Desk widgets, regardless of implementation language, are defined by a
   header. Without that cookie, any multi-file widget built the normal way
   (as opposed to a single self-contained HTML file) would silently fail to
   load its own assets.
+- **Project widgets** (TODO `99eb1bc`): a project's own `desk_widgets/`
+  directory, at its root, can hold a real `kind: "python"` widget
+  package — the exact same `widget.json`/`entry` shape as a built-in
+  `widgets/<id>/` directory, just authored per-project instead of
+  shipped with Desk itself, so an agent or user can add a genuinely
+  new widget to one project without a promotion step, a tempui round
+  -trip, or touching Desk's own repo. Discovered by
+  `desk.widgets.discover_project_widgets`, merged into the live
+  catalog on Desk load/switch and hot-reloaded the same way as the
+  shared `widgets/` catalog (`desk.widgets.WidgetWatcher`, a second
+  instance pointed at this directory). `kind: "html"` isn't accepted
+  here yet — the Local Web Server has no route for a directory outside
+  the shared `widgets_dir`/tempui's own materialized cache, so an
+  `html`-kind entry is skipped with a warning rather than silently
+  failing to serve; see PARKINGLOT.md's "Default to authoring an
+  explicitly-requested widget as a real project widget" for that
+  follow-up. `desk_widgets/` already has an older, unrelated tenant —
+  a tempui-DSL-promoted custom widget's durable source (below), whose
+  own `widget.json` has no `"kind"` key at all — that's the one thing
+  distinguishing the two conventions on disk, and the two coexist in
+  the same directory without conflict.
+
+  **Security:** identical trust level to a built-in `kind: "python"`
+  widget — full, unsandboxed, in-process access to the Shell's own
+  Python (see [Security Considerations](#security-considerations)) —
+  but now extended to *project*-authored code rather than only Desk's
+  own reviewed, shipped code, the same trust model Installed Jobs and
+  `desk_hmsvc/` services already extend to project-authored Python.
+  Parked (not designed): a narrower, Bridge-API-style capability
+  surface for a `desk_widgets/`-sourced widget instead of full direct
+  access — see PARKINGLOT.md.
 - **Tempui-DSL-defined custom widgets** (TODO `91b3f42`) are a third,
   dynamic way a `kind: "html"` `WidgetInfo` enters the live catalog —
   no `widgets/<id>/` directory at all. An agent (or any process writing
@@ -1158,6 +1189,17 @@ as every other Bridge GUI-thread call) ever blocks.
   process). This is an accepted tradeoff (see
   [Key Design Decisions](#key-design-decisions--tradeoffs)) since it's the
   same trust model as running any local script directly.
+- Project widgets (TODO `99eb1bc`, `desk_widgets/<name>/`, "Widget
+  Model" above) are `kind: "python"` widgets like any other, so
+  everything above applies unchanged — the same in-process, no
+  -isolation trust level, now extended to project-authored code rather
+  than only Desk's own bundled `widgets/`. Accepted for the same
+  reason `desk_hmsvc/`/Installed Jobs already extend that same trust
+  level to project-authored Python. Not yet built, and explicitly
+  parked rather than designed here: a narrower, Bridge-API-style
+  capability surface scoped to what a `desk_widgets/`-sourced widget
+  actually declares needing, instead of unrestricted direct access —
+  see PARKINGLOT.md.
 - `kind: "html"` widgets are each their own `QWebEngineView` (its own
   Chromium renderer process), giving them isolation from each other and
   from the Shell process by construction. This isolation extends to

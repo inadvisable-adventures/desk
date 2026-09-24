@@ -285,6 +285,11 @@ class _OrderTrackingWindow:
         # custom-widget dicts above.
         self._promoted_widget_source_watcher = _FakeSourceWatcher()
         self._promoted_widget_source_dirty = {"SomeKeyword"}
+        # TODO 99eb1bc: switch_desk also drops the previous Desk's own
+        # project widgets from self._widgets before loading the new
+        # Desk's, the same "forget the old Desk's per-Desk state"
+        # reasoning as the custom-widget dicts above.
+        self._project_widget_ids = set()
 
     def save_current_desk(self):
         self.order.append("save_current_desk")
@@ -300,6 +305,12 @@ class _OrderTrackingWindow:
 
     def _provision_temp_ui(self, provisioning=None):
         self.order.append("provision_temp_ui")
+
+    def _load_project_widgets(self, desk):
+        self.order.append("load_project_widgets")
+
+    def _refresh_builtin_schemas(self):
+        pass
 
     def _load_desk_widgets(self, desk):
         self.order.append("load_desk_widgets")
@@ -347,6 +358,13 @@ def test_switch_desk_provisions_before_loading_widgets():
         assert win.order.index("provision_temp_ui") < win.order.index("register_custom_widgets_from_desk_temp")
         assert win.order.index("register_custom_widgets_from_desk_temp") < win.order.index("load_desk_widgets")
         assert win.order.index("sync_tempui_doc") > win.order.index("load_desk_widgets")
+        # TODO 99eb1bc: project widgets (desk_widgets/) load after
+        # provisioning (needs the new Desk's own directory set) but
+        # before saved instances are placed (a saved instance can be of
+        # a project widget).
+        assert win.order.index("register_custom_widgets_from_desk_temp") < win.order.index("load_project_widgets")
+        assert win.order.index("load_project_widgets") < win.order.index("load_desk_widgets")
+        assert win._project_widget_ids == set()
         # TODO 4eb3d9e: the previous Desk's promoted-widget source
         # watches/dirty flags are torn down too, same "forget the old
         # Desk's per-Desk state" reasoning as the dicts above.

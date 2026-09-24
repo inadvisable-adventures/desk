@@ -6,6 +6,97 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+99eb1bc. COMPLETED: Allow python widgets in ./desk_widgets/. A project's own
+   `desk_widgets/<name>/` (project root) can now hold a real
+   `kind: "python"` widget package -- the exact same `widget.json`/
+   `entry` shape a built-in `widgets/<id>/` directory uses -- discovered
+   and merged into the live widget catalog automatically, no tempui
+   `DefineWidget`/promote round-trip needed. This is the `kind: "python"`
+   -scoped slice of a pre-existing parked idea (PARKINGLOT.md's "Default
+   to authoring an explicitly-requested widget as a real project widget",
+   sourced from
+   `../FEEDBACK/FEEDBACK-DESK-promoted-widget-source-of-truth-2026-08-04-1321.md`
+   finding 3), which had only ever discussed `kind: "html"`; that item
+   stays parked for the `html` half (serving it needs Local Web Server
+   route wiring this doesn't touch).
+
+   Prioritized per direct user request.
+   [planned: project-python-widgets.md (COMPLETED)]
+
+   COMPLETED: Implemented per the plan (`plans/project-python-widgets.md`).
+   New `desk.widgets.discover_project_widgets(widgets_dir, *,
+   kinds=("python",))`: like `discover_widgets`, but coexists with
+   `desk_widgets/`'s older tenant -- a promoted `DefineWidget` widget's
+   durable source (TODO 59c5a70), whose own `widget.json` has no `"kind"`
+   key at all -- by silently skipping any subdirectory whose manifest
+   lacks `"kind"` entirely. Unlike `discover_widgets` (which lets a bad
+   manifest's `ValueError` propagate, since Desk's own bundled `widgets/`
+   is trusted, reviewed content), a directory here that declares `"kind"`
+   but fails to parse (invalid kind value, malformed JSON) is skipped
+   with a logged warning instead -- one project's own typo must never
+   take down widget discovery, built-in or otherwise, for every open
+   Desk. A `kind: "html"` entry is likewise skipped with an explanatory
+   warning (not silently ignored, not merged into a catalog that
+   couldn't actually serve it) -- the Local Web Server has no route for
+   an arbitrary project directory today.
+
+   `DeskWindow._load_project_widgets` (`src/desk/shell/window.py`) merges
+   discovered project widgets into `self._widgets`, refusing (logged,
+   matching `_register_custom_widget`'s existing posture) to let one
+   shadow an existing built-in/tempui-custom id; tracks which ids are its
+   own in `self._project_widget_ids` so `switch_desk` can drop the
+   previous Desk's entries before loading the new one's (mirroring
+   `self._custom_widget_definitions`'s own per-Desk cleanup); and owns a
+   second `desk.widgets.WidgetWatcher` pointed at the current Desk's own
+   `desk_widgets/`, recreated only when that directory's path actually
+   changes. Hooked into `__init__`, `switch_desk`, and the existing
+   `_on_widget_changed_refresh_catalog` hot-reload handler -- runs
+   *before* `_load_desk_widgets` in the first two (a saved instance
+   resolves its `widget_id` against `self._widgets`), with
+   `_refresh_builtin_schemas()` re-run in between so a project widget's
+   own `desk.state.*` `state_schema` is registered before any instance
+   places. `PythonWidgetHost`/`_load_widget_module`
+   (`src/desk/shell/python_widget.py`) needed no changes at all --
+   already fully generic over any `widget_path`, confirmed directly by
+   building a real `QWidget` from a `widget.py` outside Desk's own repo
+   tree.
+
+   `design-docs/architecture.md` gained a "Project widgets" bullet in
+   "Widget Model" and a matching "Security Considerations" bullet:
+   same in-process, unsandboxed trust level as any `kind: "python"`
+   widget, now extended to project-authored code the same way Installed
+   Jobs/`desk_hmsvc/` already did -- see the paired PARKINGLOT item added
+   by this same change. Per development-process.md's "Keep the tempui
+   changelog docs current": minted tag `"project-authored python widgets
+   in desk_widgets #473197"` (added to `CURRENT_TAGS`/`_NEW_FEATURES` in
+   `src/desk/temp_ui.py`), plus a new "## Project widgets" section in
+   `DOC_TEMPLATE` (the generated `desk-temporary-ui.md`) explaining the
+   authoring path and its trust model to an agent working inside some
+   other project.
+
+   New `tests/verify/verify_project_python_widgets.py` (23 checks):
+   `discover_project_widgets`'s valid-widget/skip-no-kind/skip-html/
+   skip-invalid-kind/skip-malformed-json/missing-directory cases; a
+   lightweight fake-window harness (matching
+   `verify_desk_widgets_build_gitignore.py`'s `_FakeWindow` pattern) for
+   `_load_project_widgets`'s merge, id-collision-refusal, same-directory
+   watcher-reuse, and different-directory watcher-repoint-and-cleanup
+   behavior; a real `PythonWidgetHost` building a real `QWidget` from a
+   project path; and the new tempui tag/doc-rendering coverage.
+
+   Full `tests/verify/` regression suite run afterward caught a real
+   regression this change introduced (not pre-existing drift): two
+   scripts (`verify_new_desk_flow.py`, `verify_tempui_custom_widgets.py`)
+   use a lightweight fake-window harness bound to the real
+   `switch_desk`/`_on_widget_changed_refresh_catalog` unbound methods,
+   and neither fake had the new `_project_widget_ids`/
+   `_project_widget_watcher`/`_load_project_widgets` state those methods
+   now touch. Fixed both fakes (missing attributes/stub, plus an
+   ordering assertion covering where `_load_project_widgets` now sits in
+   `switch_desk`'s call order) in the same commit. Final full suite run:
+   165/165 non-`disabled_` scripts pass (164 pre-existing + this 1 new
+   file), 0 failures.
+
 e75b165. COMPLETED: Desk-hosted microservices ("hmsvc"). Similar to the Local Web
    Server Desk already runs for `kind: "html"` widgets, but authorable by
    users: a user-written Python service, stored under `./desk_hmsvc/<name>/`
