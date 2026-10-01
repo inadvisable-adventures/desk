@@ -783,6 +783,19 @@ Desk Bridge API.
     into, in which case anything on the local network can call it. See
     `plans/desk-hosted-microservices.md`.
 
+    `service.json` can also (TODO `0375f64`) name a custom interpreter
+    for the service's subprocess instead of Desk's own (`sys.executable`,
+    the default): `"venv"` (project-relative, resolved to `<venv>/bin/
+    python`) or `"python"` (an absolute path, for a venv outside the
+    project) -- `python` wins if both are set. Lets a service import a
+    project's own native/platform-specific dependencies (e.g. `opencv`,
+    `pyobjc`) without adding them to Desk's own shared `pyproject.toml`;
+    the configured interpreter still needs `uvicorn` installed, since
+    `desk.hmsvc_host` (which serves the ASGI app) imports it directly. A
+    configured-but-missing interpreter fails `start()` immediately with
+    the resolved path in the error/log rather than silently falling back
+    to Desk's interpreter. See `plans/hmsvc-custom-interpreter.md`.
+
 ### Widget Model
 
 See `design-docs/widget-ux.md` for the interactive chrome (titlebar/drag,

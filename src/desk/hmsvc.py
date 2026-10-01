@@ -84,6 +84,27 @@ def _port_accepts(port: int) -> bool:
         return False
 
 
+def _resolve_interpreter(project_dir: Path, python: str | None, venv: str | None) -> tuple[str, str | None]:
+    """Which Python interpreter a service's subprocess launches under
+    (TODO 0375f64). `python` (an absolute interpreter path, for a venv
+    living outside the project) takes precedence over `venv` (a
+    project-relative venv directory, resolved to `<venv>/bin/python`);
+    neither given falls back to Desk's own interpreter (`sys.executable`,
+    today's only behavior) with no error. Returns `(interpreter, error)`
+    -- a configured-but-missing interpreter is an error, not a silent
+    fallback, so a service that needs its own native deps doesn't
+    silently (and confusingly) run under Desk's interpreter instead."""
+    if python:
+        candidate = Path(python).expanduser()
+    elif venv:
+        candidate = project_dir / venv / "bin" / "python"
+    else:
+        return sys.executable, None
+    if not candidate.is_file():
+        return "", f"configured interpreter not found: {candidate}"
+    return str(candidate), None
+
+
 @dataclass
 class _Service:
     name: str
@@ -91,6 +112,8 @@ class _Service:
     capabilities: list[str] = field(default_factory=lambda: list(DEFAULT_CAPABILITIES))
     autostart: bool = False
     external: bool = False
+    venv: str | None = None
+    python: str | None = None
     status: str = STATUS_STOPPED
     port: int | None = None
     pid: int | None = None
@@ -101,21 +124,25 @@ class _Service:
     logs: deque = field(default_factory=lambda: deque(maxlen=LOG_LINE_LIMIT))
 
 
-def _read_manifest(directory: Path) -> tuple[str, list[str], bool, bool]:
+def _read_manifest(directory: Path) -> tuple[str, list[str], bool, bool, str | None, str | None]:
     try:
         data = json.loads((directory / SERVICE_MANIFEST_FILENAME).read_text())
     except (OSError, ValueError):
-        return "", list(DEFAULT_CAPABILITIES), False, False
+        return "", list(DEFAULT_CAPABILITIES), False, False, None, None
     if not isinstance(data, dict):
-        return "", list(DEFAULT_CAPABILITIES), False, False
+        return "", list(DEFAULT_CAPABILITIES), False, False, None, None
     capabilities = data.get("capabilities", list(DEFAULT_CAPABILITIES))
     if not isinstance(capabilities, list):
         capabilities = list(DEFAULT_CAPABILITIES)
+    venv = data.get("venv")
+    python = data.get("python")
     return (
         str(data.get("description", "")),
         [str(c) for c in capabilities],
         bool(data.get("autostart", False)),
         bool(data.get("external", False)),
+        str(venv) if venv else None,
+        str(python) if python else None,
     )
 
 
@@ -185,7 +212,7 @@ class HmsvcManager:
         re-reads `service.json`, keeping runtime state for any service
         already known."""
         root = self.services_dir
-        found: dict[str, tuple[str, list[str], bool, bool]] = {}
+        found: dict[str, tuple[str, list[str], bool, bool, str | None, str | None]] = {}
         if root is not None and root.is_dir():
             for path in sorted(root.iterdir()):
                 if path.is_dir() and (path / SERVICE_ENTRY_FILENAME).is_file():
@@ -195,12 +222,14 @@ class HmsvcManager:
                 service = self._services[name]
                 if name not in found and service.process is None:
                     del self._services[name]
-            for name, (description, capabilities, autostart, external) in found.items():
+            for name, (description, capabilities, autostart, external, venv, python) in found.items():
                 service = self._services.setdefault(name, _Service(name=name))
                 service.description = description
                 service.capabilities = capabilities
                 service.autostart = autostart
                 service.external = external
+                service.venv = venv
+                service.python = python
         self._notify()
 
     # -- queries -------------------------------------------------------
@@ -259,6 +288,12 @@ class HmsvcManager:
                 return False, f"No service named {name!r}."
             if service.process is not None:
                 return False, f"{name!r} is already {service.status}."
+            interpreter, error = _resolve_interpreter(self._directory, service.python, service.venv)
+            if error is not None:
+                service.status = STATUS_CRASHED
+                service.logs.append(f"[desk] {error}")
+                threading.Thread(target=self._notify, daemon=True).start()
+                return False, error
             port = _free_port()
             host = "0.0.0.0" if service.external else "127.0.0.1"
             env = dict(os.environ)
@@ -279,7 +314,7 @@ class HmsvcManager:
             directory = self._directory / HMSVC_DIRNAME / name
             try:
                 process = subprocess.Popen(
-                    [sys.executable, "-m", "desk.hmsvc_host", str(directory), str(port), host],
+                    [interpreter, "-m", "desk.hmsvc_host", str(directory), str(port), host],
                     cwd=self._directory,
                     env=env,
                     stdin=subprocess.DEVNULL,
@@ -302,6 +337,7 @@ class HmsvcManager:
             service.stop_requested = False
             service.logs.append(
                 f"[desk] starting on {host}:{port} (pid {process.pid})"
+                + (f" using {interpreter}" if interpreter != sys.executable else "")
                 + (" -- reachable from the local network, unauthenticated" if service.external else "")
             )
         threading.Thread(target=self._read_output, args=(service, process), daemon=True).start()

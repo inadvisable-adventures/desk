@@ -228,6 +228,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "self.getOpenedFile for html widgets #003325",
     "OpenWithWidget places any widget with a file #051616",
     "project-authored python widgets in desk_widgets #473197",
+    "hmsvc service.json custom interpreter #892147",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1961,6 +1962,21 @@ _NEW_FEATURES: dict[str, str] = {
   instance is still running its own pre-edit code without a human
   having to notice the badge on the canvas first. Never persisted --
   a Desk's saved `.desk` file is unaffected.
+""",
+    "hmsvc service.json custom interpreter #892147": """- A Desk-hosted microservice's `service.json` can now name its own
+  Python interpreter for the service's subprocess, instead of always
+  launching under Desk's own interpreter: `"venv"` (a project-relative
+  venv directory, resolved to `<venv>/bin/python`) or `"python"` (an
+  absolute interpreter path, for a venv living outside the project --
+  wins if both are set). Lets a service import a project's own
+  native/platform-specific dependencies (e.g. `opencv`, `pyobjc`)
+  without adding them to Desk's own shared environment. The configured
+  interpreter still needs `uvicorn` installed, since `desk.hmsvc_host`
+  (which actually serves the service's ASGI app) imports it directly.
+  Neither field set: unchanged (Desk's own interpreter). A
+  configured-but-missing interpreter fails immediately with the
+  resolved path named in the error and the service's own log, rather
+  than silently falling back.
 """,
     "screenshot tools accept max_width downsampling #600160": """- `desk_screenshot_widget`/`desk_screenshot_desk` (MCP tools) and
   `deskproc.screenshot_widget`/`deskproc.screenshot_desk` (Desk Proc)

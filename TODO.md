@@ -9600,6 +9600,54 @@ a4c3dec. COMPLETED: Add an on-hover control in the Claude (Desk) widget's histor
    parameter, no existing `ClaudeSession.start()` call site changed
    behavior.
 
+0375f64. COMPLETED: Let a `desk_hmsvc/<name>/service.json` optionally name its own Python
+   interpreter, instead of `hmsvc.py` always launching the service
+   subprocess under `sys.executable` (Desk's own interpreter).
+   `HmsvcManager.start()` (`src/desk/hmsvc.py`) currently hardcodes
+   `subprocess.Popen([sys.executable, "-m", "desk.hmsvc_host", ...])`;
+   `service.json` has no field that changes this. Add two optional,
+   mutually-exclusive manifest fields: `"venv"` (a project-relative venv
+   directory, resolved to `<venv>/bin/python`) and `"python"` (an
+   absolute interpreter path, for a venv living outside the project);
+   neither given falls back to today's behavior unchanged. This is the
+   one Desk Python extension point that can actually support this --
+   `kind: "python"` widgets and Installed Jobs are `exec_module`'d
+   in-process with no subprocess boundary to redirect. Motivating case:
+   porting `receipts` (a standalone PyQt6 app, see
+   `/Users/mphair/claude-projects/receipts/TODO.md`/`PARKINGLOT.md`)
+   needs its Qt-free business-logic core's own native dependencies
+   (`opencv-python-headless`, `numpy`, macOS-only `pyobjc-framework
+   -Vision`) importable by an `hmsvc` service without adding a
+   platform-specific native stack to Desk's own shared `pyproject.toml`
+   (the `pypdf` stopgap pattern from TODO 742ba0a doesn't scale to this
+   case -- see the cited feedback for the full argument). Note: the
+   configured interpreter also needs `uvicorn` installed alongside
+   whatever `service.py` itself imports, since `desk.hmsvc_host` (which
+   actually serves the ASGI app) imports it too. Cites
+   `../FEEDBACK/FEEDBACK-DESK-hmsvc-per-service-interpreter-for-native-deps-2026-09-22-1845.md`.
+
+   Prioritized per direct user request.
+   [planned: hmsvc-custom-interpreter.md]
+
+   Verified: new `tests/verify/verify_hmsvc_custom_interpreter.py` (18
+   checks, real subprocesses, no mocks) -- `"venv"` and `"python"` both
+   actually launch the configured interpreter (a marker script that
+   `exec`s the real interpreter after recording that it ran), a
+   misconfigured interpreter fails `start()` immediately without
+   spawning anything, and a service with neither field is unaffected.
+   Existing `tests/verify/verify_hmsvc.py` (39 checks) still passes
+   unchanged, confirming the refactor didn't touch default behavior.
+   Also ran every `tests/verify/` script referencing
+   `CURRENT_TAGS`/`_NEW_FEATURES` (`verify_tempui_changelog_docs.py`,
+   `verify_tempui_doc_upgrade_notification.py`,
+   `verify_define_widget_no_auto_place.py`,
+   `verify_promotion_tsconfig_dependencies.py`,
+   `verify_questions_md_format_fix.py`,
+   `verify_stale_build_widget_script_fix.py`,
+   `verify_relocate_promoted_widget_source.py`) -- all pass, confirming
+   the new tag/changelog entry didn't disturb anything that reads those
+   structures.
+
 2dbfd55. COMPLETED: Handle `QWebEnginePage.featurePermissionRequested` in
    `ChromiumWidget` (`src/desk/shell/chromium_widget.py`), which
    currently never connects it. A `kind: "html"` widget calling

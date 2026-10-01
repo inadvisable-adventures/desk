@@ -737,12 +737,6 @@ This file captures thoughts and TODO items that arise during work on other thing
 
   Widget(s)/tooling for interacting with local (non-Anthropic) models.
 
-- **Move the receipts app to Desk; bring over some pipeline-debugging tools and computer-vision stuff too**
-
-  Port the existing (external) receipts app into Desk, and pull in
-  some of its pipeline-debugging tooling and computer-vision-related
-  capabilities as Desk widgets/tools as well.
-
 - **Widget docking (becomes a collapsing panel attached to a side of the viewport)**
 
   Let a widget be "docked" to an edge of the viewport instead of
