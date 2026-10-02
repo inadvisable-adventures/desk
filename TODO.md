@@ -65,7 +65,7 @@ dffb428. COMPLETED: Claude (Desk) widget: replace the single `QPlainTextEdit` hi
    `verify_claude_desk_structured_history.py`; whole `tests/verify/` suite
    passes. Live GUI run skipped.
 
-eb50b84. Claude (Desk) widget: a live architecture/data-flow view, driven by
+eb50b84. COMPLETED: Claude (Desk) widget: a live architecture/data-flow view, driven by
    the same structured event stream as the history (TODO `20ca851`).
    Toggleable panel or tab showing an abstracted pipeline (prompt ->
    queue -> `ClaudeSession` -> SDK client/CLI subprocess -> shared
@@ -77,6 +77,13 @@ eb50b84. Claude (Desk) widget: a live architecture/data-flow view, driven by
    UX, including at this extreme. Depends on TODO `20ca851`. Cites
    `../FEEDBACK/FEEDBACK-DESK-claude-desk-message-pairing-corruption-and-history-redesign-2026-10-01-1617.md`
    (Part 2) plus direct user direction.
+   [planned: claude-desk-data-flow-view.md (COMPLETED)]
+
+   COMPLETED: Implemented (`desk.claude_flow_view.FlowView`, a "Flow"
+   toggle in the widget's top row, expanding from the bottom like the
+   tasks panel). Verified by `verify_claude_desk_flow_view.py` (30
+   checks), an offscreen screenshot, and the whole `tests/verify/` suite.
+   Live GUI run skipped.
 
 99eb1bc. COMPLETED: Allow python widgets in ./desk_widgets/. A project's own
    `desk_widgets/<name>/` (project root) can now hold a real

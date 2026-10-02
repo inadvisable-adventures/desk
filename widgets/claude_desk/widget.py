@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from desk.claude_flow_view import FlowView
 from desk.claude_history_view import HistoryEntry, HistoryView
 from desk.claude_session import TERMINAL_TASK_STATUSES, ClaudeSession
 from desk.shell import current_context
@@ -102,6 +103,10 @@ DEFAULT_PERMISSION_MODE_INDEX = 0  # "Default"
 # symmetric regardless of how many background tasks have accumulated;
 # the panel's own QListWidget scrolls internally past this height.
 TASKS_PANEL_HEIGHT = 140
+
+# TODO eb50b84: the data-flow panel's fixed height, same reasoning as
+# TASKS_PANEL_HEIGHT above (symmetric frame resize on toggle).
+FLOW_PANEL_HEIGHT = 170
 
 # TODO 8df6797: fixed, not sizeHint-driven, matching TASKS_PANEL_HEIGHT's
 # own precedent above -- ~3 lines at the default font size. Keeps the
@@ -261,6 +266,16 @@ class ClaudeDeskWidget(QWidget):
         self._tasks_list.setVisible(False)
         self._update_tasks_toggle_label()
 
+        # TODO eb50b84: live data-flow view of the session's events,
+        # expanding from the bottom exactly like the tasks panel.
+        self._flow_toggle_button = QPushButton("Flow ▸")
+        self._flow_toggle_button.setCheckable(True)
+        self._flow_toggle_button.setToolTip("Show a live diagram of messages flowing through this widget")
+        self._flow_toggle_button.toggled.connect(self._on_flow_toggled)
+        self._flow_view = FlowView()
+        self._flow_view.setFixedHeight(FLOW_PANEL_HEIGHT)
+        self._flow_view.setVisible(False)
+
         # TODO dffb428: structured history -- one framed, individually
         # collapsible entry per item, each carrying turn/time/source
         # metadata (see desk.claude_history_view). Replaces the single
@@ -313,6 +328,7 @@ class ClaudeDeskWidget(QWidget):
         top_row.addWidget(self._model_combo)
         top_row.addWidget(self._permission_mode_combo)
         top_row.addWidget(self._tasks_toggle_button)
+        top_row.addWidget(self._flow_toggle_button)
 
         prompt_row = QHBoxLayout()
         prompt_row.addWidget(self._mic_button)
@@ -331,6 +347,7 @@ class ClaudeDeskWidget(QWidget):
         # (see _on_tasks_toggled) -- last in the layout, below the
         # prompt row.
         layout.addWidget(self._tasks_list)
+        layout.addWidget(self._flow_view)
 
         self._set_busy(False)
 
@@ -476,11 +493,19 @@ class ClaudeDeskWidget(QWidget):
         if adjuster is not None and self._session_id is not None:
             adjuster(self._session_id, TASKS_PANEL_HEIGHT if checked else -TASKS_PANEL_HEIGHT)
 
+    def _on_flow_toggled(self, checked: bool) -> None:
+        self._flow_view.setVisible(checked)
+        self._flow_toggle_button.setText("Flow ▾" if checked else "Flow ▸")
+        adjuster = current_context.get_widget_height_adjuster()
+        if adjuster is not None and self._session_id is not None:
+            adjuster(self._session_id, FLOW_PANEL_HEIGHT if checked else -FLOW_PANEL_HEIGHT)
+
     # -- structured history (TODO dffb428) ----------------------------
 
     def _on_session_event(self, event: dict) -> None:
         kind = event["kind"]
         self._current_event = event
+        self._flow_view.feed(event)
         if kind == "turn_started":
             self._active_turn_id = event["turn_id"]
             if self._unassigned_user_entries:
@@ -545,6 +570,7 @@ class ClaudeDeskWidget(QWidget):
             widget.setVisible(visible)
 
     def _update_queue_label(self) -> None:
+        self._flow_view.set_queue_depth(len(self._message_queue))
         if not self._message_queue:
             self._queue_label.setVisible(False)
             return

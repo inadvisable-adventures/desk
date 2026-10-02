@@ -756,6 +756,14 @@ Desk Bridge API.
     connections keep the event ahead of its legacy signal). Selection can't
     span entries, so a "Copy all history" action is offered.
 
+    **Data-flow view** (TODO `eb50b84`, `desk.claude_flow_view`): a "Flow"
+    toggle expands a panel drawing the pipeline (Prompt -> Queue -> Session
+    -> SDK/CLI -> Stream -> Reader -> History) with animated markers per
+    `session_event` (blue solicited, orange unsolicited, green complete),
+    queue depth / in-flight turn / background-task annotations, and a red
+    Reader flash on `protocol_violation`/`session_error`. `advance(dt)` is
+    the whole simulation; the timer runs only while visible and animating.
+
     **Observability principle.** This widget should expose as much of its
     own operation through the UX as is practical, up to and including
     debug-grade views (e.g. an animated, abstracted data-flow diagram of
