@@ -748,6 +748,14 @@ Desk Bridge API.
     -- that is the only answer channel, so a plain Allow delivers
     nothing. Skip returns a deny. `annotations`/`preview` are ignored.
 
+    **Structured history** (TODO `dffb428`, `desk.claude_history_view`): the
+    history is a scroll area of framed `HistoryEntry` widgets (kind, turn id,
+    timestamp, source), not a text document. Every entry type collapses by
+    default when long; turn starts get a heavy rule, unsolicited output is
+    tagged; the widget attributes entries via `session_event` (queued
+    connections keep the event ahead of its legacy signal). Selection can't
+    span entries, so a "Copy all history" action is offered.
+
     **Observability principle.** This widget should expose as much of its
     own operation through the UX as is practical, up to and including
     debug-grade views (e.g. an animated, abstracted data-flow diagram of

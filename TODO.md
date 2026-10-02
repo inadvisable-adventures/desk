@@ -42,7 +42,7 @@ reordered or its description edited.
    `tests/verify/verify_claude_session_event_model.py` (17 checks) plus
    all `verify_claude*` scripts; no live-API run.
 
-dffb428. Claude (Desk) widget: replace the single `QPlainTextEdit` history
+dffb428. COMPLETED: Claude (Desk) widget: replace the single `QPlainTextEdit` history
    (`_history`) with structured per-entry history. Each entry is its own
    framed item carrying its event metadata (turn id, timestamp, source;
    TODO `20ca851`), with visible separation between entries/turns,
@@ -56,6 +56,14 @@ dffb428. Claude (Desk) widget: replace the single `QPlainTextEdit` history
    `20ca851`. Cites
    `../FEEDBACK/FEEDBACK-DESK-claude-desk-message-pairing-corruption-and-history-redesign-2026-10-01-1617.md`
    (Part 2).
+   [planned: claude-desk-structured-history.md (COMPLETED)]
+
+   COMPLETED: Implemented (`desk.claude_history_view`, widget rewired).
+   Fold, user styling and reload-hover (TODOs `ed5c62f`, `78d6207`,
+   `a4c3dec`) are now per-entry features. Verified by the rewritten
+   `verify_claude_desk_history_fold.py` and new
+   `verify_claude_desk_structured_history.py`; whole `tests/verify/` suite
+   passes. Live GUI run skipped.
 
 eb50b84. Claude (Desk) widget: a live architecture/data-flow view, driven by
    the same structured event stream as the history (TODO `20ca851`).

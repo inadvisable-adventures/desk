@@ -263,70 +263,6 @@ def test_mic_transcription_sets_text_via_setplaintext():
     )
 
 
-def _selection_texts(widget) -> list[str]:
-    """The plain text each of widget._history's current extra
-    selections covers, with Qt's own U+2029 paragraph-separator
-    (what QTextCursor.selectedText() uses in place of "\n" across a
-    multi-block selection) converted back to "\n" for comparison
-    against the original appended text."""
-    return [selection.cursor.selectedText().replace(" ", "\n") for selection in widget._history.extraSelections()]
-
-
-def test_send_now_highlights_the_user_line():
-    module = _load_widget_module()
-    widget = module.build()
-    widget._session = _FakeSession()
-
-    widget._send_now("hello there")
-
-    check("sending a message adds exactly one extra selection", len(widget._history.extraSelections()) == 1)
-    check("the selection covers exactly the appended '> ' line", _selection_texts(widget) == ["> hello there"])
-    fmt = widget._history.extraSelections()[0].format
-    check("the selection uses USER_MESSAGE_COLOR", fmt.foreground().color() == module.USER_MESSAGE_COLOR)
-    check("the selection is demi-bold", fmt.fontWeight() == module.QFont.Weight.DemiBold)
-
-
-def test_queued_message_highlights_the_user_line():
-    widget = _load_widget_module().build()
-    widget._session = _FakeSession()
-    widget._busy = True
-
-    widget._prompt_input.setPlainText("queue me")
-    widget._on_send_clicked()
-
-    check("queueing a message adds exactly one extra selection", len(widget._history.extraSelections()) == 1)
-    check("the selection covers exactly the '[queued] ' line", _selection_texts(widget) == ["[queued] queue me"])
-
-
-def test_non_user_lines_add_no_selection():
-    widget = _load_widget_module().build()
-
-    widget._on_assistant_text("an assistant reply")
-    widget._on_tool_use("id1", "Write", {"path": "x"})
-    widget._on_tool_result("id1", "ok", False)
-    widget._on_session_error("boom")
-
-    check("no extra selections come from non-user lines", widget._history.extraSelections() == [])
-    check(
-        "the lines still appear as plain text",
-        all(
-            line in widget._history.toPlainText()
-            for line in ["an assistant reply", "[tool] Write(path='x')", "[tool result] ok", "[error] boom"]
-        ),
-    )
-
-
-def test_multiline_user_text_gets_a_single_selection():
-    widget = _load_widget_module().build()
-
-    widget._append_history("line one\nline two\nline three", is_user=True)
-
-    check(
-        "a multi-line user append is covered by exactly one selection spanning the whole text",
-        _selection_texts(widget) == ["line one\nline two\nline three"],
-    )
-
-
 def test_history_plain_text_matches_pre_styling_output():
     widget = _load_widget_module().build()
     widget._session = _FakeSession()
@@ -341,7 +277,7 @@ def test_history_plain_text_matches_pre_styling_output():
     widget._on_session_error("boom")
 
     check(
-        "the styling overlay leaves toPlainText() exactly what the old unstyled code produced",
+        "the structured history's toPlainText() reads exactly as the old text stream did",
         widget._history.toPlainText()
         == "\n".join(
             [
@@ -356,142 +292,6 @@ def test_history_plain_text_matches_pre_styling_output():
     )
 
 
-# -- hover-triggered history reload control (TODO a4c3dec) -----------
-
-
-def test_reload_text_defaults_to_text_when_omitted():
-    widget = _load_widget_module().build()
-
-    widget._append_history("line one\nline two", is_user=True)
-
-    check(
-        "an is_user append with no reload_text falls back to the full displayed text",
-        widget._history_user_entries and widget._history_user_entries[-1][2] == "line one\nline two",
-    )
-
-
-def test_send_now_records_bare_prompt_as_reload_text():
-    widget = _load_widget_module().build()
-    widget._session = _FakeSession()
-
-    widget._send_now("hello there")
-
-    check("exactly one history entry is recorded", len(widget._history_user_entries) == 1)
-    start, end, reload_text = widget._history_user_entries[0]
-    check("the recorded reload_text is the bare prompt, not '> hello there'", reload_text == "hello there")
-    check(
-        "the recorded (start, end) matches the extra selection's own range",
-        (start, end) == (
-            widget._history.extraSelections()[0].cursor.selectionStart(),
-            widget._history.extraSelections()[0].cursor.selectionEnd(),
-        ),
-    )
-
-
-def test_queued_message_records_bare_prompt_as_reload_text():
-    widget = _load_widget_module().build()
-    widget._session = _FakeSession()
-    widget._busy = True
-
-    widget._prompt_input.setPlainText("queue me")
-    widget._on_send_clicked()
-
-    check("exactly one history entry is recorded", len(widget._history_user_entries) == 1)
-    check(
-        "the recorded reload_text is the bare prompt, not '[queued] queue me'",
-        widget._history_user_entries[0][2] == "queue me",
-    )
-
-
-def test_non_user_lines_add_no_reload_entry():
-    widget = _load_widget_module().build()
-
-    widget._on_assistant_text("an assistant reply")
-    widget._on_tool_use("id1", "Write", {"path": "x"})
-    widget._on_tool_result("id1", "ok", False)
-    widget._on_session_error("boom")
-
-    check("no reload entries come from non-user lines", widget._history_user_entries == [])
-
-
-def test_update_reload_button_shows_over_a_user_line_and_hides_elsewhere():
-    widget = _load_widget_module().build()
-    widget._session = _FakeSession()
-    widget._send_now("hello there")
-
-    start, _end, _reload_text = widget._history_user_entries[0]
-    inside_cursor = QTextCursor(widget._history.document())
-    inside_cursor.setPosition(start + 1)
-    inside_pos = widget._history.cursorRect(inside_cursor).center()
-
-    widget._update_reload_button(inside_pos)
-    check(
-        "hovering inside the user line's range records it as hovered",
-        widget._hovered_reload_entry == widget._history_user_entries[0],
-    )
-    # isHidden(), not isVisible(): the latter also depends on the
-    # whole ancestor chain actually being shown (widget.show() is
-    # never called in this headless suite), so it would read False
-    # regardless of the button's own explicit show()/hide() state --
-    # isHidden() reflects only that explicit state.
-    check("hovering inside the user line's range shows the reload button", not widget._reload_button.isHidden())
-
-    widget._hide_reload_button()
-    check("_hide_reload_button clears the hovered entry", widget._hovered_reload_entry is None)
-    check("_hide_reload_button hides the button", widget._reload_button.isHidden())
-
-
-def test_update_reload_button_ignores_non_user_text():
-    widget = _load_widget_module().build()
-    widget._on_assistant_text("an assistant reply")
-
-    end_cursor = QTextCursor(widget._history.document())
-    end_cursor.movePosition(QTextCursor.MoveOperation.End)
-    pos = widget._history.cursorRect(end_cursor).center()
-
-    widget._update_reload_button(pos)
-    check("hovering over a non-user line never shows the reload button", widget._reload_button.isHidden())
-    check("hovering over a non-user line records no hovered entry", widget._hovered_reload_entry is None)
-
-
-def test_on_reload_clicked_loads_the_bare_prompt_into_prompt_input():
-    widget = _load_widget_module().build()
-    widget._session = _FakeSession()
-    widget._send_now("edit and resend me")
-    widget._hovered_reload_entry = widget._history_user_entries[0]
-
-    widget._prompt_input.setPlainText("something typed in the meantime")
-    widget._on_reload_clicked()
-
-    check(
-        "clicking reload replaces _prompt_input's text with the original bare prompt",
-        widget._prompt_input.toPlainText() == "edit and resend me",
-    )
-    check("clicking reload hides the button afterward", widget._reload_button.isHidden())
-    check("clicking reload clears the hovered entry", widget._hovered_reload_entry is None)
-
-
-def test_on_reload_clicked_is_a_no_op_with_no_hovered_entry():
-    widget = _load_widget_module().build()
-    widget._prompt_input.setPlainText("untouched")
-
-    widget._on_reload_clicked()
-
-    check(
-        "clicking reload with nothing hovered leaves _prompt_input untouched",
-        widget._prompt_input.toPlainText() == "untouched",
-    )
-
-
-def test_reload_button_parented_to_history_viewport_only():
-    widget = _load_widget_module().build()
-
-    check(
-        "the reload button's parent is _history's own viewport, not _prompt_input or the widget itself",
-        widget._reload_button.parent() is widget._history.viewport(),
-    )
-
-
 test_widget_json_is_well_formed()
 test_window_wiring()
 test_permission_mode_combo_present_and_defaults_to_default()
@@ -503,20 +303,7 @@ test_plain_enter_sends_without_inserting_a_newline()
 test_shift_enter_inserts_a_newline_without_sending()
 test_on_send_clicked_reads_and_clears_the_multiline_box()
 test_mic_transcription_sets_text_via_setplaintext()
-test_send_now_highlights_the_user_line()
-test_queued_message_highlights_the_user_line()
-test_non_user_lines_add_no_selection()
-test_multiline_user_text_gets_a_single_selection()
 test_history_plain_text_matches_pre_styling_output()
-test_reload_text_defaults_to_text_when_omitted()
-test_send_now_records_bare_prompt_as_reload_text()
-test_queued_message_records_bare_prompt_as_reload_text()
-test_non_user_lines_add_no_reload_entry()
-test_update_reload_button_shows_over_a_user_line_and_hides_elsewhere()
-test_update_reload_button_ignores_non_user_text()
-test_on_reload_clicked_loads_the_bare_prompt_into_prompt_input()
-test_on_reload_clicked_is_a_no_op_with_no_hovered_entry()
-test_reload_button_parented_to_history_viewport_only()
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

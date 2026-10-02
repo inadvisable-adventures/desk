@@ -1,7 +1,6 @@
-from dataclasses import dataclass
 
-from PyQt6.QtCore import QEvent, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QTextCharFormat, QTextCursor
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QTextCursor
 from PyQt6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -10,11 +9,11 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QPlainTextEdit,
     QPushButton,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
+from desk.claude_history_view import HistoryEntry, HistoryView
 from desk.claude_session import TERMINAL_TASK_STATUSES, ClaudeSession
 from desk.shell import current_context
 from desk.speech import TranscriptionResult
@@ -112,50 +111,6 @@ TASKS_PANEL_HEIGHT = 140
 # the visible height is capped.
 PROMPT_INPUT_HEIGHT = 60
 
-# TODO 78d6207: this app's established accent blue -- see
-# widgets/editor/widget.py's own CARET_COLOR, which names this exact
-# hex as such -- reused here rather than inventing a new color to
-# visually set user-authored history lines apart from everything else.
-USER_MESSAGE_COLOR = QColor("#3daee9")
-
-# TODO ed5c62f: a collapsed tool-invocation header's own background
-# tint -- a low-alpha neutral gray reads reasonably against either a
-# light or dark palette, unlike a saturated color that would need a
-# theme-aware choice. Cleared entirely (no extra-selection at all) once
-# expanded -- no separate "expanded" tint needed, matching how a
-# regular history line looks.
-FOLD_COLLAPSED_COLOR = QColor(128, 128, 128, 60)
-
-# TODO ed5c62f: a tool call/result whose formatted text already fits on
-# one line within this many characters shows in full, with no fold
-# affordance at all -- only a genuinely long/multi-line payload (e.g. a
-# Write's full file contents, a long Bash stdout) gets collapsed.
-FOLD_HEADER_PREVIEW_MAX_CHARS = 80
-
-FOLD_HINT_TEXT = "(tool call/result details are collapsed by default -- click a line to expand/collapse)"
-
-
-@dataclass
-class _FoldEntry:
-    """One collapsible tool-invocation entry in `_history` (TODO
-    `ed5c62f`). `header_start`/`header_end` are absolute character
-    offsets into `_history`'s document, computed the exact same way
-    `_append_history` already computes a user line's own start/end --
-    stable once recorded, since folding/unfolding only ever toggles
-    `QTextBlock.setVisible()` on the *detail* blocks below, which
-    (confirmed directly -- see plans/claude-desk-history-fold.md)
-    never changes the document's character positions/count at all.
-    `first_detail_block`/`last_detail_block` are `QTextBlock` numbers
-    (also stable once appended) spanning the hidden detail text, which
-    may itself be several blocks (a multi-line payload)."""
-
-    header_start: int
-    header_end: int
-    first_detail_block: int
-    last_detail_block: int
-    expanded: bool = False
-
-
 def _doc_path() -> str:
     directory = current_context.get_current_desk_directory()
     if directory is not None:
@@ -175,21 +130,6 @@ def _development_process_instruction() -> str:
 
 def _format_tool_input(tool_input: dict) -> str:
     return ", ".join(f"{key}={value!r}" for key, value in tool_input.items())
-
-
-def _truncate_for_header(text: str, max_chars: int = FOLD_HEADER_PREVIEW_MAX_CHARS) -> str:
-    """`text` unchanged if it's a single line within `max_chars` --
-    the caller (`_on_tool_use`/`_on_tool_result`) compares the return
-    value against the original to decide whether there's anything left
-    to fold at all (TODO `ed5c62f`): a result equal to its input means
-    nothing was hidden, so no fold entry is created for it. Otherwise a
-    truncated, single-line preview (first line only, capped, trailing
-    "…") -- always different from the input by construction, whether
-    because it was too long or because a later line got dropped."""
-    first_line, _, rest = text.partition("\n")
-    if not rest and len(first_line) <= max_chars:
-        return text
-    return first_line[:max_chars].rstrip() + "…"
 
 
 class _PromptInput(QPlainTextEdit):
@@ -225,6 +165,12 @@ class ClaudeDeskWidget(QWidget):
         super().__init__(parent)
 
         self._session = ClaudeSession()
+        # TODO dffb428: connected before the legacy per-kind signals --
+        # ClaudeSession emits session_event first for every message, so
+        # (queued connections preserve order) _on_session_event has
+        # recorded the message's turn/provenance by the time the
+        # matching legacy handler below renders it.
+        self._session.session_event.connect(self._on_session_event)
         self._session.assistant_text.connect(self._on_assistant_text)
         self._session.tool_use.connect(self._on_tool_use)
         self._session.tool_result.connect(self._on_tool_result)
@@ -315,47 +261,23 @@ class ClaudeDeskWidget(QWidget):
         self._tasks_list.setVisible(False)
         self._update_tasks_toggle_label()
 
-        self._history = QPlainTextEdit()
-        self._history.setReadOnly(True)
-        # TODO 78d6207: accumulated across the whole session and
-        # re-applied wholesale on every user line (see _append_history)
-        # -- QPlainTextEdit.setExtraSelections() always replaces its
-        # entire argument, so earlier highlights must be tracked here
-        # rather than appended to Qt's own list.
-        self._history_user_selections: list[QTextEdit.ExtraSelection] = []
-        # TODO a4c3dec: (start, end, reload_text) per user line, same
-        # start/end offsets as the extra-selection highlight above --
-        # reload_text is the bare prompt (no "> "/"[queued] " display
-        # prefix), what the hover control below hands back to
-        # _prompt_input.
-        self._history_user_entries: list[tuple[int, int, str]] = []
-        # A single floating "reload" button that follows the mouse to
-        # the hovered user line, mirroring widgets/todo/widget.py's own
-        # "open plan" button (_plan_button/_on_item_entered/
-        # eventFilter/_hide_plan_button, see
-        # plans/todo-open-plan-button.md) as closely as QPlainTextEdit
-        # (no QListWidget.itemEntered equivalent) allows -- see
-        # plans/claude-desk-history-reload-hover.md. The event filter
-        # only observes MouseMove/Leave on the viewport and never
-        # consumes them, so normal click-drag text selection inside
-        # _history is untouched.
-        self._history.setMouseTracking(True)
-        self._history.viewport().setMouseTracking(True)
-        self._history.viewport().installEventFilter(self)
-        self._history.verticalScrollBar().valueChanged.connect(self._hide_reload_button)
-        self._reload_button = QPushButton("↺ Reload", self._history.viewport())
-        self._reload_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._reload_button.hide()
-        self._reload_button.clicked.connect(self._on_reload_clicked)
-        self._hovered_reload_entry: tuple[int, int, str] | None = None
-
-        # TODO ed5c62f: tool-invocation fold/collapse state -- see
-        # _append_foldable_history/_toggle_fold and plans/claude-desk
-        # -history-fold.md.
-        self._history_fold_entries: list[_FoldEntry] = []
-        self._history_fold_header_selections: list[QTextEdit.ExtraSelection] = []
-        self._shown_fold_hint = False
-        self._fold_press_entry: _FoldEntry | None = None
+        # TODO dffb428: structured history -- one framed, individually
+        # collapsible entry per item, each carrying turn/time/source
+        # metadata (see desk.claude_history_view). Replaces the single
+        # QPlainTextEdit text stream and its extra-selection overlays
+        # (TODOs 78d6207 user coloring, ed5c62f tool folds, a4c3dec hover
+        # reload), all of which are now per-entry features.
+        self._history = HistoryView()
+        self._history.on_reload = self._on_reload_requested
+        # Provenance from ClaudeSession.session_event (TODO 20ca851):
+        # the latest event (consumed by the legacy handler that follows
+        # it), the turn currently in flight, user entries still waiting
+        # for their turn id, and whether the next stream entry begins an
+        # unsolicited (CLI-initiated) turn.
+        self._current_event: dict | None = None
+        self._active_turn_id: int | None = None
+        self._unassigned_user_entries: list[HistoryEntry] = []
+        self._next_entry_starts_turn = False
 
         self._prompt_input = _PromptInput()
         self._prompt_input.setPlaceholderText("Message Claude...")
@@ -428,7 +350,7 @@ class ClaudeDeskWidget(QWidget):
         self._status_label.setText("Connecting...")
         self._set_busy(True)
         if initial_prompt:
-            self._append_history(f"> {initial_prompt}", is_user=True, reload_text=initial_prompt)
+            self._add_user_entry(initial_prompt, initial_prompt)
         else:
             # Resuming with nothing queued to send: connect() alone
             # never fires turn_complete/session_error (there's no
@@ -554,179 +476,49 @@ class ClaudeDeskWidget(QWidget):
         if adjuster is not None and self._session_id is not None:
             adjuster(self._session_id, TASKS_PANEL_HEIGHT if checked else -TASKS_PANEL_HEIGHT)
 
-    def _append_history(self, text: str, *, is_user: bool = False, reload_text: str | None = None) -> None:
-        self._history.appendPlainText(text)
-        if not is_user:
-            return
-        # setExtraSelections() (TODO 78d6207) is a pure render overlay
-        # -- never part of the document, never in toPlainText(), never
-        # in what gets copied -- so this adds visual differentiation
-        # with zero risk to today's plain-text selection/copy output.
-        # end/start computed from `text`'s own length, not block
-        # counting: correct whether or not appendPlainText needed to
-        # insert a leading block separator (not part of `text`, so
-        # irrelevant to this arithmetic) and whether `text` itself
-        # contains embedded newlines (each becomes a block boundary
-        # that still consumes exactly one character position, same as
-        # a literal "\n" here) -- covers a multi-line prompt correctly,
-        # not just a single line.
-        end = self._history.document().characterCount() - 1
-        start = end - len(text)
-        cursor = QTextCursor(self._history.document())
-        cursor.setPosition(start)
-        cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
-        selection = QTextEdit.ExtraSelection()
-        selection.cursor = cursor
-        fmt = QTextCharFormat()
-        fmt.setForeground(USER_MESSAGE_COLOR)
-        fmt.setFontWeight(QFont.Weight.DemiBold)
-        selection.format = fmt
-        self._history_user_selections.append(selection)
-        self._refresh_history_extra_selections()
-        # TODO a4c3dec: reload_text defaults to `text` itself (the
-        # pre-existing direct is_user=True call sites/tests pass no
-        # reload_text at all) -- every real call site below passes the
-        # bare prompt explicitly.
-        self._history_user_entries.append((start, end, text if reload_text is None else reload_text))
+    # -- structured history (TODO dffb428) ----------------------------
 
-    # -- tool-invocation fold/collapse (TODO ed5c62f) ------------------
+    def _on_session_event(self, event: dict) -> None:
+        kind = event["kind"]
+        self._current_event = event
+        if kind == "turn_started":
+            self._active_turn_id = event["turn_id"]
+            if self._unassigned_user_entries:
+                self._unassigned_user_entries.pop(0).set_turn(event["turn_id"])
+        elif kind == "unsolicited_turn_started":
+            self._next_entry_starts_turn = True
+        elif kind == "turn_complete" and event["solicited"]:
+            self._active_turn_id = None
 
-    def _refresh_history_extra_selections(self) -> None:
-        """setExtraSelections() always *replaces* its whole argument
-        (TODO 78d6207's own pre-existing note) -- now two independent
-        features (user-message coloring, collapsed-fold-header tinting)
-        each contribute their own list, so both are combined here
-        rather than either one clobbering the other's highlights."""
-        self._history.setExtraSelections(self._history_user_selections + self._history_fold_header_selections)
-
-    def _append_foldable_history(self, header: str, detail: str) -> None:
-        """Appends `header` as a normal, always-visible history line,
-        then `detail` (which may itself span several lines/blocks) as
-        hidden-by-default detail underneath it -- clicking the header
-        toggles it (see eventFilter/_toggle_fold). Only ever called
-        once the caller has already confirmed there's real detail to
-        hide (see _truncate_for_header's own docstring); every other
-        history line still goes through the plain _append_history."""
-        if not self._shown_fold_hint:
-            self._shown_fold_hint = True
-            self._append_history(FOLD_HINT_TEXT)
-
-        document = self._history.document()
-        self._history.appendPlainText(header)
-        header_end = document.characterCount() - 1
-        header_start = header_end - len(header)
-
-        first_detail_block = document.blockCount()
-        self._history.appendPlainText(detail)
-        last_detail_block = document.blockCount() - 1
-
-        entry = _FoldEntry(header_start, header_end, first_detail_block, last_detail_block)
-        self._history_fold_entries.append(entry)
-        self._set_fold_detail_visible(entry, False)
-        self._refresh_fold_header_selections()
-
-    def _set_fold_detail_visible(self, entry: _FoldEntry, visible: bool) -> None:
-        document = self._history.document()
-        block = document.findBlockByNumber(entry.first_detail_block)
-        end_of_span = block.position()
-        while block.isValid() and block.blockNumber() <= entry.last_detail_block:
-            block.setVisible(visible)
-            end_of_span = block.position() + block.length()
-            block = block.next()
-        first_block = document.findBlockByNumber(entry.first_detail_block)
-        # Required for QPlainTextEdit's own document layout to actually
-        # redo line-height layout after a block's visibility changes --
-        # confirmed directly (plans/claude-desk-history-fold.md), not
-        # assumed to just work from setVisible() alone.
-        document.markContentsDirty(first_block.position(), end_of_span - first_block.position())
-        self._history.viewport().update()
-
-    def _refresh_fold_header_selections(self) -> None:
-        selections = []
-        for entry in self._history_fold_entries:
-            if entry.expanded:
-                continue
-            cursor = QTextCursor(self._history.document())
-            cursor.setPosition(entry.header_start)
-            cursor.setPosition(entry.header_end, QTextCursor.MoveMode.KeepAnchor)
-            selection = QTextEdit.ExtraSelection()
-            selection.cursor = cursor
-            fmt = QTextCharFormat()
-            fmt.setBackground(FOLD_COLLAPSED_COLOR)
-            selection.format = fmt
-            selections.append(selection)
-        self._history_fold_header_selections = selections
-        self._refresh_history_extra_selections()
-
-    def _fold_entry_at(self, pos) -> _FoldEntry | None:
-        position = self._history.cursorForPosition(pos).position()
-        return next(
-            (entry for entry in self._history_fold_entries if entry.header_start <= position <= entry.header_end),
-            None,
+    def _add_entry(self, kind: str, text: str, *, from_stream: bool = False, reload_text: str | None = None) -> HistoryEntry:
+        """Appends one history entry. `from_stream` entries (assistant
+        text, tool calls/results, session errors) take their turn id and
+        source from the session_event that immediately preceded the
+        legacy signal being handled; everything else is attributed to
+        the turn currently in flight (if any)."""
+        event = self._current_event if from_stream else None
+        turn_start = False
+        source = ""
+        if event is not None:
+            turn_id = event["turn_id"]
+            if not event["solicited"]:
+                source = "unsolicited"
+            if self._next_entry_starts_turn:
+                turn_start = True
+                self._next_entry_starts_turn = False
+        else:
+            turn_id = self._active_turn_id
+        return self._history.add_entry(
+            kind, text, turn_id=turn_id, source=source, turn_start=turn_start, reload_text=reload_text
         )
 
-    def _toggle_fold(self, entry: _FoldEntry) -> None:
-        entry.expanded = not entry.expanded
-        self._set_fold_detail_visible(entry, entry.expanded)
-        self._refresh_fold_header_selections()
+    def _add_user_entry(self, text: str, reload_text: str) -> None:
+        # A user prompt opens a turn; its id arrives later with the
+        # turn_started event (see _on_session_event).
+        entry = self._history.add_entry("user", text, turn_start=True, reload_text=reload_text)
+        self._unassigned_user_entries.append(entry)
 
-    # -- hover-triggered history reload control (TODO a4c3dec) --------
-
-    def eventFilter(self, obj, event) -> bool:
-        # Only observes _history's own viewport -- never consumed (no
-        # event.accept()/return True anywhere below), so none of this
-        # ever interferes with _history's normal click-drag text
-        # selection, and _prompt_input is entirely untouched since the
-        # filter isn't installed there at all.
-        if obj is self._history.viewport():
-            if event.type() == QEvent.Type.MouseMove:
-                self._update_reload_button(event.position().toPoint())
-            elif event.type() == QEvent.Type.Leave:
-                self._hide_reload_button()
-            elif event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
-                # TODO ed5c62f: only recorded here, actually toggled on
-                # release (below) -- see _toggle_fold's own guard
-                # against misreading a click-and-drag text selection
-                # that happens to start on a header line as a toggle.
-                self._fold_press_entry = self._fold_entry_at(event.position().toPoint())
-            elif event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
-                if self._fold_press_entry is not None and self._fold_press_entry is self._fold_entry_at(
-                    event.position().toPoint()
-                ):
-                    self._toggle_fold(self._fold_press_entry)
-                self._fold_press_entry = None
-        return super().eventFilter(obj, event)
-
-    def _update_reload_button(self, pos) -> None:
-        position = self._history.cursorForPosition(pos).position()
-        entry = next(
-            (candidate for candidate in self._history_user_entries if candidate[0] <= position <= candidate[1]),
-            None,
-        )
-        if entry is None:
-            self._hide_reload_button()
-            return
-        if entry != self._hovered_reload_entry:
-            self._hovered_reload_entry = entry
-            start, _end, _reload_text = entry
-            line_cursor = QTextCursor(self._history.document())
-            line_cursor.setPosition(start)
-            rect = self._history.cursorRect(line_cursor)
-            self._reload_button.adjustSize()
-            size = self._reload_button.size()
-            x = self._history.viewport().width() - size.width() - 6
-            self._reload_button.move(max(0, x), rect.top())
-        self._reload_button.show()
-        self._reload_button.raise_()
-
-    def _hide_reload_button(self) -> None:
-        self._hovered_reload_entry = None
-        self._reload_button.hide()
-
-    def _on_reload_clicked(self) -> None:
-        if self._hovered_reload_entry is None:
-            return
-        _start, _end, reload_text = self._hovered_reload_entry
+    def _on_reload_requested(self, reload_text: str) -> None:
         # setPlainText, not appending/sending (TODO fe7d8f2's own
         # dictated-text precedent) -- the user reviews/edits before
         # anything goes to Claude; reload is "start over from this
@@ -734,7 +526,6 @@ class ClaudeDeskWidget(QWidget):
         self._prompt_input.setPlainText(reload_text)
         self._prompt_input.moveCursor(QTextCursor.MoveOperation.End)
         self._prompt_input.setFocus()
-        self._hide_reload_button()
 
     def _set_busy(self, busy: bool) -> None:
         self._busy = busy
@@ -762,7 +553,7 @@ class ClaudeDeskWidget(QWidget):
         self._queue_label.setVisible(True)
 
     def _send_now(self, text: str) -> None:
-        self._append_history(f"> {text}", is_user=True, reload_text=text)
+        self._add_user_entry(text, text)
         self._set_busy(True)
         self._session.send_prompt(text)
 
@@ -784,7 +575,7 @@ class ClaudeDeskWidget(QWidget):
         self._prompt_input.clear()
         if self._busy:
             self._message_queue.append(text)
-            self._append_history(f"[queued] {text}", is_user=True, reload_text=text)
+            self._add_entry("queued", text, reload_text=text)
             self._update_queue_label()
         else:
             self._send_now(text)
@@ -834,29 +625,15 @@ class ClaudeDeskWidget(QWidget):
         self._status_label.setText("Idle.")
 
     def _on_assistant_text(self, text: str) -> None:
-        self._append_history(text)
+        self._add_entry("assistant", text, from_stream=True)
 
     def _on_tool_use(self, tool_use_id: str, name: str, tool_input: dict) -> None:
-        # TODO ed5c62f: folded (collapsed by default) only when the
-        # full formatted args actually differ from the header's own
-        # truncated preview -- a short call (no args, or args that
-        # already fit) shows in full, exactly as before this change.
-        args_text = _format_tool_input(tool_input)
-        preview = _truncate_for_header(args_text) if args_text else ""
-        header = f"[tool] {name}({preview})"
-        if args_text and preview != args_text:
-            self._append_foldable_history(header, args_text)
-        else:
-            self._append_history(header)
+        # Long payloads collapse by default inside the entry itself
+        # (see desk.claude_history_view.collapse_preview).
+        self._add_entry("tool", f"{name}({_format_tool_input(tool_input)})", from_stream=True)
 
     def _on_tool_result(self, tool_use_id: str, content: object, is_error: bool) -> None:
-        marker = "tool error" if is_error else "tool result"
-        text = str(content)
-        preview = _truncate_for_header(text)
-        if preview != text:
-            self._append_foldable_history(f"[{marker}] {preview}", text)
-        else:
-            self._append_history(f"[{marker}] {text}")
+        self._add_entry("tool_error" if is_error else "tool_result", str(content), from_stream=True)
 
     def _on_permission_request(self, request_id: str, tool_name: str, tool_input: dict) -> None:
         self._pending_permissions.append((request_id, tool_name, tool_input))
@@ -875,7 +652,7 @@ class ClaudeDeskWidget(QWidget):
             return
         request_id, tool_name, _tool_input = self._pending_permissions.pop(0)
         self._session.respond_to_permission(request_id, allow, "" if allow else "Denied by user.")
-        self._append_history(f"[permission] {'allowed' if allow else 'denied'} {tool_name}")
+        self._add_entry("permission", f"{'allowed' if allow else 'denied'} {tool_name}")
         self._show_next_permission()
 
     def _on_turn_complete(self, summary: dict) -> None:
@@ -890,7 +667,7 @@ class ClaudeDeskWidget(QWidget):
         # something themselves -- no auto-retry for this first pass.
         self._set_busy(False)
         self._status_label.setText(f"Error: {message}")
-        self._append_history(f"[error] {message}")
+        self._add_entry("error", message, from_stream=True)
 
     # -- AskUserQuestion (TODO 6ab9e85) ------------------------------
 
@@ -985,7 +762,7 @@ class ClaudeDeskWidget(QWidget):
             return
         request_id, _tool_input = self._pending_questions.pop(0)
         self._session.respond_to_question(request_id, answers)
-        self._append_history("[question] answered: " + "; ".join(f"{q} -> {a}" for q, a in answers.items()))
+        self._add_entry("question", "answered: " + "; ".join(f"{q} -> {a}" for q, a in answers.items()))
         self._show_next_question()
 
     def _skip_question(self) -> None:
@@ -993,7 +770,7 @@ class ClaudeDeskWidget(QWidget):
             return
         request_id, _tool_input = self._pending_questions.pop(0)
         self._session.respond_to_question(request_id, None)
-        self._append_history("[question] skipped")
+        self._add_entry("question", "skipped")
         self._show_next_question()
 
 
