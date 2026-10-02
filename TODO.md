@@ -9886,6 +9886,60 @@ db1cd65. Claude (Desk) widget: context-window awareness and manual
    `../FEEDBACK/FEEDBACK-DESK-claude-desk-progress-interrupt-compact-2026-09-18-2035.md`
    (part 3).
 
+20ca851. Claude (Desk) widget: stop turn mis-pairing, and make the session's
+   internal events observable. First piece of the widget's event model
+   (see the "Observability principle" in `design-docs/architecture.md`
+   item 30). (1) Enforce the single-consumer invariant in
+   `ClaudeSession` itself: an `asyncio.Lock` (or equivalent) around
+   `_query_and_stream`'s body, so a second concurrent call queues
+   instead of racing the SDK's one shared, unlabeled
+   `receive_response()` stream -- today only the widget's
+   `_busy`/`_message_queue` guards that. (2) Attach a monotonically
+   increasing local turn id, a timestamp and a source/kind to every
+   event `ClaudeSession` emits (`assistant_text`, `tool_use`,
+   `tool_result`, `turn_complete`, `task_event`), as one structured
+   event shape that history, task list, usage indicators and the
+   data-flow view (TODO `eb50b84`) can all consume; design it so token/
+   context usage (TODOs `db2402c`, `db1cd65`) fits the same model. (3)
+   Detect the already-broken state: a `ResultMessage` arriving with no
+   outstanding query is surfaced loudly (a `session_error`-style
+   signal), never rendered as correct-looking output. (4) Verify with a
+   `tests/verify/` script using a fake client that overlaps two turns.
+   Also records the SDK finding in `LEARNINGS.md` (one shared,
+   unlabeled message stream per `ClaudeSDKClient`; no request id).
+   Cites
+   `../FEEDBACK/FEEDBACK-DESK-claude-desk-message-pairing-corruption-and-history-redesign-2026-10-01-1617.md`
+   (Part 1); also confirms the open link in
+   `../FEEDBACK/FEEDBACK-DESK-claude-desk-message-ordering-scheduled-wakeup-2026-09-22-1734.md`.
+
+dffb428. Claude (Desk) widget: replace the single `QPlainTextEdit` history
+   (`_history`) with structured per-entry history. Each entry is its own
+   framed item carrying its event metadata (turn id, timestamp, source;
+   TODO `20ca851`), with visible separation between entries/turns,
+   "collapsed by default, expand for detail" as the standard
+   presentation for every entry type (generalizing the existing fold
+   from TODO `ed5c62f`, which today only covers long tool calls/
+   results; long assistant replies are the obvious first extension),
+   and background-task activity guaranteed separate by provenance
+   rather than merely by message type. Part of the principle that the
+   widget exposes more of its operation through its UX. Depends on TODO
+   `20ca851`. Cites
+   `../FEEDBACK/FEEDBACK-DESK-claude-desk-message-pairing-corruption-and-history-redesign-2026-10-01-1617.md`
+   (Part 2).
+
+eb50b84. Claude (Desk) widget: a live architecture/data-flow view, driven by
+   the same structured event stream as the history (TODO `20ca851`).
+   Toggleable panel or tab showing an abstracted pipeline (prompt ->
+   queue -> `ClaudeSession` -> SDK client/CLI subprocess -> shared
+   stream -> signal -> widget) with animated markers for messages in
+   flight, queue depth, the in-flight turn id and active background
+   tasks, so a mis-pairing or stall is visible as it happens. Plain Qt
+   painting, no new dependency. A deliberately debug-grade view; the
+   direct user ask is that the widget's internals be observable in the
+   UX, including at this extreme. Depends on TODO `20ca851`. Cites
+   `../FEEDBACK/FEEDBACK-DESK-claude-desk-message-pairing-corruption-and-history-redesign-2026-10-01-1617.md`
+   (Part 2) plus direct user direction.
+
 d0a4c7b. Fix widget stacking on the canvas (`src/desk/shell/canvas.py`).
    (1) `Canvas.add_widget` never sets the new proxy's z-value, so a
    freshly placed widget (e.g. one opened by a Project Files

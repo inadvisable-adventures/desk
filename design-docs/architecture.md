@@ -748,6 +748,24 @@ Desk Bridge API.
     -- that is the only answer channel, so a plain Allow delivers
     nothing. Skip returns a deny. `annotations`/`preview` are ignored.
 
+    **Observability principle.** This widget should expose as much of its
+    own operation through the UX as is practical, up to and including
+    debug-grade views (e.g. an animated, abstracted data-flow diagram of
+    prompt -> queue -> `ClaudeSession` -> SDK/CLI -> shared message
+    stream -> signals -> widget). Concretely: `ClaudeSession` emits one
+    structured event model (turn id, timestamp, source/kind, plus usage/
+    context data where available) and every view -- history, task list,
+    usage indicators, flow view -- renders from that same stream rather
+    than from ad hoc signals or positional assumptions. Motivation: the
+    SDK's `receive_response()` is one shared, unlabeled stream per
+    `ClaudeSDKClient`, so without per-event provenance an overlapping
+    turn silently and permanently mis-pairs replies with requests
+    (observed: a constant -3 offset). Planned work: TODOs `20ca851`
+    (serialize turns, event model, mismatch detection), `dffb428`
+    (structured history), `eb50b84` (data-flow view), alongside
+    `db2402c`/`db1cd65` (usage/context). Source:
+    `../FEEDBACK/FEEDBACK-DESK-claude-desk-message-pairing-corruption-and-history-redesign-2026-10-01-1617.md`.
+
 31. **Desk-hosted microservices** (`desk.hmsvc`, `desk.hmsvc_host`,
     `desk.hmsvc_client`, `widgets/hmsvc_manager/`, TODO `e75b165`) —
     user-authored Python services under `<project>/desk_hmsvc/<name>/
