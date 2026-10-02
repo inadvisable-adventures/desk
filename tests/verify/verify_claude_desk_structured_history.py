@@ -52,6 +52,12 @@ class _FakeSession:
     def send_prompt(self, text):
         self.sent.append(text)
 
+    def stop(self):
+        pass
+
+    def respond_to_permission(self, *args):
+        pass
+
 
 module = _load_widget_module()
 
@@ -117,7 +123,6 @@ def test_permission_and_question_entries_attach_to_the_active_turn():
     widget._session = _FakeSession()
     widget._on_session_event(_event("turn_started", 4))
     widget._pending_permissions.append(("r1", "Bash", {}))
-    widget._session.respond_to_permission = lambda *a: None
     widget._resolve_current_permission(True)
     check("permission decision is filed under the in-flight turn", widget._history.entries()[-1].meta.turn_id == 4)
     widget._on_session_event(_event("turn_complete", 4))
