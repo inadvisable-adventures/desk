@@ -60,7 +60,7 @@ def test_claude_session_emits_task_event_for_each_message_type():
         uuid="u1",
         session_id="s1",
     )
-    session._handle_message(started, 1, True)
+    session._handle_message(started)
     check(
         "TaskStartedMessage emits description+running status",
         seen[-1] == ("t1", {"description": "run the build", "status": "running"}),
@@ -76,7 +76,7 @@ def test_claude_session_emits_task_event_for_each_message_type():
         session_id="s1",
         last_tool_name="Bash",
     )
-    session._handle_message(progress, 1, True)
+    session._handle_message(progress)
     check(
         "TaskProgressMessage emits description+running status+last_tool_name",
         seen[-1] == ("t1", {"description": "still building", "status": "running", "last_tool_name": "Bash"}),
@@ -92,7 +92,7 @@ def test_claude_session_emits_task_event_for_each_message_type():
         uuid="u3",
         session_id="s1",
     )
-    session._handle_message(notification, 1, True)
+    session._handle_message(notification)
     check(
         "TaskNotificationMessage emits status+summary",
         seen[-1] == ("t1", {"status": "completed", "summary": "build succeeded"}),
@@ -107,7 +107,7 @@ def test_claude_session_emits_task_event_for_each_message_type():
         session_id="s1",
         uuid="u4",
     )
-    session._handle_message(updated, 1, True)
+    session._handle_message(updated)
     check(
         "TaskUpdatedMessage folds patch.status into the emitted patch",
         seen[-1] == ("t2", {"end_time": "now", "status": "killed"}),
@@ -122,7 +122,7 @@ def test_claude_session_emits_task_event_for_each_message_type():
         session_id="s1",
         uuid="u5",
     )
-    session._handle_message(updated_no_status, 1, True)
+    session._handle_message(updated_no_status)
     check(
         "TaskUpdatedMessage with status=None leaves it out of the emitted patch",
         seen[-1] == ("t2", {"end_time": "later"}),

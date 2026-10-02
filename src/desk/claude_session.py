@@ -35,6 +35,7 @@ bypassPermissions. See plans/scoped-claude-session-api.md.
 """
 import asyncio
 import threading
+import time
 import uuid
 from pathlib import Path
 
@@ -128,6 +129,14 @@ class ClaudeSession(QObject):
     # assumed: without this, the widget's prompt input would stay
     # disabled forever after a resume with nothing queued to send.
     connected = pyqtSignal()
+    # TODO 20ca851: the structured event model -- every message handed
+    # up from the SDK stream, as one dict: {"seq" (global, monotonic),
+    # "ts" (epoch seconds), "turn_id", "solicited" (False for output the
+    # CLI produced on its own, e.g. a ScheduleWakeup continuation), "kind",
+    # "data"}. The legacy per-kind signals above still fire alongside it;
+    # new views (structured history, flow view, usage indicators) should
+    # consume this one. See plans/claude-session-event-model-and-turn-serialization.md.
+    session_event = pyqtSignal(dict)
 
     def __init__(self) -> None:
         super().__init__()
@@ -142,6 +151,18 @@ class ClaudeSession(QObject):
         # _check_path_scope, itself only ever invoked (by the SDK) after
         # start() has run, so no race with __init__'s own None default.
         self._allowed_paths: list[Path] | None = None
+        # TODO 20ca851: all of the following are only touched from
+        # _loop's own thread. ClaudeSDKClient has ONE shared, unlabeled
+        # message stream, so exactly one persistent reader consumes it
+        # (_reader_loop) and turns are serialized by _turn_lock.
+        self._reader_task: asyncio.Task | None = None
+        self._turn_lock: asyncio.Lock | None = None
+        self._lock_loop: asyncio.AbstractEventLoop | None = None
+        self._turn_counter = 0
+        self._event_seq = 0
+        # (turn_id, future resolved when that turn's ResultMessage arrives)
+        self._pending_turn: tuple[int, asyncio.Future] | None = None
+        self._unsolicited_turn_id: int | None = None
 
     def start(
         self,
@@ -259,40 +280,134 @@ class ClaudeSession(QObject):
         except Exception as exc:  # noqa: BLE001 -- surfaced to the user, not swallowed
             self.session_error.emit(str(exc))
 
-    async def _query_and_stream(self, text: str) -> None:
+    def _emit_event(self, kind: str, turn_id: int | None, solicited: bool, data: dict) -> None:
+        self._event_seq += 1
+        self.session_event.emit(
+            {
+                "seq": self._event_seq,
+                "ts": time.time(),
+                "turn_id": turn_id,
+                "solicited": solicited,
+                "kind": kind,
+                "data": data,
+            }
+        )
+
+    def _ensure_reader(self) -> None:
+        """Starts the persistent reader (and the turn lock, bound to the
+        running loop) if not already running on this loop."""
+        loop = asyncio.get_running_loop()
+        if self._lock_loop is not loop:
+            self._turn_lock = asyncio.Lock()
+            self._lock_loop = loop
+        if self._reader_task is None or self._reader_task.done() or self._reader_task.get_loop() is not loop:
+            self._reader_task = loop.create_task(self._reader_loop())
+
+    async def _reader_loop(self) -> None:
         assert self._client is not None
         try:
-            await self._client.query(text)
-            async for message in self._client.receive_response():
-                self._handle_message(message)
+            async for message in self._client.receive_messages():
+                self._dispatch(message)
+            failure = "Claude's message stream ended unexpectedly."
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:  # noqa: BLE001
-            self.session_error.emit(str(exc))
+            failure = str(exc)
+        self._fail_pending(failure)
 
-    def _handle_message(self, message: object) -> None:
+    def _fail_pending(self, message: str) -> None:
+        pending = self._pending_turn
+        turn_id = pending[0] if pending is not None else self._unsolicited_turn_id
+        self._unsolicited_turn_id = None
+        self._emit_event("session_error", turn_id, pending is not None, {"message": message})
+        self.session_error.emit(message)
+        if pending is not None and not pending[1].done():
+            pending[1].set_result(None)
+
+    async def _query_and_stream(self, text: str) -> None:
+        assert self._client is not None
+        self._ensure_reader()
+        assert self._turn_lock is not None
+        async with self._turn_lock:
+            self._turn_counter += 1
+            turn_id = self._turn_counter
+            done: asyncio.Future = asyncio.get_running_loop().create_future()
+            self._pending_turn = (turn_id, done)
+            self._emit_event("turn_started", turn_id, True, {"text": text})
+            try:
+                await self._client.query(text)
+                await done
+            except Exception as exc:  # noqa: BLE001
+                self._emit_event("session_error", turn_id, True, {"message": str(exc)})
+                self.session_error.emit(str(exc))
+            finally:
+                self._pending_turn = None
+
+    def _dispatch(self, message: object) -> None:
+        """Attributes one stream message to a turn and hands it up (see
+        the plan's "Attribution in _dispatch")."""
+        is_result = isinstance(message, sdk.ResultMessage)
+        if self._unsolicited_turn_id is not None:
+            turn_id, solicited = self._unsolicited_turn_id, False
+        elif self._pending_turn is not None:
+            turn_id, solicited = self._pending_turn[0], True
+        elif is_result:
+            text = "Received a result with no turn outstanding; request/response pairing may be out of sync."
+            self._emit_event("protocol_violation", None, False, {"message": text})
+            self.session_error.emit(text)
+            return
+        else:
+            self._turn_counter += 1
+            self._unsolicited_turn_id = turn_id = self._turn_counter
+            solicited = False
+            self._emit_event("unsolicited_turn_started", turn_id, False, {})
+        self._handle_message(message, turn_id, solicited)
+        if is_result:
+            if solicited:
+                assert self._pending_turn is not None
+                if not self._pending_turn[1].done():
+                    self._pending_turn[1].set_result(None)
+            else:
+                self._unsolicited_turn_id = None
+
+    def _handle_message(self, message: object, turn_id: int, solicited: bool) -> None:
         if isinstance(message, sdk.AssistantMessage):
             for block in message.content:
                 if isinstance(block, sdk.TextBlock):
+                    self._emit_event("assistant_text", turn_id, solicited, {"text": block.text})
                     self.assistant_text.emit(block.text)
                 elif isinstance(block, sdk.ToolUseBlock):
+                    self._emit_event(
+                        "tool_use", turn_id, solicited, {"id": block.id, "name": block.name, "input": block.input}
+                    )
                     self.tool_use.emit(block.id, block.name, block.input)
                 elif isinstance(block, sdk.ToolResultBlock):
+                    self._emit_event(
+                        "tool_result",
+                        turn_id,
+                        solicited,
+                        {"tool_use_id": block.tool_use_id, "content": block.content, "is_error": bool(block.is_error)},
+                    )
                     self.tool_result.emit(block.tool_use_id, block.content, bool(block.is_error))
         elif isinstance(message, sdk.ResultMessage):
-            self.turn_complete.emit(
-                {
-                    "is_error": message.is_error,
-                    "result": message.result,
-                    "total_cost_usd": message.total_cost_usd,
-                    "duration_ms": message.duration_ms,
-                    "num_turns": message.num_turns,
-                }
-            )
+            summary = {
+                "is_error": message.is_error,
+                "result": message.result,
+                "total_cost_usd": message.total_cost_usd,
+                "duration_ms": message.duration_ms,
+                "num_turns": message.num_turns,
+            }
+            self._emit_event("turn_complete", turn_id, solicited, summary)
+            # An unsolicited result must not reach the widget's
+            # turn_complete handler -- it would mark a real in-flight turn idle.
+            if solicited:
+                self.turn_complete.emit(summary)
         elif isinstance(message, sdk.TaskStartedMessage):
-            self.task_event.emit(
-                message.task_id, {"description": message.description, "status": "running"}
-            )
+            self._emit_task_event(turn_id, solicited, message.task_id, {"description": message.description, "status": "running"})
         elif isinstance(message, sdk.TaskProgressMessage):
-            self.task_event.emit(
+            self._emit_task_event(
+                turn_id,
+                solicited,
                 message.task_id,
                 {
                     "description": message.description,
@@ -301,9 +416,7 @@ class ClaudeSession(QObject):
                 },
             )
         elif isinstance(message, sdk.TaskNotificationMessage):
-            self.task_event.emit(
-                message.task_id, {"status": message.status, "summary": message.summary}
-            )
+            self._emit_task_event(turn_id, solicited, message.task_id, {"status": message.status, "summary": message.summary})
         elif isinstance(message, sdk.TaskUpdatedMessage):
             # `patch` is the CLI's own raw payload (TODO f4a7872) --
             # `status` is folded in under its own key (rather than left
@@ -313,7 +426,11 @@ class ClaudeSession(QObject):
             patch = dict(message.patch)
             if message.status is not None:
                 patch["status"] = message.status
-            self.task_event.emit(message.task_id, patch)
+            self._emit_task_event(turn_id, solicited, message.task_id, patch)
+
+    def _emit_task_event(self, turn_id: int, solicited: bool, task_id: str, patch: dict) -> None:
+        self._emit_event("task_event", turn_id, solicited, {"task_id": task_id, "patch": patch})
+        self.task_event.emit(task_id, patch)
 
     async def _check_path_scope(self, input_data: dict, tool_use_id: str | None, context: object) -> dict:
         """`PreToolUse` hook callback, only installed when `start()` was
@@ -429,6 +546,8 @@ class ClaudeSession(QObject):
             return
 
         async def _disconnect_and_stop() -> None:
+            if self._reader_task is not None:
+                self._reader_task.cancel()
             if self._client is not None:
                 try:
                     await self._client.disconnect()

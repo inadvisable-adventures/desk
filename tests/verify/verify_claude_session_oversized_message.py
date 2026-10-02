@@ -57,7 +57,7 @@ class _FakeClient:
     async def query(self, text):
         self.queried.append(text)
 
-    async def receive_response(self):
+    async def receive_messages(self):
         for message in self._messages:
             yield message
         if self._error is not None:

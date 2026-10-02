@@ -6,7 +6,7 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
-20ca851. Claude (Desk) widget: stop turn mis-pairing, and make the session's
+20ca851. COMPLETED: Claude (Desk) widget: stop turn mis-pairing, and make the session's
    internal events observable. First piece of the widget's event model
    (see the "Observability principle" in `design-docs/architecture.md`
    item 30). (1) Enforce the single-consumer invariant in
@@ -31,6 +31,16 @@ reordered or its description edited.
    `../FEEDBACK/FEEDBACK-DESK-claude-desk-message-pairing-corruption-and-history-redesign-2026-10-01-1617.md`
    (Part 1); also confirms the open link in
    `../FEEDBACK/FEEDBACK-DESK-claude-desk-message-ordering-scheduled-wakeup-2026-09-22-1734.md`.
+   [planned: claude-session-event-model-and-turn-serialization.md (COMPLETED)]
+
+   COMPLETED: Implemented per the plan. Beyond the feedback's own
+   diagnosis, the root cause found was output arriving while no consumer
+   was iterating (stale `ResultMessage` consumed by the next turn), so
+   the fix is a persistent reader plus turn lock, not only a lock. New
+   `session_event` signal; legacy signals kept (`turn_complete` now only
+   for solicited turns). Verified by
+   `tests/verify/verify_claude_session_event_model.py` (17 checks) plus
+   all `verify_claude*` scripts; no live-API run.
 
 dffb428. Claude (Desk) widget: replace the single `QPlainTextEdit` history
    (`_history`) with structured per-entry history. Each entry is its own

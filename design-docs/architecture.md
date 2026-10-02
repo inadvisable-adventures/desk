@@ -760,7 +760,7 @@ Desk Bridge API.
     SDK's `receive_response()` is one shared, unlabeled stream per
     `ClaudeSDKClient`, so without per-event provenance an overlapping
     turn silently and permanently mis-pairs replies with requests
-    (observed: a constant -3 offset). Planned work: TODOs `20ca851`
+    (observed: a constant -3 offset). `ClaudeSession` (TODO `20ca851`) now owns one persistent reader as the sole consumer of that stream, serializes turns with a lock, and emits a `session_event` dict per message (`seq`, `ts`, `turn_id`, `solicited`, `kind`, `data`; unsolicited output such as a wakeup continuation is tagged `solicited: false`, and a result with no turn outstanding is a `protocol_violation`); the legacy per-kind signals still fire alongside it. Planned work: TODOs `20ca851`
     (serialize turns, event model, mismatch detection), `dffb428`
     (structured history), `eb50b84` (data-flow view), alongside
     `db2402c`/`db1cd65` (usage/context). Source:

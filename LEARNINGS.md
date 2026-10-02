@@ -1260,3 +1260,22 @@ hot-reload). General lesson: before adding a new call that populates
 `self._widgets` synchronously afterward in the same code path (not just
 grep for "self._widgets =" assignments) -- a dict lookup that quietly
 returns `None`/misses gives no signal that ordering was wrong.
+
+TODO `20ca851` (`ClaudeSession` turn pairing): `claude_agent_sdk.ClaudeSDKClient`
+has exactly **one** shared, unlabeled message stream per connection --
+no request/turn id on any frame -- and `receive_response()` is just an
+`async for` over it that stops at the first `ResultMessage`. Two
+non-obvious consequences: (1) two overlapping consumers silently split
+the stream between them; (2) worse, and needing no overlap at all,
+anything the CLI emits while *no* consumer is iterating (a
+`ScheduleWakeup` continuation, a background-task notification) stays
+buffered, and the next `receive_response()` consumes it -- including its
+stale `ResultMessage`, ending the new turn early and leaving the real
+answer for the turn after, a permanent constant offset (observed: -3).
+The old per-prompt `receive_response()` consumer could not notice either.
+Fix: one persistent reader as the only consumer (`receive_messages()`),
+turns serialized by a lock, every message tagged with a turn id and an
+unsolicited flag. Recognize the symptom as replies consistently filed
+under an earlier request. Unfixable without CLI-side request ids: an
+unsolicited turn that begins after our query is sent but runs first is
+still attributed to our turn.
