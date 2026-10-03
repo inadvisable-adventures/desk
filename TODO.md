@@ -6,6 +6,45 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+f8da2c5. Claude (Desk) widget: the staleness tracker's "no response" timer (TODO
+   `5ce8447`, `src/desk/claude_staleness.py`) must not fire while Claude
+   is actually blocked on the *user* -- a pending permission request or
+   an `AskUserQuestion` -- since that silence is expected, not a stall.
+   Today it does: `ClaudeSession._can_use_tool`
+   (`src/desk/claude_session.py:595-638`) emits `permission_request`/
+   `question_request` as their own dedicated `pyqtSignal`s (lines 125,
+   128), never routed through `_emit_event` (line 329) /
+   `session_event`, so `StalenessTracker.feed()`
+   (`claude_staleness.py:44-63`, an exhaustive `if`/`elif` over
+   `turn_started`/`unsolicited_turn_started`/`turn_complete`/
+   `session_error`/`task_event`) never learns a permission/question
+   panel is up. `_turn_open` just stays `True` for the whole wait, so
+   `outstanding()` (line 91) stays `True` and `describe()` (line 106)
+   will happily start saying "no response for Ns" (and the Flow view's
+   amber "stale" annotation from `5ce8447` will light up) while the
+   widget is actually sitting on an approval/question panel waiting on
+   a human, not the network or the model. The "blocked on human" bit
+   already exists, just not plumbed to the tracker: `widgets/
+   claude_desk/widget.py`'s `_pending_permissions`/`_pending_questions`
+   (lines 253, 256) already compute a `waiting_on_user` bool (line 492)
+   for the separate `CLAUDE_DESK_STATUS_EVENT` mediator event
+   (`src/desk/claude_session.py:55-57`, TODO `a7d7c0a`), but that only
+   feeds the desk-wide status-list widget, not
+   `StalenessTracker.feed()`/`_on_session_event` (`widget.py:680`).
+   Fix: thread that same "waiting on user" state into
+   `StalenessTracker` (either forward `permission_request`/
+   `question_request` as a new `session_event` kind, or have
+   `widget.py` pass its existing pending-permission/question state into
+   the tracker directly) and have `outstanding()`/`describe()` suppress
+   the "no response" ticking clock -- or replace it with distinct,
+   non-alarming text like "waiting on your response" -- for as long as
+   it's true, same hedging spirit as the existing grace-window text.
+   Related: TODO `5ce8447` (the tracker itself), `6ab9e85` (`AskUserQuestion`'s
+   own panel), `a7d7c0a` (the existing `waiting_on_user` signal this can
+   likely reuse). Per direct user request.
+
+   Prioritized per direct user request.
+
 20ca851. COMPLETED: Claude (Desk) widget: stop turn mis-pairing, and make the session's
    internal events observable. First piece of the widget's event model
    (see the "Observability principle" in `design-docs/architecture.md`
