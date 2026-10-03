@@ -10055,7 +10055,14 @@ c1eb687. Claude (Desk) widget: surface rate-limit status via `RateLimitEvent`,
 a7d7c0a. Claude (Desk) widget: publish desk-wide status events (question UI
    active/answered, idle<->busy), and a new widget that lists every
    live `claude_desk` instance's current estimated status with a
-   jump-to-instance eye button per row.
+   jump-to-instance eye button per row. Purpose, per direct user
+   clarification: a place to surface agent-specific, user-needed
+   notifications (chiefly "this instance is waiting on you") --
+   deliberately instead of routing them into some Desk-level
+   notification mechanism that would need dismissing. That framing is
+   why the gap noted below (no history for an instance that hasn't
+   spoken up yet) is an accepted shape, not a defect: this widget
+   shows *current* per-instance attention-needed state, not a log.
 
    (a) `widgets/claude_desk/widget.py`'s `ClaudeDeskWidget` doesn't
    implement `bind_event_mediator` at all today -- add it, the same
@@ -10133,16 +10140,15 @@ a7d7c0a. Claude (Desk) widget: publish desk-wide status events (question UI
    sender's instance id, for free -- nothing needs stuffing into the
    payload itself for that).
 
-   Open question for the plan: a freshly-opened status widget (or a
-   `claude_desk` instance that was already running before this widget
-   ever existed) has no way to learn an instance's *current* status
-   before its next transition -- there is no query/response round
-   trip here, only push. Decide whether "shows unknown until the next
-   transition" is an acceptable first-pass gap, or whether part (a)
-   also needs a lightweight request-reply (this widget publishes a
-   "who's out there" event; each `claude_desk` instance, now also a
-   subscriber and not just a publisher, answers with its current
-   state).
+   Resolved (per direct user decision, citing the widget's own purpose
+   above): a freshly-opened status widget, or a `claude_desk` instance
+   that was already running before this widget existed, has no way to
+   learn that instance's *current* status before its next transition
+   -- push only, no query/response round trip -- and that's fine. A
+   row simply shows nothing attention-needed-worthy until that
+   instance's next status event arrives; no "who's out there"
+   request-reply needed in part (a). Missing a stale instance's past
+   state isn't a gap this widget is for in the first place.
 
    Each row's eye button inherits TODO `d0a4c7b`'s still-open "zoom
    doesn't raise" wrinkle (`zoom_to_widget` pans/fits but never calls
