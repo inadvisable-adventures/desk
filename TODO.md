@@ -10800,7 +10800,7 @@ e6ea1db. SUPERSEDED by TODO 2924940 (the isolation decision doc) and its
    approaches to running Desk in a way that better isolates it -- e.g. not
    giving it full access to absolute paths or system calls, etc.
 
-38b5bef. Hosting survey for always-on Desk agent sessions. Goal (per the
+38b5bef. COMPLETED: Hosting survey for always-on Desk agent sessions. Goal (per the
    user): workspaces where Desk can run agent sessions without a machine of
    their own that is always on and always connected. Survey, with dated
    sources and the caveat that it is a best-effort reading of provider terms,
@@ -10817,6 +10817,21 @@ e6ea1db. SUPERSEDED by TODO 2924940 (the isolation decision doc) and its
    (SSH/tmux, or the remote session daemon of TODO `be2ce4e`). Output: a dated
    note under `investigations/` with a recommendation and what would change
    it. Supersedes TODO `f165b8c`. [planned: hosting-survey.md]
+   [planned: hosting-survey.md (COMPLETED)]
+
+   COMPLETED 2026-10-03: `investigations/hosting-for-always-on-agent-sessions.md`
+   (dated, sourced, best-effort, not legal advice). Headlines: DreamHost's AUP
+   forbids accepting-connection processes only on shared hosting -- VPS, Cloud
+   and Dedicated are exempt -- and neither its AUP nor ToS mentions AI, but the
+   ToS gives broad suspension discretion, so get DreamHost support's written
+   OK first; a DreamHost VPS ($5.99-$9.49/mo promo, $10.99-$14.99 renewal) is
+   the cheapest viable option, AWS/GCP small instances are ~$12-25/mo; a Mac
+   mini ($899 for the M6) only breaks even after ~3+ years against a ~$24/mo
+   VM (~7 against ~$12). Anthropic's own page permits signing in to the
+   unmodified CLI with your own subscription on a hosting platform, but its
+   advertised limits assume "ordinary, individual usage of Claude Code and the
+   Agent SDK" -- worth keeping in mind for always-on use. Not verified: GCP's
+   AUP, AWS/GCP prices (aggregator sites), RAM sizing.
 
 2924940. Isolation decision doc: write down the trust tiers and threat model
    Desk's isolation work is built on, in `design-docs/`. The long-term vision

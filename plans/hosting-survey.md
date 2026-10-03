@@ -1,4 +1,4 @@
-# Hosting survey for always-on Desk agent sessions (TODO `38b5bef`)
+# Hosting survey for always-on Desk agent sessions (TODO `38b5bef`) (COMPLETED)
 
 ## Summary
 Find the most sensible always-on home for Desk agent sessions: DreamHost (the
