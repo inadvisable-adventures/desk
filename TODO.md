@@ -10685,7 +10685,7 @@ d0a4c7b. COMPLETED: Fix widget stacking on the canvas (`src/desk/shell/canvas.py
    docs bullet added. Verified by `verify_documents_service.py` (25 checks)
    and `verify_documents_bridge_api.py` (11 checks, real server).
 
-94c2566. Write a `.desk_temp` doc on porting existing app code into
+94c2566. COMPLETED: Write a `.desk_temp` doc on porting existing app code into
    Desk (generated from `src/desk/temp_ui.py` like the other tempui
    docs, e.g. `tempui-porting-existing-apps.md`), linked from the main
    tempui doc as "for more information on porting existing app code to
@@ -10713,6 +10713,23 @@ d0a4c7b. COMPLETED: Fix widget stacking on the canvas (`src/desk/shell/canvas.py
    as a feature). The feedback's "Porting Assistant" widget and
    batch-Job ideas are deliberately not part of this item. Cites
    `../FEEDBACK/FEEDBACK-DESK-existing-app-decomposition-process-2026-08-03-1719.md`.
+   COMPLETED: new generated doc `tempui-porting-existing-apps.md`
+   (`_PORTING_DOC` in `src/desk/temp_ui.py`, registered in
+   `SPLIT_DOC_CONTENT`, linked from the main tempui doc with the requested
+   wording): the six-step process (inventory, non-redundant porting units,
+   grounded facts before any gap, parallel research/single-author writing,
+   match conventions, cross-link), a "What Desk gives you" inventory by need
+   (UI, inter-widget communication, files and large data incl.
+   `desk.documents`, computation and long-running work, introspection and
+   layout helpers) written after surveying the Bridge client's namespaces,
+   the capability-enforcing routes and the MCP tools, and a short Known gaps
+   section (batch ingestion jobs with progress, external service
+   dependencies). Changelog tag `porting existing apps guide doc #968159` +
+   entry. The "Porting Assistant" widget and batch-Job ideas are
+   deliberately not part of this. Verified by `verify_tempui_porting_doc.py`
+   (28 checks, including that every `desk.<namespace>.`, MCP tool and
+   capability the doc names exists in the code, so it can't silently drift)
+   plus the existing tempui doc scripts.
 
 feff1ec. COMPLETED: Review and discuss all of the new FEEDBACK items (feedback
    submitted via the Feedback widget, `DESK_FEEDBACK-*.md` files) with

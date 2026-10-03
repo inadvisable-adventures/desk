@@ -230,6 +230,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "project-authored python widgets in desk_widgets #473197",
     "hmsvc service.json custom interpreter #892147",
     "desk.documents cached byte-range reads #655544",
+    "porting existing apps guide doc #968159",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -287,6 +288,10 @@ built-in file types, distinguished by their first line's keyword:
   See [tempui-desk-proc.md](./tempui-desk-proc.md).
 
 Every file named above lives in this same directory.
+
+For more information on porting existing app code to Desk -- a
+repeatable process, plus a "what Desk gives you" inventory -- see
+[tempui-porting-existing-apps.md](./tempui-porting-existing-apps.md).
 
 A few more files live here too, but aren't DSL file types (nothing
 writes one directly): [tempui-breaking-changes.md](./tempui-breaking-changes.md)
@@ -656,6 +661,128 @@ same mechanism automatically: the dropped image is copied into this
 directory first, then an `OpenImage` file pointing at the copy is
 created and opened immediately (no notification needed for your own
 just-performed drop).
+"""
+
+_PORTING_DOC = """# Porting an existing app into Desk
+
+See `desk-temporary-ui.md` (in this same directory) for this directory's
+own overview and its current set of tags -- this file is the guide for
+**porting existing application code into Desk**: figuring out which
+parts of a project become widgets, jobs or services, and where Desk is
+missing something the project needs.
+
+## A repeatable process
+
+"Work out how to port this project" gets reinvented from scratch each
+time unless it follows a process. These six steps are what made earlier
+analyses good; follow them in order.
+
+1. **Inventory pass.** List the target project's *current* directory
+   structure directly (a plain recursive listing -- not memory, not what
+   its README says). Projects grow second-generation pieces nobody
+   remembers; a fresh listing finds them.
+2. **Group into a small number of non-redundant "porting units."** A unit
+   is a set of related pieces worth one design proposal: e.g. the app's
+   wiring code, the components it wires together, a family of ingestion
+   scripts, a local backend service. Note where two units share an
+   underlying mechanism (say, both need a managed subprocess) so you can
+   cross-reference them instead of merging them or writing the same
+   reasoning twice.
+3. **For each unit, gather two kinds of grounded facts.** (a) What the
+   target code does, with `file:line` evidence. (b) What Desk *already*
+   provides for it -- read "What Desk gives you" below first, then the
+   real docs (this directory's `tempui-*.md` files, `desk-temporary-ui.md`)
+   and at least one real existing widget. **Report a gap only once (b)
+   comes back empty after actually looking**, never merely unsearched;
+   otherwise you propose something that already exists.
+4. **Parallelize the fact-finding, centralize the writing.** Give each
+   unit its own read-only research pass (cite `file:line`, report facts,
+   don't design the fix) so units can run concurrently without leaking
+   assumptions into each other. Then write all the proposals in one
+   pass, by one author, so they share one vocabulary -- two gaps are
+   often one primitive in two configurations.
+5. **Match the destination format's existing conventions.** Read a real
+   example of the artifact you are about to produce before writing a new
+   one.
+6. **Cross-link related outputs** rather than re-explaining shared
+   reasoning in each.
+
+This is a draft methodology, refined against a few worked examples --
+improve it when a port teaches you something.
+
+## What Desk gives you
+
+Use this to answer step 3(b). Names are the Bridge API (`window.desk.*`,
+for `kind: "html"` widgets, jobs and services -- each namespace needs its
+capability declared) unless noted. See `tempui-custom-widgets.md`, "The
+Desk Bridge API", for each call's exact shape.
+
+**Putting UI on the canvas**
+- Built-in widgets already cover common shapes: an Editor, a Markdown
+  viewer (table of contents, folding, Mermaid), an Image Viewer, an SVG
+  editor, a Sheet (tables/TSV), a Console (a real terminal), a Browser,
+  a TODO list, git status/diff viewers, and Claude chat widgets. Check
+  the widget catalog (`desk.widgets.list()`) before building one.
+- A **new widget kind**: a `kind: "html"` widget via `DefineWidget`
+  (see `tempui-custom-widgets.md`; promotable into the project), or a
+  real `kind: "python"` widget package in the project's own
+  `desk_widgets/<name>/` directory (same `widget.json`/`entry` shape as
+  Desk's built-ins; full in-process access, so only for trusted code).
+- Open an existing file in a viewer: `OpenMarkdown`, `OpenImage`, and
+  the generic `OpenWithWidget` tempui keywords.
+- Ask the user something through the canvas: `Question` and
+  `LightningRound` tempui files; `desk.popups` for a confirmation from
+  widget code.
+
+**Making pieces talk to each other**
+- `desk.events.*` (capability `events`): publish/subscribe on a shared
+  channel keyed by widget *instance*; widgets never call each other
+  directly.
+- `desk.state.get/set/getHistory` (capability `state`): a shared,
+  project-scoped key/value store with an edit history; a widget may also
+  declare the keys it needs (a state schema).
+- `self.getLocalStorage()/setLocalStorage()`: per-instance state that
+  survives a reload of the Desk.
+
+**Files and large data**
+- `desk.fs.readFile/writeFile` (capability `fs`): relative paths resolve
+  against the project's Desk directory; writes create missing parents.
+- `desk.documents.open/read/close` (capability `documents`): cached,
+  binary-safe byte-range reads, for files too large to base64 whole.
+- The file type registry (`desk.filetypes.*`, capability `filetypes`)
+  maps extensions/MIME types to the widgets that can view or edit them.
+
+**Computation and long-running work**
+- Transforms (`desk.transforms.run`, capability `transforms`; bundled
+  ones live in `desk_transforms/`) and the pipeline DSL/Pipeline widget
+  for chained steps.
+- A `Job` tempui file: **one** throwaway script with Bridge access. An
+  *installed job* (`desk_install_job` MCP tool, capability
+  `installed_jobs`): a durable, versioned job the project keeps, runnable
+  later and from other jobs.
+- Desk-hosted microservices (`desk.hmsvc.*`, a `service.json` per
+  service): a long-running background process Desk starts, stops, logs
+  and restarts for you -- the answer for "this project needs a local
+  backend".
+
+**Seeing and driving Desk itself**
+- `desk.introspect.*` plus the screenshot/reveal/list MCP tools
+  (`desk_screenshot_widget`, `desk_reveal_widget`,
+  `desk_list_widget_instances`) to inspect what is on the canvas; a
+  `DeskProc` tempui file for one-off access to the live shell.
+- Layout helpers built in: Open Widgets (a live table of everything
+  placed, with stale markers), Minimap (navigate, tile, organize) and
+  Recently Removed (revive a removed widget with its state).
+
+## Known gaps
+
+There is no first-class **batch ingestion job** with progress reporting
+and a structured result (a `Job` is a single one-shot run; an installed
+job has no progress channel), and no first-class model of an **external
+service dependency** a project expects to find running (hmsvc manages
+services Desk itself starts). If a port needs either, say so explicitly
+as a gap -- with the file:line evidence from step 3(a) -- rather than
+working around it silently.
 """
 
 _OPEN_WITH_WIDGET_DOC = """# TempUI DSL: OpenWithWidget
@@ -1935,6 +2062,21 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "porting existing apps guide doc #968159": """- New doc `tempui-porting-existing-apps.md` (linked from the main
+  tempui doc: "for more information on porting existing app code to
+  Desk"): a repeatable six-step process for figuring out how to port an
+  existing project -- inventory its current directory structure, group
+  into non-redundant porting units, gather grounded facts (what the
+  target code does with file:line, what Desk already provides) before
+  reporting any gap, parallelize read-only research but write the
+  proposals in one pass, match the destination format's conventions,
+  cross-link -- plus a "what Desk gives you" inventory by need (UI,
+  inter-widget communication, files and large data, computation and
+  long-running work, introspection) so "what does Desk already provide
+  for X" is answerable from the doc itself, and a short list of known
+  gaps (batch ingestion jobs with progress, external service
+  dependencies).
+""",
     "desk.documents cached byte-range reads #655544": """- New Bridge API `desk.documents` (capability `documents`) for reading
   large or binary files without base64-ing the whole file through a
   transform: `desk.documents.open(path)` returns a server-side handle (the
@@ -3056,6 +3198,7 @@ LIGHTNING_ROUND_DOC_FILENAME = "tempui-lightning-round.md"
 MARKDOWN_DOC_FILENAME = "tempui-markdown.md"
 IMAGE_DOC_FILENAME = "tempui-image.md"
 OPEN_WITH_WIDGET_DOC_FILENAME = "tempui-open-with-widget.md"
+PORTING_DOC_FILENAME = "tempui-porting-existing-apps.md"
 SCRATCH_DOC_FILENAME = "tempui-scratch.md"
 CUSTOM_WIDGETS_DOC_FILENAME = "tempui-custom-widgets.md"
 DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME = "tempui-discuss-parking-lot-item.md"
@@ -3081,6 +3224,7 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     MARKDOWN_DOC_FILENAME: _MARKDOWN_DOC,
     IMAGE_DOC_FILENAME: _IMAGE_DOC,
     OPEN_WITH_WIDGET_DOC_FILENAME: _OPEN_WITH_WIDGET_DOC,
+    PORTING_DOC_FILENAME: _PORTING_DOC,
     SCRATCH_DOC_FILENAME: _SCRATCH_DOC,
     CUSTOM_WIDGETS_DOC_FILENAME: _CUSTOM_WIDGETS_DOC,
     DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME: _DISCUSS_PARKING_LOT_ITEM_DOC,
