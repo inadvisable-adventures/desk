@@ -6,6 +6,15 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+18fa45f. Deprecation agent handoff: the always-available alternative to a rewrite
+   (piece 6 of TODO `df8138a`). Wherever Desk reports a tombstone use, offer (1) a
+   short command to copy into an agent console (the `agent_command` text, naming the
+   deprecation id and the affected files) and (2) a "launch an agent console"
+   action that reuses the machinery the `[CHAT]` button already uses to open a
+   Claude (Desk) widget scoped to a widget, seeded with instructions describing the
+   deprecation (replacement and message from the registry -- never the old docs).
+   Today the command is only embedded in the error text and the `[ERROR]` dialog.
+
 f8da2c5. COMPLETED: Claude (Desk) widget: the staleness tracker's "no response" timer (TODO
    `5ce8447`, `src/desk/claude_staleness.py`) must not fire while Claude
    is actually blocked on the *user* -- a pending permission request or
@@ -11040,15 +11049,6 @@ cc78e9d. Deprecation rewriters: preview, confirm and apply mechanical rewrites o
    where widget code lives (project files, `desk_widgets/`, html embedded as base64
    in a `.desk` file -- decode, rewrite, re-encode -- and tempui files). Depends on
    the scan's detectors (TODO `284bfbd`).
-
-18fa45f. Deprecation agent handoff: the always-available alternative to a rewrite
-   (piece 6 of TODO `df8138a`). Wherever Desk reports a tombstone use, offer (1) a
-   short command to copy into an agent console (the `agent_command` text, naming the
-   deprecation id and the affected files) and (2) a "launch an agent console"
-   action that reuses the machinery the `[CHAT]` button already uses to open a
-   Claude (Desk) widget scoped to a widget, seeded with instructions describing the
-   deprecation (replacement and message from the registry -- never the old docs).
-   Today the command is only embedded in the error text and the `[ERROR]` dialog.
 
 73e375f. Bridge API path allow-lists for `desk.fs` and `desk.documents`
    (`src/desk/server/app.py`, `desk_services/documents`). Today any widget
