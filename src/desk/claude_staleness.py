@@ -38,8 +38,21 @@ class StalenessTracker:
         self._unsolicited_open = False
         self._tasks: dict[str, dict] = {}  # task_id -> {"status", "task_type"}
         self._grace_until: float | None = None
+        # TODO f8da2c5: a pending permission/AskUserQuestion panel -- the
+        # silence is the user's, not a stall.
+        self._waiting_on_user = False
 
     # -- inputs -----------------------------------------------------------------
+
+    def set_waiting_on_user(self, waiting: bool, now: float) -> None:
+        """TODO f8da2c5: while Claude is blocked on a human (permission
+        request / question), nothing is outstanding from the network's or
+        model's side, so no stale clock runs. When the human answers, the
+        clock restarts from `now` -- the wait itself must not count as
+        silence."""
+        if self._waiting_on_user and not waiting:
+            self._last_event = now
+        self._waiting_on_user = waiting
 
     def feed(self, event: dict, now: float) -> None:
         """Consumes one ClaudeSession.session_event dict."""
@@ -89,6 +102,8 @@ class StalenessTracker:
         )
 
     def outstanding(self, now: float) -> bool:
+        if self._waiting_on_user:
+            return False
         return self._turn_open or self._unsolicited_open or self._deferring_inflight() or self.in_grace(now)
 
     def silent_seconds(self, now: float) -> float | None:

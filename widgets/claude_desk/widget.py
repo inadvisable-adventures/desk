@@ -498,6 +498,13 @@ class ClaudeDeskWidget(QWidget):
         published -- which makes this safe to call from every handler that
         might change it and yields one publish per busy/idle transition and
         per waiting-on-user edge, not per queued item. No-op until bound."""
+        # TODO f8da2c5: every handler that changes the pending queues comes
+        # through here, so it's also where the staleness tracker learns
+        # that silence is the user's (checked before the mediator guard --
+        # this must work unbound).
+        waiting = bool(self._pending_permissions or self._pending_questions)
+        self._staleness.set_waiting_on_user(waiting, time.monotonic())
+        self._tick_staleness()
         if self._mediator is None or self._mediator_instance_id is None:
             return
         status = self._current_status()

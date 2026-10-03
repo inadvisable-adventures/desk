@@ -6,7 +6,7 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
-f8da2c5. Claude (Desk) widget: the staleness tracker's "no response" timer (TODO
+f8da2c5. COMPLETED: Claude (Desk) widget: the staleness tracker's "no response" timer (TODO
    `5ce8447`, `src/desk/claude_staleness.py`) must not fire while Claude
    is actually blocked on the *user* -- a pending permission request or
    an `AskUserQuestion` -- since that silence is expected, not a stall.
@@ -44,6 +44,14 @@ f8da2c5. Claude (Desk) widget: the staleness tracker's "no response" timer (TODO
    likely reuse). Per direct user request.
 
    Prioritized per direct user request.
+   [planned: staleness-ignores-waiting-on-user.md (COMPLETED)]
+
+   COMPLETED: the widget passes its pending-permission/question state into
+   `StalenessTracker.set_waiting_on_user` (via `_publish_status`, which every
+   pending-queue handler already calls); while waiting nothing is outstanding
+   (no clock, stale label, Flow amber or probe), and the silence clock
+   restarts when the user answers. Verified by additions to
+   `verify_claude_desk_staleness.py` (47 checks).
 
 20ca851. COMPLETED: Claude (Desk) widget: stop turn mis-pairing, and make the session's
    internal events observable. First piece of the widget's event model

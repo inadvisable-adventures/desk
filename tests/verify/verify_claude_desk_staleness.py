@@ -125,6 +125,33 @@ def test_grace_not_started_while_another_agent_still_runs():
     check("grace starts when the last one settles", t.in_grace(9))
 
 
+def test_waiting_on_user_suppresses_staleness():
+    t = StalenessTracker()
+    t.feed(ev("turn_started"), 0)
+    t.set_waiting_on_user(True, 5)
+    check("while waiting on the user nothing is outstanding", not t.outstanding(500) and t.level(500) == 0 and t.describe(500, None) == "")
+    t.set_waiting_on_user(False, 500)
+    check("the wait doesn't count as silence once answered", t.outstanding(501) and t.level(501) == 0)
+    check("silence after the answer counts from the answer", t.level(500 + cs.STALE_AFTER) == 1)
+
+
+def test_widget_permission_wait_is_not_stale():
+    module = _module()
+    widget = module.build()
+    widget._staleness_timer.stop()
+    widget._staleness.feed(ev("turn_started"), 0)
+    widget._tick_staleness(100)
+    check("sanity: stale before any permission request", not widget._stale_label.isHidden())
+    widget._pending_permissions.append(("r1", "Bash", {}))
+    widget._publish_status()
+    check("a pending permission clears the stale label immediately", widget._stale_label.isHidden() and widget._flow_view.stale_seconds is None)
+    widget._tick_staleness(10_000)
+    check("and it stays quiet however long the user takes", widget._stale_label.isHidden())
+    widget._pending_permissions.clear()
+    widget._publish_status()
+    check("answering ends the suppression: the turn is outstanding again, with a fresh clock", widget._staleness.outstanding(time.monotonic()) and widget._stale_label.isHidden())
+
+
 # -- session forwards task_type ------------------------------------------------
 
 
@@ -231,6 +258,8 @@ def test_widget_label_flow_and_probe_lifecycle():
 
 
 test_idle_is_never_stale()
+test_waiting_on_user_suppresses_staleness()
+test_widget_permission_wait_is_not_stale()
 test_pending_turn_goes_stale_then_probe_worthy()
 test_probe_result_wording()
 test_unsolicited_turn_counts_and_unsolicited_complete_does_not_end_a_solicited_one()
