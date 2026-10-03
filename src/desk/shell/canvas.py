@@ -188,6 +188,8 @@ class WorkspaceView(QGraphicsView):
         proxy = self.scene().addWidget(frame)
         proxy.setPos(*pos)
         self._frames.append(frame)
+        # TODO d0a4c7b: a fresh widget must not land behind existing ones.
+        self.bring_to_front(frame)
         return proxy
 
     def add_popup(self, frame: WidgetFrame) -> QGraphicsProxyWidget:
@@ -610,6 +612,9 @@ class WorkspaceView(QGraphicsView):
                 elif kind == "chat":
                     self.chat_button_clicked.emit(frame)
                 elif kind in ("eye", "greeked"):
+                    # TODO d0a4c7b: centering a widget that is still hidden
+                    # behind another would show the wrong thing.
+                    self.bring_to_front(frame)
                     self.zoom_to_widget(frame)
             event.accept()
             return

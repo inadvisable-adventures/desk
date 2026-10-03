@@ -10486,7 +10486,7 @@ db1cd65. COMPLETED: Claude (Desk) widget: context-window awareness and manual
    Verified by `verify_claude_desk_context_compact.py` (25 checks) and the
    whole suite.
 
-d0a4c7b. Fix widget stacking on the canvas (`src/desk/shell/canvas.py`).
+d0a4c7b. COMPLETED: Fix widget stacking on the canvas (`src/desk/shell/canvas.py`).
    (1) `Canvas.add_widget` never sets the new proxy's z-value, so a
    freshly placed widget (e.g. one opened by a Project Files
    double-click) can land behind others -- unlike `add_popup`, which
@@ -10499,6 +10499,14 @@ d0a4c7b. Fix widget stacking on the canvas (`src/desk/shell/canvas.py`).
    coverage for both. Cites
    `../FEEDBACK/FEEDBACK-DESK-widget-findability-zorder-and-overview-2026-08-16-0107.md`
    (parts 1 and 2).
+   [planned: canvas-widget-stacking.md (COMPLETED)]
+
+   COMPLETED: `WorkspaceView.add_widget` now calls `bring_to_front`, and the
+   chrome eye/greeked click raises before zooming. The separate
+   `zoom_to_widget_by_instance_id` path (used by the Event Subscribers and
+   Claude (Desk) Status eye buttons) still only zooms -- not part of this
+   item. Verified by `verify_canvas_widget_stacking.py` (9 checks; 4 fail
+   without the fix).
 
 53779f4. An "Open Widgets" widget: a table of every placed widget
    instance (instance id/title/kind plus a **stale** column), where
