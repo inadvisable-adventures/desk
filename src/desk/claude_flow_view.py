@@ -64,6 +64,9 @@ class FlowView(QWidget):
         self.inflight_turn: int | None = None
         # TODO c1eb687: last RateLimitEvent status ("allowed" until told otherwise).
         self.rate_limit_status = "allowed"
+        # TODO 5ce8447: seconds of silence while something is outstanding
+        # once stale (None when fine); amber state on the Session node.
+        self.stale_seconds: int | None = None
         self._tasks: dict[str, str] = {}
         self._timer = QTimer(self)
         self._timer.setInterval(TICK_MS)
@@ -83,6 +86,10 @@ class FlowView(QWidget):
 
     def flashing(self, node: str) -> bool:
         return self._nodes[node].flash > 0
+
+    def set_stale(self, silent_seconds: float | None) -> None:
+        self.stale_seconds = None if silent_seconds is None else int(silent_seconds)
+        self.update()
 
     def set_queue_depth(self, depth: int) -> None:
         self.queue_depth = depth
@@ -179,6 +186,8 @@ class FlowView(QWidget):
         if name == "queue":
             return f"{self.queue_depth} queued"
         if name == "session":
+            if self.stale_seconds is not None:
+                return f"stale {self.stale_seconds}s"
             return "idle" if self.inflight_turn is None else f"turn {self.inflight_turn}"
         if name == "cli":
             note = {"allowed_warning": " · throttled", "rejected": " · RATE LIMITED"}.get(self.rate_limit_status, "")
@@ -207,6 +216,8 @@ class FlowView(QWidget):
             state = self._nodes[name]
             fill = QColor(palette.color(palette.ColorRole.Base))
             border = QColor(palette.color(palette.ColorRole.Mid))
+            if name == "session" and self.stale_seconds is not None:
+                border = UNSOLICITED_COLOR
             if name == "cli" and self.rate_limit_status != "allowed":
                 border = ERROR_COLOR if self.rate_limit_status == "rejected" else UNSOLICITED_COLOR
             if state.flash > 0:

@@ -1,7 +1,7 @@
 import time
 
 
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QTextCursor
 from PyQt6.QtWidgets import (
     QComboBox,
@@ -17,7 +17,9 @@ from PyQt6.QtWidgets import (
 
 from desk.claude_flow_view import FlowView
 from desk.claude_history_view import HistoryEntry, HistoryView
+from desk.claude_staleness import StalenessTracker
 from desk.claude_session import TERMINAL_TASK_STATUSES, ClaudeSession
+from desk.connectivity_probe import ConnectivityProbe
 from desk.shell import current_context
 from desk.speech import TranscriptionResult
 from desk.temp_ui import DOC_FILENAME, TEMP_UI_DIRNAME
@@ -278,6 +280,22 @@ class ClaudeDeskWidget(QWidget):
         self._rate_limit_label.setVisible(False)
         self._rate_limit_status = "allowed"
 
+        # TODO 5ce8447: silence detection while something is outstanding
+        # (see desk.claude_staleness / plans/claude-desk-staleness-and-probe.md).
+        # A separate amber label rather than a suffix on _status_label,
+        # which many other paths rewrite.
+        self._stale_label = QLabel()
+        self._stale_label.setStyleSheet("color: #e8a33d; font-weight: 600;")
+        self._stale_label.setVisible(False)
+        self._staleness = StalenessTracker()
+        self._network_ok: bool | None = None
+        self._probe = ConnectivityProbe(parent=self)
+        self._probe.result.connect(self._on_probe_result)
+        self._staleness_timer = QTimer(self)
+        self._staleness_timer.setInterval(1000)
+        self._staleness_timer.timeout.connect(self._tick_staleness)
+        self._staleness_timer.start()
+
         self._model_combo = QComboBox()
         for label, _value in MODEL_CHOICES:
             self._model_combo.addItem(label)
@@ -371,6 +389,7 @@ class ClaudeDeskWidget(QWidget):
         top_row.addWidget(self._status_label, stretch=1)
         top_row.addWidget(self._queue_label)
         top_row.addWidget(self._rate_limit_label)
+        top_row.addWidget(self._stale_label)
         top_row.addWidget(self._model_combo)
         top_row.addWidget(self._permission_mode_combo)
         top_row.addWidget(self._tasks_toggle_button)
@@ -556,6 +575,7 @@ class ClaudeDeskWidget(QWidget):
         kind = event["kind"]
         self._current_event = event
         self._flow_view.feed(event)
+        self._staleness.feed(event, time.monotonic())
         if kind == "turn_started":
             self._active_turn_id = event["turn_id"]
             self._turn_input_tokens = 0
@@ -751,6 +771,26 @@ class ClaudeDeskWidget(QWidget):
         if usage:
             self._status_label.setToolTip(f"Last turn: {_format_token_counts(*_usage_counts(usage))}")
         self._finish_busy_period(idle_status)
+
+    def _tick_staleness(self, now: float | None = None) -> None:
+        now = time.monotonic() if now is None else now
+        level = self._staleness.level(now)
+        if level == 2:
+            if not self._probe.is_running():
+                self._probe.start()
+        else:
+            self._probe.stop()
+            self._network_ok = None
+        note = self._staleness.describe(now, self._network_ok)
+        self._stale_label.setText(note)
+        self._stale_label.setVisible(bool(note))
+        self._flow_view.set_stale(self._staleness.silent_seconds(now) if level else None)
+
+    def _on_probe_result(self, ok: bool) -> None:
+        # Ignore a result that lands after the stall already resolved.
+        if self._probe.is_running():
+            self._network_ok = ok
+            self._tick_staleness()
 
     def _on_rate_limit(self, info: dict) -> None:
         status = info.get("status", "allowed")

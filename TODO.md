@@ -9993,7 +9993,7 @@ c1eb687. COMPLETED: Claude (Desk) widget: surface rate-limit status via `RateLim
    Verified by `verify_claude_desk_rate_limit.py` (20 checks) and the
    whole `tests/verify/` suite.
 
-5ce8447. Claude (Desk) widget: staleness detection, a task-completion grace
+5ce8447. COMPLETED: Claude (Desk) widget: staleness detection, a task-completion grace
    window, and (only once stale) an independent connectivity probe --
    so a silent stall at least says something, and distinguishes "your
    network looks down" from "something else is slow," which today look
@@ -10066,6 +10066,18 @@ c1eb687. COMPLETED: Claude (Desk) widget: surface rate-limit status via `RateLim
    question actually surfaced. Related to TODOs `20ca851` (event
    model), `eb50b84` (flow view), `c1eb687` (the widget's other dropped
    CLI signals).
+   [planned: claude-desk-staleness-and-probe.md (COMPLETED)]
+
+   COMPLETED: `desk.claude_staleness.StalenessTracker` (stale at 15s, probe
+   at 45s, 30s grace window), `desk.connectivity_probe` (stdlib TCP connect
+   to api.anthropic.com:443, every 5s while stale), `task_type` forwarded,
+   amber stale label + Flow Session-node state, hedged wording. Deviation
+   from the item text, documented in the plan: only delegated-agent task
+   types count as outstanding, since a plain background shell may never
+   settle (would show a permanent false stall). Upstream asks drafted in
+   `investigations/claude-agent-sdk-upstream-requests.md` (not filed).
+   Verified by `verify_claude_desk_staleness.py` (40 checks) and the whole
+   suite; no live network/API.
 
 a7d7c0a. Claude (Desk) widget: publish desk-wide status events (question UI
    active/answered, idle<->busy), and a new widget that lists every

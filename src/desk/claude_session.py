@@ -465,7 +465,15 @@ class ClaudeSession(QObject):
             if solicited:
                 self.turn_complete.emit(summary)
         elif isinstance(message, sdk.TaskStartedMessage):
-            self._emit_task_event(turn_id, solicited, message.task_id, {"description": message.description, "status": "running"})
+            # TODO 5ce8447: task_type (previously dropped) distinguishes
+            # delegated-agent work from a plain background shell -- see
+            # desk.claude_staleness.DEFERRING_TASK_TYPES.
+            self._emit_task_event(
+                turn_id,
+                solicited,
+                message.task_id,
+                {"description": message.description, "status": "running", "task_type": message.task_type},
+            )
         elif isinstance(message, sdk.TaskProgressMessage):
             self._emit_task_event(
                 turn_id,
