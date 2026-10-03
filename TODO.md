@@ -10312,6 +10312,79 @@ a7d7c0a. COMPLETED: Claude (Desk) widget: publish desk-wide status events (quest
    "No log available". Verified by `verify_claude_desk_task_panel.py` (41
    checks) and the whole suite.
 
+10b4d7d. Claude (Desk) widget: show top-level tool results. Confirmed bug
+   (investigated 2026-10-02): real tool results never reach the history.
+   On the wire (checked against a live session transcript: 114 `tool_use`
+   blocks, all in `assistant` messages; 114 `tool_result` blocks, all in
+   `user` messages) a tool result arrives as a `user` message, which
+   `claude_agent_sdk`'s `message_parser` turns into a `UserMessage` whose
+   `content` holds `ToolResultBlock`s. `ClaudeSession._handle_message`
+   (`src/desk/claude_session.py`) only ever looked for `ToolResultBlock`
+   inside `AssistantMessage` (which doesn't happen in real runs) and had no
+   `UserMessage` branch until TODO `90efef6` added one for *sub-agent*
+   messages only (`parent_tool_use_id` set); a top-level `UserMessage` is
+   still dropped. Net effect: `[tool]` entries appear without their
+   `[tool result]`/`[tool error]`, tool errors are invisible, and the
+   result-folding work (TODO `ed5c62f`) has only ever been exercised by
+   synthetic calls to `_on_tool_result`, never the real path.
+   (1) Add a top-level `UserMessage` branch emitting a `tool_result`
+   `session_event` plus the legacy `tool_result` signal per
+   `ToolResultBlock` (as the `AssistantMessage` path does); keep or remove
+   the dead `AssistantMessage` `ToolResultBlock` branch. (2) Flatten
+   `ToolResultBlock.content`, which is a string, a list of content dicts
+   (`{"type": "text", ...}`, `{"type": "image", "source": {"type":
+   "base64", "media_type", "data"}}`), or `None`: join the text parts
+   (today's `str(content)` would show a Python repr of the list), show
+   `(no output)` for an empty result, and for each image put an `[image]`
+   placeholder in the text **and keep the original image**: (a) the
+   placeholder is a hyperlink that opens a new image-viewer widget
+   (`widgets/image_viewer/`) showing it -- both that widget and the
+   markdown widgets are file-based (`set_file(path)`), so the plan has to
+   decide where image bytes are persisted (e.g. under `.desk_temp/`, keyed
+   per instance, and its lifetime/cleanup) and how the link reaches the
+   opener (`current_context.get_widget_opener`/`open_widget_content`,
+   `window.py:1145`, already takes a `path`); `HistoryEntry`'s body is a
+   plain-text `QLabel` today, so it needs link support (`linkActivated`,
+   with the entry's text still readable through `toPlainText()`);
+   (b) TODO `6ff3be8`'s markdown view includes the image itself, so the
+   flattened result must carry structured image references, not just
+   text. Image `source` can also be `{"type": "url"}` -- decide whether to
+   fetch (probably not) or just link it. Very large results: history
+   already collapses long entries, but the full text stays in memory per
+   entry. (3) A verify script feeding real-shaped `UserMessage`s through
+   `_handle_message` and asserting what lands in the history (the gap that
+   let this go unnoticed). Related to TODOs `90efef6` (sub-agent routing
+   reuses the same `ToolResultBlock` shape) and `6ff3be8`.
+
+6ff3be8. Claude (Desk) widget: a right-aligned hover "Markdown View" button
+   on each agent-turn item in the structured history
+   (`src/desk/claude_history_view.py`), which launches a markdown viewer
+   (`widgets/markdown/`) showing that turn. Mirror `HistoryEntry`'s
+   existing hover-reveal mechanics (`_reload_button`/`enterEvent`/
+   `leaveEvent`, TODO `a4c3dec`'s precedent; the reload button is already
+   right-aligned in the header row, so decide placement when both can
+   appear -- agent entries don't have reload, so likely no conflict).
+   "Agent-turn item" needs pinning down in the plan: probably every
+   `assistant` entry (and perhaps the tool call/result entries of the same
+   turn, grouped), identified by the `turn_id` each entry already carries
+   (TODO `dffb428`); the open question is whether the button renders just
+   that one entry or the whole agent turn (all entries sharing the
+   `turn_id`: text, tool calls, results) -- the latter matches "that turn"
+   best and is probably the right default. The markdown widgets are
+   file-based (`set_file(path)`), so write the rendered turn as a `.md` file
+   under `.desk_temp/` (keyed per instance/turn, with a cleanup story) and
+   open it via the widget opener (`current_context.get_widget_opener`/
+   `open_widget_content`, which takes a `path`). Format tool calls and
+   results as fenced code blocks under headings, and **include images for
+   real**: tool-result images (see TODO `10b4d7d`, which keeps the original
+   image bytes behind its `[image]` placeholder) are written next to the
+   `.md` file and referenced as `![...](relative/path.png)` -- `markdown
+   -rendering.md` documents that both markdown widgets resolve relative
+   image paths against the source file's directory, and SVG needs the
+   Image Viewer instead (see `qtextbrowser-images-svg-controls.md`).
+   Depends on TODO `10b4d7d` for the image half (the text half can ship
+   first). Per direct user request.
+
 db1cd65. Claude (Desk) widget: context-window awareness and manual
    compaction. (a) Poll `ClaudeSDKClient.get_context_usage()` after each
    `turn_complete`, emit a `context_usage` signal, and mark the widget
