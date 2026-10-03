@@ -427,6 +427,18 @@ call):
   (they're stacked away with the rest of the normal page) — the only way
   out is zooming/panning it back into view.
 
+**Explicit minimum size (TODO `9585a5a`).** None of the above matters if the
+frame regrows after the state is chosen. A frame's derived minimum size is the
+largest minimum over *all* stacked pages (the hidden normal page counts while
+greeked, and its counter-scaled chrome is huge in local units at low zoom)
+plus the content's own minimum, and the `QGraphicsProxyWidget` embedding grows
+the proxy up to it -- the cause of widgets visibly distorting at low zoom, for
+every widget kind, and of any widget whose content is wider than its placed
+size. `WidgetFrame` therefore sets an explicit `setMinimumSize(1, 1)`;
+over-wide/-tall content clips rather than moving the frame, and the real size
+floors are `WorkspaceView`'s own resize-drag clamps. See
+`tests/verify/verify_widget_frame_low_zoom_size.py`.
+
 Both thresholds are computed from the same fixed on-screen constants the
 counter-scaling itself targets (`CLOSE_BUTTON_SIZE`, `TITLEBAR_FONT_PT`,
 ...) — e.g. `_TempuiPromoteButton`'s target width is measured via

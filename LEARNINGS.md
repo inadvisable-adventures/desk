@@ -1295,3 +1295,22 @@ teardown of frames), so: when adding signal wiring on `WidgetFrame`, use a
 bound method on a long-lived object, not a lambda, and run the focus and stale
 verify scripts. Found because the full `tests/verify/` sweep caught it; the
 isolated new-feature script (`verify_open_widgets.py`) passed either way.
+
+TODO `9585a5a` (widget shapes distort at low zoom): the report was real and
+general (every widget kind regrew at low zoom, not just Claude (Desk)), and
+TODO `33d3e8d`'s `SetNoConstraint` + one deferred `_reassert_size` only
+covered part of the cause. A `WidgetFrame`'s *derived* minimum size is the
+largest minimum over **all** `QStackedLayout` pages -- the hidden normal page
+counts even while the greeked page is showing, and its counter-scaled chrome
+(`CONST / view_scale` local px) is enormous at low zoom -- plus the content's
+own minimum; `QGraphicsProxyWidget`'s embedding silently grows the proxy up to
+it. At any zoom, content whose minimum exceeds its placed size does the same
+(Claude (Desk)'s top row had grown to ~620px in a 480px frame through several
+TODOs' worth of added labels). Fix: an explicit `setMinimumSize(1, 1)` on the
+frame. Lessons: (1) when a widget is "too small to fit", clip it, don't let
+Qt regrow the frame; (2) a headless `WorkspaceView` repro (place real widgets,
+`view._rescale(...)`, pump events, compare `proxy.size()`) reproduces this
+faithfully -- the "no live repro" in the original report was avoidable, and the
+screenshot concern in it doesn't apply; (3) every label added to a crowded
+widget row widens its minimum -- check `minimumSizeHint()` against
+`default_size` when adding to one.

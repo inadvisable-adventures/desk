@@ -10582,7 +10582,7 @@ d0a4c7b. COMPLETED: Fix widget stacking on the canvas (`src/desk/shell/canvas.py
    `verify_minimap.py` (32 checks, real `WorkspaceView` frames) and a
    screenshot; a real `DeskWindow` run was skipped.
 
-9585a5a. Investigate the report that widget shapes distort when zoomed
+9585a5a. COMPLETED: Investigate the report that widget shapes distort when zoomed
    small on the Workspace Canvas -- suspected by the reporter: chrome
    buttons counter-scaled for zoom force the frame to regrow, most
    visibly on the Claude (Desk) widget. Static reading found no live
@@ -10596,6 +10596,20 @@ d0a4c7b. COMPLETED: Fix widget stacking on the canvas (`src/desk/shell/canvas.py
    level or widget shape it did not cover), a regression since, or a
    distinct mechanism, and file a fix item accordingly. Cites
    `../FEEDBACK/FEEDBACK-DESK-widget-shape-distorts-at-low-zoom-2026-09-19-1500.md`.
+   [planned: widget-low-zoom-distortion.md (COMPLETED)]
+
+   COMPLETED: reproduced headlessly (real `WorkspaceView`, real frames, zoom
+   1.0 -> 0.03) and it is **real and general**, not Claude-Desk-specific:
+   every widget kind regrew at low zoom, and Claude (Desk) also regrew at
+   100% (its content minimum was ~620px in a 480px frame after several
+   TODOs' worth of added top-row labels). Classified as a gap in `33d3e8d`'s
+   fix, not a regression: the frame's derived minimum size (largest over all
+   `QStackedLayout` pages, including the hidden normal page while greeked,
+   plus the content's) was regrowing the proxy. Fixed with an explicit
+   `setMinimumSize(1, 1)` on `WidgetFrame` and by splitting Claude (Desk)'s
+   top row in two (min width 387px). Verified by
+   `verify_widget_frame_low_zoom_size.py` (7 of its 9 checks fail without the
+   fix) and the whole suite. No separate fix item was needed.
 
 454d718. A built-in **Recently Removed** widget, so removing a widget
    instance no longer permanently destroys its `getLocalStorage` state.

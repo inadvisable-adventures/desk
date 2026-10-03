@@ -431,17 +431,23 @@ class ClaudeDeskWidget(QWidget):
         self._question_layout.setContentsMargins(0, 0, 0, 0)
         self._question_panel.setVisible(False)
 
+        # Two rows: controls above, status indicators and panel toggles
+        # below. One row of everything made the widget's minimum width
+        # (~620px) exceed its 480px default, which regrew the frame (TODO
+        # 9585a5a) -- see plans/widget-low-zoom-distortion.md.
         top_row = QHBoxLayout()
         top_row.addWidget(self._status_label, stretch=1)
-        top_row.addWidget(self._queue_label)
-        top_row.addWidget(self._rate_limit_label)
-        top_row.addWidget(self._stale_label)
-        top_row.addWidget(self._context_label)
         top_row.addWidget(self._model_combo)
-        top_row.addWidget(self._compact_button)
         top_row.addWidget(self._permission_mode_combo)
-        top_row.addWidget(self._tasks_toggle_button)
-        top_row.addWidget(self._flow_toggle_button)
+        top_row.addWidget(self._compact_button)
+        indicator_row = QHBoxLayout()
+        indicator_row.addWidget(self._queue_label)
+        indicator_row.addWidget(self._rate_limit_label)
+        indicator_row.addWidget(self._stale_label)
+        indicator_row.addWidget(self._context_label)
+        indicator_row.addStretch(1)
+        indicator_row.addWidget(self._tasks_toggle_button)
+        indicator_row.addWidget(self._flow_toggle_button)
 
         prompt_row = QHBoxLayout()
         prompt_row.addWidget(self._mic_button)
@@ -456,6 +462,7 @@ class ClaudeDeskWidget(QWidget):
 
         layout = QVBoxLayout(self)
         layout.addLayout(top_row)
+        layout.addLayout(indicator_row)
         layout.addWidget(self._history, stretch=1)
         layout.addLayout(self._permission_row)
         layout.addLayout(self._compact_row)

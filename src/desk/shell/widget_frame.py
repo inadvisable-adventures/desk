@@ -662,6 +662,23 @@ class WidgetFrame(QWidget):
         # resize() calls (initial placement, WorkspaceView's resize-drag)
         # change its size, same as before this fix.
         outer.setSizeConstraint(QVBoxLayout.SizeConstraint.SetNoConstraint)
+        # TODO 9585a5a: the frame's own minimum size must be explicit.
+        # Left to be derived (QWidget's smart minimum from minimumSizeHint),
+        # it came out as the largest *any* QStackedLayout page asks for --
+        # including the hidden normal page while the greeked page is
+        # showing -- plus the content's own minimum. At low zoom the
+        # counter-scaled local chrome sizes balloon past the frame's actual
+        # size, and at any zoom a content widget whose minimum is wider or
+        # taller than the placed size (the Claude (Desk) widget's top row
+        # was ~620px wide in a 480px frame) pushed the frame bigger. The
+        # QGraphicsProxyWidget embedding then silently regrew the frame
+        # (TODO 33d3e8d's SetNoConstraint and one deferred _reassert_size
+        # only covered part of that). An explicit 1x1 minimum stops the
+        # regrowth entirely; the real lower bounds are WorkspaceView's own
+        # resize-drag clamps, and over-tall/-wide content clips instead of
+        # moving the frame. Reproduced and verified headlessly by
+        # tests/verify/verify_widget_frame_low_zoom_size.py.
+        self.setMinimumSize(1, 1)
 
         # TODO 33d3e8d: a QStackedWidget swaps between normal chrome+content
         # and a plain "greeked" placeholder page once this frame is too
