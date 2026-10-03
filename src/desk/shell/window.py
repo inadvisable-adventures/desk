@@ -4,6 +4,7 @@ import logging
 import os
 import shutil
 import threading
+import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -18,6 +19,7 @@ from desk.custom_widgets import LikelySourceCandidate, build_from_source, find_l
 from desk.desks import (
     DESK_SUFFIX,
     Desk,
+    RemovedWidget,
     StateEntry,
     StateHistoryEntry,
     WidgetState,
@@ -38,6 +40,7 @@ from desk.promotion_deps import (
     rewrite_files_entries,
     rewrite_out_dir,
 )
+from desk.recently_removed import RECENTLY_REMOVED_CHANGED_EVENT, RECENTLY_REMOVED_MAX
 from desk.canvas_layout import ARRANGEMENTS, restorable, snapshot_moves
 from desk.widget_overview import WIDGET_OVERVIEW_CHANGED_EVENT
 from desk.file_type_registry import (
@@ -1970,6 +1973,7 @@ class DeskWindow(QMainWindow):
         frame = self.find_frame_by_instance_id(instance_id)
         if frame is None:
             return False
+        self._tombstone_widget(frame)
         self.view.remove_widget(frame)
         # Belt-and-suspenders for kind:"html" widgets specifically (TODO
         # 6f9c51b): they have no destroyed-signal-based cleanup path the
@@ -1978,6 +1982,84 @@ class DeskWindow(QMainWindow):
         self._event_mediator.unsubscribe_all(instance_id)
         self.save_current_desk()
         return True
+
+    # -- Recently Removed (TODO 454d718) ---------------------------------
+
+    def _tombstone_widget(self, frame: WidgetFrame) -> None:
+        """Snapshots `frame` into Desk.recently_removed (newest first,
+        capped) *before* it is removed and the desk re-saved -- the one
+        point its widget-local-storage state still exists. Widgets whose
+        instance id is their source file's identity (tempui-backed, crash
+        log) are skipped: a revived copy with a fresh id couldn't
+        reconnect."""
+        widget_id = frame.content.widget_id
+        if widget_id in TEMP_UI_WIDGET_IDS or widget_id == CRASH_LOG_WIDGET_ID:
+            return
+        proxy = frame.graphicsProxyWidget()
+        size = proxy.size() if proxy is not None else None
+        info = self._widgets.get(widget_id)
+        tombstone = RemovedWidget(
+            widget_id=widget_id,
+            kind=info.kind if info is not None else "unknown",
+            label=self._display_name_for_instance(frame.instance_id),
+            instance_id=frame.instance_id,
+            state=self._get_widget_local_storage(frame),
+            width=size.width() if size is not None else 0.0,
+            height=size.height() if size is not None else 0.0,
+            removed_at=time.time(),
+        )
+        self.current_desk.recently_removed = [tombstone, *self.current_desk.recently_removed][:RECENTLY_REMOVED_MAX]
+        self._publish_recently_removed()
+
+    def get_recently_removed(self) -> list[dict]:
+        """The tombstones, newest first, without their (possibly large)
+        local-storage state."""
+        return [
+            {
+                "instance_id": r.instance_id,
+                "widget_id": r.widget_id,
+                "kind": r.kind,
+                "label": r.label,
+                "removed_at": r.removed_at,
+            }
+            for r in self.current_desk.recently_removed
+        ]
+
+    def _publish_recently_removed(self) -> None:
+        self._event_mediator.publish(RECENTLY_REMOVED_CHANGED_EVENT, {"entries": self.get_recently_removed()}, "desk")
+
+    def revive_removed_widget(self, instance_id: str) -> str | None:
+        """Places a brand-new instance (centered, at the saved size) seeded
+        with the tombstone's saved widget-local storage, drops the
+        tombstone, and returns the new instance id. None if there is no such
+        tombstone or its widget kind no longer exists (the tombstone is kept
+        in that case)."""
+        tombstone = next((r for r in self.current_desk.recently_removed if r.instance_id == instance_id), None)
+        if tombstone is None:
+            return None
+        widget = self._widgets.get(tombstone.widget_id)
+        if widget is None:
+            return None
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        size = (round(tombstone.width), round(tombstone.height)) if tombstone.width and tombstone.height else widget.default_size
+        frame = self._place_widget(
+            tombstone.widget_id, widget, (center.x(), center.y()), size, local_storage_data=tombstone.state
+        )
+        if frame is None:
+            return None
+        # The same restore call _load_desk_widgets makes, synchronously
+        # after placement: an html page's own JS only runs later, so it
+        # sees the revived data on its first getLocalStorage().
+        self._bind_widget_local_storage(frame, tombstone.state)
+        self.current_desk.recently_removed = [r for r in self.current_desk.recently_removed if r is not tombstone]
+        self.save_current_desk()
+        self._publish_recently_removed()
+        return frame.instance_id
+
+    def clear_recently_removed(self) -> None:
+        self.current_desk.recently_removed = []
+        self.save_current_desk()
+        self._publish_recently_removed()
 
     def zoom_to_widget_by_instance_id(self, instance_id: str) -> bool:
         """TODO 7505703: lets a python widget (the Event Subscribers
@@ -2518,6 +2600,7 @@ class DeskWindow(QMainWindow):
         if not confirm():
             return
         instance_id = frame.instance_id
+        self._tombstone_widget(frame)
         self.view.remove_widget(frame)
         self._event_mediator.unsubscribe_all(instance_id)
         self.save_current_desk()

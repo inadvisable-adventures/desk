@@ -10611,7 +10611,7 @@ d0a4c7b. COMPLETED: Fix widget stacking on the canvas (`src/desk/shell/canvas.py
    `verify_widget_frame_low_zoom_size.py` (7 of its 9 checks fail without the
    fix) and the whole suite. No separate fix item was needed.
 
-454d718. A built-in **Recently Removed** widget, so removing a widget
+454d718. COMPLETED: A built-in **Recently Removed** widget, so removing a widget
    instance no longer permanently destroys its `getLocalStorage` state.
    Today `DeskWindow.close_widget`/`close_widget_by_instance_id`
    (`src/desk/shell/window.py`) drop the frame and re-save, and
@@ -10633,6 +10633,22 @@ d0a4c7b. COMPLETED: Fix widget stacking on the canvas (`src/desk/shell/canvas.py
    state each time. Re-verify the cited `window.py` behavior in the
    plan, since the report's line numbers are from 2026-08-18. Cites
    `../FEEDBACK/FEEDBACK-DESK-revive-removed-widgets-2026-08-18-1412.md`.
+   [planned: recently-removed-widget.md (COMPLETED)]
+
+   COMPLETED: re-verified the cited behavior (both close paths dropped the
+   frame and re-saved, so state was lost). Both now snapshot a
+   `RemovedWidget` tombstone first -- newest first, capped at 20, stored in a
+   new optional `recently_removed` key of the `.desk` file (old files load
+   unchanged). Tempui-backed and crash-log widgets are not tombstoned (their
+   instance id is their source identity, so a revived copy couldn't
+   reconnect). `widgets/recently_removed/` lists them live (event
+   `desk.recently_removed.changed`) with **Revive** (places a brand-new
+   instance centered at the saved size and seeds its own local storage
+   synchronously, as `_load_desk_widgets` does; drops the tombstone; a kind
+   that no longer exists can't be revived) and a confirm-then-**Clear all**
+   (Event Log's popups-service pattern). Verified by
+   `verify_recently_removed.py` (26 checks; real `WorkspaceView`, stub window);
+   a real `DeskWindow` run was skipped.
 
 8e4711e. `desk.documents` v1: virtualized, Desk-cached reads of large or
    binary files. `desk.documents.open(path)` -> a server-side handle

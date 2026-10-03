@@ -1,6 +1,6 @@
 import json
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from desk.file_type_registry import FileTypeRegistryEntry, entry_from_dict, entry_to_dict
@@ -75,6 +75,22 @@ class WidgetState:
 
 
 @dataclass
+class RemovedWidget:
+    """A tombstone for a removed widget instance (TODO 454d718): enough to
+    place a brand-new instance seeded with the old one's widget-local
+    storage. See plans/recently-removed-widget.md."""
+
+    widget_id: str
+    kind: str
+    label: str
+    instance_id: str
+    state: dict
+    width: float
+    height: float
+    removed_at: float
+
+
+@dataclass
 class Desk:
     path: Path
     widgets: list[WidgetState] = field(default_factory=list)
@@ -107,6 +123,10 @@ class Desk:
     # file_type_registry above -- carried over unchanged by
     # DeskWindow._capture_desk_state.
     installed_jobs: list[InstalledJobDefinition] = field(default_factory=list)
+    # TODO 454d718: newest-first tombstones of removed widget instances
+    # (capped; see desk.recently_removed.RECENTLY_REMOVED_MAX), carried over
+    # unchanged by DeskWindow._capture_desk_state like the fields above.
+    recently_removed: list[RemovedWidget] = field(default_factory=list)
 
     @property
     def name(self) -> str:
@@ -182,6 +202,7 @@ def load_desk(path: Path) -> Desk:
         file_type_registry=file_type_registry,
         state=state,
         installed_jobs=installed_jobs,
+        recently_removed=[RemovedWidget(**r) for r in data.get("recently_removed", [])],
     )
 
 
@@ -263,6 +284,7 @@ def desk_state_dict(desk: Desk, stale_by_instance_id: dict[str, bool] | None = N
         "file_type_registry": [entry_to_dict(e) for e in desk.file_type_registry],
         "state": {key: state_entry_dict(entry) for key, entry in desk.state.items()},
         "installed_jobs": [_installed_job_dict(j) for j in desk.installed_jobs],
+        "recently_removed": [asdict(r) for r in desk.recently_removed],
     }
 
 

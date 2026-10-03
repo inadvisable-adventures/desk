@@ -882,6 +882,16 @@ Desk Bridge API.
     `undo_canvas_arrangement` through `get_main_window()`, polls while visible
     and refreshes on the overview event.
 
+34. **Recently Removed widget** (`widgets/recently_removed/`, TODO `454d718`) —
+    removing a widget used to destroy its widget-local-storage for good. Both
+    close paths now first snapshot a `RemovedWidget` tombstone (widget id/kind,
+    label, instance id, state, size, time) into `Desk.recently_removed`
+    (newest first, capped at 20, an optional key in the `.desk` file; tempui-
+    and crash-log widgets are skipped). The widget lists them (live, via
+    `desk.recently_removed.changed`) with **Revive** (a brand-new instance,
+    seeded with the saved state before its page first reads it) and a
+    confirmed **Clear all**.
+
 ### Widget Model
 
 See `design-docs/widget-ux.md` for the interactive chrome (titlebar/drag,
