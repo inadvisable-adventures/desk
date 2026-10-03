@@ -1,4 +1,4 @@
-# Claude (Desk) background-tasks panel: framed items, log widget, sub-agent routing (TODO `90efef6`)
+# Claude (Desk) background-tasks panel: framed items, log widget, sub-agent routing (TODO `90efef6`) (COMPLETED)
 
 ## Summary
 (a) Replace the `_tasks_list` `QListWidget` with a scroll area of framed,

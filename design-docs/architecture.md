@@ -772,6 +772,15 @@ Desk Bridge API.
     notices that doesn't need dismissing. Push only: an instance that hasn't
     published yet shows "no status yet".
 
+    **Background-task panel and log widget** (TODO `90efef6`): the tasks
+    panel is a scroll area of framed items (`desk.claude_task_panel`) that
+    preview the *tail* of each task's own log; hover "View Log" or a
+    double-click opens `widgets/claude_desk_task_log/` via a
+    `current_context` opener hook, kept live by
+    `desk.claude_desk.task_log_appended` events. A sub-agent's own output
+    (messages with `parent_tool_use_id`) is emitted by `ClaudeSession` as
+    `session_event` only and routed to the owning task's log by the widget.
+
     **Observability principle.** This widget should expose as much of its
     own operation through the UX as is practical, up to and including
     debug-grade views (e.g. an animated, abstracted data-flow diagram of

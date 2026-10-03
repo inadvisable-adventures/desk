@@ -10193,7 +10193,7 @@ a7d7c0a. COMPLETED: Claude (Desk) widget: publish desk-wide status events (quest
    `verify_claude_desk_status_events.py` (26 checks) and the whole suite;
    no live GUI session.
 
-90efef6. Claude (Desk) widget: the background-tasks panel's `_tasks_list`
+90efef6. COMPLETED: Claude (Desk) widget: the background-tasks panel's `_tasks_list`
    (`widgets/claude_desk/widget.py:264`, a plain `QListWidget` --
    `_background_tasks: dict[str, dict]` at `widget.py:260`,
    `_refresh_tasks_list`/`_on_task_event` at `widget.py:455-472`) packs
@@ -10296,6 +10296,21 @@ a7d7c0a. COMPLETED: Claude (Desk) widget: publish desk-wide status events (quest
    out.
 
    Per direct user request.
+   [planned: claude-desk-task-panel-and-log-widget.md (COMPLETED)]
+
+   COMPLETED: (a) `desk.claude_task_panel` (`TaskPanel`/`TaskEntry`,
+   `tail_preview`) replaces `_tasks_list`; (b) hover "View Log"/double-click
+   opens a new `widgets/claude_desk_task_log/` via
+   `current_context.get_background_task_log_opener()` ->
+   `DeskWindow.open_background_task_log`, zooming to an existing one, live via
+   `CLAUDE_DESK_TASK_LOG_EVENT`; (c) sub-agent output (`parent_tool_use_id`)
+   is routed to its task's log, falling back to the main history if no task
+   matches. (c) is NOT confirmed against a live Task-tool run (both
+   `AssistantMessage` and a new sub-agent `UserMessage` branch are handled).
+   Nested sub-agents each get their own task log (each nested Task has its own
+   `TaskStartedMessage`); nothing rolls up. A restored task-log widget shows
+   "No log available". Verified by `verify_claude_desk_task_panel.py` (41
+   checks) and the whole suite.
 
 db1cd65. Claude (Desk) widget: context-window awareness and manual
    compaction. (a) Poll `ClaudeSDKClient.get_context_usage()` after each
