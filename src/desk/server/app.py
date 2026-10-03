@@ -85,8 +85,7 @@ class TokenAuthMiddleware:
     one placed widget instance or hmsvc service and bound server-side to that
     identity (put in `scope["desk_identity"]`), or the **legacy** shared
     per-launch token, which proves only "someone who knows the launch token"
-    and leaves identity to client-supplied headers (deprecated; see
-    design-docs/deprecations.md)."""
+    and leaves identity to client-supplied headers (deprecated: DEPR-001)."""
 
     def __init__(self, app: ASGIApp, token: str, credentials: CredentialRegistry | None = None) -> None:
         self.app = app
@@ -309,8 +308,8 @@ def create_app(
         if key not in legacy_warned:
             legacy_warned.add(key)
             logging.getLogger("desk.bridge").warning(
-                "Bridge caller %r/%r is using the deprecated shared-token, header-asserted identity; "
-                "see design-docs/deprecations.md",
+                "Bridge caller %r/%r is using the deprecated shared-token, header-asserted identity "
+                "(DEPR-001); use the per-instance Bridge credential instead",
                 widget_id_header,
                 instance_id_header,
             )

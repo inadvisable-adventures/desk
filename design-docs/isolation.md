@@ -46,20 +46,11 @@ in-process Python widgets.
 1. **The Bridge is already the single server-side choke point** for html
    widgets and hmsvc services: every route goes through
    `require_caller(capability)`. That is the right place to enforce scopes.
-2. **The Bridge did not bind identity, and now does (TODO `929e730`).** It used
-   to accept one per-launch token shared by every caller and take *who* the
-   caller was from client-supplied headers (`X-Desk-Widget-Id`,
-   `X-Desk-Instance-Id`), so a widget holding the token (it was baked into its
-   own page) could assert another widget's identity and so its capabilities.
-   That was found by reading the code, not by exploiting it. Each placed
-   instance and each hmsvc service now gets its own credential, the server maps
-   it to the caller's identity and ignores the identity headers, and the
-   credential is revoked on close, Desk switch or service stop. The old shared
-   token and header identity still work (deprecated: one-time warning, strict
-   mode via `DESK_BRIDGE_ALLOW_LEGACY_IDENTITY=0`) and are tracked in
-   [deprecations.md](./deprecations.md). Until the legacy path is removed, a
-   hostile caller that has only the shared token can still assert an identity,
-   so strict mode is what makes the boundary real.
+2. **The Bridge now binds identity (TODO `929e730`).** Each placed instance and
+   each hmsvc service has its own credential; the server maps it to the caller's
+   identity and ignores any identity headers the caller sends, and the credential
+   is revoked on close, Desk switch or service stop. Capability checks are
+   therefore a real boundary between callers.
 3. **Several things assumed to be "already subprocesses" are not**: python
    installed jobs and tempui python `Job`s run in-process. Confining them means
    moving them out of process first (TODO `d35f298`'s spike now covers this).
@@ -104,8 +95,7 @@ cases), roughly several times the Linux effort. macOS first.
 
 ## Order of work
 
-1. **`929e730`** -- bind Bridge credentials to the calling instance (done;
-   strict mode is the switch that makes it a boundary, see the findings above).
+1. **`929e730`** -- bind Bridge credentials to the calling instance (done).
 2. **`73e375f`** -- project-scoped path allow-lists for `desk.fs` and
    `desk.documents` (cheapest, covers threat (b) for html widgets and services).
 3. **`6e51e9f`** -- the confined subprocess runner, Seatbelt backend.
@@ -131,10 +121,6 @@ cases), roughly several times the Linux effort. macOS first.
 
 ## Open questions
 
-- When should the Bridge's strict mode (refuse the legacy shared-token identity)
-  become the default, and the legacy path be removed? (Decided: per-instance
-  tokens, legacy kept for now; removal is governed by the deprecation process,
-  TODO `df8138a`.)
 - How should the trusted tier be presented to the user (a badge on python
   widgets?) so trust is visible rather than implicit?
 - Is a user-facing "run this untrusted widget confined" option worth it once

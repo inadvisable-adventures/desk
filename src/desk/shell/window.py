@@ -723,7 +723,7 @@ class DeskWindow(QMainWindow):
             # TODO 929e730: a per-instance Bridge credential, bound to this
             # (widget, instance) server-side. Falls back to the deprecated
             # shared launch token if the handle can't issue one (older test
-            # fakes) -- see design-docs/deprecations.md.
+            # fakes) -- deprecated, DEPR-001.
             issue = getattr(self._handle, "issue_credential", None)
             if issue is not None:
                 credential = issue(widget_id, instance_id)

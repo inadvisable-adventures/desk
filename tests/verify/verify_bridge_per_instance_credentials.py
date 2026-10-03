@@ -224,7 +224,7 @@ def test_legacy_shared_token_still_works_and_warns_once():
         check("legacy self.* routes still need only the instance-id header (and 422 without it)", out["self_only_instance"] == 200 and out["self_no_headers"] == 422)
         warnings = [m for m in capture.messages if "deprecated" in m]
         first_caller = [m for m in warnings if "'privileged'" in m and "'legacy-1'" in m]
-        check("a deprecation warning is logged once per caller (two calls, one warning), naming the doc", len(first_caller) == 1 and "deprecations.md" in first_caller[0])
+        check("a deprecation warning is logged once per caller (two calls, one warning), naming its deprecation id", len(first_caller) == 1 and "DEPR-001" in first_caller[0] and "deprecated-docs" not in first_caller[0])
         check("a different caller gets its own warning", any("'legacy-2'" in m for m in warnings))
 
     try:

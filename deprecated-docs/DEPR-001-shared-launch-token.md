@@ -1,27 +1,15 @@
-# Desk — Deprecations
+> # ⚠ DEEP-DIVE HISTORY ONLY — NOT CURRENT DOCUMENTATION
+>
+> This file records an API Desk has **replaced**. It exists only so that someone
+> investigating *why* something changed, or reading very old code, can find what
+> the old behavior was. **If you are doing anything else, stop reading and use
+> the current documentation.** Nothing below describes behavior you should use,
+> write against, or explain to a user.
+>
+> Never load this file into context as a side effect of normal work, and never
+> link to it from current docs. See `README.md` in this directory.
 
-Tracks things Desk still supports but has replaced: what the old way was, what
-replaces it, where it stands, and what has to happen before it is removed. The
-**original documentation of each deprecated option is preserved verbatim** here,
-so it stays findable after the main docs have moved on to the replacement.
-
-How deprecations are managed in general (warning, tracking, removal criteria) is
-not settled yet -- TODO `df8138a` is to plan that process. Until then this file
-is the single place to look, and each entry states its own status.
-
-## Entry format
-
-- **Deprecated** -- the old way, in one line.
-- **Replaced by** -- the new way, and where it is documented.
-- **Since** -- the date (and TODO) it was deprecated.
-- **Status** -- still supported / warns / can be switched off / removed.
-- **How you'd notice** -- what a caller using the old way sees.
-- **Removal condition** -- what would have to be true to remove it.
-- **Original documentation (verbatim)** -- the text that used to describe it.
-
----
-
-## 1. Shared per-launch Bridge token with header-asserted identity
+# DEPR-001 — Shared per-launch Bridge token with header-asserted identity
 
 - **Deprecated:** a single per-launch token, shared by every Bridge caller, that
   proves only "someone who knows the launch token"; callers state *who they are*
@@ -31,11 +19,11 @@ is the single place to look, and each entry states its own status.
   `kind: "html"` widget instance and each hmsvc service gets its own token, which
   `CredentialRegistry` (`src/desk/server/credentials.py`) binds to that caller's
   identity; the server takes identity from the credential and ignores the
-  identity headers. Documented in `architecture.md` ("Security Considerations",
-  the `kind: "html"` widget auth paragraph, the hmsvc paragraph) and
-  `isolation.md`.
+  identity headers. Documented (as the only mechanism) in `design-docs/architecture.md` ("Security
+  Considerations", the `kind: "html"` widget auth paragraph, the hmsvc paragraph)
+  and `design-docs/isolation.md`.
 - **Since:** 2026-10-03, TODO `929e730`.
-- **Status:** still supported, and the default for any caller that presents the
+- **Status:** *transitional*. Still supported (the old way, not yet a tombstone), and the default for any caller that presents the
   shared launch token (`ServerHandle.token`, `?token=` on `handle.url`, and a
   `ServerHandle` or `HmsvcManager` that was not given a credential registry).
   Desk's own widgets and services no longer use it. Can be switched off:
@@ -45,12 +33,12 @@ is the single place to look, and each entry states its own status.
   refuse it with HTTP 403 (the shared token still authenticates routes that need
   no identity, such as `/api/ping`).
 - **How you'd notice:** one WARNING per (widget id, instance id) from the
-  `desk.bridge` logger: "Bridge caller ... is using the deprecated shared-token,
-  header-asserted identity; see design-docs/deprecations.md".
-- **Removal condition:** nothing Desk ships uses it (true as of this entry apart
-  from test fixtures that stand in for older handles); strict mode has been the
-  default for a release without breaking anything; any external scripts known to
-  use it have a migration path. To be formalised by TODO `df8138a`.
+  `desk.bridge` logger naming DEPR-001. Under the tombstone model (TODO `df8138a`)
+  this becomes a report to Desk plus a refusal.
+- **Removal condition:** under the tombstone model there is no grace period: the
+  old path is converted to a tombstone (report to Desk, then refuse) as the worked
+  example of TODO `df8138a`. Nothing Desk ships uses it apart from test fixtures
+  that stand in for older handles.
 
 ### Original documentation (verbatim)
 
@@ -91,3 +79,22 @@ current and still used for the legacy fallback):
 
 > Where a service reaches Desk's Bridge API (base URL, no trailing slash) and the
 > per-launch token; set once the Local Web Server is up.
+
+From `architecture.md`, the Bridge API capability/identity paragraph:
+
+> The caller identifies
+> its *kind* via an `X-Desk-Widget-Id` header the injected client library
+> attaches automatically, and (TODO `5734529`) its specific *instance* via
+> a sibling `X-Desk-Instance-Id` header — `ChromiumWidget`/the injected
+> client are both constructed with a concrete `instance_id` up front (see
+> `DeskWindow._place_widget`), the same identity `WidgetState`/`WidgetFrame`
+> already carry, just newly threaded all the way to the calling page itself
+> (nothing before TODO `5734529` let the server tell two same-kind widget
+> instances apart at all, which `self.getLocalStorage`/`setLocalStorage`
+> fundamentally needs — `WidgetState.state` is per-*instance*).
+> `self.getLocalStorage`/`setLocalStorage` deliberately resolve the caller
+> from that header alone, not via the same `discover_widgets(widgets_dir)`
+> lookup every other route uses (which only ever finds real, on-disk
+> `widgets/<id>/` directories — see `PARKINGLOT.md` for the resulting gap
+> this doesn't fully close for tempui-DSL-defined custom widgets and every
+> *other* Bridge capability).

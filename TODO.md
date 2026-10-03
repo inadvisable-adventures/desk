@@ -10904,33 +10904,87 @@ e6ea1db. SUPERSEDED by TODO 2924940 (the isolation decision doc) and its
    `desk.bridge` deprecation warning per caller) and
    `allow_legacy_identity=False` / `DESK_BRIDGE_ALLOW_LEGACY_IDENTITY=0` refuses
    it. Docs updated to describe the new mechanism; the old one is preserved
-   verbatim in the new `design-docs/deprecations.md` (entry 1). Verified by
+   verbatim in the isolated `deprecated-docs/` directory (DEPR-001). Verified by
    `verify_bridge_per_instance_credentials.py` (31 checks, incl. spoofing,
    revocation, strict mode, services) and a real-Chromium end-to-end scenario
    added to `verify_kind_html_auth_token_and_profile_isolation.py`. Strict mode
-   is what makes capability checks a boundary against a hostile caller; making
-   it the default is future work under the deprecation process (TODO
-   `df8138a`).
+   is what makes capability checks a boundary against a hostile caller; under the
+   tombstone model (TODO `df8138a`) the legacy path becomes a refusal.
 
-df8138a. Plan a process for managing deprecations. Desk now has a first real
-   deprecation (the shared launch token with header-asserted Bridge identity,
-   TODO `929e730`: still supported, warns once per caller, can be switched off,
-   tracked in `design-docs/deprecations.md`) and will keep acquiring them, but
-   there is no agreed process for them. Write a plan (and, if it is small, the
-   first slice) covering: what counts as a deprecation versus a breaking
-   change (and how this relates to the tempui changelog tags and
-   `tempui-breaking-changes.md`, which are about agents inside Desk); the
-   lifecycle (announced -> warns -> strict mode available -> default -> removed)
-   and who decides each step; how a deprecation is tracked (this entry format in
-   `design-docs/deprecations.md` is the starting point -- should it be
-   machine-readable, and listed by a Desk command or widget?); how users and
-   agents are told (logs, UI, tempui doc upgrade notifications); how long
-   something must have been warned about before removal and what evidence of
-   "nothing uses it" is needed; how the original documentation is preserved
-   (verbatim in the tracking doc, as done for entry 1); and how removal is
-   verified (a test that the old path now fails, not just that the new one
-   works). Apply the plan to entry 1 as the worked example, including a
-   concrete criterion for making strict mode the default.
+df8138a. Deprecations by tombstone: plan the process and build the first slice.
+   Decided with the user (2026-10-03), replacing the earlier warn-then-remove
+   idea: **when a widget-facing API is replaced, Desk keeps the old name but
+   with nothing behind it except a mechanism that notifies Desk the old API was
+   used, and then an error.** If the usage can be rewritten mechanically (no
+   agent needed -- anchored patterns or Python's `ast`, no new dependencies),
+   Desk offers to do it; it always also offers a short command to paste into an
+   agent console, or to launch an agent console to fix it. No grace period.
+   **Scope: everything widget-facing, tempui included** -- Bridge JS
+   (`window.desk.*`), python-widget hooks (`current_context.*`), tempui DSL
+   keywords and their fields, `widget.json`/`service.json` fields, and
+   wire-level paths.
+
+   **Pieces to plan and build (first slice marked *):**
+   (1) *A registry (`src/desk/deprecations.py`): per deprecation an id
+   (`DEPR-NNN`), the old API, its replacement, the user-facing message, a
+   detector (what to look for and in which kinds of file), an optional
+   mechanical rewriter, and the since-date. The messages say what to use now
+   and never need the old docs.
+   (2) *Tombstones per surface: an old JS name becomes a stub that reports to
+   Desk (a Bridge route; the per-instance credential of TODO `929e730` says
+   which instance) and rejects with the message; an old python hook raises a
+   `DeprecatedApiError` after reporting; an old tempui keyword is not acted on
+   -- Desk shows a notification with the replacement and the rewrite/agent
+   offers; an old manifest field fails the widget's load the same way; a legacy
+   wire path is refused and reported.
+   (3) *Reporting: once per instance and API, to the Desk UI (a titlebar badge in
+   the style of `[STALE]`/`[ERROR]`, and a listing, e.g. a column in Open
+   Widgets), independent of whether the widget catches the exception.
+   (4) Detection before it runs: a static scan when a widget is placed, and a
+   "scan this project for deprecated API usage" command, both using the
+   registry's detectors -- a tombstone alone only fires when that code path
+   executes, so an unopened widget would otherwise break later, at the worst time.
+   (5) Rewriters: preview as a diff, confirm, back up (or rely on git), re-scan
+   to prove it came out clean; must handle where widget code really lives
+   (project files, `desk_widgets/`, html embedded as base64 in a `.desk` file,
+   tempui files).
+   (6) Agent handoff: a short command to copy into an agent console (a prompt
+   naming the deprecation id and the affected files), and a "launch an agent
+   console" action that reuses the machinery the `[CHAT]` button already uses to
+   open a Claude (Desk) widget scoped to a widget.
+   (7) Tests as part of the process: each tombstone throws and reports, each
+   detector/rewriter has before/after fixtures, the isolation test below passes.
+
+   **Documentation isolation (hard requirement from the user):** the docs of a
+   deprecated API must stay available to agents but isolated from all other
+   documentation, marked as of interest only to deep-dive investigations where
+   history matters, and must **never be loaded into context as a consequence of
+   normal operation** -- outdated docs must not leak into agents doing anything
+   else. Mechanism (already built for DEPR-001 and enforced by
+   `tests/verify/verify_deprecated_docs_isolation.py`): they live only in
+   `deprecated-docs/` (one `DEPR-NNN-<slug>.md` each, verbatim, with a banner;
+   `README.md` explains), nothing current links to or quotes that directory, the
+   docs Desk writes into projects (`.desk_temp/tempui-*.md`) describe only the
+   current API, runtime messages refer to a deprecation by id only, and
+   `CLAUDE.md` carries the one guard line. The process checklist for a new
+   deprecation: move the old text verbatim into a new `deprecated-docs/` entry,
+   replace it in the current docs with the new API only, add the tombstone, add
+   the registry entry, add a tempui changelog/breaking-change entry that
+   describes the new way only, run the isolation test. Open question for the
+   plan: whether tombstones are ever deleted (and on what evidence) or are
+   permanent.
+
+   **Worked example -- DEPR-001** (the shared per-launch Bridge token with
+   header-asserted identity, TODO `929e730`): convert from "still works and warns"
+   to a tombstone -- a request that relies on the legacy identity is reported to
+   Desk and refused (the shared token stays valid for routes that need no
+   identity), the `allow_legacy_identity` switch and the one-time-warning path go
+   away, and nothing Desk ships uses it (only test fixtures standing in for older
+   handles, which get updated). This is also what turns capability checks into a
+   real boundary against a hostile caller. Output: a current-docs description of
+   the process (`design-docs/`, no old content), the registry and first slice, and
+   the DEPR-001 conversion.
+
 
 73e375f. Bridge API path allow-lists for `desk.fs` and `desk.documents`
    (`src/desk/server/app.py`, `desk_services/documents`). Today any widget

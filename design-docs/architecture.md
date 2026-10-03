@@ -843,8 +843,7 @@ Desk Bridge API.
     (TODO `929e730`): issued when the service starts, bound server-side
     to the synthetic caller id `hmsvc:<name>` (also the mediator instance
     id) with capabilities from `service.json`, and revoked when the process
-    ends. (The older shared launch token is deprecated; see
-    [deprecations.md](./deprecations.md).) The `hmsvc` capability exposes list/logs/
+    ends. The `hmsvc` capability exposes list/logs/
     start/stop/restart to `html` widgets; the Microservices widget
     (`python`) uses the manager directly via
     `current_context.get_hmsvc_manager()`. **Security:** a service is
@@ -1225,17 +1224,16 @@ Each call (other than `self.getManifest`/`self.getLocalStorage`/
 widget's declared `capabilities` — coarse, resource-level strings
 (`"workspace"`, `"fs"`, `"widgets"`), not one per method; see
 `plans/desk-bridge-api.md`'s Key Design Decisions. The caller identifies
-its *kind* via an `X-Desk-Widget-Id` header the injected client library
-attaches automatically, and (TODO `5734529`) its specific *instance* via
-a sibling `X-Desk-Instance-Id` header — `ChromiumWidget`/the injected
-client are both constructed with a concrete `instance_id` up front (see
+its *kind* and *instance* from the **per-instance Bridge credential** the
+injected client library sends (TODO `929e730`; see "Security Considerations"):
+the server maps the credential to that caller's (widget id, instance id) itself,
+so a caller cannot claim to be another widget. `ChromiumWidget`/the injected
+client are constructed with the instance's credential up front (see
 `DeskWindow._place_widget`), the same identity `WidgetState`/`WidgetFrame`
-already carry, just newly threaded all the way to the calling page itself
-(nothing before TODO `5734529` let the server tell two same-kind widget
-instances apart at all, which `self.getLocalStorage`/`setLocalStorage`
-fundamentally needs — `WidgetState.state` is per-*instance*).
+already carry. `self.getLocalStorage`/`setLocalStorage` are per-*instance*
+(`WidgetState.state`), which is exactly what the credential identifies.
 `self.getLocalStorage`/`setLocalStorage` deliberately resolve the caller
-from that header alone, not via the same `discover_widgets(widgets_dir)`
+from the credential alone, not via the same `discover_widgets(widgets_dir)`
 lookup every other route uses (which only ever finds real, on-disk
 `widgets/<id>/` directories — see `PARKINGLOT.md` for the resulting gap
 this doesn't fully close for tempui-DSL-defined custom widgets and every
@@ -1308,12 +1306,7 @@ as every other Bridge GUI-thread call) ever blocks.
   each placed `kind: "html"` widget instance and each hmsvc service gets its
   own token, which the server maps to that caller's identity itself --
   capability checks are therefore a real boundary between callers, not just
-  between callers and outsiders. The older single shared launch token, where
-  callers asserted their own identity in request headers, still works but is
-  deprecated (a one-time warning is logged per caller, and
-  `DESK_BRIDGE_ALLOW_LEGACY_IDENTITY=0` refuses it); see
-  [deprecations.md](./deprecations.md). See also
-  [isolation.md](./isolation.md).
+  between callers and outsiders. See also [isolation.md](./isolation.md).
 - `kind: "python"` widgets run directly in the Shell's own process, on the
   GUI thread, with no isolation boundary at all — the same trust level as
   any other Python script the user runs, and stronger integration than a

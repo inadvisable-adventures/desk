@@ -10,7 +10,7 @@ hmsvc service) its own token; the server maps token -> identity itself.
 `src/desk/server/credentials.py` (new), `src/desk/server/app.py`,
 `src/desk/server/runner.py`, `src/desk/hmsvc.py`, `src/desk/shell/window.py`,
 `design-docs/architecture.md`, `design-docs/isolation.md`,
-`design-docs/deprecations.md` (new), `TODO.md`,
+`deprecated-docs/DEPR-001-shared-launch-token.md` (new; moved there from `design-docs/` when the isolation rule was adopted), `TODO.md`,
 `tests/verify/verify_bridge_per_instance_credentials.py` (new).
 
 ## Design
@@ -42,8 +42,9 @@ hmsvc service) its own token; the server maps token -> identity itself.
   when the process ends; unconfigured it keeps using the shared token.
 - **Docs**: the security/auth sections of `architecture.md` describe the
   per-instance mechanism; the old shared-token + header-identity description is
-  moved, verbatim, into a new `design-docs/deprecations.md` entry. A TODO is
-  filed to plan the deprecation process itself.
+  moved, verbatim, into the isolated `deprecated-docs/` directory (DEPR-001), which
+  current docs never link to. TODO `df8138a` plans the deprecation process
+  (tombstones) itself.
 
 ## Verification
 Registry unit tests; real-server tests: a per-instance token's identity wins
