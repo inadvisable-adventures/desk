@@ -130,6 +130,8 @@ CLAUDE_WIDGET_ID = "claude"
 # plans/claude-widget-agent-sdk-integration.md. Does not replace
 # CLAUDE_WIDGET_ID above; both can be placed on the same Desk.
 CLAUDE_DESK_WIDGET_ID = "claude_desk"
+# TODO 90efef6: the widget a Claude (Desk) background task's "View Log" opens.
+CLAUDE_DESK_TASK_LOG_WIDGET_ID = "claude_desk_task_log"
 QUESTIONS_WIDGET_ID = "questions"
 IMAGE_VIEWER_WIDGET_ID = "image_viewer"
 EDITOR_WIDGET_ID = "editor"
@@ -524,6 +526,7 @@ class DeskWindow(QMainWindow):
         current_context.set_state_importer(self.import_state_json)
         current_context.set_widget_subtitle_setter(self.set_widget_subtitle)
         current_context.set_widget_height_adjuster(self.adjust_widget_instance_height)
+        current_context.set_background_task_log_opener(self.open_background_task_log)
         self._sync_tempui_doc()
         self._open_crash_log_widgets()
 
@@ -993,6 +996,34 @@ class DeskWindow(QMainWindow):
         widget_info = self._widgets.get(frame.content.widget_id)
         if widget_info is not None:
             self._place_widget_chat_about(frame, widget_info)
+
+    def open_background_task_log(
+        self, source_instance_id: str, task_id: str, title: str, entries: list[dict]
+    ) -> str | None:
+        """The `current_context` background-task-log opener hook (TODO
+        90efef6): places a claude_desk_task_log widget just to the right of
+        the originating Claude (Desk) frame (viewport-center if that frame
+        isn't found), seeds it with `task_id`'s accumulated log, and returns
+        its instance id. The widget then stays current through the event
+        mediator, so this is the only seeding call."""
+        widget = self._widgets.get(CLAUDE_DESK_TASK_LOG_WIDGET_ID)
+        if widget is None:
+            return None
+        source = self.find_frame_by_instance_id(source_instance_id)
+        proxy = source.graphicsProxyWidget() if source is not None else None
+        if proxy is not None:
+            rect = proxy.sceneBoundingRect()
+            pos = (rect.right() + 24, rect.top())
+        else:
+            center = self.view.mapToScene(self.view.viewport().rect().center())
+            pos = (center.x(), center.y())
+        frame = self._place_widget(CLAUDE_DESK_TASK_LOG_WIDGET_ID, widget, pos, widget.default_size)
+        if frame is None:
+            return None
+        content = frame.content.current if isinstance(frame.content, PythonWidgetHost) else None
+        if content is not None and hasattr(content, "seed"):
+            content.seed(source_instance_id, task_id, title, entries)
+        return frame.instance_id
 
     def _place_widget_chat_about(
         self, frame: WidgetFrame, widget_info: WidgetInfo

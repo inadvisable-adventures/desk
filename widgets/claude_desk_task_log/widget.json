@@ -1,0 +1,7 @@
+{
+  "name": "Claude (Desk) Task Log",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": [],
+  "default_size": { "width": 460, "height": 360 }
+}

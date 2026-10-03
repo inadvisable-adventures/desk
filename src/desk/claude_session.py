@@ -56,6 +56,12 @@ TERMINAL_TASK_STATUSES = sdk.TERMINAL_TASK_STATUSES
 # Consumed by widgets/claude_desk_status/.
 CLAUDE_DESK_STATUS_EVENT = "desk.claude_desk.status_changed"
 
+# TODO 90efef6: published by a Claude (Desk) widget per new entry in a
+# background task's own log; payload {"task_id": str, "entry": {"kind",
+# "text", "ts", "turn_id"}}. Consumed by widgets/claude_desk_task_log/,
+# which filters on task_id and the sender (source) instance id.
+CLAUDE_DESK_TASK_LOG_EVENT = "desk.claude_desk.task_log_appended"
+
 # TODO 6ab9e85: the CLI's built-in structured-question tool.
 ASK_USER_QUESTION_TOOL_NAME = "AskUserQuestion"
 
@@ -80,6 +86,12 @@ _MAX_BUFFER_SIZE = 10_000_000
 # case; a real caller needing directory search would need its own
 # path-checking added deliberately, not assumed safe by omission.
 _SCOPED_TOOLS = ["Read", "Write", "Edit", "NotebookEdit"]
+
+
+def _with_parent(data: dict, parent_tool_use_id: str | None) -> dict:
+    if parent_tool_use_id is not None:
+        data["parent_tool_use_id"] = parent_tool_use_id
+    return data
 
 
 def _path_is_allowed(path_str: str, allowed_paths: list[Path]) -> bool:
@@ -432,23 +444,58 @@ class ClaudeSession(QObject):
             if message.usage is not None and message.parent_tool_use_id is None:
                 self._emit_event("token_usage", turn_id, solicited, dict(message.usage))
                 self.token_usage.emit(dict(message.usage))
+            # TODO 90efef6: a sub-agent's own output (parent_tool_use_id set)
+            # is emitted as session_event only -- the widget routes it to the
+            # owning task's log -- never through the legacy signals, which
+            # would put it in the main history.
+            parent = message.parent_tool_use_id
             for block in message.content:
                 if isinstance(block, sdk.TextBlock):
-                    self._emit_event("assistant_text", turn_id, solicited, {"text": block.text})
-                    self.assistant_text.emit(block.text)
+                    self._emit_event("assistant_text", turn_id, solicited, _with_parent({"text": block.text}, parent))
+                    if parent is None:
+                        self.assistant_text.emit(block.text)
                 elif isinstance(block, sdk.ToolUseBlock):
                     self._emit_event(
-                        "tool_use", turn_id, solicited, {"id": block.id, "name": block.name, "input": block.input}
+                        "tool_use",
+                        turn_id,
+                        solicited,
+                        _with_parent({"id": block.id, "name": block.name, "input": block.input}, parent),
                     )
-                    self.tool_use.emit(block.id, block.name, block.input)
+                    if parent is None:
+                        self.tool_use.emit(block.id, block.name, block.input)
                 elif isinstance(block, sdk.ToolResultBlock):
                     self._emit_event(
                         "tool_result",
                         turn_id,
                         solicited,
-                        {"tool_use_id": block.tool_use_id, "content": block.content, "is_error": bool(block.is_error)},
+                        _with_parent(
+                            {"tool_use_id": block.tool_use_id, "content": block.content, "is_error": bool(block.is_error)},
+                            parent,
+                        ),
                     )
-                    self.tool_result.emit(block.tool_use_id, block.content, bool(block.is_error))
+                    if parent is None:
+                        self.tool_result.emit(block.tool_use_id, block.content, bool(block.is_error))
+        elif isinstance(message, sdk.UserMessage):
+            # TODO 90efef6: previously ignored entirely. Only a sub-agent's
+            # (parent_tool_use_id set) tool results are surfaced -- as
+            # session_event only, for routing; a top-level UserMessage is
+            # still ignored, exactly as before.
+            if message.parent_tool_use_id is not None and isinstance(message.content, list):
+                for block in message.content:
+                    if isinstance(block, sdk.ToolResultBlock):
+                        self._emit_event(
+                            "tool_result",
+                            turn_id,
+                            solicited,
+                            _with_parent(
+                                {
+                                    "tool_use_id": block.tool_use_id,
+                                    "content": block.content,
+                                    "is_error": bool(block.is_error),
+                                },
+                                message.parent_tool_use_id,
+                            ),
+                        )
         elif isinstance(message, sdk.ResultMessage):
             summary = {
                 "is_error": message.is_error,
@@ -478,7 +525,15 @@ class ClaudeSession(QObject):
                 turn_id,
                 solicited,
                 message.task_id,
-                {"description": message.description, "status": "running", "task_type": message.task_type},
+                {
+                    "description": message.description,
+                    "status": "running",
+                    "task_type": message.task_type,
+                    # TODO 90efef6: the spawning Task call's tool_use_id --
+                    # what a sub-agent's messages' parent_tool_use_id
+                    # points at, so the widget can route them to this task.
+                    "tool_use_id": message.tool_use_id,
+                },
             )
         elif isinstance(message, sdk.TaskProgressMessage):
             self._emit_task_event(

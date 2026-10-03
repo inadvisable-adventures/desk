@@ -150,6 +150,7 @@ _installed_jobs_provider: Callable[[], list[dict]] | None = None
 _installed_job_uninstaller: Callable[[str], bool] | None = None
 _widget_subtitle_setter: Callable[[str, str | None], None] | None = None
 _widget_height_adjuster: Callable[[str, int], None] | None = None
+_background_task_log_opener: Callable[[str, str, str, list[dict]], str | None] | None = None
 
 
 def set_current_desk_directory(directory: Path) -> None:
@@ -580,6 +581,20 @@ def set_widget_height_adjuster(adjuster: Callable[[str, int], None]) -> None:
 
 def get_widget_height_adjuster() -> Callable[[str, int], None] | None:
     return _widget_height_adjuster
+
+
+def set_background_task_log_opener(opener: Callable[[str, str, str, list[dict]], str | None]) -> None:
+    """TODO 90efef6: `opener(source_instance_id, task_id, title, entries)`
+    places a Claude (Desk) task-log widget next to the source instance's
+    frame, seeded with `entries`, and returns the new instance id (None if
+    it couldn't be placed). See
+    `desk.shell.window.DeskWindow.open_background_task_log`."""
+    global _background_task_log_opener
+    _background_task_log_opener = opener
+
+
+def get_background_task_log_opener() -> Callable[[str, str, str, list[dict]], str | None] | None:
+    return _background_task_log_opener
 
 
 _hmsvc_manager = None

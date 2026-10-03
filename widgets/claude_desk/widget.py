@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
     QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
@@ -17,8 +16,14 @@ from PyQt6.QtWidgets import (
 
 from desk.claude_flow_view import FlowView
 from desk.claude_history_view import HistoryEntry, HistoryView
+from desk.claude_task_panel import TaskPanel
 from desk.claude_staleness import StalenessTracker
-from desk.claude_session import CLAUDE_DESK_STATUS_EVENT, TERMINAL_TASK_STATUSES, ClaudeSession
+from desk.claude_session import (
+    CLAUDE_DESK_STATUS_EVENT,
+    CLAUDE_DESK_TASK_LOG_EVENT,
+    TERMINAL_TASK_STATUSES,
+    ClaudeSession,
+)
 from desk.connectivity_probe import ConnectivityProbe
 from desk.shell import current_context
 from desk.speech import TranscriptionResult
@@ -105,7 +110,7 @@ DEFAULT_PERMISSION_MODE_INDEX = 0  # "Default"
 # TODO f4a7872: fixed, not sizeHint-driven -- keeps the panel's own
 # expand/collapse frame-resize delta (see _on_tasks_toggled) exactly
 # symmetric regardless of how many background tasks have accumulated;
-# the panel's own QListWidget scrolls internally past this height.
+# the panel's own scroll area scrolls internally past this height.
 TASKS_PANEL_HEIGHT = 140
 
 # TODO eb50b84: the data-flow panel's fixed height, same reasoning as
@@ -319,9 +324,17 @@ class ClaudeDeskWidget(QWidget):
         self._tasks_toggle_button = QPushButton()
         self._tasks_toggle_button.setCheckable(True)
         self._tasks_toggle_button.toggled.connect(self._on_tasks_toggled)
-        self._tasks_list = QListWidget()
-        self._tasks_list.setFixedHeight(TASKS_PANEL_HEIGHT)
-        self._tasks_list.setVisible(False)
+        # TODO 90efef6: framed, tail-previewed per-task items; "View Log" /
+        # double-click opens a separate log widget (see _open_task_log).
+        self._tasks_panel = TaskPanel()
+        self._tasks_panel.setFixedHeight(TASKS_PANEL_HEIGHT)
+        self._tasks_panel.setVisible(False)
+        self._tasks_panel.view_log_requested.connect(self._open_task_log)
+        # task_id -> log entries ({kind, text, ts, turn_id}); a sub-agent's
+        # messages are routed here by the spawning Task call's tool_use_id.
+        self._task_logs: dict[str, list[dict]] = {}
+        self._task_by_tool_use_id: dict[str, str] = {}
+        self._task_log_instances: dict[str, str] = {}
         self._update_tasks_toggle_label()
 
         # TODO eb50b84: live data-flow view of the session's events,
@@ -420,7 +433,7 @@ class ClaudeDeskWidget(QWidget):
         # TODO f4a7872: expands from the bottom of the widget on toggle
         # (see _on_tasks_toggled) -- last in the layout, below the
         # prompt row.
-        layout.addWidget(self._tasks_list)
+        layout.addWidget(self._tasks_panel)
         layout.addWidget(self._flow_view)
 
         self._set_busy(False)
@@ -564,21 +577,73 @@ class ClaudeDeskWidget(QWidget):
 
     def _on_task_event(self, task_id: str, patch: dict) -> None:
         task = self._background_tasks.setdefault(task_id, {})
+        before = dict(task)
         for key, value in patch.items():
             if value is not None:
                 task[key] = value
+        tool_use_id = task.get("tool_use_id")
+        if tool_use_id:
+            self._task_by_tool_use_id[tool_use_id] = task_id
+        # TODO 90efef6: what changed becomes this task's own log entries.
+        if "description" not in before and task.get("description"):
+            self._log_task_entry(task_id, "notice", f"started: {task['description']}")
+        last_tool = task.get("last_tool_name")
+        if last_tool and last_tool != before.get("last_tool_name"):
+            self._log_task_entry(task_id, "tool", str(last_tool))
+        status = task.get("status")
+        if status in TERMINAL_TASK_STATUSES and status != before.get("status"):
+            summary = task.get("summary")
+            self._log_task_entry(task_id, "notice", f"{status}" + (f": {summary}" if summary else ""))
         self._refresh_tasks_list()
 
+    def _log_task_entry(self, task_id: str, kind: str, text: str) -> None:
+        entry = {"kind": kind, "text": text, "ts": time.time(), "turn_id": self._active_turn_id}
+        self._task_logs.setdefault(task_id, []).append(entry)
+        if self._mediator is not None and self._mediator_instance_id is not None:
+            self._mediator.publish(
+                CLAUDE_DESK_TASK_LOG_EVENT, {"task_id": task_id, "entry": entry}, self._mediator_instance_id
+            )
+        self._refresh_tasks_list()
+
+    def _route_sub_agent_event(self, event: dict) -> None:
+        """TODO 90efef6: a sub-agent's text/tool traffic (the session emits
+        it as session_event only, with data["parent_tool_use_id"]) goes to
+        the owning task's log. No matching task -> the main history, tagged
+        as sub-agent output, so nothing is ever lost."""
+        data = event["data"]
+        kind = event["kind"]
+        if kind == "assistant_text":
+            entry_kind, text = "assistant", str(data.get("text", ""))
+        elif kind == "tool_use":
+            entry_kind, text = "tool", f"{data.get('name')}({_format_tool_input(data.get('input') or {})})"
+        else:
+            entry_kind = "tool_error" if data.get("is_error") else "tool_result"
+            text = str(data.get("content"))
+        task_id = self._task_by_tool_use_id.get(data["parent_tool_use_id"])
+        if task_id is not None:
+            self._log_task_entry(task_id, entry_kind, text)
+        else:
+            self._history.add_entry(entry_kind, text, turn_id=event["turn_id"], source="sub-agent")
+
+    def _open_task_log(self, task_id: str) -> None:
+        """Opens (or zooms to an already-open) log widget for `task_id`."""
+        existing = self._task_log_instances.get(task_id)
+        zoomer = current_context.get_widget_zoomer()
+        if existing is not None and zoomer is not None and zoomer(existing):
+            return
+        opener = current_context.get_background_task_log_opener()
+        if opener is None or self._session_id is None:
+            return
+        task = self._background_tasks.get(task_id, {})
+        title = f"{task.get('description') or task_id} [{task.get('status', 'pending')}]"
+        instance_id = opener(self._session_id, task_id, title, list(self._task_logs.get(task_id, [])))
+        if instance_id is not None:
+            self._task_log_instances[task_id] = instance_id
+
     def _refresh_tasks_list(self) -> None:
-        self._tasks_list.clear()
         for task_id, task in self._background_tasks.items():
-            status = task.get("status", "pending")
-            description = task.get("description") or task_id
-            text = f"[{status}] {description}"
-            summary = task.get("summary")
-            if summary:
-                text += f" — {summary}"
-            self._tasks_list.addItem(text)
+            lines = [entry["text"].split("\n", 1)[0] for entry in self._task_logs.get(task_id, [])]
+            self._tasks_panel.set_task(task_id, task, lines)
         self._update_tasks_toggle_label()
 
     def _update_tasks_toggle_label(self) -> None:
@@ -597,7 +662,7 @@ class ClaudeDeskWidget(QWidget):
         instance's own id isn't known yet or the height-adjuster hook
         isn't registered, matching every other current_context hook's
         own "unset is a safe no-op" convention."""
-        self._tasks_list.setVisible(checked)
+        self._tasks_panel.setVisible(checked)
         self._update_tasks_toggle_label()
         adjuster = current_context.get_widget_height_adjuster()
         if adjuster is not None and self._session_id is not None:
@@ -617,6 +682,9 @@ class ClaudeDeskWidget(QWidget):
         self._current_event = event
         self._flow_view.feed(event)
         self._staleness.feed(event, time.monotonic())
+        if kind in ("assistant_text", "tool_use", "tool_result") and event["data"].get("parent_tool_use_id"):
+            self._route_sub_agent_event(event)
+            return
         if kind == "turn_started":
             self._active_turn_id = event["turn_id"]
             self._turn_input_tokens = 0

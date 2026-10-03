@@ -63,7 +63,7 @@ def test_claude_session_emits_task_event_for_each_message_type():
     session._handle_message(started, 1, True)
     check(
         "TaskStartedMessage emits description+running status",
-        seen[-1] == ("t1", {"description": "run the build", "status": "running"}),
+        seen[-1] == ("t1", {"description": "run the build", "status": "running", "task_type": None, "tool_use_id": None}),
     )
 
     progress = sdk.TaskProgressMessage(
@@ -139,7 +139,7 @@ def test_panel_hidden_by_default_and_toggle_updates_label():
     # toggle.
     module = _load_widget_module()
     widget = module.build()
-    check("tasks list starts hidden", widget._tasks_list.isHidden() is True)
+    check("tasks list starts hidden", widget._tasks_panel.isHidden() is True)
     check("toggle button starts unchecked", widget._tasks_toggle_button.isChecked() is False)
     check(
         "toggle label starts as bare 'Background Tasks' plus a collapsed arrow",
@@ -147,7 +147,7 @@ def test_panel_hidden_by_default_and_toggle_updates_label():
     )
 
     widget._tasks_toggle_button.setChecked(True)
-    check("checking the toggle shows the list", widget._tasks_list.isHidden() is False)
+    check("checking the toggle shows the list", widget._tasks_panel.isHidden() is False)
     check(
         "toggle label switches to the expanded arrow",
         widget._tasks_toggle_button.text() == "Background Tasks ▾",
@@ -163,10 +163,10 @@ def test_task_event_merge_never_overwrites_with_none_and_updates_running_count()
         "running count reflects one non-terminal task",
         widget._tasks_toggle_button.text().startswith("Background Tasks (1 running)"),
     )
-    check("list shows the running task", widget._tasks_list.count() == 1)
+    check("list shows the running task", widget._tasks_panel.count() == 1)
     check(
         "list item text includes status and description",
-        widget._tasks_list.item(0).text() == "[running] build",
+        widget._tasks_panel.entries()[0].title_text() == "[running] build",
     )
 
     # A notification-only patch (no description re-sent) must not blank
@@ -185,8 +185,8 @@ def test_task_event_merge_never_overwrites_with_none_and_updates_running_count()
         widget._tasks_toggle_button.text() == "Background Tasks ▸",
     )
     check(
-        "list item reflects the merged summary",
-        widget._tasks_list.item(0).text() == "[completed] build — done",
+        "entry title reflects the merged status (the summary now lands in the task's log preview)",
+        widget._tasks_panel.entries()[0].title_text() == "[completed] build",
     )
 
 
@@ -232,3 +232,4 @@ test_tasks_toggle_calls_height_adjuster_symmetrically()
 test_tasks_toggle_is_a_no_op_without_a_session_id_or_hook()
 
 print(f"\n{passed} passed, {failed} failed")
+sys.exit(1 if failed else 0)
