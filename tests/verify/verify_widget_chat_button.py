@@ -182,6 +182,7 @@ class _FakeSession:
         self.turn_complete = _FakeSignal()
         self.session_error = _FakeSignal()
         self.session_event = _FakeSignal()
+        self.token_usage = _FakeSignal()
         self.task_event = _FakeSignal()
         self.connected = _FakeSignal()
 

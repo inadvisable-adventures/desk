@@ -137,6 +137,12 @@ class ClaudeSession(QObject):
     # new views (structured history, flow view, usage indicators) should
     # consume this one. See plans/claude-session-event-model-and-turn-serialization.md.
     session_event = pyqtSignal(dict)
+    # TODO db2402c: per top-level AssistantMessage that carries `usage`
+    # (previously dropped) -- the raw usage dict (input_tokens,
+    # output_tokens, cache_*). Sub-agent messages (parent_tool_use_id
+    # set) are not forwarded: they would double-count against the
+    # parent's own tally.
+    token_usage = pyqtSignal(dict)
 
     def __init__(self) -> None:
         super().__init__()
@@ -262,6 +268,24 @@ class ClaudeSession(QObject):
             return
         asyncio.run_coroutine_threadsafe(self._query_and_stream(text), self._loop)
 
+    def interrupt(self) -> None:
+        """Interrupts the turn currently in flight (TODO db2402c) via
+        the SDK's client.interrupt() -- the CLI then ends the turn with a
+        ResultMessage whose terminal_reason is "aborted_streaming"/
+        "aborted_tools", which completes the pending turn normally. A
+        no-op before start/after stop, same guard shape as
+        send_prompt."""
+        if self._loop is None or self._client is None:
+            return
+        asyncio.run_coroutine_threadsafe(self._interrupt(), self._loop)
+
+    async def _interrupt(self) -> None:
+        assert self._client is not None
+        try:
+            await self._client.interrupt()
+        except Exception as exc:  # noqa: BLE001 -- surfaced to the user, not swallowed
+            self.session_error.emit(str(exc))
+
     def set_permission_mode(self, mode: str) -> None:
         """Changes permission mode live, mid-session (TODO `e9eddba`) --
         a no-op before any session has started or after it's stopped
@@ -372,6 +396,9 @@ class ClaudeSession(QObject):
 
     def _handle_message(self, message: object, turn_id: int, solicited: bool) -> None:
         if isinstance(message, sdk.AssistantMessage):
+            if message.usage is not None and message.parent_tool_use_id is None:
+                self._emit_event("token_usage", turn_id, solicited, dict(message.usage))
+                self.token_usage.emit(dict(message.usage))
             for block in message.content:
                 if isinstance(block, sdk.TextBlock):
                     self._emit_event("assistant_text", turn_id, solicited, {"text": block.text})
@@ -396,6 +423,11 @@ class ClaudeSession(QObject):
                 "total_cost_usd": message.total_cost_usd,
                 "duration_ms": message.duration_ms,
                 "num_turns": message.num_turns,
+                # TODO db2402c: the final tally and why the turn ended
+                # (terminal_reason distinguishes an interrupt).
+                "usage": message.usage,
+                "model_usage": message.model_usage,
+                "terminal_reason": message.terminal_reason,
             }
             self._emit_event("turn_complete", turn_id, solicited, summary)
             # An unsolicited result must not reach the widget's

@@ -133,6 +133,31 @@ def _development_process_instruction() -> str:
     return f" This project also has its own {DEVELOPMENT_PROCESS_FILENAME} at {path} -- please read that too, as orientation only: reading it is not itself a task, and it does not mean you should start working on a TODO item unless the message from the user separately asks for it."
 
 
+# TODO db2402c: ResultMessage.terminal_reason values meaning the turn was
+# cancelled via interrupt (per claude_agent_sdk.types.ResultMessage's docs).
+INTERRUPTED_TERMINAL_REASONS = ("aborted_streaming", "aborted_tools")
+
+
+def _usage_counts(usage: dict) -> tuple[int, int]:
+    """(context/input tokens, output tokens) from an SDK usage dict --
+    cache reads/creations count toward the input side since they are
+    part of the context the model was given."""
+    input_tokens = (
+        int(usage.get("input_tokens") or 0)
+        + int(usage.get("cache_read_input_tokens") or 0)
+        + int(usage.get("cache_creation_input_tokens") or 0)
+    )
+    return input_tokens, int(usage.get("output_tokens") or 0)
+
+
+def _format_token_count(count: int) -> str:
+    return f"{count / 1000:.1f}k" if count >= 1000 else str(count)
+
+
+def _format_token_counts(input_tokens: int, output_tokens: int) -> str:
+    return f"↑{_format_token_count(input_tokens)} ↓{_format_token_count(output_tokens)} tokens"
+
+
 def _format_tool_input(tool_input: dict) -> str:
     return ", ".join(f"{key}={value!r}" for key, value in tool_input.items())
 
@@ -184,6 +209,7 @@ class ClaudeDeskWidget(QWidget):
         self._session.turn_complete.connect(self._on_turn_complete)
         self._session.session_error.connect(self._on_session_error)
         self._session.task_event.connect(self._on_task_event)
+        self._session.token_usage.connect(self._on_token_usage)
         # TODO 551014c: shows this session's id in the titlebar once the
         # SDK client actually connects -- not done directly inside
         # start_session, since that runs synchronously inside
@@ -300,6 +326,16 @@ class ClaudeDeskWidget(QWidget):
         self._prompt_input.send_requested.connect(self._on_send_clicked)
         self._send_button = QPushButton("Send")
         self._send_button.clicked.connect(self._on_send_clicked)
+        # TODO db2402c: shown only while a turn is in flight.
+        self._interrupt_button = QPushButton("Interrupt")
+        self._interrupt_button.clicked.connect(self._on_interrupt_clicked)
+        self._interrupt_button.setVisible(False)
+        # TODO db2402c: per-turn token tally behind the "Working..." text
+        # -- input is the latest message's context size (each API call
+        # re-sends the whole context, so summing would overcount), output
+        # accumulates across the turn's messages.
+        self._turn_input_tokens = 0
+        self._turn_output_tokens = 0
         self._mic_button = QPushButton("●")
         self._mic_button.setToolTip("Record")
         self._mic_button.clicked.connect(self._on_mic_clicked)
@@ -334,8 +370,12 @@ class ClaudeDeskWidget(QWidget):
         prompt_row.addWidget(self._mic_button)
         prompt_row.setAlignment(self._mic_button, Qt.AlignmentFlag.AlignBottom)
         prompt_row.addWidget(self._prompt_input, stretch=1)
-        prompt_row.addWidget(self._send_button)
-        prompt_row.setAlignment(self._send_button, Qt.AlignmentFlag.AlignBottom)
+        send_column = QVBoxLayout()
+        send_column.setContentsMargins(0, 0, 0, 0)
+        send_column.addStretch(1)
+        send_column.addWidget(self._interrupt_button)
+        send_column.addWidget(self._send_button)
+        prompt_row.addLayout(send_column)
 
         layout = QVBoxLayout(self)
         layout.addLayout(top_row)
@@ -508,6 +548,9 @@ class ClaudeDeskWidget(QWidget):
         self._flow_view.feed(event)
         if kind == "turn_started":
             self._active_turn_id = event["turn_id"]
+            self._turn_input_tokens = 0
+            self._turn_output_tokens = 0
+            self._interrupt_button.setEnabled(True)
             if self._unassigned_user_entries:
                 self._unassigned_user_entries.pop(0).set_turn(event["turn_id"])
         elif kind == "unsolicited_turn_started":
@@ -562,6 +605,7 @@ class ClaudeDeskWidget(QWidget):
         # here.
         self._mic_button.setEnabled(not busy)
         self._send_button.setText("Queue" if busy else "Send")
+        self._interrupt_button.setVisible(busy)
         if busy:
             self._status_label.setText("Working...")
 
@@ -682,7 +726,30 @@ class ClaudeDeskWidget(QWidget):
         self._show_next_permission()
 
     def _on_turn_complete(self, summary: dict) -> None:
-        self._finish_busy_period("Error." if summary.get("is_error") else "Idle.")
+        # TODO db2402c: terminal_reason tells an interrupted turn from a
+        # normal/errored one.
+        if summary.get("terminal_reason") in INTERRUPTED_TERMINAL_REASONS:
+            idle_status = "Interrupted."
+        else:
+            idle_status = "Error." if summary.get("is_error") else "Idle."
+        usage = summary.get("usage") or {}
+        if usage:
+            self._status_label.setToolTip(f"Last turn: {_format_token_counts(*_usage_counts(usage))}")
+        self._finish_busy_period(idle_status)
+
+    def _on_interrupt_clicked(self) -> None:
+        self._interrupt_button.setEnabled(False)
+        self._status_label.setText("Interrupting...")
+        self._session.interrupt()
+
+    def _on_token_usage(self, usage: dict) -> None:
+        input_tokens, output_tokens = _usage_counts(usage)
+        self._turn_input_tokens = input_tokens
+        self._turn_output_tokens += output_tokens
+        if self._busy and self._interrupt_button.isEnabled():
+            self._status_label.setText(
+                f"Working... ({_format_token_counts(self._turn_input_tokens, self._turn_output_tokens)})"
+            )
 
     def _on_session_error(self, message: str) -> None:
         # Deliberately does not drain the queue (TODO e1f6391): a

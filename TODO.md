@@ -9934,7 +9934,7 @@ f0da2e9. COMPLETED: Expose staleness to agents: add a `stale: bool` to each
    `../FEEDBACK/FEEDBACK-DESK-sheet-widget-no-programmatic-open-2026-08-07-0302.md`
    (suggested fix 2).
 
-db2402c. Claude (Desk) widget: (1) a live token-usage indicator. Add a
+db2402c. COMPLETED: Claude (Desk) widget: (1) a live token-usage indicator. Add a
    `ClaudeSession` signal (e.g. `token_usage`) emitted from
    `_handle_message` whenever an `AssistantMessage` carries a non-`None`
    `.usage` (currently ignored), and show it where `_set_busy`
@@ -9949,6 +9949,13 @@ db2402c. Claude (Desk) widget: (1) a live token-usage indicator. Add a
    normal or errored one in the status text. Cites
    `../FEEDBACK/FEEDBACK-DESK-claude-desk-progress-interrupt-compact-2026-09-18-2035.md`
    (parts 1 and 2).
+   [planned: claude-desk-token-usage-interrupt.md (COMPLETED)]
+
+   COMPLETED: `token_usage` signal/event, live "Working... (↑ ↓ tokens)"
+   status, final tally in the status tooltip, Interrupt button +
+   `ClaudeSession.interrupt()`, "Interrupted." via `terminal_reason`.
+   Verified by `verify_claude_desk_token_usage_interrupt.py` (22 checks)
+   and the whole `tests/verify/` suite; no live-API run.
 
 c1eb687. Claude (Desk) widget: surface rate-limit status via `RateLimitEvent`,
    currently parsed by `claude_agent_sdk`'s own message parser
