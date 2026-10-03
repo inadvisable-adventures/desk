@@ -109,7 +109,7 @@ def test_bridge_round_trip():
             results = {}
 
             def run():
-                post = lambda path, body: _request(f"{base}/api/bridge/documents/{path}", handle.token, "W", method="POST", body=body)
+                post = lambda path, body: _request(f"{base}/api/bridge/documents/{path}", handle.issue_credential("W", "inst-test"), "W", method="POST", body=body)
                 status, opened = post("open", {"path": "data.bin"})
                 results["open"] = (status, opened)
                 h = opened["handle"]
@@ -149,7 +149,7 @@ def test_capability_is_required():
             out = {}
 
             def run():
-                out["r"] = _request(f"{base}/api/bridge/documents/open", handle.token, "W", method="POST", body={"path": str(Path(d) / "x.bin")})
+                out["r"] = _request(f"{base}/api/bridge/documents/open", handle.issue_credential("W", "inst-test"), "W", method="POST", body={"path": str(Path(d) / "x.bin")})
 
             _run_with_pumped_event_loop(run)
             check("a widget without the `documents` capability is refused", out["r"][0] == 403)

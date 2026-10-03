@@ -28,6 +28,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from desk.deprecations import DeprecatedManifestError, check_manifest
+
 HMSVC_DIRNAME = "desk_hmsvc"
 SERVICE_ENTRY_FILENAME = "service.py"
 SERVICE_MANIFEST_FILENAME = "service.json"
@@ -131,6 +133,13 @@ def _read_manifest(directory: Path) -> tuple[str, list[str], bool, bool, str | N
         return "", list(DEFAULT_CAPABILITIES), False, False, None, None
     if not isinstance(data, dict):
         return "", list(DEFAULT_CAPABILITIES), False, False, None, None
+    try:
+        # TODO df8138a: a deprecated manifest field is a tombstone. The service
+        # is still listed -- its description carries the message -- but inert:
+        # no capabilities and no autostart.
+        check_manifest(data, str(directory / SERVICE_MANIFEST_FILENAME))
+    except DeprecatedManifestError as error:
+        return str(error), [], False, False, None, None
     capabilities = data.get("capabilities", list(DEFAULT_CAPABILITIES))
     if not isinstance(capabilities, list):
         capabilities = list(DEFAULT_CAPABILITIES)

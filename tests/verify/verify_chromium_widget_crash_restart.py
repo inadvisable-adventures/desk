@@ -36,6 +36,13 @@ def check(name, condition):
         failed += 1
         print(f"FAIL: {name}")
 
+def _bound(handle, widget_id, instance_id):
+    """(page URL, credential) for one instance, as DeskWindow._place_widget
+    issues them -- the page and its injected Bridge client share one
+    per-instance credential (TODO 929e730)."""
+    credential = handle.issue_credential(widget_id, instance_id)
+    return handle.widget_url(widget_id, credential), credential
+
 
 def pump(seconds=1.0, until=None):
     deadline = time.time() + seconds
@@ -59,7 +66,7 @@ with tempfile.TemporaryDirectory() as d:
     handle = start_server(widgets_dir=widgets_dir)
     try:
         widget = ChromiumWidget(
-            "crashy", "inst-crash", handle.widget_url("crashy"), handle.token,
+            "crashy", "inst-crash", *_bound(handle, "crashy", "inst-crash"),
             HotReloadBroker(), Path(d) / "profile",
         )
         widget.resize(400, 300)

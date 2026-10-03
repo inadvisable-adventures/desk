@@ -1306,7 +1306,10 @@ as every other Bridge GUI-thread call) ever blocks.
   each placed `kind: "html"` widget instance and each hmsvc service gets its
   own token, which the server maps to that caller's identity itself --
   capability checks are therefore a real boundary between callers, not just
-  between callers and outsiders. See also [isolation.md](./isolation.md).
+  between callers and outsiders. A request that relies on the shared launch
+  token for identity is refused (and reported to Desk) rather than trusted; see
+  [deprecation-process.md](./deprecation-process.md). See also
+  [isolation.md](./isolation.md).
 - `kind: "python"` widgets run directly in the Shell's own process, on the
   GUI thread, with no isolation boundary at all — the same trust level as
   any other Python script the user runs, and stronger integration than a

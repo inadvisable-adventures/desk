@@ -378,26 +378,26 @@ def test_bridge_api_state_get_set_history_and_events():
             def run_requests():
                 # get on a never-set key
                 result["unset_get"] = _request(
-                    f"{base}/api/bridge/state/get?key=counter", handle.token, "widget_a", "inst-a"
+                    f"{base}/api/bridge/state/get?key=counter", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a"
                 )
 
                 # set with no edit given
                 result["set_no_edit"] = _request(
-                    f"{base}/api/bridge/state/set", handle.token, "widget_a", "inst-a",
+                    f"{base}/api/bridge/state/set", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a",
                     method="POST", body={"key": "counter", "value": 1},
                 )
                 result["get_after_no_edit_set"] = _request(
-                    f"{base}/api/bridge/state/get?key=counter", handle.token, "widget_a", "inst-a"
+                    f"{base}/api/bridge/state/get?key=counter", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a"
                 )
 
                 # subscribe a second instance, then set from the first, with an edit
                 handle.event_mediator.subscribe("inst-listener", "desk.state.changed")
                 result["set_with_edit"] = _request(
-                    f"{base}/api/bridge/state/set", handle.token, "widget_a", "inst-a",
+                    f"{base}/api/bridge/state/set", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a",
                     method="POST", body={"key": "counter", "value": 2, "edit": "incremented"},
                 )
                 result["get_after_edit_set"] = _request(
-                    f"{base}/api/bridge/state/get?key=counter", handle.token, "widget_a", "inst-a"
+                    f"{base}/api/bridge/state/get?key=counter", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a"
                 )
                 result["change_event"] = handle.event_mediator.poll("inst-listener", timeout=5)
 
@@ -408,25 +408,25 @@ def test_bridge_api_state_get_set_history_and_events():
                 # history: write past STATE_HISTORY_MAX_ENTRIES total writes to one key
                 for i in range(3, STATE_HISTORY_MAX_ENTRIES + 5):
                     _request(
-                        f"{base}/api/bridge/state/set", handle.token, "widget_a", "inst-a",
+                        f"{base}/api/bridge/state/set", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a",
                         method="POST", body={"key": "counter", "value": i},
                     )
                 result["full_history"] = _request(
-                    f"{base}/api/bridge/state/getHistory?key=counter", handle.token, "widget_a", "inst-a"
+                    f"{base}/api/bridge/state/getHistory?key=counter", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a"
                 )
                 result["limited_history"] = _request(
-                    f"{base}/api/bridge/state/getHistory?key=counter&limit=3", handle.token, "widget_a", "inst-a"
+                    f"{base}/api/bridge/state/getHistory?key=counter&limit=3", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a"
                 )
                 result["oversized_limit_history"] = _request(
-                    f"{base}/api/bridge/state/getHistory?key=counter&limit=99999", handle.token, "widget_a", "inst-a"
+                    f"{base}/api/bridge/state/getHistory?key=counter&limit=99999", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a"
                 )
 
                 # missing capability
                 result["no_cap_get_status"] = _request_expect_status(
-                    f"{base}/api/bridge/state/get?key=counter", handle.token, "no_capability_widget", "inst-b"
+                    f"{base}/api/bridge/state/get?key=counter", handle.issue_credential("no_capability_widget", "inst-b"), "no_capability_widget", "inst-b"
                 )
                 result["no_cap_set_status"] = _request_expect_status(
-                    f"{base}/api/bridge/state/set", handle.token, "no_capability_widget", "inst-b",
+                    f"{base}/api/bridge/state/set", handle.issue_credential("no_capability_widget", "inst-b"), "no_capability_widget", "inst-b",
                     method="POST", body={"key": "counter", "value": 1},
                 )
 

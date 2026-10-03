@@ -23,22 +23,18 @@
   Considerations", the `kind: "html"` widget auth paragraph, the hmsvc paragraph)
   and `design-docs/isolation.md`.
 - **Since:** 2026-10-03, TODO `929e730`.
-- **Status:** *transitional*. Still supported (the old way, not yet a tombstone), and the default for any caller that presents the
-  shared launch token (`ServerHandle.token`, `?token=` on `handle.url`, and a
-  `ServerHandle` or `HmsvcManager` that was not given a credential registry).
-  Desk's own widgets and services no longer use it. Can be switched off:
-  `create_app(..., allow_legacy_identity=False)` /
-  `start_server(..., allow_legacy_identity=False)` or the environment variable
-  `DESK_BRIDGE_ALLOW_LEGACY_IDENTITY=0` make every identity-bearing Bridge route
-  refuse it with HTTP 403 (the shared token still authenticates routes that need
-  no identity, such as `/api/ping`).
-- **How you'd notice:** one WARNING per (widget id, instance id) from the
-  `desk.bridge` logger naming DEPR-001. Under the tombstone model (TODO `df8138a`)
-  this becomes a report to Desk plus a refusal.
-- **Removal condition:** under the tombstone model there is no grace period: the
-  old path is converted to a tombstone (report to Desk, then refuse) as the worked
-  example of TODO `df8138a`. Nothing Desk ships uses it apart from test fixtures
-  that stand in for older handles.
+- **Status:** **tombstoned** (2026-10-03, TODO `df8138a`). A request that presents
+  only the shared launch token and asserts an identity in the identity headers is
+  reported to Desk and refused with HTTP 403 and the tombstone message (the shared
+  token still authenticates routes that need no identity, such as `/api/ping` and
+  page assets). Before that it had been *transitional* (TODO `929e730`): still
+  accepted, with a one-time warning, and switchable off via
+  `allow_legacy_identity=False` / `DESK_BRIDGE_ALLOW_LEGACY_IDENTITY=0` -- that
+  switch and the warning were removed in the conversion.
+- **How you'd notice:** the 403 body (naming DEPR-001, what to use, and a command
+  for an agent), a report in Desk, and the `[ERROR]` marker on the claimed widget.
+- **Removal condition:** the tombstone is the end state under the new model; whether
+  tombstones are ever deleted is an open question in the process plan.
 
 ### Original documentation (verbatim)
 

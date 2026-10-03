@@ -109,7 +109,7 @@ def test_run_resolves_via_a_delayed_callback():
 
             def run_requests():
                 result["status"], result["body"] = _request(
-                    f"{base}/api/bridge/installedJobs/run", handle.token, "some_widget",
+                    f"{base}/api/bridge/installedJobs/run", handle.issue_credential("some_widget", "inst-test"), "some_widget",
                     body={"name": "greet", "config_path": "cfg.json"},
                 )
 
@@ -140,7 +140,7 @@ def test_run_config_path_omitted_becomes_none():
 
             def run_requests():
                 result["status"], result["body"] = _request(
-                    f"{base}/api/bridge/installedJobs/run", handle.token, "some_widget",
+                    f"{base}/api/bridge/installedJobs/run", handle.issue_credential("some_widget", "inst-test"), "some_widget",
                     body={"name": "greet", "config_path": None},
                 )
 
@@ -167,7 +167,7 @@ def test_run_failing_script_reports_ok_false_not_an_http_error():
 
             def run_requests():
                 result["status"], result["body"] = _request(
-                    f"{base}/api/bridge/installedJobs/run", handle.token, "some_widget",
+                    f"{base}/api/bridge/installedJobs/run", handle.issue_credential("some_widget", "inst-test"), "some_widget",
                     body={"name": "broken", "config_path": None},
                 )
 
@@ -194,7 +194,7 @@ def test_run_validation_error_gets_400_not_200():
 
             def run_requests():
                 result["status"], result["body"] = _request(
-                    f"{base}/api/bridge/installedJobs/run", handle.token, "some_widget",
+                    f"{base}/api/bridge/installedJobs/run", handle.issue_credential("some_widget", "inst-test"), "some_widget",
                     body={"name": "ghost", "config_path": None},
                 )
 
@@ -218,7 +218,7 @@ def test_missing_capability_gets_403():
 
             def run_requests():
                 result["status"], result["body"] = _request(
-                    f"{base}/api/bridge/installedJobs/run", handle.token, "some_widget",
+                    f"{base}/api/bridge/installedJobs/run", handle.issue_credential("some_widget", "inst-test"), "some_widget",
                     body={"name": "greet", "config_path": None},
                 )
 

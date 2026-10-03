@@ -46,6 +46,13 @@ def check(name, condition):
         failed += 1
         print(f"FAIL: {name}")
 
+def _bound(handle, widget_id, instance_id):
+    """(page URL, credential) for one instance, as DeskWindow._place_widget
+    issues them -- the page and its injected Bridge client share one
+    per-instance credential (TODO 929e730)."""
+    credential = handle.issue_credential(widget_id, instance_id)
+    return handle.widget_url(widget_id, credential), credential
+
 
 def pump(seconds=1.0, until=None):
     deadline = time.time() + seconds
@@ -112,7 +119,7 @@ with tempfile.TemporaryDirectory() as d:
         # left hanging (Chromium's own undocumented default) rather
         # than settling on its own regardless of what this widget does.
         sanity = ChromiumWidget(
-            "mediawidget", "inst-sanity", handle.widget_url("mediawidget"), handle.token,
+            "mediawidget", "inst-sanity", *_bound(handle, "mediawidget", "inst-sanity"),
             HotReloadBroker(), Path(d) / "profile-sanity",
         )
         sanity.resize(200, 200)
@@ -128,7 +135,7 @@ with tempfile.TemporaryDirectory() as d:
 
         # --- end-to-end: real getUserMedia()/Notification.requestPermission() ---
         no_media = ChromiumWidget(
-            "mediawidget", "inst-no-media", handle.widget_url("mediawidget"), handle.token,
+            "mediawidget", "inst-no-media", *_bound(handle, "mediawidget", "inst-no-media"),
             HotReloadBroker(), Path(d) / "profile-no-media",
         )
         no_media.resize(200, 200)
@@ -148,7 +155,7 @@ with tempfile.TemporaryDirectory() as d:
         check("no capabilities: Notification.requestPermission() still resolves 'denied'", wait_for_js(no_media, "window.__notif") == "denied")
 
         with_media = ChromiumWidget(
-            "mediawidget", "inst-with-media", handle.widget_url("mediawidget"), handle.token,
+            "mediawidget", "inst-with-media", *_bound(handle, "mediawidget", "inst-with-media"),
             HotReloadBroker(), Path(d) / "profile-with-media", capabilities=["media"],
         )
         with_media.resize(200, 200)

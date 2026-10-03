@@ -159,7 +159,7 @@ def test_set_subtitle_bridge_route_end_to_end():
             def run_request():
                 try:
                     status, body = _request(
-                        f"{base}/api/bridge/self/setSubtitle", handle.token, "http-inst-1",
+                        f"{base}/api/bridge/self/setSubtitle", handle.issue_credential("SomeWidget", "http-inst-1"), "http-inst-1",
                         body={"text": "report.pdf"},
                     )
                     outcome["status"] = status

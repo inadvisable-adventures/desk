@@ -90,11 +90,11 @@ with tempfile.TemporaryDirectory() as d:
         handle.gui_bridge.attach(_FakeGuiWindow())
         base = f"http://{handle.host}:{handle.port}"
         status, body = _pumped(lambda: _post(
-            f"{base}/api/bridge/fs/writeFile", handle.token, {"path": "x.txt", "contents": "hi"}))
+            f"{base}/api/bridge/fs/writeFile", handle.issue_credential("W", "inst-test"), {"path": "x.txt", "contents": "hi"}))
         check("sync: arbitrary exception -> 500", status == 500)
         check("sync: body carries type and message", "_Boom: widget crashed" in body)
         status, body = _pumped(lambda: _post(
-            f"{base}/api/bridge/transforms/run", handle.token,
+            f"{base}/api/bridge/transforms/run", handle.issue_credential("W", "inst-test"),
             {"transform_id": "t", "input": "", "config": {}}))
         check("async: arbitrary exception -> 500", status == 500)
         check("async: body carries type and message", "_Boom: async starter crashed" in body)

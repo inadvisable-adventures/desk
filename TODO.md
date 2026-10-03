@@ -10911,7 +10911,7 @@ e6ea1db. SUPERSEDED by TODO 2924940 (the isolation decision doc) and its
    is what makes capability checks a boundary against a hostile caller; under the
    tombstone model (TODO `df8138a`) the legacy path becomes a refusal.
 
-df8138a. Deprecations by tombstone: plan the process and build the first slice.
+df8138a. COMPLETED: Deprecations by tombstone: plan the process and build the first slice.
    Decided with the user (2026-10-03), replacing the earlier warn-then-remove
    idea: **when a widget-facing API is replaced, Desk keeps the old name but
    with nothing behind it except a mechanism that notifies Desk the old API was
@@ -10985,6 +10985,66 @@ df8138a. Deprecations by tombstone: plan the process and build the first slice.
    the process (`design-docs/`, no old content), the registry and first slice, and
    the DEPR-001 conversion.
 
+
+   [planned: deprecation-tombstones.md (COMPLETED)]
+
+   COMPLETED 2026-10-03: the process is written up in
+   `design-docs/deprecation-process.md` (current docs only, no old content), and
+   the first slice -- pieces (1)-(3), (7) -- is built. `src/desk/deprecations.py`
+   is the registry (`Deprecation`, `DeprecationRegistry`, `format_error` /
+   `agent_command`, `DeprecatedApiError`, `tombstone()`, `check_manifest()`),
+   with once-per-instance reporting. Tombstones exist and are tested for all
+   five surfaces: Bridge JS (stubs generated into the injected client, posting to
+   the new `/api/bridge/deprecations/report`, proven in a real Chromium page),
+   python hooks, tempui keywords (`deprecated:<id>` kind), manifest fields
+   (`widget.json`, `service.json`; inert service) and wire paths. `DeskWindow`
+   lights the widget's `[ERROR]` marker with the full message (independent of
+   exception handling) or shows a notification for frameless usage. **DEPR-001
+   converted**: a request relying on the shared launch token for identity is
+   reported and refused (403 with the message); `allow_legacy_identity`,
+   `DESK_BRIDGE_ALLOW_LEGACY_IDENTITY` and the one-time warning are gone, and
+   ~12 verify scripts that stood in for older callers now use per-instance
+   credentials. Documentation isolation is enforced by
+   `verify_deprecated_docs_isolation.py` (78 checks), which the conversion also
+   exercised: a passage in `architecture.md` still describing the header identity
+   as current had to be rewritten, its original preserved in the isolated entry.
+   Verified by `verify_deprecations.py` (43 checks), the updated credentials test
+   (37) and an added real-Chromium scenario. Deferred, as separate items because
+   each is real work: pieces (4) scan (TODO `284bfbd`), (5) rewriters (TODO
+   `cc78e9d`) and (6) agent handoff in the UI (TODO `18fa45f`); the registry
+   already carries `detector`/`rewriter` fields for them. Open question left in
+   the process doc: whether tombstones are ever deleted.
+
+284bfbd. Deprecation scan: detect tombstoned API usage in widget source before it
+   runs (piece 4 of TODO `df8138a`; see `design-docs/deprecation-process.md`).
+   A tombstone only fires when its code path executes, so an unopened widget
+   would otherwise break later. Use each registry entry's `detector` (a regex over
+   files of given kinds) to scan (a) a widget when it is placed -- its source in
+   `desk_widgets/`, DefineWidget source, embedded base64 html in a `.desk` file --
+   and report findings as the tombstone does, and (b) a whole project via a
+   "scan this project for deprecated API usage" command that lists file, line and
+   deprecation id. Needs real detectors on registry entries (none exist yet beyond
+   DEPR-001, which is a wire path with nothing to scan in source), so the first
+   deliverable includes one real source-level detector end to end, with fixtures
+   for true and false positives.
+
+cc78e9d. Deprecation rewriters: preview, confirm and apply mechanical rewrites of
+   deprecated API usage (piece 5 of TODO `df8138a`). For a deprecation whose
+   `rewriter` is set, Desk offers to fix the usage itself (no agent): show the diff,
+   confirm, back up (or rely on git), apply, then re-scan to prove the result is
+   clean. Anchored patterns or Python's `ast`, no new dependencies; must handle
+   where widget code lives (project files, `desk_widgets/`, html embedded as base64
+   in a `.desk` file -- decode, rewrite, re-encode -- and tempui files). Depends on
+   the scan's detectors (TODO `284bfbd`).
+
+18fa45f. Deprecation agent handoff: the always-available alternative to a rewrite
+   (piece 6 of TODO `df8138a`). Wherever Desk reports a tombstone use, offer (1) a
+   short command to copy into an agent console (the `agent_command` text, naming the
+   deprecation id and the affected files) and (2) a "launch an agent console"
+   action that reuses the machinery the `[CHAT]` button already uses to open a
+   Claude (Desk) widget scoped to a widget, seeded with instructions describing the
+   deprecation (replacement and message from the registry -- never the old docs).
+   Today the command is only embedded in the error text and the `[ERROR]` dialog.
 
 73e375f. Bridge API path allow-lists for `desk.fs` and `desk.documents`
    (`src/desk/server/app.py`, `desk_services/documents`). Today any widget

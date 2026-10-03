@@ -50,7 +50,9 @@ in-process Python widgets.
    each hmsvc service has its own credential; the server maps it to the caller's
    identity and ignores any identity headers the caller sends, and the credential
    is revoked on close, Desk switch or service stop. Capability checks are
-   therefore a real boundary between callers.
+   therefore a real boundary between callers. A request that tries to rely on the
+   old shared launch token for identity is a tombstone (refused and reported; see
+   [deprecation-process.md](./deprecation-process.md)).
 3. **Several things assumed to be "already subprocesses" are not**: python
    installed jobs and tempui python `Job`s run in-process. Confining them means
    moving them out of process first (TODO `d35f298`'s spike now covers this).

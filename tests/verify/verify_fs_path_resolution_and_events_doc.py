@@ -105,7 +105,7 @@ def test_fs_relative_path_resolves_against_desk_directory():
 
             def run_requests():
                 write_result = _request(
-                    f"{base}/api/bridge/fs/writeFile", handle.token, "SomeWidget",
+                    f"{base}/api/bridge/fs/writeFile", handle.issue_credential("SomeWidget", "inst-test"), "SomeWidget",
                     method="POST", body={"path": "hello.txt", "contents": "hi"},
                 )
                 assert write_result == {"ok": True}, write_result
@@ -114,7 +114,7 @@ def test_fs_relative_path_resolves_against_desk_directory():
                 assert on_disk.read_text() == "hi"
 
                 read_result = _request(
-                    f"{base}/api/bridge/fs/readFile?path=hello.txt", handle.token, "SomeWidget"
+                    f"{base}/api/bridge/fs/readFile?path=hello.txt", handle.issue_credential("SomeWidget", "inst-test"), "SomeWidget"
                 )
                 assert read_result == {"contents": "hi"}, read_result
 
@@ -141,7 +141,7 @@ def test_fs_writefile_creates_missing_parent_directories():
 
             def run_requests():
                 write_result = _request(
-                    f"{base}/api/bridge/fs/writeFile", handle.token, "SomeWidget",
+                    f"{base}/api/bridge/fs/writeFile", handle.issue_credential("SomeWidget", "inst-test"), "SomeWidget",
                     method="POST",
                     body={"path": "a/b/c/deep.txt", "contents": "deep"},
                 )
@@ -169,7 +169,7 @@ def test_fs_writefile_to_an_existing_directory_is_unaffected():
 
             def run_requests():
                 write_result = _request(
-                    f"{base}/api/bridge/fs/writeFile", handle.token, "SomeWidget",
+                    f"{base}/api/bridge/fs/writeFile", handle.issue_credential("SomeWidget", "inst-test"), "SomeWidget",
                     method="POST", body={"path": "new.txt", "contents": "new"},
                 )
                 assert write_result == {"ok": True}, write_result
@@ -195,7 +195,7 @@ def test_fs_readfile_on_a_missing_file_still_errors():
 
             def run_requests():
                 try:
-                    _request(f"{base}/api/bridge/fs/readFile?path=nope/nothing.txt", handle.token, "SomeWidget")
+                    _request(f"{base}/api/bridge/fs/readFile?path=nope/nothing.txt", handle.issue_credential("SomeWidget", "inst-test"), "SomeWidget")
                 except RuntimeError as e:
                     result["error"] = str(e)
 
@@ -222,7 +222,7 @@ def test_fs_absolute_path_used_as_is():
 
             def run_requests():
                 write_result = _request(
-                    f"{base}/api/bridge/fs/writeFile", handle.token, "SomeWidget",
+                    f"{base}/api/bridge/fs/writeFile", handle.issue_credential("SomeWidget", "inst-test"), "SomeWidget",
                     method="POST", body={"path": str(elsewhere), "contents": "abs"},
                 )
                 assert write_result == {"ok": True}, write_result
@@ -246,7 +246,7 @@ def test_get_manifest_includes_directory():
             result = {}
 
             def run_requests():
-                result["manifest"] = _request(f"{base}/api/bridge/self/getManifest", handle.token, "SomeWidget")
+                result["manifest"] = _request(f"{base}/api/bridge/self/getManifest", handle.issue_credential("SomeWidget", "inst-test"), "SomeWidget")
 
             _run_with_pumped_event_loop(run_requests)
             check("getManifest includes directory", result["manifest"]["directory"] == str(desk_dir))

@@ -4,6 +4,7 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from desk.deprecations import check_manifest
 from desk.hotreload import HotReloadBroker
 from desk_services.file_watcher import WatchHandle, get_service
 
@@ -58,6 +59,8 @@ class WidgetInfo:
 def _parse_manifest(manifest_path: Path) -> WidgetInfo:
     widget_id = manifest_path.parent.name
     manifest = json.loads(manifest_path.read_text())
+    # TODO df8138a: a deprecated manifest field is a tombstone (reported, load fails).
+    check_manifest(manifest, str(manifest_path))
 
     kind = manifest.get("kind")
     if kind not in VALID_KINDS:

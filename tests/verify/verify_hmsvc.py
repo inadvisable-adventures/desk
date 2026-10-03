@@ -182,7 +182,7 @@ with tempfile.TemporaryDirectory() as tmp, running_server() as handle:
         urllib.request.urlopen(
             urllib.request.Request(
                 f"http://{handle.host}:{handle.port}/api/bridge/hmsvc/list",
-                headers={"X-Desk-Token": handle.token, "X-Desk-Widget-Id": "hmsvc:demo", "X-Desk-Instance-Id": "x"},
+                headers={"X-Desk-Token": handle.credentials.issue_service("demo"), "X-Desk-Widget-Id": "hmsvc:demo", "X-Desk-Instance-Id": "x"},
             )
         )
         got = "allowed"

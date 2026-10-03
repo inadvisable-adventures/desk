@@ -107,7 +107,7 @@ def test_run_resolves_via_a_delayed_callback():
 
             def run_requests():
                 result["status"], result["body"] = _request(
-                    f"{base}/api/bridge/transforms/run", handle.token, "some_widget",
+                    f"{base}/api/bridge/transforms/run", handle.issue_credential("some_widget", "inst-test"), "some_widget",
                     body={"transform_id": "my_transform", "input": "hello", "config": None},
                 )
 
@@ -135,7 +135,7 @@ def test_run_error_surfaces_in_the_response_not_as_an_http_error():
 
             def run_requests():
                 result["status"], result["body"] = _request(
-                    f"{base}/api/bridge/transforms/run", handle.token, "some_widget",
+                    f"{base}/api/bridge/transforms/run", handle.issue_credential("some_widget", "inst-test"), "some_widget",
                     body={"transform_id": "does_not_exist", "input": "x", "config": None},
                 )
 
@@ -159,7 +159,7 @@ def test_missing_capability_gets_403():
 
             def run_requests():
                 result["status"], result["body"] = _request(
-                    f"{base}/api/bridge/transforms/run", handle.token, "some_widget",
+                    f"{base}/api/bridge/transforms/run", handle.issue_credential("some_widget", "inst-test"), "some_widget",
                     body={"transform_id": "my_transform", "input": "x", "config": None},
                 )
 

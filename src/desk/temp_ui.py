@@ -6,6 +6,7 @@ from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from desk.deprecations import get_registry as get_deprecation_registry
 from desk.git_utils import find_git_root
 from desk.installed_jobs import INSTALLED_JOBS_DIRNAME
 
@@ -3667,7 +3668,8 @@ def parse_desk_proc(text: str) -> DeskProcDefinition | None:
 def detect_temp_ui_kind(text: str, custom_keywords: Collection[str] = ()) -> str:
     """"question" (the original, default type), "lightning_round",
     "open_markdown", "open_image", "scratch", "markdown_content",
-    "define_widget", "discuss_parking_lot_item", "job", "desk_proc", a
+    "define_widget", "discuss_parking_lot_item", "job", "desk_proc",
+    "deprecated:<DEPR id>" (a tombstoned old keyword, TODO df8138a), a
     dynamic "open_with_widget:<widget_id>" (TODO 3b6de01, the file's
     own second field -- "question" instead if that field or the third
     (the path) is missing, same tolerance a genuinely unrecognized
@@ -3710,6 +3712,11 @@ def detect_temp_ui_kind(text: str, custom_keywords: Collection[str] = ()) -> str
                 return "desk_proc"
             if keyword in custom_keywords:
                 return f"custom:{keyword}"
+            # TODO df8138a: an old keyword whose replacement exists is a
+            # tombstone -- not a widget, and not silently a "question".
+            deprecated = get_deprecation_registry().tempui_keyword(keyword)
+            if deprecated is not None:
+                return f"deprecated:{deprecated.id}"
             return "question"
     return "question"
 

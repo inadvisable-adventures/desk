@@ -239,7 +239,7 @@ def test_local_storage_bridge_routes_end_to_end():
                     while time.time() < deadline:
                         try:
                             result = _request(
-                                f"{base}/api/bridge/self/getLocalStorage", handle.token, "inst-1"
+                                f"{base}/api/bridge/self/getLocalStorage", handle.issue_credential("SomeWidget", "inst-1"), "inst-1"
                             )
                             break
                         except Exception as e:  # noqa: BLE001
@@ -250,7 +250,7 @@ def test_local_storage_bridge_routes_end_to_end():
 
                     set_result = _request(
                         f"{base}/api/bridge/self/setLocalStorage",
-                        handle.token,
+                        handle.issue_credential("SomeWidget", "inst-1"),
                         "inst-1",
                         method="POST",
                         body={"data": {"count": 7}},
@@ -258,12 +258,12 @@ def test_local_storage_bridge_routes_end_to_end():
                     assert set_result == {"ok": True}
 
                     get_result = _request(
-                        f"{base}/api/bridge/self/getLocalStorage", handle.token, "inst-1"
+                        f"{base}/api/bridge/self/getLocalStorage", handle.issue_credential("SomeWidget", "inst-1"), "inst-1"
                     )
                     assert get_result == {"data": {"count": 7}}
 
                     other_result = _request(
-                        f"{base}/api/bridge/self/getLocalStorage", handle.token, "inst-2"
+                        f"{base}/api/bridge/self/getLocalStorage", handle.issue_credential("SomeWidget", "inst-2"), "inst-2"
                     )
                     assert other_result == {"data": {}}
                 except Exception as e:  # noqa: BLE001

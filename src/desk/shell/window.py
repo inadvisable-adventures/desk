@@ -11,7 +11,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
-from PyQt6.QtCore import QPointF, Qt, QTimer
+from PyQt6.QtCore import QObject, QPointF, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QWidget
 
@@ -40,6 +40,7 @@ from desk.promotion_deps import (
     rewrite_files_entries,
     rewrite_out_dir,
 )
+from desk.deprecations import agent_command, format_error, get_registry as get_deprecation_registry
 from desk.recently_removed import RECENTLY_REMOVED_CHANGED_EVENT, RECENTLY_REMOVED_MAX
 from desk.canvas_layout import ARRANGEMENTS, restorable, snapshot_moves
 from desk.widget_overview import WIDGET_OVERVIEW_CHANGED_EVENT
@@ -293,6 +294,14 @@ def _dispatch_installed_job_run(
     return False, "", "job kind could not be determined at run time.", ""
 
 
+
+class _DeprecationRelay(QObject):
+    """Marshals deprecation reports (which arrive on the Bridge server's thread
+    as well as the GUI thread) onto the GUI thread."""
+
+    reported = pyqtSignal(object)
+
+
 class DeskWindow(QMainWindow):
     """Owns the single currently-open Desk for this window (only one
     window exists for now, and it can only have one Desk open at a time —
@@ -533,6 +542,11 @@ class DeskWindow(QMainWindow):
         current_context.set_widget_subtitle_setter(self.set_widget_subtitle)
         current_context.set_widget_height_adjuster(self.adjust_widget_instance_height)
         current_context.set_background_task_log_opener(self.open_background_task_log)
+        # TODO df8138a: every tombstone use is reported here (see
+        # desk.deprecations); the relay hops it onto the GUI thread.
+        self._deprecation_relay = _DeprecationRelay()
+        self._deprecation_relay.reported.connect(self._on_deprecation_reported)
+        get_deprecation_registry().add_listener(self._deprecation_relay.reported.emit)
         current_context.set_widget_overview_provider(self.get_widget_overview)
         # TODO 8e4711e: desk.documents resolves relative paths against, and
         # caches under, whichever Desk is current.
@@ -2004,12 +2018,56 @@ class DeskWindow(QMainWindow):
 
     # -- Recently Removed (TODO 454d718) ---------------------------------
 
+    def _on_deprecation_reported(self, report) -> None:
+        """A tombstoned API was used (TODO df8138a). A placed widget instance
+        gets its titlebar `[ERROR]` marker with the full tombstone message (what
+        to use now, plus the command to give an agent) -- independent of whether
+        the widget catches the exception; a tempui file or a manifest, which
+        have no frame, get a notification. A python hook (reported by call
+        site) is logged only: its own caller is already getting the exception."""
+        dep = report.deprecation
+        where = report.detail if dep.surface in ("tempui_keyword", "manifest_field", "python_hook") else None
+        text = format_error(dep, where)
+        logging.getLogger("desk.deprecations").warning("%s used by %s/%s: %s", dep.id, report.widget_id, report.instance_id, report.detail)
+        if dep.surface in ("bridge_js", "wire_path"):
+            frame = self.find_frame_by_instance_id(report.instance_id)
+            if frame is not None:
+                frame.set_error(True, text)
+        elif dep.surface in ("tempui_keyword", "manifest_field"):
+            self._notify_deprecated_usage(text, agent_command(dep, where))
+
+    def _notify_deprecated_usage(self, message: str, command: str) -> None:
+        """Split out so headless verification can monkeypatch just this one
+        method instead of driving a real modal QMessageBox."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Deprecated Desk API")
+        box.setText(message)
+        box.setInformativeText(f"To have an agent fix it, paste: {command}")
+        box.addButton("OK", QMessageBox.ButtonRole.AcceptRole)
+        box.exec()
+
+    def _handle_deprecated_tempui_file(self, path: Path) -> bool:
+        """True if `path` starts with a tombstoned tempui keyword: it is reported
+        to Desk (once per file) and never acted on -- not a widget, and not
+        silently a Question."""
+        try:
+            text = path.read_text()
+        except OSError:
+            return False
+        kind = detect_temp_ui_kind(text)
+        if not kind.startswith("deprecated:"):
+            return False
+        first = next((line for line in text.splitlines() if line.strip()), "")
+        get_deprecation_registry().report(kind.split(":", 1)[1], "tempui", path.name, detail=first.strip()[:120])
+        return True
+
     def _revoke_bridge_credential(self, instance_id: str) -> None:
         """TODO 929e730: a removed instance's Bridge credential stops working
         immediately (no-op for an older handle with no registry)."""
         credentials = getattr(getattr(self, "_handle", None), "credentials", None)
         if credentials is not None:
             credentials.revoke_instance(instance_id)
+        get_deprecation_registry().forget_instance(instance_id)
 
     def _tombstone_widget(self, frame: WidgetFrame) -> None:
         """Snapshots `frame` into Desk.recently_removed (newest first,
@@ -2911,11 +2969,15 @@ class DeskWindow(QMainWindow):
             self.view.centerOn(proxy.sceneBoundingRect().center())
 
     def _on_temp_ui_file_added(self, path: Path) -> None:
+        if self._handle_deprecated_tempui_file(path):
+            return
         if self._handle_define_widget_file(path):
             return
         self._notify_temp_ui(path)
 
     def _on_temp_ui_file_edited(self, path: Path) -> None:
+        if self._handle_deprecated_tempui_file(path):
+            return
         if self._handle_define_widget_file(path):
             return
         if self._refresh_live_temp_ui(path):

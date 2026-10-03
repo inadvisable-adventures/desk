@@ -32,6 +32,22 @@ needs the history. The plan for the whole process is TODO `df8138a`.
 - The tempui docs Desk writes into projects describe only the current API.
 - Each entry file starts with the banner above; keep it.
 
+## Adding an entry (checklist for a developer deprecating an API)
+
+1. Copy the old documentation **verbatim** out of the current docs (and any
+   docstrings that described the old behavior) into a new
+   `DEPR-NNN-<slug>.md` here, under the banner used by the existing entries.
+   Record: what was deprecated, what replaces it, since when, and what a caller
+   sees now (the tombstone message).
+2. In the current docs, replace those passages with a description of the new API
+   **only**; do not link here from them.
+3. Add the tombstone and the registry entry (see `design-docs/deprecation-process.md`
+   "Adding a deprecation").
+4. List the entry in the index below.
+5. Add the old-only wording to `OLD_ONLY_PHRASES` in
+   `tests/verify/verify_deprecated_docs_isolation.py` so the test catches it
+   leaking back into current docs, and run the test.
+
 ## Index
 
 - `DEPR-001-shared-launch-token.md` -- the shared per-launch Bridge token with

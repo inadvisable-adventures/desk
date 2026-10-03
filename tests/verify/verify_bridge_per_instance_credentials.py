@@ -1,10 +1,9 @@
 """Verifies TODO `929e730`: per-instance Bridge credentials bind identity
-server-side; spoofed identity headers are ignored; the deprecated shared-token
-legacy path still works (and warns once) but can be disabled; credentials are
-revoked; hmsvc services get their own. Real server over loopback HTTP."""
+server-side; spoofed identity headers are ignored; the shared-token identity
+path is a DEPR-001 tombstone (TODO df8138a: reported to Desk, refused); credentials
+are revoked; hmsvc services get their own. Real server over loopback HTTP."""
 
 import json
-import logging
 import os
 import sys
 import tempfile
@@ -128,15 +127,6 @@ def _pump(fn, timeout=20):
         raise outcome["error"]
 
 
-class _LogCapture(logging.Handler):
-    def __init__(self):
-        super().__init__()
-        self.messages = []
-
-    def emit(self, record):
-        self.messages.append(record.getMessage())
-
-
 def with_server(fn, **kwargs):
     with tempfile.TemporaryDirectory() as d:
         widgets_dir = Path(d) / "widgets"
@@ -198,11 +188,14 @@ def test_instance_identity_comes_from_the_credential():
     with_server(body)
 
 
-def test_legacy_shared_token_still_works_and_warns_once():
-    capture = _LogCapture()
-    logger = logging.getLogger("desk.bridge")
-    logger.addHandler(capture)
-    logger.setLevel(logging.WARNING)
+def test_shared_token_identity_is_a_tombstone():
+    """DEPR-001 (TODO df8138a): a request that relies on the shared launch
+    token for identity is reported to Desk and refused, with the tombstone
+    message -- no old behavior behind it."""
+    from desk.deprecations import get_registry
+
+    seen = []
+    get_registry().add_listener(seen.append)
 
     def body(handle, base):
         out = {}
@@ -210,63 +203,64 @@ def test_legacy_shared_token_still_works_and_warns_once():
 
         def run():
             url = f"{base}/api/bridge/fs/readFile?path=f.txt"
-            hdr = {"X-Desk-Widget-Id": "privileged", "X-Desk-Instance-Id": "legacy-1"}
-            out["a"] = _request(url, handle.token, headers=hdr)[:2]
-            out["b"] = _request(url, handle.token, headers=hdr)[:2]
-            out["missing"] = _request(url, handle.token)[0]
-            # Routes that only need the instance id (self.*) keep requiring just that header.
-            out["self_only_instance"] = _request(f"{base}/api/bridge/self/getLocalStorage", handle.token, headers={"X-Desk-Instance-Id": "legacy-2"})[0]
-            out["self_no_headers"] = _request(f"{base}/api/bridge/self/getLocalStorage", handle.token)[0]
-
-        _pump(run)
-        check("the deprecated shared token + header identity still works", out["a"] == (200, {"contents": "hello"}) and out["b"][0] == 200)
-        check("a legacy call without the identity header is rejected as before (422)", out["missing"] == 422)
-        check("legacy self.* routes still need only the instance-id header (and 422 without it)", out["self_only_instance"] == 200 and out["self_no_headers"] == 422)
-        warnings = [m for m in capture.messages if "deprecated" in m]
-        first_caller = [m for m in warnings if "'privileged'" in m and "'legacy-1'" in m]
-        check("a deprecation warning is logged once per caller (two calls, one warning), naming its deprecation id", len(first_caller) == 1 and "DEPR-001" in first_caller[0] and "deprecated-docs" not in first_caller[0])
-        check("a different caller gets its own warning", any("'legacy-2'" in m for m in warnings))
-
-    try:
-        with_server(body)
-    finally:
-        logger.removeHandler(capture)
-
-
-def test_strict_mode_refuses_legacy_identity():
-    def body(handle, base):
-        tok = handle.issue_credential("privileged", "inst-1")
-        out = {}
-
-        def run():
-            url = f"{base}/api/bridge/fs/readFile?path=f.txt"
-            out["legacy"] = _request(url, handle.token, headers={"X-Desk-Widget-Id": "privileged", "X-Desk-Instance-Id": "x"})[:2]
-            out["bound"] = _request(url, tok)[:2]
+            hdr = {"X-Desk-Widget-Id": "privileged", "X-Desk-Instance-Id": "tomb-1"}
+            out["a"] = _request(url, handle.token, headers=hdr)
+            out["b"] = _request(url, handle.token, headers=hdr)
+            out["no_headers"] = _request(url, handle.token)[:2]
+            out["self_only_instance"] = _request(f"{base}/api/bridge/self/getLocalStorage", handle.token, headers={"X-Desk-Instance-Id": "tomb-2"})
+            out["report_route"] = _request(f"{base}/api/bridge/deprecations/report", handle.token, headers=hdr, method="POST", body={"id": "DEPR-001"})[:2]
             out["ping"] = _request(f"{base}/api/ping", handle.token)[0]
 
         _pump(run)
-        check("strict mode refuses shared-token header identity (403)", out["legacy"][0] == 403 and "per-instance" in out["legacy"][1]["detail"])
-        check("strict mode still serves a bound credential", out["bound"] == (200, {"contents": "hello"}))
-        check("and the shared token still authenticates non-identity routes", out["ping"] == 200)
+        status, payload, _headers = out["a"]
+        check("the old shared-token identity is refused (403)", status == 403)
+        detail = payload["detail"]
+        check("the refusal says what to use now and carries the agent command", "per-instance Bridge credential" in detail and "[DEPR-001]" in detail and "paste:" in detail)
+        check("it never points at the isolated old docs", "deprecated-docs" not in detail)
+        check("a second identical call is also refused", out["b"][0] == 403)
+        mine = [r for r in seen if r.instance_id == "tomb-1"]
+        check("it is reported to Desk exactly once per instance, with what the caller claimed", len(mine) == 1 and mine[0].widget_id == "privileged" and "readFile" in (mine[0].detail or ""))
+        check("without any headers it is refused the same way", out["no_headers"][0] == 403)
+        check("routes that need only the instance id are refused too, and reported per instance", out["self_only_instance"][0] == 403 and any(r.instance_id == "tomb-2" for r in seen))
+        check("even reporting a deprecation can't be done as the shared token", out["report_route"][0] == 403)
+        check("the shared token still authenticates routes that need no identity", out["ping"] == 200)
 
-    with_server(body, allow_legacy_identity=False)
-
-
-def test_env_switch_makes_strict_the_default():
-    os.environ["DESK_BRIDGE_ALLOW_LEGACY_IDENTITY"] = "0"
     try:
-        def body(handle, base):
-            out = {}
-
-            def run():
-                out["r"] = _request(f"{base}/api/bridge/fs/readFile?path=f.txt", handle.token, headers={"X-Desk-Widget-Id": "privileged", "X-Desk-Instance-Id": "x"})[0]
-
-            _pump(run)
-            check("DESK_BRIDGE_ALLOW_LEGACY_IDENTITY=0 enables strict mode", out["r"] == 403)
-
         with_server(body)
     finally:
-        del os.environ["DESK_BRIDGE_ALLOW_LEGACY_IDENTITY"]
+        get_registry().forget_instance("tomb-1")
+        get_registry().forget_instance("tomb-2")
+
+
+def test_registered_js_deprecation_is_reported_via_the_bound_credential():
+    from desk.deprecations import Deprecation, get_registry
+
+    registry = get_registry()
+    dep = registry.register(Deprecation("DEPR-900", "bridge_js", "fs.oldRead", "fs.readFile", "Call fs.readFile(path) instead.", "2026-10-03"))
+    seen = []
+    registry.add_listener(seen.append)
+
+    def body(handle, base):
+        tok = handle.issue_credential("privileged", "inst-js")
+        out = {}
+
+        def run():
+            report = f"{base}/api/bridge/deprecations/report"
+            out["a"] = _request(report, tok, headers={"X-Desk-Widget-Id": "plain", "X-Desk-Instance-Id": "spoofed"}, method="POST", body={"id": "DEPR-900", "detail": "fs.oldRead"})
+            out["b"] = _request(report, tok, method="POST", body={"id": "DEPR-900"})
+            out["unknown"] = _request(report, tok, method="POST", body={"id": "DEPR-nope"})[0]
+
+        _pump(run)
+        check("the report route returns the message to throw", out["a"][0] == 200 and "fs.readFile" in out["a"][1]["message"] and "DEPR-900" in out["a"][1]["message"])
+        mine = [r for r in seen if r.deprecation.id == "DEPR-900"]
+        check("identity comes from the credential, not from claimed headers", len(mine) == 1 and (mine[0].widget_id, mine[0].instance_id) == ("privileged", "inst-js"))
+        check("a second report from the same instance is accepted but not re-reported", out["b"][0] == 200 and len(mine) == 1)
+        check("an unknown deprecation id is a 404", out["unknown"] == 404)
+
+    try:
+        with_server(body)
+    finally:
+        registry.unregister("DEPR-900")
 
 
 def test_revocation_and_unknown_tokens():
@@ -341,9 +335,8 @@ def test_hmsvc_services_get_their_own_credential():
 test_registry()
 test_bound_identity_beats_spoofed_headers()
 test_instance_identity_comes_from_the_credential()
-test_legacy_shared_token_still_works_and_warns_once()
-test_strict_mode_refuses_legacy_identity()
-test_env_switch_makes_strict_the_default()
+test_shared_token_identity_is_a_tombstone()
+test_registered_js_deprecation_is_reported_via_the_bound_credential()
 test_revocation_and_unknown_tokens()
 test_page_cookie_carries_the_per_instance_token()
 test_hmsvc_services_get_their_own_credential()

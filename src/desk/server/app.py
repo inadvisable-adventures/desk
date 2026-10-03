@@ -1,6 +1,4 @@
 import asyncio
-import logging
-import os
 from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import parse_qs
@@ -12,6 +10,7 @@ from pydantic import BaseModel
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from desk.event_mediator import EventMediator
+from desk.deprecations import DeprecationRegistry, format_error, get_registry as get_deprecation_registry
 from desk.server.credentials import CredentialRegistry
 from desk.file_type_registry import FILE_TYPE_REGISTRY_UPDATED_EVENT
 from desk.hmsvc import HmsvcManager, service_name_from_caller_id
@@ -83,9 +82,10 @@ class TokenAuthMiddleware:
 
     A credential is either a **per-instance token** (TODO 929e730), issued to
     one placed widget instance or hmsvc service and bound server-side to that
-    identity (put in `scope["desk_identity"]`), or the **legacy** shared
-    per-launch token, which proves only "someone who knows the launch token"
-    and leaves identity to client-supplied headers (deprecated: DEPR-001)."""
+    identity (put in `scope["desk_identity"]`), or the shared per-launch token,
+    which proves only "someone who knows the launch token" -- enough for routes
+    that need no identity (page assets, ping), never enough to act as a widget
+    (a request relying on it for identity is a DEPR-001 tombstone)."""
 
     def __init__(self, app: ASGIApp, token: str, credentials: CredentialRegistry | None = None) -> None:
         self.app = app
@@ -159,6 +159,11 @@ class CloseWidgetRequest(BaseModel):
 class WriteFileRequest(BaseModel):
     path: str
     contents: str
+
+
+class DeprecationReportRequest(BaseModel):
+    id: str
+    detail: str | None = None
 
 
 class DocumentsOpenRequest(BaseModel):
@@ -249,17 +254,13 @@ def create_app(
     event_mediator: EventMediator | None = None,
     hmsvc_manager: HmsvcManager | None = None,
     credentials: CredentialRegistry | None = None,
-    allow_legacy_identity: bool | None = None,
+    deprecations: DeprecationRegistry | None = None,
 ) -> FastAPI:
     """Serves only kind:"html" widgets (plus the Bridge API). kind:"python"
     widgets render natively in the Shell and never go through this server —
     see design-docs/architecture.md."""
     app = FastAPI(title="Desk")
-    if allow_legacy_identity is None:
-        # DESK_BRIDGE_ALLOW_LEGACY_IDENTITY=0 is the strict mode a future
-        # removal of the legacy path would make the default.
-        allow_legacy_identity = os.environ.get("DESK_BRIDGE_ALLOW_LEGACY_IDENTITY", "1") != "0"
-    legacy_warned: set[tuple[str, str]] = set()
+    deprecation_registry = deprecations or get_deprecation_registry()
     html_widgets = {
         widget_id: widget
         for widget_id, widget in discover_widgets(widgets_dir).items()
@@ -288,32 +289,23 @@ def create_app(
     def _caller_identity(
         request: Request, widget_id_header: str | None, instance_id_header: str | None, need_widget_id: bool = True
     ) -> tuple[str, str | None]:
-        """(widget id, instance id) of the caller. A bound per-instance
-        credential wins and the identity headers are ignored entirely (a
-        mismatching header is simply not trusted). Without one this is the
-        deprecated legacy path: identity comes from the headers (required,
-        as before), a one-time warning is logged, and the strict mode refuses."""
+        """(widget id, instance id) of the caller. Identity comes only from a
+        bound per-instance credential; the identity headers are never trusted.
+        A request that presents just the shared launch token and asserts an
+        identity is the DEPR-001 tombstone: reported to Desk (with whatever the
+        caller claimed, for diagnosis only) and refused with the tombstone
+        message."""
         identity = request.scope.get("desk_identity")
         if identity is not None:
             return identity.widget_id, identity.instance_id
-        if not allow_legacy_identity:
-            raise HTTPException(
-                403, "Caller identity must come from a per-instance Bridge credential; legacy shared-token identity is disabled"
+        dep = deprecation_registry.get("DEPR-001")
+        claimed_widget = widget_id_header or "unknown"
+        claimed_instance = instance_id_header or "unknown"
+        if dep is not None:
+            deprecation_registry.report(
+                dep.id, claimed_widget, claimed_instance, detail=f"{request.method} {request.url.path}"
             )
-        if need_widget_id and widget_id_header is None:
-            raise HTTPException(422, "X-Desk-Widget-Id header required")
-        if not need_widget_id and instance_id_header is None:
-            raise HTTPException(422, "X-Desk-Instance-Id header required")
-        key = (widget_id_header or "", instance_id_header or "")
-        if key not in legacy_warned:
-            legacy_warned.add(key)
-            logging.getLogger("desk.bridge").warning(
-                "Bridge caller %r/%r is using the deprecated shared-token, header-asserted identity "
-                "(DEPR-001); use the per-instance Bridge credential instead",
-                widget_id_header,
-                instance_id_header,
-            )
-        return widget_id_header, instance_id_header
+        raise HTTPException(403, format_error(dep) if dep is not None else "Caller identity requires a per-instance Bridge credential")
 
     def require_caller(capability: str | None):
         async def dependency(
@@ -580,6 +572,21 @@ def create_app(
     @app.post("/api/bridge/documents/close")
     async def documents_close(body: DocumentsCloseRequest, widget: WidgetInfo = Depends(require_caller("documents"))):
         return {"closed": get_documents_service().close(body.handle)}
+
+    # --- deprecations (TODO df8138a): a tombstoned old Bridge JS name calls
+    # this to tell Desk it was used, and gets back the message to throw. The
+    # caller's identity is its bound credential, never what it claims.
+    @app.post("/api/bridge/deprecations/report")
+    async def deprecations_report(body: DeprecationReportRequest, request: Request):
+        identity = request.scope.get("desk_identity")
+        if identity is None:
+            # Same tombstone as any identity-bearing route.
+            _caller_identity(request, None, None)
+        dep = deprecation_registry.get(body.id)
+        if dep is None:
+            raise HTTPException(404, f"Unknown deprecation: {body.id!r}")
+        deprecation_registry.report(dep.id, identity.widget_id, identity.instance_id, detail=body.detail)
+        return {"message": format_error(dep)}
 
     @app.get("/api/bridge/widgets/list")
     async def widgets_list(widget: WidgetInfo = Depends(require_caller("widgets"))):

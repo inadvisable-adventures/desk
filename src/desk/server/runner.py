@@ -46,7 +46,8 @@ class ServerHandle:
     def widget_url(self, widget_id: str, token: str | None = None) -> str:
         """A widget's page URL. `token` is the per-instance credential
         (TODO 929e730) from `issue_credential`; omitted, the page carries the
-        legacy shared launch token (deprecated)."""
+        shared launch token, which serves page assets but cannot act as a
+        widget (DEPR-001)."""
         return f"http://{self.host}:{self.port}/widgets/{widget_id}/?token={token or self.token}"
 
     def issue_credential(self, widget_id: str, instance_id: str) -> str:
@@ -106,7 +107,6 @@ class ServerHandle:
 def start_server(
     widgets_dir: Path = DEFAULT_WIDGETS_DIR,
     host: str = "127.0.0.1",
-    allow_legacy_identity: bool | None = None,
 ) -> ServerHandle:
     port = _free_port()
     token = secrets.token_urlsafe(32)
@@ -139,7 +139,6 @@ def start_server(
         event_mediator=event_mediator,
         hmsvc_manager=hmsvc_manager,
         credentials=credentials,
-        allow_legacy_identity=allow_legacy_identity,
     )
 
     config = uvicorn.Config(app, host=host, port=port, log_level="warning")

@@ -108,7 +108,7 @@ def test_relative_path_resolves_against_desk_directory():
 
             def run_requests():
                 result["status"], result["body"] = _request(
-                    f"{base}/api/bridge/editor/openOrScrap", handle.token, "some_widget",
+                    f"{base}/api/bridge/editor/openOrScrap", handle.issue_credential("some_widget", "inst-test"), "some_widget",
                     body={"path": "notes/a.txt"},
                 )
 
@@ -139,7 +139,7 @@ def test_absolute_path_used_as_is():
 
             def run_requests():
                 result["status"], result["body"] = _request(
-                    f"{base}/api/bridge/editor/openOrScrap", handle.token, "some_widget",
+                    f"{base}/api/bridge/editor/openOrScrap", handle.issue_credential("some_widget", "inst-test"), "some_widget",
                     body={"path": str(elsewhere)},
                 )
 
@@ -165,7 +165,7 @@ def test_missing_capability_gets_403():
 
             def run_requests():
                 result["status"], result["body"] = _request(
-                    f"{base}/api/bridge/editor/openOrScrap", handle.token, "some_widget",
+                    f"{base}/api/bridge/editor/openOrScrap", handle.issue_credential("some_widget", "inst-test"), "some_widget",
                     body={"path": "a.txt"},
                 )
 

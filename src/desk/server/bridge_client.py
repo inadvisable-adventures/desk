@@ -10,6 +10,10 @@ Decisions). CLAUDE.md's "always use TypeScript in strict mode" for browser
 code is about code a Desk user writes for their own kind:"html" widget.
 """
 
+import json
+
+from desk.deprecations import DeprecationRegistry, format_error, get_registry
+
 BRIDGE_CLIENT_TEMPLATE = """
 (function () {
   const WIDGET_ID = "%(widget_id)s";
@@ -158,12 +162,58 @@ BRIDGE_CLIENT_TEMPLATE = """
       setSubtitle: (text) => call("POST", "/api/bridge/self/setSubtitle", { text: text ?? null }),
     },
   };
+%(deprecated_stubs)s
 })();
 """
 
 
-def render_bridge_client(widget_id: str, instance_id: str, token: str) -> str:
-    return BRIDGE_CLIENT_TEMPLATE % {"widget_id": widget_id, "instance_id": instance_id, "token": token}
+_TOMBSTONE_JS = """
+  (function () {
+    const id = %(id)s;
+    const path = %(path)s;
+    const parts = path.split(".");
+    let target = window.desk;
+    for (const part of parts.slice(0, -1)) {
+      target[part] = target[part] || {};
+      target = target[part];
+    }
+    // TODO df8138a: a tombstone -- nothing behind the old name except telling
+    // Desk it was used (the Bridge credential says which instance) and
+    // rejecting with the message the server returns.
+    target[parts[parts.length - 1]] = async function () {
+      let message = %(fallback)s;
+      try {
+        const reported = await call("POST", "/api/bridge/deprecations/report", { id, detail: path });
+        message = reported.message;
+      } catch (e) {
+        // Reporting is best effort; the rejection below is the point.
+      }
+      const err = new Error(message);
+      err.deprecated = id;
+      throw err;
+    };
+  })();
+"""
+
+
+def deprecated_stubs_js(registry: DeprecationRegistry | None = None) -> str:
+    """JS that replaces every registered deprecated Bridge name (surface
+    `bridge_js`, `old` a dotted path under `window.desk`) with a tombstone."""
+    reg = registry or get_registry()
+    return "".join(
+        _TOMBSTONE_JS
+        % {"id": json.dumps(dep.id), "path": json.dumps(dep.old), "fallback": json.dumps(format_error(dep))}
+        for dep in reg.by_surface("bridge_js")
+    )
+
+
+def render_bridge_client(widget_id: str, instance_id: str, token: str, registry: DeprecationRegistry | None = None) -> str:
+    return BRIDGE_CLIENT_TEMPLATE % {
+        "widget_id": widget_id,
+        "instance_id": instance_id,
+        "token": token,
+        "deprecated_stubs": deprecated_stubs_js(registry),
+    }
 
 
 # Executed via QWebEnginePage.runJavaScript directly against a *target*

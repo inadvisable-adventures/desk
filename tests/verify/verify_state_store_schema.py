@@ -130,52 +130,52 @@ def test_bridge_api_schema_aware_state():
             def run_requests():
                 # non-validated key: no typeHint given preserves f68383f's exact prior behavior
                 result["plain_set"] = _request(
-                    f"{base}/api/bridge/state/set", handle.token, "widget_a", "inst-a",
+                    f"{base}/api/bridge/state/set", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a",
                     method="POST", body={"key": "raw", "value": "5"},
                 )
                 result["plain_get"] = _request(
-                    f"{base}/api/bridge/state/get?key=raw", handle.token, "widget_a", "inst-a"
+                    f"{base}/api/bridge/state/get?key=raw", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a"
                 )
 
                 # non-validated key: typeHint coerces on both set and get
                 _request(
-                    f"{base}/api/bridge/state/set", handle.token, "widget_a", "inst-a",
+                    f"{base}/api/bridge/state/set", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a",
                     method="POST", body={"key": "coerced", "value": "5", "type_hint": "number"},
                 )
                 result["coerced_get"] = _request(
-                    f"{base}/api/bridge/state/get?key=coerced", handle.token, "widget_a", "inst-a"
+                    f"{base}/api/bridge/state/get?key=coerced", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a"
                 )
                 result["coerced_get_with_hint"] = _request(
-                    f"{base}/api/bridge/state/get?key=raw&type_hint=number", handle.token, "widget_a", "inst-a"
+                    f"{base}/api/bridge/state/get?key=raw&type_hint=number", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a"
                 )
 
                 # invalid typeHint syntax is a 400
                 result["bad_type_hint_status"] = _request_expect_status(
-                    f"{base}/api/bridge/state/set", handle.token, "widget_a", "inst-a",
+                    f"{base}/api/bridge/state/set", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a",
                     method="POST", body={"key": "raw", "value": "5", "type_hint": "not a type }"},
                 )
 
                 # validated key: register a schema directly on the fake window's own registry
                 fake_window._schema_registry.register_permanent("counter", "number", "builtin_widget")
                 result["valid_set"] = _request(
-                    f"{base}/api/bridge/state/set", handle.token, "widget_a", "inst-a",
+                    f"{base}/api/bridge/state/set", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a",
                     method="POST", body={"key": "counter", "value": 5},
                 )
                 result["valid_get"] = _request(
-                    f"{base}/api/bridge/state/get?key=counter", handle.token, "widget_a", "inst-a"
+                    f"{base}/api/bridge/state/get?key=counter", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a"
                 )
                 result["mismatch_status"] = _request_expect_status(
-                    f"{base}/api/bridge/state/set", handle.token, "widget_a", "inst-a",
+                    f"{base}/api/bridge/state/set", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a",
                     method="POST", body={"key": "counter", "value": "not a number"},
                 )
                 # a mismatched set must not have stored anything
                 result["get_after_mismatch"] = _request(
-                    f"{base}/api/bridge/state/get?key=counter", handle.token, "widget_a", "inst-a"
+                    f"{base}/api/bridge/state/get?key=counter", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a"
                 )
                 # typeHint is ignored for a validated key -- the raw stored value comes back
                 result["get_with_hint_on_validated_key"] = _request(
                     f"{base}/api/bridge/state/get?key=counter&type_hint=string",
-                    handle.token, "widget_a", "inst-a",
+                    handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a",
                 )
 
             _run_with_pumped_event_loop(run_requests)
@@ -216,7 +216,7 @@ def test_self_get_manifest_reflects_live_widget_info():
                 live_widget.desk_widget_loading_errors.append("Schema conflict: something went wrong")
                 fake_window.get_widget_info = lambda widget_id, _cached=live_widget: _cached
                 result["manifest"] = _request(
-                    f"{base}/api/bridge/self/getManifest", handle.token, "widget_a", "inst-a"
+                    f"{base}/api/bridge/self/getManifest", handle.issue_credential("widget_a", "inst-a"), "widget_a", "inst-a"
                 )
 
             _run_with_pumped_event_loop(run_requests)

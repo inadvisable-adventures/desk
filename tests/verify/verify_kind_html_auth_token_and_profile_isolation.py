@@ -215,6 +215,52 @@ def test_per_instance_credential_end_to_end():
             handle.stop()
 
 
+def test_deprecated_js_tombstone_end_to_end():
+    """TODO df8138a: in a real Chromium page, a tombstoned old Bridge name
+    rejects with the tombstone message and tells Desk, which identifies the
+    instance from its bound credential."""
+    import types
+
+    from desk.deprecations import Deprecation, get_registry
+
+    registry = get_registry()
+    registry.register(Deprecation("DEPR-950", "bridge_js", "fs.oldRead", "fs.readFile", "Call fs.readFile(path) instead.", "2026-10-03"))
+    heard = []
+    registry.add_listener(heard.append)
+    with tempfile.TemporaryDirectory() as d:
+        widgets_dir = Path(d)
+        _make_widget_dir(widgets_dir, "tombtest", CUSTOM_ELEMENT_JS)
+        handle = start_server(widgets_dir=widgets_dir)
+        try:
+            credential = handle.issue_credential("tombtest", "inst-tomb")
+            handle.gui_bridge.attach(
+                types.SimpleNamespace(get_widget_info=lambda widget_id: None, current_desk=types.SimpleNamespace(directory=Path(d)))
+            )
+            broker = HotReloadBroker()
+            widget = ChromiumWidget("tombtest", "inst-tomb", handle.widget_url("tombtest", credential), credential, broker, Path(d) / "profile-tomb")
+            pump(2)
+            widget.page().runJavaScript(
+                "window.__t = null; window.desk.fs.oldRead('x').then(() => { window.__t = 'RESOLVED'; })"
+                ".catch(e => { window.__t = 'REJECTED:' + e.deprecated + ':' + e.message; }); 0",
+                lambda v: None,
+            )
+            result = {}
+            deadline = time.time() + 5
+            while result.get("value") in (None, "null") and time.time() < deadline:
+                widget.page().runJavaScript("window.__t", lambda v: result.__setitem__("value", v))
+                pump(0.3)
+            value = result.get("value") or ""
+            check("the old name rejects (never resolves) in a real page", value.startswith("REJECTED:DEPR-950:"))
+            check("the rejection message says what to use now and carries the agent command", "fs.readFile" in value and "paste:" in value and "[DEPR-950]" in value)
+            mine = [r for r in heard if r.deprecation.id == "DEPR-950"]
+            check("Desk was told, identifying the instance from its credential", len(mine) == 1 and (mine[0].widget_id, mine[0].instance_id) == ("tombtest", "inst-tomb"))
+            widget.deleteLater()
+            pump(1)
+        finally:
+            registry.unregister("DEPR-950")
+            handle.stop()
+
+
 # ---------- Per-instance profile isolation ----------
 
 
@@ -326,6 +372,7 @@ def test_browser_widget_still_uses_the_default_profile():
 test_widget_page_response_sets_auth_cookie()
 test_multi_file_widget_actually_loads()
 test_per_instance_credential_end_to_end()
+test_deprecated_js_tombstone_end_to_end()
 test_two_instances_get_distinct_profile_directories()
 test_chromium_profile_dir_helper()
 test_schedule_chromium_profile_cleanup_deletes_only_the_target_instance()

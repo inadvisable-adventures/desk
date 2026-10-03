@@ -229,7 +229,7 @@ def test_bridge_api_get_reads_and_subscribes_set_persists_and_publishes():
             result = {}
 
             def run_requests():
-                get_result = _request(f"{base}/api/bridge/filetypes/get", handle.token, "editor_widget", "inst-caller")
+                get_result = _request(f"{base}/api/bridge/filetypes/get", handle.issue_credential("editor_widget", "inst-caller"), "editor_widget", "inst-caller")
                 result["get"] = get_result
                 subs = handle.event_mediator.list_subscriptions()
                 result["subscribed"] = "inst-caller" in subs and FILE_TYPE_REGISTRY_UPDATED_EVENT in subs["inst-caller"]
@@ -237,7 +237,7 @@ def test_bridge_api_get_reads_and_subscribes_set_persists_and_publishes():
                 handle.event_mediator.subscribe("inst-listener", FILE_TYPE_REGISTRY_UPDATED_EVENT)
 
                 set_result = _request(
-                    f"{base}/api/bridge/filetypes/set", handle.token, "editor_widget", "inst-caller",
+                    f"{base}/api/bridge/filetypes/set", handle.issue_credential("editor_widget", "inst-caller"), "editor_widget", "inst-caller",
                     method="POST", body={"entries": [{"extensions": [".svg"], "mime_types": [], "handlers": []}]},
                 )
                 result["set"] = set_result
