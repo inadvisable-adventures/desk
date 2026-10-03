@@ -10542,7 +10542,7 @@ d0a4c7b. COMPLETED: Fix widget stacking on the canvas (`src/desk/shell/canvas.py
    checks) with stubbed windows; a real `DeskWindow` run was skipped (no
    existing test constructs one).
 
-669b690. A minimap widget for navigating the Desk canvas (merged from
+669b690. COMPLETED: A minimap widget for navigating the Desk canvas (merged from
    the former `PARKINGLOT.md` "Add a minimap for navigating the Desk
    canvas" entry and the concrete scope in the feedback). Motivation
    from the parking lot: a widget under the cursor now gets all of
@@ -10566,6 +10566,21 @@ d0a4c7b. COMPLETED: Fix widget stacking on the canvas (`src/desk/shell/canvas.py
    TODO `53779f4`'s widget-list-changed event). Cites
    `../FEEDBACK/FEEDBACK-DESK-widget-findability-zorder-and-overview-2026-08-16-0107.md`
    (part 4).
+   [planned: minimap-widget.md (COMPLETED)]
+
+   COMPLETED: `widgets/minimap/` (scaled map of every widget and the
+   viewport, click/drag pans, widgets tinted by kind, stale outlined) with
+   **Organize by type**, **Nudge apart**, **Tile** and **Undo**. Pure
+   algorithms in `desk.canvas_layout` (locked widgets never move; sizes never
+   change); `DeskWindow.get_canvas_layout/pan_canvas_to/arrange_canvas/
+   undo_canvas_arrangement`. Undo is a stack of snapshots of exactly the
+   widgets each arrangement moved, restoring only ids still present (closed
+   ones skipped, newly opened ones untouched). Live updates: a 150 ms poll
+   only while visible (positions and the viewport change with no signals)
+   plus an immediate refresh on `desk.widgets.overview_changed` (TODO
+   `53779f4`). Verified by `verify_canvas_layout.py` (26 checks) and
+   `verify_minimap.py` (32 checks, real `WorkspaceView` frames) and a
+   screenshot; a real `DeskWindow` run was skipped.
 
 9585a5a. Investigate the report that widget shapes distort when zoomed
    small on the Workspace Canvas -- suspected by the reporter: chrome

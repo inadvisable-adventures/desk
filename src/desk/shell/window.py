@@ -38,6 +38,7 @@ from desk.promotion_deps import (
     rewrite_files_entries,
     rewrite_out_dir,
 )
+from desk.canvas_layout import ARRANGEMENTS, restorable, snapshot_moves
 from desk.widget_overview import WIDGET_OVERVIEW_CHANGED_EVENT
 from desk.file_type_registry import (
     FILE_TYPE_REGISTRY_UPDATED_EVENT,
@@ -533,6 +534,9 @@ class DeskWindow(QMainWindow):
         # TODO 53779f4: coalesced (a desk load places many widgets in one
         # go) live updates for the Open Widgets widget.
         self._overview_publish_pending = False
+        # TODO 669b690: stack of {instance_id: (x, y)} snapshots, one per
+        # arrangement that actually moved something (see arrange_canvas).
+        self._arrangement_undo_stack: list[dict] = []
         self.view.frames_changed.connect(self._schedule_overview_publish)
         self._sync_tempui_doc()
         self._open_crash_log_widgets()
@@ -1032,6 +1036,75 @@ class DeskWindow(QMainWindow):
     def _publish_widget_overview(self) -> None:
         self._overview_publish_pending = False
         self._event_mediator.publish(WIDGET_OVERVIEW_CHANGED_EVENT, {"widgets": self.get_widget_overview()}, "desk")
+
+    # -- minimap support (TODO 669b690) -----------------------------------
+
+    def _canvas_rects(self) -> list[dict]:
+        rects = []
+        for frame in self.view._frames:
+            proxy = frame.graphicsProxyWidget()
+            if proxy is None:
+                continue
+            info = self._widgets.get(frame.content.widget_id)
+            rect = proxy.sceneBoundingRect()
+            rects.append(
+                {
+                    "id": frame.instance_id,
+                    "kind": info.kind if info is not None else "unknown",
+                    "title": self._display_name_for_instance(frame.instance_id),
+                    "x": rect.x(),
+                    "y": rect.y(),
+                    "w": rect.width(),
+                    "h": rect.height(),
+                    "locked": bool(frame.locked),
+                    "stale": frame.is_stale(),
+                }
+            )
+        return rects
+
+    def get_canvas_layout(self) -> dict:
+        """Every placed widget's scene rect (placement order), the
+        viewport's scene rect, and whether there is an arrangement to undo."""
+        view_rect = self.view.mapToScene(self.view.viewport().rect()).boundingRect()
+        return {
+            "frames": self._canvas_rects(),
+            "view": {"x": view_rect.x(), "y": view_rect.y(), "w": view_rect.width(), "h": view_rect.height()},
+            "can_undo": bool(self._arrangement_undo_stack),
+        }
+
+    def pan_canvas_to(self, x: float, y: float) -> None:
+        self.view.centerOn(QPointF(x, y))
+
+    def _move_frames(self, positions: dict[str, tuple[float, float]]) -> None:
+        for frame in self.view._frames:
+            if frame.instance_id in positions:
+                proxy = frame.graphicsProxyWidget()
+                if proxy is not None:
+                    proxy.setPos(*positions[frame.instance_id])
+
+    def arrange_canvas(self, mode: str) -> int:
+        """Applies a layout ("tile" | "organize" | "nudge"), moving only
+        unlocked widgets, and pushes an undo snapshot of exactly what moved.
+        Returns how many widgets moved (nothing is pushed for 0)."""
+        rects = self._canvas_rects()
+        moves = ARRANGEMENTS[mode](rects)
+        snapshot = snapshot_moves(rects, moves)
+        if not snapshot:
+            return 0
+        self._move_frames({i: moves[i] for i in snapshot})
+        self._arrangement_undo_stack.append(snapshot)
+        return len(snapshot)
+
+    def undo_canvas_arrangement(self) -> int:
+        """Undoes the latest arrangement for the widgets still present;
+        closed ones are skipped and ones opened since are left where they
+        landed. Returns how many widgets were restored."""
+        if not self._arrangement_undo_stack:
+            return 0
+        snapshot = self._arrangement_undo_stack.pop()
+        positions = restorable(snapshot, {f.instance_id for f in self.view._frames})
+        self._move_frames(positions)
+        return len(positions)
 
     def reload_all_stale_widgets(self) -> int:
         """TODO 53779f4: after ONE confirmation, does for every [STALE]

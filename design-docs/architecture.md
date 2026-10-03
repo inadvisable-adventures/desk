@@ -873,6 +873,15 @@ Desk Bridge API.
     eye button does (center *and* raise); "Reload all stale widgets" confirms
     once and reloads every `[STALE]` instance.
 
+33. **Minimap widget** (`widgets/minimap/`, TODO `669b690`) — a live scaled map
+    of every placed widget and the viewport; click/drag pans. Buttons: Organize
+    by type / Nudge apart / Tile (pure algorithms in `desk.canvas_layout`;
+    locked widgets never move) and Undo (a stack of per-arrangement snapshots,
+    restoring only widgets still present). It reaches `DeskWindow`'s
+    `get_canvas_layout`/`pan_canvas_to`/`arrange_canvas`/
+    `undo_canvas_arrangement` through `get_main_window()`, polls while visible
+    and refreshes on the overview event.
+
 ### Widget Model
 
 See `design-docs/widget-ux.md` for the interactive chrome (titlebar/drag,
