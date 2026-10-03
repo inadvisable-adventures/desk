@@ -1,4 +1,4 @@
-# Claude (Desk) history: "Markdown View" hover button on agent-turn items (TODO `6ff3be8`)
+# Claude (Desk) history: "Markdown View" hover button on agent-turn items (TODO `6ff3be8`) (COMPLETED)
 
 ## Summary
 A right-aligned hover button on each `assistant` history entry that renders the

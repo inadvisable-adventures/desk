@@ -10417,7 +10417,7 @@ a7d7c0a. COMPLETED: Claude (Desk) widget: publish desk-wide status events (quest
    Verified by `verify_claude_desk_tool_results.py` (32 checks, including a
    message run through the SDK's real `parse_message`).
 
-6ff3be8. Claude (Desk) widget: a right-aligned hover "Markdown View" button
+6ff3be8. COMPLETED: Claude (Desk) widget: a right-aligned hover "Markdown View" button
    on each agent-turn item in the structured history
    (`src/desk/claude_history_view.py`), which launches a markdown viewer
    (`widgets/markdown/`) showing that turn. Mirror `HistoryEntry`'s
@@ -10445,6 +10445,20 @@ a7d7c0a. COMPLETED: Claude (Desk) widget: publish desk-wide status events (quest
    Image Viewer instead (see `qtextbrowser-images-svg-controls.md`).
    Depends on TODO `10b4d7d` for the image half (the text half can ship
    first). Per direct user request.
+   [planned: claude-desk-markdown-view-button.md (COMPLETED)]
+
+   COMPLETED: a hover "Markdown View" button (right-aligned, assistant
+   entries only) renders the whole turn (every entry with the same
+   `turn_id`, the user prompt as a blockquote) via
+   `desk.claude_turn_markdown.render_turn` to
+   `.desk_temp/claude_desk_turns/<session>/turn-<id>.md`, with tool calls/
+   results in safely-fenced blocks and result images written to an
+   `images/` subdirectory and embedded as real `![image](images/...)`,
+   then opens the Markdown widget. A new viewer opens per click (the opener
+   returns no instance id, so no zoom-to-existing). SVG results would need
+   the Image Viewer, not handled. Verified by
+   `verify_claude_desk_markdown_view.py` (25 checks, including loading the
+   generated file in the real Markdown widget).
 
 db1cd65. Claude (Desk) widget: context-window awareness and manual
    compaction. (a) Poll `ClaudeSDKClient.get_context_usage()` after each

@@ -18,6 +18,7 @@ from desk.claude_flow_view import FlowView
 from desk.claude_history_view import HistoryEntry, HistoryView
 from desk.claude_task_panel import TaskPanel
 from desk.claude_tool_result import ImageAttachment, flatten_tool_result, plain, save_image
+from desk.claude_turn_markdown import IMAGES_DIRNAME, render_turn
 from desk.claude_staleness import StalenessTracker
 from desk.claude_session import (
     CLAUDE_DESK_STATUS_EVENT,
@@ -357,6 +358,7 @@ class ClaudeDeskWidget(QWidget):
         self._history = HistoryView()
         self._history.on_reload = self._on_reload_requested
         self._history.on_image = self._on_history_image
+        self._history.on_markdown = self._on_history_markdown
         # Provenance from ClaudeSession.session_event (TODO 20ca851):
         # the latest event (consumed by the legacy handler that follows
         # it), the turn currently in flight, user entries still waiting
@@ -867,6 +869,31 @@ class ClaudeDeskWidget(QWidget):
         # placeholder (see _on_history_image).
         text, images = flatten_tool_result(content)
         self._add_entry("tool_error" if is_error else "tool_result", text, from_stream=True, images=images)
+
+    def _turn_entries(self, entry: HistoryEntry) -> list[HistoryEntry]:
+        """Every entry sharing `entry`'s turn id, in order (just `entry`
+        itself if it has none)."""
+        turn_id = entry.meta.turn_id
+        if turn_id is None:
+            return [entry]
+        return [e for e in self._history.entries() if e.meta.turn_id == turn_id]
+
+    def _on_history_markdown(self, entry: HistoryEntry) -> None:
+        """TODO 6ff3be8: renders the clicked agent entry's whole turn to
+        markdown under .desk_temp/claude_desk_turns/<session>/ (images in an
+        images/ subdirectory beside it, where the markdown widget resolves
+        relative paths) and opens it in the Markdown widget."""
+        directory = current_context.get_current_desk_directory()
+        base = (directory / TEMP_UI_DIRNAME) if directory is not None else Path(TEMP_UI_DIRNAME)
+        turn_dir = base / "claude_desk_turns" / (self._session_id or "session")
+        rendered = render_turn(self._turn_entries(entry), lambda image: save_image(turn_dir / IMAGES_DIRNAME, image).name)
+        turn_dir.mkdir(parents=True, exist_ok=True)
+        turn_id = entry.meta.turn_id
+        path = turn_dir / (f"turn-{turn_id}.md" if turn_id is not None else "turn.md")
+        path.write_text(rendered.markdown, encoding="utf-8")
+        opener = current_context.get_centered_widget_opener()
+        if opener is not None:
+            opener("markdown", path)
 
     def _on_history_image(self, entry: HistoryEntry, index: int) -> None:
         """Opens the image behind an entry's [image] link in an Image

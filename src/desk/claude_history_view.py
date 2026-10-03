@@ -107,6 +107,7 @@ class HistoryEntry(QFrame):
         on_reload=None,
         images: list[ImageAttachment] | None = None,
         on_image=None,
+        on_markdown=None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -121,6 +122,7 @@ class HistoryEntry(QFrame):
         # (in order); the body links each placeholder to on_image(index).
         self.images = images or []
         self._on_image = on_image
+        self._on_markdown = on_markdown
         self._preview = collapse_preview(kind, text)
         self.expanded = False
 
@@ -150,6 +152,13 @@ class HistoryEntry(QFrame):
         self._reload_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self._reload_button.clicked.connect(self._reload_clicked)
         self._reload_button.setVisible(False)
+        # TODO 6ff3be8: hover-revealed on agent (assistant) entries only.
+        self._markdown_button = QPushButton("Markdown View")
+        self._markdown_button.setFlat(True)
+        self._markdown_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._markdown_button.setToolTip("Open this turn in a Markdown viewer")
+        self._markdown_button.clicked.connect(self._markdown_clicked)
+        self._markdown_button.setVisible(False)
 
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
@@ -157,6 +166,7 @@ class HistoryEntry(QFrame):
         header.addWidget(self._meta_label)
         header.addStretch(1)
         header.addWidget(self._reload_button)
+        header.addWidget(self._markdown_button)
 
         self._body = QLabel()
         self._body.setTextFormat(Qt.TextFormat.PlainText)
@@ -251,11 +261,18 @@ class HistoryEntry(QFrame):
     def enterEvent(self, event) -> None:
         if self.reload_text is not None and self._on_reload is not None:
             self._reload_button.setVisible(True)
+        if self.meta.kind == "assistant" and self._on_markdown is not None:
+            self._markdown_button.setVisible(True)
         super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:
         self._reload_button.setVisible(False)
+        self._markdown_button.setVisible(False)
         super().leaveEvent(event)
+
+    def _markdown_clicked(self) -> None:
+        if self._on_markdown is not None:
+            self._on_markdown(self)
 
     def _reload_clicked(self) -> None:
         if self._on_reload is not None and self.reload_text is not None:
@@ -279,6 +296,7 @@ class HistoryView(QScrollArea):
         self._follow_bottom = True
         self.on_reload = None  # set by the owner: callable(reload_text)
         self.on_image = None  # set by the owner: callable(entry, image_index)
+        self.on_markdown = None  # set by the owner: callable(entry)
 
         bar = self.verticalScrollBar()
         bar.valueChanged.connect(lambda value: setattr(self, "_follow_bottom", value >= bar.maximum() - 4))
@@ -292,7 +310,7 @@ class HistoryView(QScrollArea):
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.ActionsContextMenu)
 
     def add_entry(self, kind: str, text: str, **kwargs) -> HistoryEntry:
-        entry = HistoryEntry(kind, text, on_reload=self._dispatch_reload, on_image=self._dispatch_image, **kwargs)
+        entry = HistoryEntry(kind, text, on_reload=self._dispatch_reload, on_image=self._dispatch_image, on_markdown=self._dispatch_markdown, **kwargs)
         self._layout.insertWidget(self._layout.count() - 1, entry)
         self._entries.append(entry)
         return entry
@@ -302,6 +320,10 @@ class HistoryView(QScrollArea):
 
     def toPlainText(self) -> str:
         return "\n".join(entry.plain_text() for entry in self._entries)
+
+    def _dispatch_markdown(self, entry: "HistoryEntry") -> None:
+        if self.on_markdown is not None:
+            self.on_markdown(entry)
 
     def _dispatch_image(self, entry: "HistoryEntry", index: int) -> None:
         if self.on_image is not None:

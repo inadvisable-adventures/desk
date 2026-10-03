@@ -786,6 +786,11 @@ Desk Bridge API.
     `desk.claude_tool_result` flattens their content and keeps images behind a
     clickable `[image]` placeholder that opens an Image Viewer.
 
+    **Markdown View** (TODO `6ff3be8`): a hover button on agent entries renders
+    the whole turn (`desk.claude_turn_markdown`) to a file under
+    `.desk_temp/claude_desk_turns/`, images included, and opens the Markdown
+    widget on it.
+
     **Observability principle.** This widget should expose as much of its
     own operation through the UX as is practical, up to and including
     debug-grade views (e.g. an animated, abstracted data-flow diagram of
