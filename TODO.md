@@ -10833,7 +10833,7 @@ e6ea1db. SUPERSEDED by TODO 2924940 (the isolation decision doc) and its
    Agent SDK" -- worth keeping in mind for always-on use. Not verified: GCP's
    AUP, AWS/GCP prices (aggregator sites), RAM sizing.
 
-2924940. Isolation decision doc: write down the trust tiers and threat model
+2924940. COMPLETED: Isolation decision doc: write down the trust tiers and threat model
    Desk's isolation work is built on, in `design-docs/`. The long-term vision
    (per the user) is a zero-friction, zero-trust environment for running
    widgets, with a mix of fine- and coarse-grained permission models on top;
@@ -10854,8 +10854,42 @@ e6ea1db. SUPERSEDED by TODO 2924940 (the isolation decision doc) and its
    days of work plus testing), Windows meaningfully harder (AppContainer or
    job objects, more platform-specific edge cases -- roughly several times the
    Linux effort). Neither is an immediate concern; macOS first. Supersedes
-   TODO `e6ea1db`. Umbrella for TODOs `73e375f`, `6e51e9f`, `172b236`,
-   `b195218`, `d35f298`.
+   TODO `e6ea1db`. Umbrella for TODOs `929e730`, `73e375f`, `6e51e9f`,
+   `172b236`, `b195218`, `d35f298`.
+   COMPLETED 2026-10-03: `design-docs/isolation.md` (vision and v1 non-goals,
+   the three threats with today's exposure, a verified table of what runs where,
+   trust tiers, mechanism feasibility, platform ballparks, the order of work,
+   principles, open questions). Reading the code corrected two assumptions in
+   this item's own text and its follow-ups: **python installed jobs and tempui
+   python `Job`s run in-process** (only Rust installed jobs and hmsvc services
+   are subprocesses), and **the Bridge does not bind caller identity** (one
+   per-launch token is shared and the caller's widget/instance id comes from
+   client-supplied headers), so a hostile html widget could assert another's
+   capabilities. New TODO `929e730` covers the latter and is now step 1;
+   TODOs `6e51e9f` and `d35f298` are amended for the former. `design-docs/
+   isolation.md` is the umbrella for TODOs `929e730`, `73e375f`, `6e51e9f`,
+   `172b236`, `b195218` and `d35f298`.
+
+929e730. Bind Bridge credentials to the calling widget instance, so a widget
+   cannot assert another's identity. Today `TokenAuthMiddleware`
+   (`src/desk/server/app.py`) accepts one per-launch token shared by every
+   caller, and `require_caller(capability)` / `require_instance_id` trust
+   client-supplied headers (`X-Desk-Widget-Id`, `X-Desk-Instance-Id`): a
+   `kind: "html"` widget (the token is baked into its own page by
+   `render_bridge_client`) or an hmsvc service could send another widget's id
+   and inherit its capabilities, so capability checks are not a boundary
+   against a hostile caller. Found while writing `design-docs/isolation.md`
+   (TODO `2924940`) by reading the code, not by exploiting it. Fix: issue a
+   credential per placed instance (and per hmsvc service) when it is placed or
+   launched, have the server map credential -> (widget id, instance id) itself
+   and ignore the identity headers, revoke it on close/stop, and keep the
+   query-param/cookie token path working for a page's own sub-resource loads
+   (TODO `a5f66cc`'s reason for it) without letting it carry identity.
+   Decide the shape (per-instance token is the simplest; see the open
+   question in `design-docs/isolation.md`). Verify with a test where one
+   widget's credential cannot call a route requiring a capability it lacks by
+   claiming another widget's id. First step of the isolation order of work;
+   nothing else in TODOs `73e375f`/`b195218` is a real boundary without it.
 
 73e375f. Bridge API path allow-lists for `desk.fs` and `desk.documents`
    (`src/desk/server/app.py`, `desk_services/documents`). Today any widget
@@ -10873,7 +10907,9 @@ e6ea1db. SUPERSEDED by TODO 2924940 (the isolation decision doc) and its
    "run this command confined to these paths with this network policy", with a
    **macOS Seatbelt backend** (`sandbox-exec` profile generated per run --
    deprecated but still functional and what comparable tools use). Use it for
-   installed jobs and hmsvc services first (both already subprocesses). Cover
+   hmsvc services and Rust installed jobs first (the only things that are
+   already subprocesses -- python installed jobs and tempui python `Job`s run
+   in-process today, see TODO `d35f298`). Cover
    a profile that allows the project directory and `.desk_temp`, denies other
    user files, and makes network opt-in; confirm behavior with real runs, not
    assumed; a clear error when the sandbox itself fails to start. Design the
@@ -10899,7 +10935,8 @@ b195218. Finer-grained Bridge capabilities: today a capability is a coarse
    `73e375f`; the rest is later. Include how a granted/denied decision is
    remembered per project and how the user reviews/revokes grants.
 
-d35f298. Spike: run `kind: "python"` widgets and in-process transforms out of
+d35f298. Spike: run `kind: "python"` widgets, in-process transforms, python
+   installed jobs and tempui python `Job`s/`DeskProc` scripts out of
    process, to learn what the proxy cost really is -- today they run in
    Desk's own process with full access, so isolating them means a process
    boundary and proxying their Qt UI. Timeboxed investigation, not a rewrite:

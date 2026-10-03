@@ -892,6 +892,14 @@ Desk Bridge API.
     seeded with the saved state before its page first reads it) and a
     confirmed **Clear all**.
 
+
+## Isolation and trust tiers
+
+See [isolation.md](./isolation.md) for the threat model, what runs where
+today, the trust tiers (trusted in-process, confined subprocess, zero-trust
+html), mechanism feasibility and the order of the isolation work (TODO
+`2924940`).
+
 ### Widget Model
 
 See `design-docs/widget-ux.md` for the interactive chrome (titlebar/drag,
