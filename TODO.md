@@ -9978,6 +9978,42 @@ c1eb687. Claude (Desk) widget: surface rate-limit status via `RateLimitEvent`,
    `db2402c`/`db1cd65` (the widget's other not-yet-surfaced CLI
    signals).
 
+5ce8447. Claude (Desk) widget: staleness detection, then (only once stale) an
+   independent connectivity probe -- so a silent stall at least says
+   something, and distinguishes "your network looks down" from
+   "something else is slow," which today look identical (see the
+   live-testing discussion this and TODO `c1eb687` came out of: a
+   disconnected-network run produced total silence from the stream for
+   the whole outage). (1) **Staleness**: track wall-clock time since
+   the last `session_event` while something is actually outstanding
+   (`ClaudeSession._pending_turn` set, or any `FlowView._tasks` entry
+   not in `TERMINAL_STATUSES`) -- a plain ticking timer, no SDK
+   involvement, since `ts` is already on every event. Past a first
+   threshold (~10-15s, pin the exact value during planning), change the
+   presentation from indistinguishable-from-fine to visibly ticking:
+   `_status_label` grows "Working... (no response for Ns)", and the
+   Flow view's Session/CLI node (`desk.claude_flow_view.FlowView`)
+   gains a third, amber "stale" state alongside its existing idle/red
+   -error-flash pair. (2) **Probe**: only once staleness crosses a
+   second, longer threshold, run a one-shot, stdlib-only (no new
+   dependency, per `CLAUDE.md`) reachability check against
+   `api.anthropic.com` -- a bare TCP connect or HEAD, unauthenticated,
+   no credentials/request body involved (confirm this stays within
+   Anthropic's ToS for an occasional, stall-triggered check before
+   shipping); poll it every ~5s while still stale, stop once the turn/
+   task resolves or the probe starts succeeding again. Feed the result
+   into the same status text/Flow-view annotation from (1): "no
+   response for Ns -- your network looks down" vs "no response for Ns
+   -- network's fine, something else is stuck." Caveat to document in
+   the plan: a successful probe from Desk's own process doesn't
+   guarantee the CLI subprocess's own network path matches (proxy/VPN
+   scoping could differ) -- a strong signal, not a proof. New shared
+   module under `src/desk/` (not inside the widget file) since nothing
+   else needs it yet, but it's not widget-specific logic. Per direct
+   user request, from the same live-testing discussion as TODO
+   `c1eb687`. Related to TODOs `20ca851` (event model), `eb50b84` (flow
+   view), `c1eb687` (the widget's other dropped CLI signals).
+
 db1cd65. Claude (Desk) widget: context-window awareness and manual
    compaction. (a) Poll `ClaudeSDKClient.get_context_usage()` after each
    `turn_complete`, emit a `context_usage` signal, and mark the widget
