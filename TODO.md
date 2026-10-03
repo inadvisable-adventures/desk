@@ -10052,6 +10052,105 @@ c1eb687. Claude (Desk) widget: surface rate-limit status via `RateLimitEvent`,
    model), `eb50b84` (flow view), `c1eb687` (the widget's other dropped
    CLI signals).
 
+a7d7c0a. Claude (Desk) widget: publish desk-wide status events (question UI
+   active/answered, idle<->busy), and a new widget that lists every
+   live `claude_desk` instance's current estimated status with a
+   jump-to-instance eye button per row.
+
+   (a) `widgets/claude_desk/widget.py`'s `ClaudeDeskWidget` doesn't
+   implement `bind_event_mediator` at all today -- add it, the same
+   duck-typed hook `DeskWindow._bind_event_mediator`
+   (`src/desk/shell/window.py:791-806`, called from `_place_widget` at
+   `window.py:734`) already calls on every placed python widget that
+   defines it. Since this widget only ever needs to *publish*, not
+   receive, skip `EventSubscription` (`src/desk/shell/event_broker.py`
+   -- built for turning inbound `drain()` polling into a Qt signal,
+   irrelevant for a pure publisher): just store the hook's own
+   `(instance_id, mediator)` arguments and call
+   `mediator.publish(name, payload, instance_id)` directly wherever a
+   publish is needed. New event name, co-located with this widget's
+   other shared machinery in `src/desk/claude_session.py` (matching
+   where e.g. `INSTALLED_JOBS_UPDATED_EVENT` lives next to the
+   installed-jobs code it's about, not in `window.py`):
+   `CLAUDE_DESK_STATUS_EVENT = "desk.claude_desk.status_changed"`,
+   payload `{"busy": bool, "waiting_on_user": bool, "detail": str |
+   None}` -- `detail` being e.g. the pending tool name or question
+   text, for a richer row label. Two independent booleans rather than
+   one combined enum, deliberately: it lets the *consuming* widget
+   decide how to summarize states that can co-occur (a pending
+   permission mid-turn is `busy` and `waiting_on_user` at once).
+   Publish on: every `_set_busy` call (`widget.py:555`, the widget's
+   existing single centralized busy/idle setter -- covers "transitions
+   to or from idle" directly, no new state tracking needed); and the
+   "waiting on user" panels' own visibility edges (empty<->non-empty)
+   across *both* question kinds this widget already has under one
+   umbrella, per the request's own "whether for permission or another
+   type of question" framing -- `_on_permission_request`/
+   `_show_next_permission`/`_resolve_current_permission`
+   (`widget.py:664-682`) and `_on_question_request`/
+   `_show_next_question`/`_submit_question`/`_skip_question`
+   (`widget.py:700-800`), firing once per panel-visibility edge, not
+   once per individual queued question. Guard every publish on the
+   mediator reference being set -- `_set_busy(False)` already runs
+   once inside `__init__` (`widget.py:352`), before `bind_event_mediator`
+   has necessarily fired.
+
+   (b) A new `kind: "python"` widget (e.g. `widgets/claude_desk_status/`)
+   listing one row per live `claude_desk` instance with its current
+   estimated status and a jump-to-instance eye button -- structurally
+   the same shape as the already-implemented Event Subscribers widget
+   (`widgets/event_subscribers/widget.py`, TODO `7505703`): a label
+   plus an eye `QPushButton` per row (`_SubscriberRow`, lines 19-46),
+   whose click calls `current_context.get_widget_zoomer()` then
+   `zoomer(instance_id)` (`_on_zoom_requested`, lines 117-120) --
+   confirmed this is already the exact, public, non-mouse-click entry
+   point `desk_reveal_widget` itself calls
+   (`src/desk/shell/desk_mcp_server.py:106`, routing to
+   `DeskWindow.zoom_to_widget_by_instance_id`, `window.py:1798-1809`),
+   so no new `current_context` hook is needed for the "jump to
+   instance" half -- it's the same action as clicking that instance's
+   own titlebar eye button, by construction. Row label via
+   `current_context.get_widget_display_name_resolver()`
+   (`_display_name_for_instance`, `window.py:1495-1509`), same as Event
+   Subscribers already does.
+
+   Two data sources, combined the same way Event Subscribers' own 1s
+   `QTimer` poll already combines "ask for ground truth" with "there's
+   no live add/remove event to react to instead": **membership**
+   (which instances currently exist) via periodically polling
+   `current_context.get_main_window().get_state_dict()["widgets"]`
+   (the same call `widgets/desk_proc_runner/widget.py:62-68`'s
+   `list_widget_instances` already makes directly off
+   `get_main_window()`), filtered to `widget_id == "claude_desk"` --
+   no push signal exists for widget placement/removal today (TODO
+   `53779f4`'s own not-yet-implemented "Open Widgets" widget is where
+   that would eventually come from); **status** (what each known
+   instance is doing) via subscribing, the same way
+   `widgets/installed_jobs/widget.py:68-79` already does, to
+   `CLAUDE_DESK_STATUS_EVENT` from part (a) and keeping the latest
+   payload per sender instance id (`EventSubscription`'s
+   `message_received` signal's own 3rd argument already carries the
+   sender's instance id, for free -- nothing needs stuffing into the
+   payload itself for that).
+
+   Open question for the plan: a freshly-opened status widget (or a
+   `claude_desk` instance that was already running before this widget
+   ever existed) has no way to learn an instance's *current* status
+   before its next transition -- there is no query/response round
+   trip here, only push. Decide whether "shows unknown until the next
+   transition" is an acceptable first-pass gap, or whether part (a)
+   also needs a lightweight request-reply (this widget publishes a
+   "who's out there" event; each `claude_desk` instance, now also a
+   subscriber and not just a publisher, answers with its current
+   state).
+
+   Each row's eye button inherits TODO `d0a4c7b`'s still-open "zoom
+   doesn't raise" wrinkle (`zoom_to_widget` pans/fits but never calls
+   `bring_to_front`) -- not this item's problem to fix, just inherited
+   behavior shared with every other existing eye button today.
+
+   Per direct user request.
+
 db1cd65. Claude (Desk) widget: context-window awareness and manual
    compaction. (a) Poll `ClaudeSDKClient.get_context_usage()` after each
    `turn_complete`, emit a `context_usage` signal, and mark the widget
