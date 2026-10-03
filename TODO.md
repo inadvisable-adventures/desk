@@ -10157,6 +10157,110 @@ a7d7c0a. Claude (Desk) widget: publish desk-wide status events (question UI
 
    Per direct user request.
 
+90efef6. Claude (Desk) widget: the background-tasks panel's `_tasks_list`
+   (`widgets/claude_desk/widget.py:264`, a plain `QListWidget` --
+   `_background_tasks: dict[str, dict]` at `widget.py:260`,
+   `_refresh_tasks_list`/`_on_task_event` at `widget.py:455-472`) packs
+   every task's description/status/summary into one shared text line
+   per row, all crammed into the same list widget. Per direct user
+   request, this should look and behave like the structured
+   `HistoryView` (`src/desk/claude_history_view.py`) instead -- each
+   task its own framed, collapsed-by-default item -- but with two
+   deliberate differences from that view's own convention, plus a
+   third piece folding in a related observation from live use:
+
+   (a) **Per-task framed items, tail-previewed, not head-previewed.**
+   Give each task its own `QFrame`-style entry (new component,
+   structurally close to `HistoryEntry`
+   (`claude_history_view.py:93-222`) but not a reuse of it --
+   `HistoryEntry`'s `collapse_preview` (`claude_history_view.py:66-80`)
+   always shows the first `PREVIEW_LINES`, which is backwards for a
+   task: the useful collapsed-state information is whatever it's doing
+   *now* (its latest progress line/last tool name), not what it
+   started with. Either add a `tail: bool` option to
+   `collapse_preview` or write a small sibling helper that takes
+   `lines[-PREVIEW_LINES:]` instead of `lines[:PREVIEW_LINES]`. New
+   home for this: a new `src/desk/claude_task_panel.py` (matching how
+   `claude_history_view.py`/`claude_flow_view.py` already each get
+   their own module), replacing `_tasks_list` with a scroll area of
+   these framed items; `TASKS_PANEL_HEIGHT`'s existing fixed-height
+   /symmetric-resize convention (`widget.py:101-105`) carries over
+   unchanged.
+
+   (b) **Double-click or a hovering "View Log" button opens a separate
+   widget instance, instead of expanding inline.** Mirror
+   `HistoryEntry`'s existing hover-reveal mechanics
+   (`_reload_button`/`enterEvent`/`leaveEvent`,
+   `claude_history_view.py:139-143,211-222` -- TODO `a4c3dec`'s own
+   precedent) for a "View Log" button shown on hover, plus a
+   `mouseDoubleClickEvent` override firing the same action. That
+   action opens a new, separate placed widget instance -- a new
+   `kind: "python"` widget (e.g. `widgets/claude_desk_task_log/`)
+   containing nothing but a read-only `HistoryView`
+   (`claude_history_view.py:225-275`) seeded with that one task's own
+   accumulated log, reusing the exact same per-entry rendering the
+   main widget already has, just scoped to one task. Before opening a
+   second instance for a task that already has one open, zoom to the
+   existing one instead (`current_context.get_widget_zoomer()`, the
+   same call TODO `a7d7c0a`'s own status-widget eye button uses) --
+   track `task_id -> instance_id` for whichever task-log widgets this
+   session has already opened.
+
+   This needs a placement mechanism that doesn't exist yet in general
+   form: `_place_widget_chat_about` (`src/desk/shell/window.py:997`) is
+   the only current precedent for "place a fresh widget instance near
+   an already-placed frame, seeded with specific content," and it's
+   hardcoded to the `[CHAT]` chrome button's own claude-prompt case,
+   not reachable from a `current_context` hook the way
+   `get_widget_zoomer()` already is for jumping to an *existing*
+   instance. A new hook (same `set_x`/`get_x` shape as every other
+   entry in `current_context.py`, e.g.
+   `get_background_task_log_opener()`) is needed, wired once in
+   `DeskWindow.__init__` alongside the others
+   (`window.py:508-526`), to a new `DeskWindow` method that places the
+   new widget kind near the originating frame and seeds its initial
+   log. For *live* updates after that (new log lines arriving while
+   the task-log widget stays open), reuse TODO `a7d7c0a`'s own
+   event-mediator infrastructure rather than inventing a second
+   channel: a new event (e.g. `CLAUDE_DESK_TASK_LOG_EVENT`, payload
+   `{"task_id": str, "entry": {...}}`) published by the main widget
+   per new per-task log entry, with the task-log widget subscribing
+   and filtering to its own `task_id` -- the same broadcast-and-filter
+   shape `a7d7c0a`'s status event already establishes, not a
+   bespoke direct-reference mechanism between the two widget
+   instances.
+
+   (c) **Fold sub-agent tool activity into its own task's log, not the
+   main `HistoryView`, where it's actually that task's own activity.**
+   Direct observation from live use: tool invocations made by a
+   Task-tool sub-agent currently show up interleaved in the main
+   history instead of under the background task they belong to.
+   `claude_agent_sdk.types.AssistantMessage`/`UserMessage` both carry a
+   `parent_tool_use_id` field set to the `tool_use_id` of whichever
+   `Task` call spawned the sub-agent a given message originated from
+   -- the same id already present on `TaskStartedMessage.tool_use_id`
+   for that task. Not yet confirmed which message type actually
+   carries a sub-agent's tool_use/tool_result traffic in a real run:
+   `ClaudeSession._handle_message` (`src/desk/claude_session.py:373
+   -429`) has no `sdk.UserMessage` branch at all today, only
+   `AssistantMessage`'s own (unusual, but present) nested
+   `ToolResultBlock` case -- confirm directly against a real Task-tool
+   sub-agent run which of these actually fires before assuming either
+   one. Once confirmed: match each block's `parent_tool_use_id` against
+   a known task's own `tool_use_id` and route it into that task's log
+   (fed into the same per-task accumulation (a)/(b) already built)
+   instead of the main `HistoryView`; anything with no matching
+   `parent_tool_use_id` is unaffected. Open question for the plan:
+   sub-agents can nest (a sub-agent itself launching a further `Task`)
+   -- decide whether nested output rolls up into the top-level task's
+   log (simplest, probably right for a first pass) or gets its own
+   further-nested log, after checking what nesting signal (if any) is
+   actually available on those messages. Explicitly "if possible" per
+   the user's own request -- ship (a)/(b) regardless of how (c) turns
+   out.
+
+   Per direct user request.
+
 db1cd65. Claude (Desk) widget: context-window awareness and manual
    compaction. (a) Poll `ClaudeSDKClient.get_context_usage()` after each
    `turn_complete`, emit a `context_usage` signal, and mark the widget
