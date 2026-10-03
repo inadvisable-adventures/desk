@@ -13,6 +13,7 @@ from desk.event_mediator import EventMediator
 from desk.hmsvc import HmsvcManager
 from desk.schema_registry import SchemaRegistry
 from desk.server.app import DEFAULT_WIDGETS_DIR, create_app
+from desk.server.credentials import CredentialRegistry
 from desk.shell.bridge import GuiBridge
 from desk.widgets import WidgetInfo, discover_widgets
 
@@ -33,6 +34,7 @@ class ServerHandle:
     event_mediator: EventMediator
     schema_registry: SchemaRegistry
     hmsvc_manager: HmsvcManager
+    credentials: CredentialRegistry
     _server: uvicorn.Server
     _thread: threading.Thread
     _app: FastAPI
@@ -41,8 +43,16 @@ class ServerHandle:
     def url(self) -> str:
         return f"http://{self.host}:{self.port}/?token={self.token}"
 
-    def widget_url(self, widget_id: str) -> str:
-        return f"http://{self.host}:{self.port}/widgets/{widget_id}/?token={self.token}"
+    def widget_url(self, widget_id: str, token: str | None = None) -> str:
+        """A widget's page URL. `token` is the per-instance credential
+        (TODO 929e730) from `issue_credential`; omitted, the page carries the
+        legacy shared launch token (deprecated)."""
+        return f"http://{self.host}:{self.port}/widgets/{widget_id}/?token={token or self.token}"
+
+    def issue_credential(self, widget_id: str, instance_id: str) -> str:
+        """The Bridge credential for one placed widget instance; the server
+        maps it to (widget_id, instance_id) itself."""
+        return self.credentials.issue(widget_id, instance_id)
 
     def mount_html_widget(self, widget_id: str, directory: Path, info: WidgetInfo) -> None:
         """Mounts a widget whose kind:"html" content lives at
@@ -96,6 +106,7 @@ class ServerHandle:
 def start_server(
     widgets_dir: Path = DEFAULT_WIDGETS_DIR,
     host: str = "127.0.0.1",
+    allow_legacy_identity: bool | None = None,
 ) -> ServerHandle:
     port = _free_port()
     token = secrets.token_urlsafe(32)
@@ -117,12 +128,18 @@ def start_server(
     # service can call back into Desk.
     hmsvc_manager = HmsvcManager()
     hmsvc_manager.configure_bridge(f"http://{host}:{port}", token)
+    # TODO 929e730: per-instance Bridge credentials. Services get one per
+    # start (revoked when the process ends).
+    credentials = CredentialRegistry()
+    hmsvc_manager.configure_credentials(credentials.issue_service, credentials.revoke_service)
     app = create_app(
         token,
         widgets_dir=widgets_dir,
         gui_bridge=gui_bridge,
         event_mediator=event_mediator,
         hmsvc_manager=hmsvc_manager,
+        credentials=credentials,
+        allow_legacy_identity=allow_legacy_identity,
     )
 
     config = uvicorn.Config(app, host=host, port=port, log_level="warning")
@@ -156,6 +173,7 @@ def start_server(
         event_mediator=event_mediator,
         schema_registry=schema_registry,
         hmsvc_manager=hmsvc_manager,
+        credentials=credentials,
         _server=server,
         _thread=thread,
         _app=app,

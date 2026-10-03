@@ -154,6 +154,10 @@ class HmsvcManager:
         self._listeners: list[Callable[[], None]] = []
         self._bridge_url = ""
         self._bridge_token = ""
+        # TODO 929e730: per-service Bridge credentials. Unset, a service gets
+        # the shared launch token (the deprecated legacy path).
+        self._credential_issuer: Callable[[str], str] | None = None
+        self._credential_revoker: Callable[[str], object] | None = None
 
     # -- configuration -------------------------------------------------
 
@@ -164,6 +168,16 @@ class HmsvcManager:
         with self._lock:
             self._bridge_url = url
             self._bridge_token = token
+
+    def configure_credentials(
+        self, issuer: Callable[[str], str], revoker: Callable[[str], object]
+    ) -> None:
+        """Per-service Bridge credentials (TODO 929e730): `issuer(name)` mints
+        the token a service is launched with; `revoker(name)` is called when
+        its process ends."""
+        with self._lock:
+            self._credential_issuer = issuer
+            self._credential_revoker = revoker
 
     def add_listener(self, listener: Callable[[], None]) -> None:
         """`listener()` is called (on whichever thread caused it) after
@@ -304,7 +318,9 @@ class HmsvcManager:
                     "DESK_SERVICE_HOST": host,
                     "DESK_PROJECT_DIR": str(self._directory),
                     "DESK_BRIDGE_URL": self._bridge_url,
-                    "DESK_BRIDGE_TOKEN": self._bridge_token,
+                    "DESK_BRIDGE_TOKEN": (
+                        self._credential_issuer(name) if self._credential_issuer is not None else self._bridge_token
+                    ),
                     "PYTHONUNBUFFERED": "1",
                     "PYTHONPATH": os.pathsep.join(
                         [str(_SRC_DIR)] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])
@@ -367,6 +383,8 @@ class HmsvcManager:
                     service.logs.append(f"[desk] never became ready within {STARTUP_TIMEOUT_SECONDS:.0f}s; killing")
                 process.kill()
         code = process.wait()
+        if self._credential_revoker is not None:
+            self._credential_revoker(service.name)
         with self._lock:
             if service.process is not process:
                 return

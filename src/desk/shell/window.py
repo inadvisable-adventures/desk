@@ -720,11 +720,22 @@ class DeskWindow(QMainWindow):
                 self._widgets[widget_id].desk_widget_loading_errors.append(conflict)
                 self._notify_schema_conflict(widget_id, conflict)
                 return None
+            # TODO 929e730: a per-instance Bridge credential, bound to this
+            # (widget, instance) server-side. Falls back to the deprecated
+            # shared launch token if the handle can't issue one (older test
+            # fakes) -- see design-docs/deprecations.md.
+            issue = getattr(self._handle, "issue_credential", None)
+            if issue is not None:
+                credential = issue(widget_id, instance_id)
+                page_url = self._handle.widget_url(widget_id, credential)
+            else:
+                credential = self._handle.token
+                page_url = self._handle.widget_url(widget_id)
             chromium_widget = ChromiumWidget(
                 widget_id,
                 instance_id,
-                self._handle.widget_url(widget_id),
-                self._handle.token,
+                page_url,
+                credential,
                 self._broker,
                 self._chromium_profile_dir(instance_id),
                 capabilities=widget.capabilities,
@@ -1982,6 +1993,7 @@ class DeskWindow(QMainWindow):
             return False
         self._tombstone_widget(frame)
         self.view.remove_widget(frame)
+        self._revoke_bridge_credential(frame.instance_id)
         # Belt-and-suspenders for kind:"html" widgets specifically (TODO
         # 6f9c51b): they have no destroyed-signal-based cleanup path the
         # way a python widget's own EventSubscription does -- harmless
@@ -1991,6 +2003,13 @@ class DeskWindow(QMainWindow):
         return True
 
     # -- Recently Removed (TODO 454d718) ---------------------------------
+
+    def _revoke_bridge_credential(self, instance_id: str) -> None:
+        """TODO 929e730: a removed instance's Bridge credential stops working
+        immediately (no-op for an older handle with no registry)."""
+        credentials = getattr(getattr(self, "_handle", None), "credentials", None)
+        if credentials is not None:
+            credentials.revoke_instance(instance_id)
 
     def _tombstone_widget(self, frame: WidgetFrame) -> None:
         """Snapshots `frame` into Desk.recently_removed (newest first,
@@ -2527,6 +2546,12 @@ class DeskWindow(QMainWindow):
             return
         self.save_current_desk()
         self.view.clear_widgets()
+        # TODO 929e730: every widget instance's Bridge credential belonged to
+        # a frame clear_widgets() just destroyed (hmsvc credentials are
+        # managed by their own start/stop).
+        credentials = getattr(getattr(self, "_handle", None), "credentials", None)
+        if credentials is not None:
+            credentials.revoke_all_widget_instances()
         # Custom widget definitions (TODO 91b3f42) are per-Desk-directory
         # state, unlike the real widgets/ catalog (shared app-wide) --
         # forget the previous Desk's before registering the new one's,
@@ -2609,6 +2634,7 @@ class DeskWindow(QMainWindow):
         instance_id = frame.instance_id
         self._tombstone_widget(frame)
         self.view.remove_widget(frame)
+        self._revoke_bridge_credential(instance_id)
         self._event_mediator.unsubscribe_all(instance_id)
         self.save_current_desk()
         # TODO a5f66cc: a permanent removal (unlike a Desk-switch,

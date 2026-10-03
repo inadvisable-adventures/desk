@@ -138,6 +138,7 @@ for name in ("_tombstone_widget", "get_recently_removed", "_publish_recently_rem
     setattr(_Stub, name, getattr(DeskWindow, name))
 _Stub.find_frame_by_instance_id = DeskWindow.find_frame_by_instance_id
 _Stub._schedule_chromium_profile_cleanup = lambda self, iid: None
+_Stub._revoke_bridge_credential = lambda self, iid: None
 _Stub._confirm_fn = lambda self, t, m: (lambda: True)
 
 

@@ -167,6 +167,54 @@ def test_multi_file_widget_actually_loads():
             handle.stop()
 
 
+def test_per_instance_credential_end_to_end():
+    """TODO 929e730: a page loaded with its per-instance credential gets that
+    credential as its cookie (so sub-resources load), and a real
+    ChromiumWidget's injected Bridge client calls the API with it -- the
+    server resolves the caller from the credential, not from headers."""
+    with tempfile.TemporaryDirectory() as d:
+        widgets_dir = Path(d)
+        _make_widget_dir(widgets_dir, "credtest", CUSTOM_ELEMENT_JS)
+        handle = start_server(widgets_dir=widgets_dir)
+        try:
+            credential = handle.issue_credential("credtest", "inst-cred")
+            check("a per-instance credential is not the shared launch token", credential != handle.token)
+            url = handle.widget_url("credtest", credential)
+            cj = CookieJar()
+            opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
+            check("the page loads with a per-instance credential", opener.open(url).status == 200)
+            cookie = next(c for c in cj if c.name == "desk_token")
+            check("the cookie carries the per-instance credential, not the shared token", cookie.value == credential)
+            base = url.split("?")[0]
+            check("a sub-resource load by cookie alone works", opener.open(urllib.request.Request(base + "main.js")).status == 200)
+
+            import types
+
+            # getManifest consults the live window catalog first; none known
+            # here, so it falls back to the on-disk widget.
+            handle.gui_bridge.attach(
+                types.SimpleNamespace(get_widget_info=lambda widget_id: None, current_desk=types.SimpleNamespace(directory=Path(d)))
+            )
+            broker = HotReloadBroker()
+            widget = ChromiumWidget("credtest", "inst-cred", url, credential, broker, Path(d) / "profile-cred")
+            pump(2)
+            result = {}
+            widget.page().runJavaScript(
+                "window.__r = null; window.desk.self.getManifest().then(m => { window.__r = 'ok:' + m.id; })"
+                ".catch(e => { window.__r = 'ERR:' + e; }); 0",
+                lambda v: None,
+            )
+            deadline = time.time() + 5
+            while result.get("value") in (None, "null") and time.time() < deadline:
+                widget.page().runJavaScript("window.__r", lambda v: result.__setitem__("value", v))
+                pump(0.3)
+            check("the injected Bridge client authenticates with the credential and is identified as its widget", result.get("value") == "ok:credtest")
+            widget.deleteLater()
+            pump(1)
+        finally:
+            handle.stop()
+
+
 # ---------- Per-instance profile isolation ----------
 
 
@@ -277,6 +325,7 @@ def test_browser_widget_still_uses_the_default_profile():
 
 test_widget_page_response_sets_auth_cookie()
 test_multi_file_widget_actually_loads()
+test_per_instance_credential_end_to_end()
 test_two_instances_get_distinct_profile_directories()
 test_chromium_profile_dir_helper()
 test_schedule_chromium_profile_cleanup_deletes_only_the_target_instance()

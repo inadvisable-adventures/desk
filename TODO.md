@@ -10870,7 +10870,7 @@ e6ea1db. SUPERSEDED by TODO 2924940 (the isolation decision doc) and its
    isolation.md` is the umbrella for TODOs `929e730`, `73e375f`, `6e51e9f`,
    `172b236`, `b195218` and `d35f298`.
 
-929e730. Bind Bridge credentials to the calling widget instance, so a widget
+929e730. COMPLETED: Bind Bridge credentials to the calling widget instance, so a widget
    cannot assert another's identity. Today `TokenAuthMiddleware`
    (`src/desk/server/app.py`) accepts one per-launch token shared by every
    caller, and `require_caller(capability)` / `require_instance_id` trust
@@ -10890,6 +10890,47 @@ e6ea1db. SUPERSEDED by TODO 2924940 (the isolation decision doc) and its
    widget's credential cannot call a route requiring a capability it lacks by
    claiming another widget's id. First step of the isolation order of work;
    nothing else in TODOs `73e375f`/`b195218` is a real boundary without it.
+   [planned: bridge-per-instance-credentials.md (COMPLETED)]
+
+   COMPLETED 2026-10-03, with per-instance tokens as decided and the old
+   options **kept available but deprecated**: `desk.server.credentials.
+   CredentialRegistry` issues a token per placed `kind: "html"` instance (page
+   URL, injected Bridge client and the sub-resource cookie all carry it) and
+   per hmsvc service start; `TokenAuthMiddleware` binds a per-instance token to
+   its identity in `scope["desk_identity"]`; `require_caller`/
+   `require_instance_id`/`self/getManifest` take identity from it and ignore the
+   identity headers. Credentials are revoked on close, Desk switch and service
+   exit. The shared launch token + header identity still works (logs one
+   `desk.bridge` deprecation warning per caller) and
+   `allow_legacy_identity=False` / `DESK_BRIDGE_ALLOW_LEGACY_IDENTITY=0` refuses
+   it. Docs updated to describe the new mechanism; the old one is preserved
+   verbatim in the new `design-docs/deprecations.md` (entry 1). Verified by
+   `verify_bridge_per_instance_credentials.py` (31 checks, incl. spoofing,
+   revocation, strict mode, services) and a real-Chromium end-to-end scenario
+   added to `verify_kind_html_auth_token_and_profile_isolation.py`. Strict mode
+   is what makes capability checks a boundary against a hostile caller; making
+   it the default is future work under the deprecation process (TODO
+   `df8138a`).
+
+df8138a. Plan a process for managing deprecations. Desk now has a first real
+   deprecation (the shared launch token with header-asserted Bridge identity,
+   TODO `929e730`: still supported, warns once per caller, can be switched off,
+   tracked in `design-docs/deprecations.md`) and will keep acquiring them, but
+   there is no agreed process for them. Write a plan (and, if it is small, the
+   first slice) covering: what counts as a deprecation versus a breaking
+   change (and how this relates to the tempui changelog tags and
+   `tempui-breaking-changes.md`, which are about agents inside Desk); the
+   lifecycle (announced -> warns -> strict mode available -> default -> removed)
+   and who decides each step; how a deprecation is tracked (this entry format in
+   `design-docs/deprecations.md` is the starting point -- should it be
+   machine-readable, and listed by a Desk command or widget?); how users and
+   agents are told (logs, UI, tempui doc upgrade notifications); how long
+   something must have been warned about before removal and what evidence of
+   "nothing uses it" is needed; how the original documentation is preserved
+   (verbatim in the tracking doc, as done for entry 1); and how removal is
+   verified (a test that the old path now fails, not just that the new one
+   works). Apply the plan to entry 1 as the worked example, including a
+   concrete criterion for making strict mode the default.
 
 73e375f. Bridge API path allow-lists for `desk.fs` and `desk.documents`
    (`src/desk/server/app.py`, `desk_services/documents`). Today any widget

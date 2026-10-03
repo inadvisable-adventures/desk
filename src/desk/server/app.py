@@ -1,15 +1,18 @@
 import asyncio
+import logging
+import os
 from http.cookies import SimpleCookie
 from pathlib import Path
 from urllib.parse import parse_qs
 
-from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from desk.event_mediator import EventMediator
+from desk.server.credentials import CredentialRegistry
 from desk.file_type_registry import FILE_TYPE_REGISTRY_UPDATED_EVENT
 from desk.hmsvc import HmsvcManager, service_name_from_caller_id
 from desk.installed_jobs import INSTALLED_JOB_RUN_TIMEOUT_SECONDS
@@ -74,28 +77,40 @@ def _inject_set_cookie(send: Send, token: str) -> Send:
 
 
 class TokenAuthMiddleware:
-    """Rejects any HTTP/WebSocket request that doesn't carry the per-launch
-    token, so only the Shell (which knows the token) can talk to this
-    server. See design-docs/architecture.md#security-considerations."""
+    """Rejects any HTTP/WebSocket request that doesn't carry a valid
+    credential, so only the Shell (which knows them) can talk to this server.
+    See design-docs/architecture.md#security-considerations.
 
-    def __init__(self, app: ASGIApp, token: str) -> None:
+    A credential is either a **per-instance token** (TODO 929e730), issued to
+    one placed widget instance or hmsvc service and bound server-side to that
+    identity (put in `scope["desk_identity"]`), or the **legacy** shared
+    per-launch token, which proves only "someone who knows the launch token"
+    and leaves identity to client-supplied headers (deprecated; see
+    design-docs/deprecations.md)."""
+
+    def __init__(self, app: ASGIApp, token: str, credentials: CredentialRegistry | None = None) -> None:
         self.app = app
         self.token = token
+        self.credentials = credentials
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] not in ("http", "websocket"):
             await self.app(scope, receive, send)
             return
 
-        if _token_from_scope(scope) == self.token:
+        presented = _token_from_scope(scope)
+        identity = self.credentials.lookup(presented) if self.credentials is not None else None
+        if identity is not None:
+            scope["desk_identity"] = identity
+        if identity is not None or presented == self.token:
             # TODO a5f66cc: only when the token specifically came from
             # the query string -- in practice that's only ever a
             # widget's own top-level page navigation (Bridge XHR calls
             # always use the X-Desk-Token header, never the query
             # string -- see bridge_client.py's call() helper), so this
             # fires once per real page load, not on every request.
-            if scope["type"] == "http" and _token_from_query(scope) == self.token:
-                send = _inject_set_cookie(send, self.token)
+            if scope["type"] == "http" and _token_from_query(scope) == presented:
+                send = _inject_set_cookie(send, presented)
             await self.app(scope, receive, send)
             return
 
@@ -234,11 +249,18 @@ def create_app(
     gui_bridge: GuiBridge | None = None,
     event_mediator: EventMediator | None = None,
     hmsvc_manager: HmsvcManager | None = None,
+    credentials: CredentialRegistry | None = None,
+    allow_legacy_identity: bool | None = None,
 ) -> FastAPI:
     """Serves only kind:"html" widgets (plus the Bridge API). kind:"python"
     widgets render natively in the Shell and never go through this server —
     see design-docs/architecture.md."""
     app = FastAPI(title="Desk")
+    if allow_legacy_identity is None:
+        # DESK_BRIDGE_ALLOW_LEGACY_IDENTITY=0 is the strict mode a future
+        # removal of the legacy path would make the default.
+        allow_legacy_identity = os.environ.get("DESK_BRIDGE_ALLOW_LEGACY_IDENTITY", "1") != "0"
+    legacy_warned: set[tuple[str, str]] = set()
     html_widgets = {
         widget_id: widget
         for widget_id, widget in discover_widgets(widgets_dir).items()
@@ -264,8 +286,43 @@ def create_app(
     # isn't privileged) requires the calling widget to have declared the
     # relevant resource-level capability in its own widget.json.
 
+    def _caller_identity(
+        request: Request, widget_id_header: str | None, instance_id_header: str | None, need_widget_id: bool = True
+    ) -> tuple[str, str | None]:
+        """(widget id, instance id) of the caller. A bound per-instance
+        credential wins and the identity headers are ignored entirely (a
+        mismatching header is simply not trusted). Without one this is the
+        deprecated legacy path: identity comes from the headers (required,
+        as before), a one-time warning is logged, and the strict mode refuses."""
+        identity = request.scope.get("desk_identity")
+        if identity is not None:
+            return identity.widget_id, identity.instance_id
+        if not allow_legacy_identity:
+            raise HTTPException(
+                403, "Caller identity must come from a per-instance Bridge credential; legacy shared-token identity is disabled"
+            )
+        if need_widget_id and widget_id_header is None:
+            raise HTTPException(422, "X-Desk-Widget-Id header required")
+        if not need_widget_id and instance_id_header is None:
+            raise HTTPException(422, "X-Desk-Instance-Id header required")
+        key = (widget_id_header or "", instance_id_header or "")
+        if key not in legacy_warned:
+            legacy_warned.add(key)
+            logging.getLogger("desk.bridge").warning(
+                "Bridge caller %r/%r is using the deprecated shared-token, header-asserted identity; "
+                "see design-docs/deprecations.md",
+                widget_id_header,
+                instance_id_header,
+            )
+        return widget_id_header, instance_id_header
+
     def require_caller(capability: str | None):
-        async def dependency(x_desk_widget_id: str = Header(...)) -> WidgetInfo:
+        async def dependency(
+            request: Request,
+            x_desk_widget_id_header: str | None = Header(None, alias="X-Desk-Widget-Id"),
+            x_desk_instance_id_header: str | None = Header(None, alias="X-Desk-Instance-Id"),
+        ) -> WidgetInfo:
+            x_desk_widget_id, _instance = _caller_identity(request, x_desk_widget_id_header, x_desk_instance_id_header)
             # TODO e75b165: a Desk-hosted microservice (desk.hmsvc)
             # identifies itself as "hmsvc:<name>" -- not a widget at
             # all, so it gets a synthetic WidgetInfo whose capabilities
@@ -308,7 +365,11 @@ def create_app(
 
         return dependency
 
-    def require_instance_id(x_desk_instance_id: str = Header(...)) -> str:
+    def require_instance_id(
+        request: Request,
+        x_desk_widget_id_header: str | None = Header(None, alias="X-Desk-Widget-Id"),
+        x_desk_instance_id_header: str | None = Header(None, alias="X-Desk-Instance-Id"),
+    ) -> str:
         """Identifies the calling *instance*, not just its widget kind
         (TODO 5734529) -- deliberately not layered on require_caller:
         self.getLocalStorage/setLocalStorage need no broader capability
@@ -319,7 +380,12 @@ def create_app(
         require_caller can also resolve a tempui-DSL-defined custom
         widget (TODO f693275; it couldn't, before that fix -- see
         PARKINGLOT.md's former entry on this)."""
-        return x_desk_instance_id
+        _widget, instance_id = _caller_identity(
+            request, x_desk_widget_id_header, x_desk_instance_id_header, need_widget_id=False
+        )
+        if instance_id is None:
+            raise HTTPException(422, "X-Desk-Instance-Id header required")
+        return instance_id
 
     async def run_on_gui(fn):
         if gui_bridge is None:
@@ -368,9 +434,11 @@ def create_app(
         return directory / path
 
     @app.get("/api/bridge/self/getManifest")
-    async def self_get_manifest(
-        x_desk_widget_id: str = Header(...), widget: WidgetInfo = Depends(require_caller(None))
-    ):
+    async def self_get_manifest(widget: WidgetInfo = Depends(require_caller(None))):
+        # TODO 929e730: the caller's widget id is whatever require_caller
+        # resolved from its (bound or, legacy, header-asserted) identity --
+        # never re-read from a header here.
+        x_desk_widget_id = widget.id
         # TODO af7898b: prefers the live, DeskWindow-owned WidgetInfo
         # (which carries desk_widget_loading_errors/state_schema as
         # DeskWindow itself last updated them) over the
@@ -774,5 +842,5 @@ def create_app(
             name=f"widget-{widget_id}",
         )
 
-    app.add_middleware(TokenAuthMiddleware, token=token)
+    app.add_middleware(TokenAuthMiddleware, token=token, credentials=credentials)
     return app

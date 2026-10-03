@@ -839,9 +839,12 @@ Desk Bridge API.
     reaches Desk through `desk.hmsvc_client.desk` (stdlib `urllib`,
     reading `DESK_BRIDGE_URL`/`DESK_BRIDGE_TOKEN`), which calls the
     **existing** Bridge routes (state, events, workspace) rather than a
-    parallel API: `require_caller` accepts the synthetic widget id
-    `hmsvc:<name>` (also the mediator instance id) with capabilities
-    from `service.json`. The `hmsvc` capability exposes list/logs/
+    parallel API. `DESK_BRIDGE_TOKEN` is a **per-service credential**
+    (TODO `929e730`): issued when the service starts, bound server-side
+    to the synthetic caller id `hmsvc:<name>` (also the mediator instance
+    id) with capabilities from `service.json`, and revoked when the process
+    ends. (The older shared launch token is deprecated; see
+    [deprecations.md](./deprecations.md).) The `hmsvc` capability exposes list/logs/
     start/stop/restart to `html` widgets; the Microservices widget
     (`python`) uses the manager directly via
     `current_context.get_hmsvc_manager()`. **Security:** a service is
@@ -970,11 +973,16 @@ Desk widgets, regardless of implementation language, are defined by a
   the titlebar error indicator; this is deliberately separate from the
   `[STALE]` tag, which only means a content-hash mismatch.
   Every request the browser makes for a widget's own page — not just the
-  top-level navigation — must carry the per-launch auth token
-  (`TokenAuthMiddleware`, `src/desk/server/app.py`). The top-level
+  top-level navigation — must carry that instance's **per-instance Bridge
+  credential** (TODO `929e730`; `TokenAuthMiddleware`,
+  `src/desk/server/app.py`), issued when the instance is placed and
+  revoked when it is removed or the Desk switches. The server maps the
+  credential to the instance's (widget id, instance id) itself, so the
+  identity headers a page also sends are ignored. The top-level
   navigation carries it as a query parameter; the injected Bridge client's
   own calls carry it as an `X-Desk-Token` header; and (TODO `a5f66cc`) a
-  same-origin cookie set on the widget's main-page response covers
+  same-origin cookie set on the widget's main-page response (it carries the
+  instance's own credential) covers
   everything else — in particular, ordinary relative-path resource
   references (`<script src>`, `<link href>`, CSS `url(...)`, `<img src>`)
   that don't carry the query string forward and can't attach a custom
@@ -1295,8 +1303,17 @@ as every other Bridge GUI-thread call) ever blocks.
 
 - The Local Web Server (used only for `kind: "html"` widgets) binds to
   `127.0.0.1` only and uses an unpredictable, per-launch port plus a
-  per-launch token required on all requests, so other local
-  processes/browser tabs can't drive Desk.
+  credential required on all requests, so other local processes/browser
+  tabs can't drive Desk. Credentials are **per instance** (TODO `929e730`):
+  each placed `kind: "html"` widget instance and each hmsvc service gets its
+  own token, which the server maps to that caller's identity itself --
+  capability checks are therefore a real boundary between callers, not just
+  between callers and outsiders. The older single shared launch token, where
+  callers asserted their own identity in request headers, still works but is
+  deprecated (a one-time warning is logged per caller, and
+  `DESK_BRIDGE_ALLOW_LEGACY_IDENTITY=0` refuses it); see
+  [deprecations.md](./deprecations.md). See also
+  [isolation.md](./isolation.md).
 - `kind: "python"` widgets run directly in the Shell's own process, on the
   GUI thread, with no isolation boundary at all — the same trust level as
   any other Python script the user runs, and stronger integration than a
