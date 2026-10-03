@@ -1,5 +1,5 @@
 import time
-
+from pathlib import Path
 
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QTextCursor
@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 from desk.claude_flow_view import FlowView
 from desk.claude_history_view import HistoryEntry, HistoryView
 from desk.claude_task_panel import TaskPanel
+from desk.claude_tool_result import ImageAttachment, flatten_tool_result, plain, save_image
 from desk.claude_staleness import StalenessTracker
 from desk.claude_session import (
     CLAUDE_DESK_STATUS_EVENT,
@@ -355,6 +356,7 @@ class ClaudeDeskWidget(QWidget):
         # reload), all of which are now per-entry features.
         self._history = HistoryView()
         self._history.on_reload = self._on_reload_requested
+        self._history.on_image = self._on_history_image
         # Provenance from ClaudeSession.session_event (TODO 20ca851):
         # the latest event (consumed by the legacy handler that follows
         # it), the turn currently in flight, user entries still waiting
@@ -625,7 +627,9 @@ class ClaudeDeskWidget(QWidget):
             entry_kind, text = "tool", f"{data.get('name')}({_format_tool_input(data.get('input') or {})})"
         else:
             entry_kind = "tool_error" if data.get("is_error") else "tool_result"
-            text = str(data.get("content"))
+            # Task logs are plain dicts over the mediator, so images degrade
+            # to a literal [image] here (TODO 10b4d7d's noted limitation).
+            text = plain(flatten_tool_result(data.get("content"))[0])
         task_id = self._task_by_tool_use_id.get(data["parent_tool_use_id"])
         if task_id is not None:
             self._log_task_entry(task_id, entry_kind, text)
@@ -704,7 +708,15 @@ class ClaudeDeskWidget(QWidget):
         elif kind == "turn_complete" and event["solicited"]:
             self._active_turn_id = None
 
-    def _add_entry(self, kind: str, text: str, *, from_stream: bool = False, reload_text: str | None = None) -> HistoryEntry:
+    def _add_entry(
+        self,
+        kind: str,
+        text: str,
+        *,
+        from_stream: bool = False,
+        reload_text: str | None = None,
+        images: list[ImageAttachment] | None = None,
+    ) -> HistoryEntry:
         """Appends one history entry. `from_stream` entries (assistant
         text, tool calls/results, session errors) take their turn id and
         source from the session_event that immediately preceded the
@@ -723,7 +735,7 @@ class ClaudeDeskWidget(QWidget):
         else:
             turn_id = self._active_turn_id
         return self._history.add_entry(
-            kind, text, turn_id=turn_id, source=source, turn_start=turn_start, reload_text=reload_text
+            kind, text, turn_id=turn_id, source=source, turn_start=turn_start, reload_text=reload_text, images=images
         )
 
     def _add_user_entry(self, text: str, reload_text: str) -> None:
@@ -850,7 +862,24 @@ class ClaudeDeskWidget(QWidget):
         self._add_entry("tool", f"{name}({_format_tool_input(tool_input)})", from_stream=True)
 
     def _on_tool_result(self, tool_use_id: str, content: object, is_error: bool) -> None:
-        self._add_entry("tool_error" if is_error else "tool_result", str(content), from_stream=True)
+        # TODO 10b4d7d: content is a string, a list of content dicts, or
+        # None; images stay attached to the entry behind a clickable
+        # placeholder (see _on_history_image).
+        text, images = flatten_tool_result(content)
+        self._add_entry("tool_error" if is_error else "tool_result", text, from_stream=True, images=images)
+
+    def _on_history_image(self, entry: HistoryEntry, index: int) -> None:
+        """Opens the image behind an entry's [image] link in an Image
+        Viewer: the bytes are saved under .desk_temp (idempotently, by
+        content hash) because the viewer is file-based."""
+        image = entry.images[index]
+        directory = current_context.get_current_desk_directory()
+        base = (directory / TEMP_UI_DIRNAME) if directory is not None else Path(TEMP_UI_DIRNAME)
+        path = save_image(base / "claude_desk_images" / (self._session_id or "session"), image)
+        opener = current_context.get_centered_widget_opener()
+        if path is None or opener is None:
+            return
+        opener("image_viewer", path)
 
     def _on_permission_request(self, request_id: str, tool_name: str, tool_input: dict) -> None:
         self._pending_permissions.append((request_id, tool_name, tool_input))

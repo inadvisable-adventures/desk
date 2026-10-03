@@ -781,6 +781,11 @@ Desk Bridge API.
     (messages with `parent_tool_use_id`) is emitted by `ClaudeSession` as
     `session_event` only and routed to the owning task's log by the widget.
 
+    **Tool results** (TODO `10b4d7d`): real tool results arrive as top-level
+    `UserMessage` `ToolResultBlock`s (never inside an `AssistantMessage`).
+    `desk.claude_tool_result` flattens their content and keeps images behind a
+    clickable `[image]` placeholder that opens an Image Viewer.
+
     **Observability principle.** This widget should expose as much of its
     own operation through the UX as is practical, up to and including
     debug-grade views (e.g. an animated, abstracted data-flow diagram of

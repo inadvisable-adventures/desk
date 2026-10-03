@@ -10359,7 +10359,7 @@ a7d7c0a. COMPLETED: Claude (Desk) widget: publish desk-wide status events (quest
    "No log available". Verified by `verify_claude_desk_task_panel.py` (41
    checks) and the whole suite.
 
-10b4d7d. Claude (Desk) widget: show top-level tool results. Confirmed bug
+10b4d7d. COMPLETED: Claude (Desk) widget: show top-level tool results. Confirmed bug
    (investigated 2026-10-02): real tool results never reach the history.
    On the wire (checked against a live session transcript: 114 `tool_use`
    blocks, all in `assistant` messages; 114 `tool_result` blocks, all in
@@ -10402,6 +10402,20 @@ a7d7c0a. COMPLETED: Claude (Desk) widget: publish desk-wide status events (quest
    `_handle_message` and asserting what lands in the history (the gap that
    let this go unnoticed). Related to TODOs `90efef6` (sub-agent routing
    reuses the same `ToolResultBlock` shape) and `6ff3be8`.
+   [planned: claude-desk-top-level-tool-results.md (COMPLETED)]
+
+   COMPLETED: top-level `UserMessage` `ToolResultBlock`s now reach the
+   `tool_result` signal/`session_event`; `desk.claude_tool_result` flattens
+   content (text joined, `(no output)`, images behind a U+FFFC sentinel so a
+   literal "[image]" can't be mistaken for one) and keeps the original image
+   bytes on the history entry; the `[image]` placeholder is a link that saves
+   the image under `.desk_temp/claude_desk_images/<session>/` and opens an
+   Image Viewer (a collapsed preview still offers links for images it cut
+   off). Sub-agent results use the same flattener but their task-log
+   entries degrade images to a literal `[image]` (plain dicts over the
+   mediator). TODO `6ff3be8` can now reuse `ImageAttachment`/`save_image`.
+   Verified by `verify_claude_desk_tool_results.py` (32 checks, including a
+   message run through the SDK's real `parse_message`).
 
 6ff3be8. Claude (Desk) widget: a right-aligned hover "Markdown View" button
    on each agent-turn item in the structured history

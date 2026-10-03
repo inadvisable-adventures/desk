@@ -15,12 +15,15 @@ Qt-only, no new dependencies. History text is *content*, not a UI
 label, so entry bodies stay selectable (CLAUDE.md); the tag/meta/toggle
 chrome is not.
 """
+import html
 import time
 from dataclasses import dataclass
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QGuiApplication
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
+
+from desk.claude_tool_result import IMAGE_PLACEHOLDER, IMAGE_SENTINEL, ImageAttachment, plain
 
 # kind -> (tag shown in the entry header, plain-text prefix used by
 # toPlainText()/copy -- the same bracket convention the old text
@@ -102,6 +105,8 @@ class HistoryEntry(QFrame):
         turn_start: bool = False,
         reload_text: str | None = None,
         on_reload=None,
+        images: list[ImageAttachment] | None = None,
+        on_image=None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -112,6 +117,10 @@ class HistoryEntry(QFrame):
         self.turn_start = turn_start
         self.reload_text = reload_text
         self._on_reload = on_reload
+        # TODO 10b4d7d: original images behind each IMAGE_SENTINEL in `text`
+        # (in order); the body links each placeholder to on_image(index).
+        self.images = images or []
+        self._on_image = on_image
         self._preview = collapse_preview(kind, text)
         self.expanded = False
 
@@ -153,6 +162,7 @@ class HistoryEntry(QFrame):
         self._body.setTextFormat(Qt.TextFormat.PlainText)
         self._body.setWordWrap(True)
         self._body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._body.linkActivated.connect(self._link_activated)
         if kind == "user":
             self._body.setStyleSheet("color: #3daee9; font-weight: 600;")
 
@@ -179,7 +189,7 @@ class HistoryEntry(QFrame):
 
     def plain_text(self) -> str:
         """Full text with the legacy bracket prefix, expanded or not."""
-        return KINDS[self.meta.kind][1] + self.text
+        return KINDS[self.meta.kind][1] + plain(self.text)
 
     def toggle(self) -> None:
         if self.collapsible:
@@ -203,8 +213,38 @@ class HistoryEntry(QFrame):
         if self.meta.source:
             parts.append(self.meta.source)
         self._meta_label.setText(" · ".join(parts))
-        self._body.setText(self.shown_text)
+        shown = self.shown_text
+        if self.images:
+            self._body.setTextFormat(Qt.TextFormat.RichText)
+            self._body.setText(self._rich_text(shown))
+        else:
+            self._body.setTextFormat(Qt.TextFormat.PlainText)
+            self._body.setText(plain(shown))
         self.setToolTip(" | ".join(parts))
+
+    def _rich_text(self, shown: str) -> str:
+        """`shown` as HTML: text escaped, the i-th sentinel a link to image
+        i; a collapsed preview also appends links for the images it cut off."""
+        out = []
+        for index, chunk in enumerate(shown.split(IMAGE_SENTINEL)):
+            if index:
+                out.append(f'<a href="image:{index - 1}">{html.escape(IMAGE_PLACEHOLDER)}</a>')
+            out.append(html.escape(chunk).replace("\n", "<br>"))
+        # A collapsed preview can cut off images that were in the full text;
+        # keep every one of them reachable without having to expand first.
+        if not self.expanded:
+            for hidden in range(shown.count(IMAGE_SENTINEL), len(self.images)):
+                out.append(f' <a href="image:{hidden}">{html.escape(IMAGE_PLACEHOLDER)}</a>')
+        return "".join(out)
+
+    def _link_activated(self, href: str) -> None:
+        if href.startswith("image:") and self._on_image is not None:
+            try:
+                index = int(href[len("image:") :])
+            except ValueError:
+                return
+            if 0 <= index < len(self.images):
+                self._on_image(self, index)
 
     # -- reload (user entries) ------------------------------------------
 
@@ -238,6 +278,7 @@ class HistoryView(QScrollArea):
         self._entries: list[HistoryEntry] = []
         self._follow_bottom = True
         self.on_reload = None  # set by the owner: callable(reload_text)
+        self.on_image = None  # set by the owner: callable(entry, image_index)
 
         bar = self.verticalScrollBar()
         bar.valueChanged.connect(lambda value: setattr(self, "_follow_bottom", value >= bar.maximum() - 4))
@@ -251,7 +292,7 @@ class HistoryView(QScrollArea):
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.ActionsContextMenu)
 
     def add_entry(self, kind: str, text: str, **kwargs) -> HistoryEntry:
-        entry = HistoryEntry(kind, text, on_reload=self._dispatch_reload, **kwargs)
+        entry = HistoryEntry(kind, text, on_reload=self._dispatch_reload, on_image=self._dispatch_image, **kwargs)
         self._layout.insertWidget(self._layout.count() - 1, entry)
         self._entries.append(entry)
         return entry
@@ -261,6 +302,10 @@ class HistoryView(QScrollArea):
 
     def toPlainText(self) -> str:
         return "\n".join(entry.plain_text() for entry in self._entries)
+
+    def _dispatch_image(self, entry: "HistoryEntry", index: int) -> None:
+        if self.on_image is not None:
+            self.on_image(entry, index)
 
     def _dispatch_reload(self, reload_text: str) -> None:
         if self.on_reload is not None:

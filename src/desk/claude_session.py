@@ -464,6 +464,8 @@ class ClaudeSession(QObject):
                     if parent is None:
                         self.tool_use.emit(block.id, block.name, block.input)
                 elif isinstance(block, sdk.ToolResultBlock):
+                    # Not seen on the real wire (see the UserMessage branch
+                    # below); kept for completeness.
                     self._emit_event(
                         "tool_result",
                         turn_id,
@@ -476,11 +478,14 @@ class ClaudeSession(QObject):
                     if parent is None:
                         self.tool_result.emit(block.tool_use_id, block.content, bool(block.is_error))
         elif isinstance(message, sdk.UserMessage):
-            # TODO 90efef6: previously ignored entirely. Only a sub-agent's
-            # (parent_tool_use_id set) tool results are surfaced -- as
-            # session_event only, for routing; a top-level UserMessage is
-            # still ignored, exactly as before.
-            if message.parent_tool_use_id is not None and isinstance(message.content, list):
+            # Real tool results arrive HERE, as ToolResultBlocks in a
+            # (top-level or sub-agent) UserMessage -- never inside an
+            # AssistantMessage (verified against a live transcript; TODO
+            # 10b4d7d). A sub-agent's (parent_tool_use_id set) go to
+            # session_event only, for routing (TODO 90efef6); a top-level
+            # one also fires the legacy tool_result signal.
+            parent = message.parent_tool_use_id
+            if isinstance(message.content, list):
                 for block in message.content:
                     if isinstance(block, sdk.ToolResultBlock):
                         self._emit_event(
@@ -493,9 +498,11 @@ class ClaudeSession(QObject):
                                     "content": block.content,
                                     "is_error": bool(block.is_error),
                                 },
-                                message.parent_tool_use_id,
+                                parent,
                             ),
                         )
+                        if parent is None:
+                            self.tool_result.emit(block.tool_use_id, block.content, bool(block.is_error))
         elif isinstance(message, sdk.ResultMessage):
             summary = {
                 "is_error": message.is_error,

@@ -1,4 +1,4 @@
-# Claude (Desk) widget: show top-level tool results (TODO `10b4d7d`)
+# Claude (Desk) widget: show top-level tool results (TODO `10b4d7d`) (COMPLETED)
 
 ## Summary
 Real tool results arrive as top-level `UserMessage`s (`ToolResultBlock`s) which

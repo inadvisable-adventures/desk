@@ -133,7 +133,8 @@ def test_session_routes_sub_agent_output_to_events_only():
     check("top-level output is unchanged: legacy signal and no parent key", texts == ["main"] and "parent_tool_use_id" not in events[0]["data"])
     events.clear()
     session._handle_message(sdk.UserMessage(content=[sdk.ToolResultBlock(tool_use_id="x", content="r")]), 1, True)
-    check("a top-level UserMessage is still ignored, as before", events == [])
+    check("a top-level UserMessage's tool result now surfaces (TODO 10b4d7d), without a parent key", [(e["kind"], "parent_tool_use_id" in e["data"]) for e in events] == [("tool_result", False)])
+    events.clear()
     session._handle_message(sdk.UserMessage(content="plain text", parent_tool_use_id="toolu_task"), 1, True)
     check("a string-content sub-agent UserMessage is ignored without error", events == [])
 
