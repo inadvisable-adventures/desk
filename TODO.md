@@ -9950,6 +9950,34 @@ db2402c. Claude (Desk) widget: (1) a live token-usage indicator. Add a
    `../FEEDBACK/FEEDBACK-DESK-claude-desk-progress-interrupt-compact-2026-09-18-2035.md`
    (parts 1 and 2).
 
+c1eb687. Claude (Desk) widget: surface rate-limit status via `RateLimitEvent`,
+   currently parsed by `claude_agent_sdk`'s own message parser
+   (`_internal/message_parser.py`) but with no branch in
+   `ClaudeSession._handle_message` (`src/desk/claude_session.py`) at
+   all -- the CLI proactively pushes this whenever its own rate-limit
+   status transitions (`RateLimitInfo.status`:
+   `allowed`/`allowed_warning`/`rejected`, plus `resets_at`/
+   `rate_limit_type`/`utilization`/overage fields), and Desk drops it on
+   the floor today. Add a `rate_limit` signal (and a matching
+   `session_event` kind, per the TODO `20ca851` event model) carrying
+   that info; surface it in the widget -- at minimum a status-label
+   note once `status != "allowed"` (e.g. "Rate limit warning -- resets
+   HH:MM"), ideally also a Flow-view annotation (TODO `eb50b84`) so a
+   stall caused by throttling looks different from an ordinary one.
+   While in there, also forward `ResultMessage.api_error_status` (HTTP
+   status of a failed API call, e.g. 429/500/529 -- already parsed onto
+   a message type `_handle_message` already handles, also currently
+   dropped) into the existing `turn_complete`/`session_error` error
+   text -- same "signal the SDK already hands us but Desk discards"
+   gap. Per direct user request, from live testing of the widget: a
+   prolonged network outage produced total silence from the stream (no
+   way to tell "throttled/erroring" apart from "just slow"), and neither
+   of these two already-parsed signals would have resolved that
+   specific case on their own, but they're free, currently-dropped
+   improvements worth doing regardless. Related to TODOs
+   `db2402c`/`db1cd65` (the widget's other not-yet-surfaced CLI
+   signals).
+
 db1cd65. Claude (Desk) widget: context-window awareness and manual
    compaction. (a) Poll `ClaudeSDKClient.get_context_usage()` after each
    `turn_complete`, emit a `context_usage` signal, and mark the widget
