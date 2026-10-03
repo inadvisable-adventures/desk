@@ -10079,7 +10079,7 @@ c1eb687. COMPLETED: Claude (Desk) widget: surface rate-limit status via `RateLim
    Verified by `verify_claude_desk_staleness.py` (40 checks) and the whole
    suite; no live network/API.
 
-a7d7c0a. Claude (Desk) widget: publish desk-wide status events (question UI
+a7d7c0a. COMPLETED: Claude (Desk) widget: publish desk-wide status events (question UI
    active/answered, idle<->busy), and a new widget that lists every
    live `claude_desk` instance's current estimated status with a
    jump-to-instance eye button per row. Purpose, per direct user
@@ -10183,6 +10183,15 @@ a7d7c0a. Claude (Desk) widget: publish desk-wide status events (question UI
    behavior shared with every other existing eye button today.
 
    Per direct user request.
+   [planned: claude-desk-status-events-and-widget.md (COMPLETED)]
+
+   COMPLETED: `CLAUDE_DESK_STATUS_EVENT` published (deduplicated, so one
+   publish per busy/idle transition and per waiting-on-user edge; also once
+   on `bind_event_mediator`) and a new `widgets/claude_desk_status/` widget
+   (membership polled from `get_state_dict()`, status by subscription, eye
+   button via the widget zoomer). Verified by
+   `verify_claude_desk_status_events.py` (26 checks) and the whole suite;
+   no live GUI session.
 
 90efef6. Claude (Desk) widget: the background-tasks panel's `_tasks_list`
    (`widgets/claude_desk/widget.py:264`, a plain `QListWidget` --

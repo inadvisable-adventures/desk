@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
 from desk.claude_flow_view import FlowView
 from desk.claude_history_view import HistoryEntry, HistoryView
 from desk.claude_staleness import StalenessTracker
-from desk.claude_session import TERMINAL_TASK_STATUSES, ClaudeSession
+from desk.claude_session import CLAUDE_DESK_STATUS_EVENT, TERMINAL_TASK_STATUSES, ClaudeSession
 from desk.connectivity_probe import ConnectivityProbe
 from desk.shell import current_context
 from desk.speech import TranscriptionResult
@@ -258,6 +258,11 @@ class ClaudeDeskWidget(QWidget):
         # _set_busy/_on_send_clicked/_finish_busy_period.
         self._busy = False
         self._message_queue: list[str] = []
+        # TODO a7d7c0a: publisher-only hookup to the event mediator (set by
+        # bind_event_mediator, which DeskWindow calls after build()).
+        self._mediator = None
+        self._mediator_instance_id: str | None = None
+        self._last_published_status: dict | None = None
 
         # TODO fe7d8f2: mic capture + transcription itself is shared
         # with widgets/voice_input/widget.py via desk.voice_capture
@@ -452,6 +457,42 @@ class ClaudeDeskWidget(QWidget):
             self._session.connected.connect(lambda: self._finish_busy_period("Idle."))
         self._session.start(session_id, resume, model, permission_mode, cwd, initial_prompt)
 
+    def bind_event_mediator(self, instance_id: str, mediator) -> None:
+        """TODO a7d7c0a: opts into DeskWindow._bind_event_mediator's
+        duck-typed hook. This widget only ever *publishes*, so there's no
+        EventSubscription -- just keep the arguments and call
+        mediator.publish directly. Announces the current status once so an
+        already-open claude_desk_status widget learns of this instance."""
+        self._mediator = mediator
+        self._mediator_instance_id = instance_id
+        self._publish_status()
+
+    def _current_status(self) -> dict:
+        detail = None
+        if self._pending_permissions:
+            detail = self._pending_permissions[0][1]
+        elif self._pending_questions:
+            questions = self._pending_questions[0][1].get("questions", [])
+            detail = str(questions[0].get("question", "")) if questions else "question"
+        return {
+            "busy": self._busy,
+            "waiting_on_user": bool(self._pending_permissions or self._pending_questions),
+            "detail": detail,
+        }
+
+    def _publish_status(self) -> None:
+        """Publishes the current status if it differs from the last one
+        published -- which makes this safe to call from every handler that
+        might change it and yields one publish per busy/idle transition and
+        per waiting-on-user edge, not per queued item. No-op until bound."""
+        if self._mediator is None or self._mediator_instance_id is None:
+            return
+        status = self._current_status()
+        if status == self._last_published_status:
+            return
+        self._last_published_status = status
+        self._mediator.publish(CLAUDE_DESK_STATUS_EVENT, status, self._mediator_instance_id)
+
     def _on_permission_mode_changed(self, index: int) -> None:
         """Changes permission mode live, mid-session (TODO e9eddba) --
         a no-op via ClaudeSession.set_permission_mode's own guard if no
@@ -636,6 +677,7 @@ class ClaudeDeskWidget(QWidget):
         self._mic_button.setEnabled(not busy)
         self._send_button.setText("Queue" if busy else "Send")
         self._interrupt_button.setVisible(busy)
+        self._publish_status()
         if busy:
             self._status_label.setText("Working...")
 
@@ -738,6 +780,7 @@ class ClaudeDeskWidget(QWidget):
     def _on_permission_request(self, request_id: str, tool_name: str, tool_input: dict) -> None:
         self._pending_permissions.append((request_id, tool_name, tool_input))
         self._show_next_permission()
+        self._publish_status()
 
     def _show_next_permission(self) -> None:
         if not self._pending_permissions:
@@ -754,6 +797,7 @@ class ClaudeDeskWidget(QWidget):
         self._session.respond_to_permission(request_id, allow, "" if allow else "Denied by user.")
         self._add_entry("permission", f"{'allowed' if allow else 'denied'} {tool_name}")
         self._show_next_permission()
+        self._publish_status()
 
     def _on_turn_complete(self, summary: dict) -> None:
         # TODO db2402c: terminal_reason tells an interrupted turn from a
@@ -844,6 +888,7 @@ class ClaudeDeskWidget(QWidget):
         self._pending_questions.append((request_id, tool_input))
         if not self._question_panel.isVisible():
             self._show_next_question()
+        self._publish_status()
 
     def _show_next_question(self) -> None:
         while self._question_layout.count():
@@ -933,6 +978,7 @@ class ClaudeDeskWidget(QWidget):
         self._session.respond_to_question(request_id, answers)
         self._add_entry("question", "answered: " + "; ".join(f"{q} -> {a}" for q, a in answers.items()))
         self._show_next_question()
+        self._publish_status()
 
     def _skip_question(self) -> None:
         if not self._pending_questions:
@@ -941,6 +987,7 @@ class ClaudeDeskWidget(QWidget):
         self._session.respond_to_question(request_id, None)
         self._add_entry("question", "skipped")
         self._show_next_question()
+        self._publish_status()
 
 
 def build() -> QWidget:

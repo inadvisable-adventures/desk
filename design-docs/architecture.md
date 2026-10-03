@@ -764,6 +764,14 @@ Desk Bridge API.
     Reader flash on `protocol_violation`/`session_error`. `advance(dt)` is
     the whole simulation; the timer runs only while visible and animating.
 
+    **Status events and the status widget** (TODO `a7d7c0a`): each Claude
+    (Desk) instance publishes `desk.claude_desk.status_changed`
+    (`{"busy", "waiting_on_user", "detail"}`, deduplicated) on the event
+    mediator, and `widgets/claude_desk_status/` lists every live instance's
+    latest status with an eye button -- a place for "this instance needs you"
+    notices that doesn't need dismissing. Push only: an instance that hasn't
+    published yet shows "no status yet".
+
     **Observability principle.** This widget should expose as much of its
     own operation through the UX as is practical, up to and including
     debug-grade views (e.g. an animated, abstracted data-flow diagram of

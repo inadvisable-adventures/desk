@@ -50,6 +50,12 @@ from desk.shell.desk_mcp_server import DESK_MCP_SERVER_NAME, RUN_INSTALLED_JOB_T
 # import lives, same reasoning as everything else here.
 TERMINAL_TASK_STATUSES = sdk.TERMINAL_TASK_STATUSES
 
+# TODO a7d7c0a: published on the Desk event mediator by each Claude (Desk)
+# widget instance when its busy/idle or waiting-on-user state changes;
+# payload {"busy": bool, "waiting_on_user": bool, "detail": str | None}.
+# Consumed by widgets/claude_desk_status/.
+CLAUDE_DESK_STATUS_EVENT = "desk.claude_desk.status_changed"
+
 # TODO 6ab9e85: the CLI's built-in structured-question tool.
 ASK_USER_QUESTION_TOOL_NAME = "AskUserQuestion"
 
