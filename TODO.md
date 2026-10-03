@@ -10460,7 +10460,7 @@ a7d7c0a. COMPLETED: Claude (Desk) widget: publish desk-wide status events (quest
    `verify_claude_desk_markdown_view.py` (25 checks, including loading the
    generated file in the real Markdown widget).
 
-db1cd65. Claude (Desk) widget: context-window awareness and manual
+db1cd65. COMPLETED: Claude (Desk) widget: context-window awareness and manual
    compaction. (a) Poll `ClaudeSDKClient.get_context_usage()` after each
    `turn_complete`, emit a `context_usage` signal, and mark the widget
    (e.g. a status-label color or badge) once `percentage` nears
@@ -10474,6 +10474,17 @@ db1cd65. Claude (Desk) widget: context-window awareness and manual
    (a). Cites
    `../FEEDBACK/FEEDBACK-DESK-claude-desk-progress-interrupt-compact-2026-09-18-2035.md`
    (part 3).
+   [planned: claude-desk-context-usage-and-compact.md (COMPLETED)]
+
+   COMPLETED: `ClaudeSession` polls `get_context_usage()` after each turn
+   (inside the turn lock, best-effort) and emits `context_usage`; the widget
+   shows a "Context N%" label (amber at 85% of `autoCompactThreshold`, red at
+   or past it); a confirmed "Compact now" button sends `/compact`. Verified
+   against a real session (small haiku probe, 2026-10-03) that `/compact`
+   through `client.query()` works, so no upstream feature request was needed
+   (`autoCompactThreshold` is an absolute token count, not a percentage).
+   Verified by `verify_claude_desk_context_compact.py` (25 checks) and the
+   whole suite.
 
 d0a4c7b. Fix widget stacking on the canvas (`src/desk/shell/canvas.py`).
    (1) `Canvas.add_widget` never sets the new proxy's z-value, so a

@@ -791,6 +791,12 @@ Desk Bridge API.
     `.desk_temp/claude_desk_turns/`, images included, and opens the Markdown
     widget on it.
 
+    **Context window** (TODO `db1cd65`): after each turn `ClaudeSession` polls
+    `get_context_usage()` and emits `context_usage`; the widget shows how full
+    the window is against the auto-compact threshold and offers a confirmed
+    "Compact now" (which sends the literal `/compact`, verified to work through
+    `client.query()`).
+
     **Observability principle.** This widget should expose as much of its
     own operation through the UX as is practical, up to and including
     debug-grade views (e.g. an animated, abstracted data-flow diagram of

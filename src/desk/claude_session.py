@@ -165,6 +165,10 @@ class ClaudeSession(QObject):
     # dropped): {"status", "resets_at", "rate_limit_type", "utilization",
     # "overage_status", "overage_resets_at", "overage_disabled_reason"}.
     rate_limit = pyqtSignal(dict)
+    # TODO db1cd65: after each turn, a reading from get_context_usage():
+    # {"totalTokens", "maxTokens", "percentage" (0-100), "autoCompactThreshold"
+    # (absolute tokens), "isAutoCompactEnabled", "model"}.
+    context_usage = pyqtSignal(dict)
 
     def __init__(self) -> None:
         super().__init__()
@@ -383,11 +387,27 @@ class ClaudeSession(QObject):
             try:
                 await self._client.query(text)
                 await done
+                await self._poll_context_usage(turn_id)
             except Exception as exc:  # noqa: BLE001
                 self._emit_event("session_error", turn_id, True, {"message": str(exc)})
                 self.session_error.emit(str(exc))
             finally:
                 self._pending_turn = None
+
+    async def _poll_context_usage(self, turn_id: int) -> None:
+        """TODO db1cd65: runs inside the turn lock, so it never races a
+        query. Best-effort: context awareness must never break a turn."""
+        assert self._client is not None
+        try:
+            usage = await self._client.get_context_usage()
+            payload = {
+                key: usage.get(key)
+                for key in ("totalTokens", "maxTokens", "percentage", "autoCompactThreshold", "isAutoCompactEnabled", "model")
+            }
+        except Exception:  # noqa: BLE001 -- see docstring
+            return
+        self._emit_event("context_usage", turn_id, True, payload)
+        self.context_usage.emit(payload)
 
     def _dispatch(self, message: object) -> None:
         """Attributes one stream message to a turn and hands it up (see

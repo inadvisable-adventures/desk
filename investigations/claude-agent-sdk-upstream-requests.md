@@ -23,6 +23,10 @@ same distinction (delegated agent work vs. a plain background shell) to word
 (`desk.claude_staleness.DEFERRING_TASK_TYPES`) that can silently drift.
 Request: export it, or expose it as a field on `TaskStartedMessage`.
 
-## 3. (From TODO `db1cd65`) a programmatic compaction method
+## 3. (From TODO `db1cd65`) a programmatic compaction method -- not needed
 
-Not yet investigated here; tracked in that TODO.
+Checked against a real session (2026-10-03): sending the literal `/compact`
+through `ClaudeSDKClient.query()` works (summary `UserMessage`s, then a
+`ResultMessage` with empty `result`), so Desk's Compact now button uses that.
+A first-class method would still be nicer than relying on slash-command text,
+but nothing is blocked.

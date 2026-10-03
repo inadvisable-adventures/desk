@@ -119,6 +119,10 @@ TASKS_PANEL_HEIGHT = 140
 # TASKS_PANEL_HEIGHT above (symmetric frame resize on toggle).
 FLOW_PANEL_HEIGHT = 170
 
+# TODO db1cd65: the context label turns amber at this fraction of the
+# auto-compact threshold (red at or past it).
+CONTEXT_WARN_FRACTION = 0.85
+
 # TODO 8df6797: fixed, not sizeHint-driven, matching TASKS_PANEL_HEIGHT's
 # own precedent above -- ~3 lines at the default font size. Keeps the
 # prompt box multi-line without letting an arbitrarily long prompt push
@@ -222,6 +226,7 @@ class ClaudeDeskWidget(QWidget):
         self._session.task_event.connect(self._on_task_event)
         self._session.token_usage.connect(self._on_token_usage)
         self._session.rate_limit.connect(self._on_rate_limit)
+        self._session.context_usage.connect(self._on_context_usage)
         # TODO 551014c: shows this session's id in the titlebar once the
         # SDK client actually connects -- not done directly inside
         # start_session, since that runs synchronously inside
@@ -291,6 +296,25 @@ class ClaudeDeskWidget(QWidget):
         self._rate_limit_label = QLabel()
         self._rate_limit_label.setVisible(False)
         self._rate_limit_status = "allowed"
+
+        # TODO db1cd65: context-window fullness, hidden until the first reading.
+        self._context_label = QLabel()
+        self._context_label.setVisible(False)
+        self._compact_button = QPushButton("Compact now")
+        self._compact_button.setToolTip("Summarize the conversation so far to free up context")
+        self._compact_button.clicked.connect(self._on_compact_clicked)
+        self._compact_label = QLabel("Compact the conversation now? Earlier context is summarized.")
+        self._compact_label.setWordWrap(True)
+        self._compact_confirm_button = QPushButton("Compact")
+        self._compact_confirm_button.clicked.connect(self._confirm_compact)
+        self._compact_cancel_button = QPushButton("Cancel")
+        self._compact_cancel_button.clicked.connect(lambda: self._set_compact_row_visible(False))
+        self._compact_row = QHBoxLayout()
+        self._compact_row.addWidget(self._compact_label, stretch=1)
+        self._compact_row.addWidget(self._compact_confirm_button)
+        self._compact_row.addWidget(self._compact_cancel_button)
+        self._compact_widgets = [self._compact_label, self._compact_confirm_button, self._compact_cancel_button]
+        self._set_compact_row_visible(False)
 
         # TODO 5ce8447: silence detection while something is outstanding
         # (see desk.claude_staleness / plans/claude-desk-staleness-and-probe.md).
@@ -412,7 +436,9 @@ class ClaudeDeskWidget(QWidget):
         top_row.addWidget(self._queue_label)
         top_row.addWidget(self._rate_limit_label)
         top_row.addWidget(self._stale_label)
+        top_row.addWidget(self._context_label)
         top_row.addWidget(self._model_combo)
+        top_row.addWidget(self._compact_button)
         top_row.addWidget(self._permission_mode_combo)
         top_row.addWidget(self._tasks_toggle_button)
         top_row.addWidget(self._flow_toggle_button)
@@ -432,6 +458,7 @@ class ClaudeDeskWidget(QWidget):
         layout.addLayout(top_row)
         layout.addWidget(self._history, stretch=1)
         layout.addLayout(self._permission_row)
+        layout.addLayout(self._compact_row)
         layout.addWidget(self._question_panel)
         layout.addLayout(prompt_row)
         # TODO f4a7872: expands from the bottom of the widget on toggle
@@ -766,6 +793,10 @@ class ClaudeDeskWidget(QWidget):
         self._mic_button.setEnabled(not busy)
         self._send_button.setText("Queue" if busy else "Send")
         self._interrupt_button.setVisible(busy)
+        # TODO db1cd65: /compact is itself a turn, so not while one is in flight.
+        self._compact_button.setEnabled(not busy)
+        if busy:
+            self._set_compact_row_visible(False)
         self._publish_status()
         if busy:
             self._status_label.setText("Working...")
@@ -987,6 +1018,41 @@ class ClaudeDeskWidget(QWidget):
             self._rate_limit_status = status
             if status != "allowed":
                 self._add_entry("notice", f"[rate limit] {self._rate_limit_label.text()}")
+
+    def _set_compact_row_visible(self, visible: bool) -> None:
+        for widget in self._compact_widgets:
+            widget.setVisible(visible)
+
+    def _on_compact_clicked(self) -> None:
+        if not self._busy:
+            self._set_compact_row_visible(True)
+
+    def _confirm_compact(self) -> None:
+        self._set_compact_row_visible(False)
+        if not self._busy:
+            # The literal /compact goes through the normal send path
+            # (confirmed against a real session -- see
+            # plans/claude-desk-context-usage-and-compact.md), so history
+            # shows exactly what was sent and the turn completes as usual.
+            self._send_now("/compact")
+
+    def _on_context_usage(self, usage: dict) -> None:
+        total = usage.get("totalTokens") or 0
+        threshold = usage.get("autoCompactThreshold") or 0
+        percentage = usage.get("percentage")
+        percentage = (total / usage["maxTokens"] * 100) if percentage is None and usage.get("maxTokens") else (percentage or 0)
+        self._context_label.setText(f"Context {percentage:.0f}%")
+        style = ""
+        if threshold and total >= threshold:
+            style = "color: #da3232; font-weight: 600;"
+        elif threshold and total >= threshold * CONTEXT_WARN_FRACTION:
+            style = "color: #e8a33d; font-weight: 600;"
+        self._context_label.setStyleSheet(style)
+        self._context_label.setToolTip(
+            f"{total:,} of {usage.get('maxTokens') or '?'} tokens; auto-compact "
+            + (f"at {threshold:,}" if usage.get("isAutoCompactEnabled") and threshold else "off")
+        )
+        self._context_label.setVisible(True)
 
     def _on_interrupt_clicked(self) -> None:
         self._interrupt_button.setEnabled(False)
