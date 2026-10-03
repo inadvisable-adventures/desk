@@ -1,3 +1,5 @@
+import time
+
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QTextCursor
@@ -210,6 +212,7 @@ class ClaudeDeskWidget(QWidget):
         self._session.session_error.connect(self._on_session_error)
         self._session.task_event.connect(self._on_task_event)
         self._session.token_usage.connect(self._on_token_usage)
+        self._session.rate_limit.connect(self._on_rate_limit)
         # TODO 551014c: shows this session's id in the titlebar once the
         # SDK client actually connects -- not done directly inside
         # start_session, since that runs synchronously inside
@@ -268,6 +271,12 @@ class ClaudeDeskWidget(QWidget):
 
         self._queue_label = QLabel()
         self._queue_label.setVisible(False)
+
+        # TODO c1eb687: shown only while the CLI reports a non-"allowed"
+        # rate-limit status.
+        self._rate_limit_label = QLabel()
+        self._rate_limit_label.setVisible(False)
+        self._rate_limit_status = "allowed"
 
         self._model_combo = QComboBox()
         for label, _value in MODEL_CHOICES:
@@ -361,6 +370,7 @@ class ClaudeDeskWidget(QWidget):
         top_row = QHBoxLayout()
         top_row.addWidget(self._status_label, stretch=1)
         top_row.addWidget(self._queue_label)
+        top_row.addWidget(self._rate_limit_label)
         top_row.addWidget(self._model_combo)
         top_row.addWidget(self._permission_mode_combo)
         top_row.addWidget(self._tasks_toggle_button)
@@ -732,10 +742,36 @@ class ClaudeDeskWidget(QWidget):
             idle_status = "Interrupted."
         else:
             idle_status = "Error." if summary.get("is_error") else "Idle."
+        api_status = summary.get("api_error_status")
+        if summary.get("is_error") and api_status:
+            # TODO c1eb687: say *why* instead of a bare "Error."
+            idle_status = f"Error (HTTP {api_status})."
+            self._add_entry("error", f"API error (HTTP {api_status}): {summary.get('result') or 'no detail'}")
         usage = summary.get("usage") or {}
         if usage:
             self._status_label.setToolTip(f"Last turn: {_format_token_counts(*_usage_counts(usage))}")
         self._finish_busy_period(idle_status)
+
+    def _on_rate_limit(self, info: dict) -> None:
+        status = info.get("status", "allowed")
+        resets_at = info.get("resets_at")
+        reset_text = f" -- resets {time.strftime('%H:%M', time.localtime(resets_at))}" if resets_at else ""
+        if status == "allowed":
+            self._rate_limit_label.setVisible(False)
+        else:
+            text = ("Rate limited" if status == "rejected" else "Rate limit warning") + reset_text
+            self._rate_limit_label.setText(text)
+            color = "#da3232" if status == "rejected" else "#e8a33d"
+            self._rate_limit_label.setStyleSheet(f"color: {color}; font-weight: 600;")
+            self._rate_limit_label.setToolTip(
+                f"{info.get('rate_limit_type') or 'rate limit'}"
+                + (f", {info['utilization'] * 100:.0f}% used" if info.get("utilization") is not None else "")
+            )
+            self._rate_limit_label.setVisible(True)
+        if status != self._rate_limit_status:
+            self._rate_limit_status = status
+            if status != "allowed":
+                self._add_entry("notice", f"[rate limit] {self._rate_limit_label.text()}")
 
     def _on_interrupt_clicked(self) -> None:
         self._interrupt_button.setEnabled(False)

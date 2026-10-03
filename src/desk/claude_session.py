@@ -143,6 +143,10 @@ class ClaudeSession(QObject):
     # set) are not forwarded: they would double-count against the
     # parent's own tally.
     token_usage = pyqtSignal(dict)
+    # TODO c1eb687: the CLI's proactive RateLimitEvent (previously
+    # dropped): {"status", "resets_at", "rate_limit_type", "utilization",
+    # "overage_status", "overage_resets_at", "overage_disabled_reason"}.
+    rate_limit = pyqtSignal(dict)
 
     def __init__(self) -> None:
         super().__init__()
@@ -370,6 +374,29 @@ class ClaudeSession(QObject):
     def _dispatch(self, message: object) -> None:
         """Attributes one stream message to a turn and hands it up (see
         the plan's "Attribution in _dispatch")."""
+        if isinstance(message, sdk.RateLimitEvent):
+            # TODO c1eb687: connection-level status, not part of any turn
+            # -- must not open an unsolicited turn or be attributed as
+            # turn output, only tagged with whichever turn is current.
+            info = message.rate_limit_info
+            if self._unsolicited_turn_id is not None:
+                turn_id, solicited = self._unsolicited_turn_id, False
+            elif self._pending_turn is not None:
+                turn_id, solicited = self._pending_turn[0], True
+            else:
+                turn_id, solicited = None, False
+            payload = {
+                "status": info.status,
+                "resets_at": info.resets_at,
+                "rate_limit_type": info.rate_limit_type,
+                "utilization": info.utilization,
+                "overage_status": info.overage_status,
+                "overage_resets_at": info.overage_resets_at,
+                "overage_disabled_reason": info.overage_disabled_reason,
+            }
+            self._emit_event("rate_limit", turn_id, solicited, payload)
+            self.rate_limit.emit(payload)
+            return
         is_result = isinstance(message, sdk.ResultMessage)
         if self._unsolicited_turn_id is not None:
             turn_id, solicited = self._unsolicited_turn_id, False
@@ -428,6 +455,9 @@ class ClaudeSession(QObject):
                 "usage": message.usage,
                 "model_usage": message.model_usage,
                 "terminal_reason": message.terminal_reason,
+                # TODO c1eb687: HTTP status of a failed API call (429/500/
+                # 529...), previously dropped.
+                "api_error_status": message.api_error_status,
             }
             self._emit_event("turn_complete", turn_id, solicited, summary)
             # An unsolicited result must not reach the widget's

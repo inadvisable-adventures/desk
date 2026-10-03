@@ -8,7 +8,7 @@ plans/claude-desk-data-flow-view.md and design-docs/architecture.md item
 `advance(dt)` is the entire simulation, so tests drive it directly; the
 QTimer only calls it while the view is visible and something is animating.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from PyQt6.QtCore import QPointF, QRectF, Qt, QTimer
 from PyQt6.QtGui import QColor, QPainter, QPen
@@ -62,6 +62,8 @@ class FlowView(QWidget):
         self._nodes = {name: _NodeState() for name in NODES}
         self.queue_depth = 0
         self.inflight_turn: int | None = None
+        # TODO c1eb687: last RateLimitEvent status ("allowed" until told otherwise).
+        self.rate_limit_status = "allowed"
         self._tasks: dict[str, str] = {}
         self._timer = QTimer(self)
         self._timer.setInterval(TICK_MS)
@@ -93,6 +95,12 @@ class FlowView(QWidget):
         solicited = event.get("solicited", True)
         color = SOLICITED_COLOR if solicited else UNSOLICITED_COLOR
         label = "" if turn_id is None else f"t{turn_id}"
+        if kind == "rate_limit":
+            # Connection-level state, not a message in flight: annotate
+            # the CLI node instead of spawning a marker.
+            self.rate_limit_status = event.get("data", {}).get("status", "allowed")
+            self.update()
+            return
         if kind == "turn_started":
             self.inflight_turn = turn_id
             self._spawn(OUTBOUND_PATH, color, label)
@@ -173,7 +181,8 @@ class FlowView(QWidget):
         if name == "session":
             return "idle" if self.inflight_turn is None else f"turn {self.inflight_turn}"
         if name == "cli":
-            return f"{self.active_tasks} bg tasks"
+            note = {"allowed_warning": " · throttled", "rejected": " · RATE LIMITED"}.get(self.rate_limit_status, "")
+            return f"{self.active_tasks} bg tasks{note}"
         return f"{self._nodes[name].seen} seen" if name in ("reader", "stream", "history") else ""
 
     def _point_on_path(self, marker: Marker) -> QPointF:
@@ -198,6 +207,8 @@ class FlowView(QWidget):
             state = self._nodes[name]
             fill = QColor(palette.color(palette.ColorRole.Base))
             border = QColor(palette.color(palette.ColorRole.Mid))
+            if name == "cli" and self.rate_limit_status != "allowed":
+                border = ERROR_COLOR if self.rate_limit_status == "rejected" else UNSOLICITED_COLOR
             if state.flash > 0:
                 fill = QColor(ERROR_COLOR)
                 fill.setAlphaF(min(1.0, state.flash / FLASH_SECONDS))

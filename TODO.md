@@ -9957,7 +9957,7 @@ db2402c. COMPLETED: Claude (Desk) widget: (1) a live token-usage indicator. Add 
    Verified by `verify_claude_desk_token_usage_interrupt.py` (22 checks)
    and the whole `tests/verify/` suite; no live-API run.
 
-c1eb687. Claude (Desk) widget: surface rate-limit status via `RateLimitEvent`,
+c1eb687. COMPLETED: Claude (Desk) widget: surface rate-limit status via `RateLimitEvent`,
    currently parsed by `claude_agent_sdk`'s own message parser
    (`_internal/message_parser.py`) but with no branch in
    `ClaudeSession._handle_message` (`src/desk/claude_session.py`) at
@@ -9984,6 +9984,14 @@ c1eb687. Claude (Desk) widget: surface rate-limit status via `RateLimitEvent`,
    improvements worth doing regardless. Related to TODOs
    `db2402c`/`db1cd65` (the widget's other not-yet-surfaced CLI
    signals).
+   [planned: claude-desk-rate-limit-status.md (COMPLETED)]
+
+   COMPLETED: `rate_limit` signal + `session_event` kind (handled before
+   turn attribution so it never opens a phantom unsolicited turn), top-row
+   rate-limit label + history notice, Flow-view CLI-node annotation,
+   `api_error_status` forwarded ("Error (HTTP 429)." + error entry).
+   Verified by `verify_claude_desk_rate_limit.py` (20 checks) and the
+   whole `tests/verify/` suite.
 
 5ce8447. Claude (Desk) widget: staleness detection, a task-completion grace
    window, and (only once stale) an independent connectivity probe --

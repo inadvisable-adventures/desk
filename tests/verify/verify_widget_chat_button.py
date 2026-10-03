@@ -183,6 +183,7 @@ class _FakeSession:
         self.session_error = _FakeSignal()
         self.session_event = _FakeSignal()
         self.token_usage = _FakeSignal()
+        self.rate_limit = _FakeSignal()
         self.task_event = _FakeSignal()
         self.connected = _FakeSignal()
 
