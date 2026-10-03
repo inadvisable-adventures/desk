@@ -10779,19 +10779,133 @@ feff1ec. COMPLETED: Review and discuss all of the new FEEDBACK items (feedback
    `shared_development_process.md`; the files above other than the three
    archived ones stay put until then.
 
-f165b8c. PENDING: Investigate options for running Desk jobs on cloud VMs, given
-   that Desk uses `claude` and many VM providers have blanket
-   no-running-AI policies. Not designed/scoped yet.
-   [planned: cloud-vm-jobs-investigation.md]
-   Blocked on the questions in `QUESTIONS.md` (outcome wanted, which jobs,
-   what the provider policy actually restricts).
+f165b8c. SUPERSEDED by TODO 38b5bef (the hosting survey) and TODO be2ce4e
+   (the remote session daemon), after discussion with the user: the real goal
+   is workspaces for Desk to run agent sessions on an always-on machine, since
+   the user has no always-connected machine of their own; DreamHost is the
+   preferred provider (and the one whose restrictions worry them most), AWS
+   and GCP are acceptable, and a Mac mini on their own network is a
+   candidate if it is cheaper long-run. Original text: Investigate options
+   for running Desk jobs on cloud VMs, given that Desk uses `claude` and many
+   VM providers have blanket no-running-AI policies.
 
-e6ea1db. PENDING: Investigate approaches to running Desk in a way that better
-   isolates it -- e.g. not giving it full access to absolute paths or
-   system calls, etc. Not designed/scoped yet.
-   [planned: desk-isolation-investigation.md]
-   Blocked on the questions in `QUESTIONS.md` (threat model, acceptable
-   friction, whether in-process python widgets/transforms are in scope).
+e6ea1db. SUPERSEDED by TODO 2924940 (the isolation decision doc) and its
+   follow-ups 73e375f, 6e51e9f, 172b236, b195218 and d35f298, after
+   discussion with the user: all the threats are in scope long-term (a
+   buggy or malicious widget/job/transform harming the host, one project
+   reading another's files, the Claude agent acting beyond its project),
+   with a vision of a zero-friction, zero-trust environment for running
+   widgets plus a mix of fine- and coarse-grained permission models on top,
+   though v1 should be far more modest. Original text: Investigate
+   approaches to running Desk in a way that better isolates it -- e.g. not
+   giving it full access to absolute paths or system calls, etc.
+
+38b5bef. Hosting survey for always-on Desk agent sessions. Goal (per the
+   user): workspaces where Desk can run agent sessions without a machine of
+   their own that is always on and always connected. Survey, with dated
+   sources and the caveat that it is a best-effort reading of provider terms,
+   not legal advice: (1) **DreamHost first** -- the preferred provider and the
+   one whose restrictions worry the user most: by product (shared hosting,
+   VPS, DreamCompute, dedicated), what its terms/AUP say about long-running
+   processes and about running AI software or calling model APIs, and whether
+   running Anthropic's `claude` CLI is plausible; (2) **AWS and GCP** (the user
+   is willing to use either) -- cheapest always-on instance that fits a
+   `claude` session, what their AI-related terms say, egress; (3) **a Mac mini
+   on the user's own network** as the alternative -- purchase price, power,
+   remote access, versus cumulative VM cost over 1/2/3 years, and the break-even
+   point; (4) for each, how an always-on agent session would actually be reached
+   (SSH/tmux, or the remote session daemon of TODO `be2ce4e`). Output: a dated
+   note under `investigations/` with a recommendation and what would change
+   it. Supersedes TODO `f165b8c`. [planned: hosting-survey.md]
+
+2924940. Isolation decision doc: write down the trust tiers and threat model
+   Desk's isolation work is built on, in `design-docs/`. The long-term vision
+   (per the user) is a zero-friction, zero-trust environment for running
+   widgets, with a mix of fine- and coarse-grained permission models on top;
+   v1 is far more modest. Threats in scope: (a) a buggy or malicious
+   widget/job/transform harming the host, (b) one project reading another's
+   files, (c) the Claude agent acting beyond its project. Proposed tiers:
+   **trusted in-process** (`kind: "python"` widgets, in-process transforms --
+   full access today, documented as the trusted tier), **confined subprocess**
+   (installed jobs, hmsvc services, the `claude` subprocess), and **zero-trust
+   html** (`kind: "html"` widgets in QtWebEngine, reaching Desk only through
+   the Bridge API, whose `require_caller(capability)` is already the single
+   server-side choke point). Record the feasibility assessment (confined
+   subprocesses are the best near-term mechanism; containers and VMs are heavier
+   and on macOS are Linux VMs underneath; python widgets cannot be isolated
+   without a process split), and vague ballpark effort for platforms beyond
+   macOS: Linux roughly comparable to macOS for subprocess confinement
+   (bubblewrap/Landlock behind the same interface -- on the order of a few
+   days of work plus testing), Windows meaningfully harder (AppContainer or
+   job objects, more platform-specific edge cases -- roughly several times the
+   Linux effort). Neither is an immediate concern; macOS first. Supersedes
+   TODO `e6ea1db`. Umbrella for TODOs `73e375f`, `6e51e9f`, `172b236`,
+   `b195218`, `d35f298`.
+
+73e375f. Bridge API path allow-lists for `desk.fs` and `desk.documents`
+   (`src/desk/server/app.py`, `desk_services/documents`). Today any widget
+   with the `fs` capability can read or write any absolute path. Make access
+   **project-scoped by default** (the current Desk's directory and `.desk_temp`),
+   with a manifest-declared way for a widget to ask for more (extra roots,
+   read-only vs read-write), resolving and canonicalizing paths (symlinks, `..`)
+   before checking. Cheapest and highest-value isolation step: closes the
+   one-project-reading-another threat for html widgets and jobs. Decide how
+   existing widgets that legitimately use absolute paths (drag-and-drop of
+   external files, the file tree) keep working. Depends on TODO `2924940`'s
+   tiers.
+
+6e51e9f. Confined subprocess runner (`desk.confine`): one small interface for
+   "run this command confined to these paths with this network policy", with a
+   **macOS Seatbelt backend** (`sandbox-exec` profile generated per run --
+   deprecated but still functional and what comparable tools use). Use it for
+   installed jobs and hmsvc services first (both already subprocesses). Cover
+   a profile that allows the project directory and `.desk_temp`, denies other
+   user files, and makes network opt-in; confirm behavior with real runs, not
+   assumed; a clear error when the sandbox itself fails to start. Design the
+   interface so a Linux backend (bubblewrap/Landlock) can slot in later without
+   changing callers. Depends on TODO `2924940`.
+
+172b236. Confine the `claude` subprocess: evaluate Claude Code's own sandboxing
+   option against a Seatbelt wrapper from TODO `6e51e9f`, building on the
+   existing scoped-session code (`ClaudeSession` `allowed_paths`, whose
+   `PreToolUse` hook is a real boundary only for the tools it covers --
+   Bash is deliberately excluded there). Decide which to use, wire it into
+   `ClaudeSession.start()`, and keep Desk's own MCP server and the tempui
+   channel working inside it. Verify with real sessions that an out-of-scope
+   read or write is actually denied under each permission mode, including
+   `bypassPermissions`. Depends on TODOs `2924940` and `6e51e9f`.
+
+b195218. Finer-grained Bridge capabilities: today a capability is a coarse
+   string (`fs`, `documents`, `state`, ...). Add per-call scopes (e.g. `fs`
+   limited to certain roots, `state` limited to certain keys), a user-approval
+   flow for a widget requesting more than its manifest granted (via the popups
+   service), and sensible defaults by trust tier (TODO `2924940`). v1 can be a
+   scoped-capability data model plus approval for the `fs` scopes of TODO
+   `73e375f`; the rest is later. Include how a granted/denied decision is
+   remembered per project and how the user reviews/revokes grants.
+
+d35f298. Spike: run `kind: "python"` widgets and in-process transforms out of
+   process, to learn what the proxy cost really is -- today they run in
+   Desk's own process with full access, so isolating them means a process
+   boundary and proxying their Qt UI. Timeboxed investigation, not a rewrite:
+   try one simple widget in a child process rendering through an existing Qt
+   embedding or remote-view mechanism, measure latency/complexity, list what
+   breaks (`current_context` hooks, signals, focus, file dialogs), and
+   recommend either a path forward or "keep python widgets as the trusted
+   tier." Depends on TODO `2924940`.
+
+be2ce4e. Remote session daemon: design (and if the design is sound, the first
+   slice of) running `ClaudeSession` on a remote, always-on machine with Desk
+   attaching to it, so agent sessions survive the user's own machine being
+   asleep or offline. Today `ClaudeSession` is a thread inside the widget. The
+   structured `session_event` stream (TODO `20ca851`) is the natural wire
+   format. Settle: the daemon's process model and how it is started, the
+   protocol and authentication, reconnect and replay (a dropped connection
+   must not lose history -- events carry `seq`), where session state and
+   transcripts live, how the permission/question prompts reach the attached
+   Desk, and how much of Desk (just sessions, or jobs and services too) is
+   remote. Pairs with TODO `38b5bef`'s hosting recommendation and TODOs
+   `6e51e9f`/`172b236` (the remote machine wants the confinement too).
 
 742ba0a. COMPLETED: Add pypdf as an optional Desk dependency (a `desk[pdf]`
    extra), explicitly framed as a provisional stopgap for PDF
