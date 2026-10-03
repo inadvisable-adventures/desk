@@ -105,6 +105,9 @@ def test_press_then_release_elsewhere_is_cancelled():
     view, proxies = make_view_with_frames(2)
     frame0 = proxies[0].widget()
     frame1 = proxies[1].widget()
+    # TODO d0a4c7b: add_widget now raises each new widget, so the initial z
+    # values are no longer all 0.0 -- compare against what they were.
+    initial_z = [p.zValue() for p in proxies]
     button = frame0._titlebar.bring_to_front_button
     center_local = button.rect().center()
     center_in_frame = button.mapTo(frame0, center_local)
@@ -126,7 +129,7 @@ def test_press_then_release_elsewhere_is_cancelled():
     view.mouseReleaseEvent(release)
     pump(0.1)
     z_values = [p.zValue() for p in proxies]
-    assert z_values[0] == z_values[1] == 0.0, z_values
+    assert z_values == initial_z, (z_values, initial_z)
     print("press-then-release-elsewhere cancels the click: PASS")
 
 
