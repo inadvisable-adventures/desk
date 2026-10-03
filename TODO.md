@@ -9978,41 +9978,79 @@ c1eb687. Claude (Desk) widget: surface rate-limit status via `RateLimitEvent`,
    `db2402c`/`db1cd65` (the widget's other not-yet-surfaced CLI
    signals).
 
-5ce8447. Claude (Desk) widget: staleness detection, then (only once stale) an
-   independent connectivity probe -- so a silent stall at least says
-   something, and distinguishes "your network looks down" from
-   "something else is slow," which today look identical (see the
-   live-testing discussion this and TODO `c1eb687` came out of: a
-   disconnected-network run produced total silence from the stream for
-   the whole outage). (1) **Staleness**: track wall-clock time since
-   the last `session_event` while something is actually outstanding
-   (`ClaudeSession._pending_turn` set, or any `FlowView._tasks` entry
-   not in `TERMINAL_STATUSES`) -- a plain ticking timer, no SDK
-   involvement, since `ts` is already on every event. Past a first
-   threshold (~10-15s, pin the exact value during planning), change the
-   presentation from indistinguishable-from-fine to visibly ticking:
-   `_status_label` grows "Working... (no response for Ns)", and the
-   Flow view's Session/CLI node (`desk.claude_flow_view.FlowView`)
-   gains a third, amber "stale" state alongside its existing idle/red
-   -error-flash pair. (2) **Probe**: only once staleness crosses a
-   second, longer threshold, run a one-shot, stdlib-only (no new
-   dependency, per `CLAUDE.md`) reachability check against
-   `api.anthropic.com` -- a bare TCP connect or HEAD, unauthenticated,
-   no credentials/request body involved (confirm this stays within
-   Anthropic's ToS for an occasional, stall-triggered check before
-   shipping); poll it every ~5s while still stale, stop once the turn/
-   task resolves or the probe starts succeeding again. Feed the result
-   into the same status text/Flow-view annotation from (1): "no
-   response for Ns -- your network looks down" vs "no response for Ns
-   -- network's fine, something else is stuck." Caveat to document in
-   the plan: a successful probe from Desk's own process doesn't
-   guarantee the CLI subprocess's own network path matches (proxy/VPN
-   scoping could differ) -- a strong signal, not a proof. New shared
-   module under `src/desk/` (not inside the widget file) since nothing
-   else needs it yet, but it's not widget-specific logic. Per direct
-   user request, from the same live-testing discussion as TODO
-   `c1eb687`. Related to TODOs `20ca851` (event model), `eb50b84` (flow
-   view), `c1eb687` (the widget's other dropped CLI signals).
+5ce8447. Claude (Desk) widget: staleness detection, a task-completion grace
+   window, and (only once stale) an independent connectivity probe --
+   so a silent stall at least says something, and distinguishes "your
+   network looks down" from "something else is slow," which today look
+   identical (see the live-testing discussion this and TODO `c1eb687`
+   came out of: a disconnected-network run produced total silence from
+   the stream for the whole outage). (1) **Staleness**: track
+   wall-clock time since the last `session_event` while something is
+   actually outstanding (`ClaudeSession._pending_turn` set, or any
+   `FlowView._tasks` entry not in `TERMINAL_STATUSES`) -- a plain
+   ticking timer, no SDK involvement, since `ts` is already on every
+   event. Past a first threshold (~10-15s, pin the exact value during
+   planning), change the presentation from indistinguishable-from-fine
+   to visibly ticking: `_status_label` grows "Working... (no response
+   for Ns)", and the Flow view's Session/CLI node
+   (`desk.claude_flow_view.FlowView`) gains a third, amber "stale"
+   state alongside its existing idle/red-error-flash pair. (2) **Task
+   -completion grace window**: "no task left in flight" isn't the same
+   as "the run is over" -- a background task can settle locally and
+   still wake the agent for an unsolicited follow-up turn afterward.
+   Confirmed directly in the installed `claude_agent_sdk`: its own
+   internal task-lifecycle tracker has the identical problem for its
+   own purpose (deciding when to close stdin) and documents it as
+   unsolvable from task bookkeeping alone -- it would need a
+   run-boundary signal from the CLI that doesn't exist on the wire
+   today. One piece of local evidence is still worth leaning on as a
+   heuristic: `TaskStartedMessage.task_type` (already parsed by the
+   SDK, but currently dropped by `ClaudeSession._handle_message`
+   instead of forwarded in the `task_event` patch) distinguishes
+   delegated-agent work -- the kind whose completion the SDK's own
+   internals single out as specifically waking the parent -- from a
+   plain backgrounded shell, which may never do so. Forward
+   `task_type`; keep a local, explicitly-commented copy of the SDK's
+   own classification of which task types fall in that first group
+   (it isn't exported from the package, so this is a duplicate, not an
+   import); when the last such task goes terminal, hold "outstanding"
+   (extending (1)'s ticking clock) for a separate grace window instead
+   of snapping straight back to idle. Document next to that hardcoded
+   copy, in specific technical terms, that it mirrors an internal,
+   unexported SDK implementation detail rather than a documented
+   contract, and can silently stop matching reality on a future CLI/
+   SDK version. **That same caveat must also reach the user, not stay
+   code-only**: whatever status text/Flow-view annotation this grace
+   window produces (e.g. "probably wrapping up a background task...")
+   has to read as a guess, not a promise -- plain language is enough,
+   no need to mention the SDK or any internals to the user, just enough
+   hedging that "no response yet, probably still working" is never
+   mistaken for a guarantee that a reply is coming. File the missing
+   run-boundary signal (and ideally a public equivalent of the
+   task-type classification) as an upstream `claude_agent_sdk` feature
+   request, same as TODO `db1cd65`'s own upstream-gap precedent. (3)
+   **Probe**: only once staleness crosses a second, longer threshold,
+   run a one-shot, stdlib-only (no new dependency, per `CLAUDE.md`)
+   reachability check against `api.anthropic.com` -- a bare TCP connect
+   or HEAD, unauthenticated, no credentials/request body involved
+   (confirm this stays within Anthropic's ToS for an occasional,
+   stall-triggered check before shipping); poll it every ~5s while
+   still stale, stop once the turn/task resolves or the probe starts
+   succeeding again. Feed the result into the same status text/Flow
+   -view annotation from (1)/(2): "no response for Ns -- your network
+   looks down" vs "no response for Ns -- network's fine, something
+   else is stuck." Caveat to document in the plan: a successful probe
+   from Desk's own process doesn't guarantee the CLI subprocess's own
+   network path matches (proxy/VPN scoping could differ) -- a strong
+   signal, not a proof. New shared module under `src/desk/` (not inside
+   the widget file) since nothing else needs it yet, but it's not
+   widget-specific logic. Per direct user request, from the same
+   live-testing discussion as TODO `c1eb687`, with (2) added after a
+   follow-up question on whether background-task in-flight state could
+   feed this -- it already does, via (1); (2) is the further gap that
+   question actually surfaced. Related to TODOs `20ca851` (event
+   model), `eb50b84` (flow view), `c1eb687` (the widget's other dropped
+   CLI signals).
 
 db1cd65. Claude (Desk) widget: context-window awareness and manual
    compaction. (a) Poll `ClaudeSDKClient.get_context_usage()` after each
