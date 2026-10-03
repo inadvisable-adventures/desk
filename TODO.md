@@ -10779,13 +10779,19 @@ feff1ec. COMPLETED: Review and discuss all of the new FEEDBACK items (feedback
    `shared_development_process.md`; the files above other than the three
    archived ones stay put until then.
 
-f165b8c. Investigate options for running Desk jobs on cloud VMs, given
+f165b8c. PENDING: Investigate options for running Desk jobs on cloud VMs, given
    that Desk uses `claude` and many VM providers have blanket
    no-running-AI policies. Not designed/scoped yet.
+   [planned: cloud-vm-jobs-investigation.md]
+   Blocked on the questions in `QUESTIONS.md` (outcome wanted, which jobs,
+   what the provider policy actually restricts).
 
-e6ea1db. Investigate approaches to running Desk in a way that better
+e6ea1db. PENDING: Investigate approaches to running Desk in a way that better
    isolates it -- e.g. not giving it full access to absolute paths or
    system calls, etc. Not designed/scoped yet.
+   [planned: desk-isolation-investigation.md]
+   Blocked on the questions in `QUESTIONS.md` (threat model, acceptable
+   friction, whether in-process python widgets/transforms are in scope).
 
 742ba0a. COMPLETED: Add pypdf as an optional Desk dependency (a `desk[pdf]`
    extra), explicitly framed as a provisional stopgap for PDF

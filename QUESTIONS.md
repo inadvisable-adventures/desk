@@ -218,3 +218,33 @@ fix than "run occasionally by hand."
   convention for any future test that touches the clipboard, or is
   `verify_paste.py` a one-off?
 
+
+## TODO `f165b8c`: what exactly should the cloud-VM investigation produce?
+
+See `plans/cloud-vm-jobs-investigation.md`. Desk uses `claude`, and many VM
+providers have blanket no-running-AI policies; the item is unscoped.
+
+- What outcome do you want: a short recommendation (which providers allow it,
+  with sources), a design for a pluggable "job runner" abstraction, or both?
+- Which "Desk jobs" are in scope -- installed jobs, hmsvc services, the Claude
+  (Desk) widgets, or all of them?
+- Is the constraint a *provider* policy on running AI software at all, or
+  specifically on running Anthropic's CLI / on outbound calls to a model API?
+  (The answer changes whether e.g. running only the non-Claude parts in the
+  cloud is useful.)
+- Web research on provider terms can be wrong or stale; is a best-effort,
+  dated, sourced survey acceptable, with the caveat that it is not legal advice?
+
+## TODO `e6ea1db`: what threat model should the isolation investigation assume?
+
+See `plans/desk-isolation-investigation.md`. The item asks for better isolation
+(e.g. no full access to absolute paths or system calls) but is unscoped.
+
+- What are we defending against: a malicious or buggy widget/job/transform,
+  one project reading another's files, or the Claude agent acting beyond a
+  project? Each points at a different mechanism.
+- How much friction is acceptable: OS-level sandboxing of subprocesses only,
+  path allow-lists on the Bridge API (`desk.fs`/`desk.documents`), or running
+  all of Desk in a container/VM?
+- Are `kind: "python"` widgets and transforms (which run in-process with full
+  access today) in scope, given isolating them would mean a process boundary?
