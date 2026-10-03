@@ -55,9 +55,17 @@ needed.
 `DeprecationRegistry.report` records a use **once per instance and API**, then
 notifies listeners. `DeskWindow` listens (hopping to the GUI thread) and: lights the
 widget's `[ERROR]` titlebar marker with the full message for a placed instance --
-independent of whether the widget catches the exception; shows a notification for a
-tempui file or a manifest (which have no frame); and only logs a python hook (its
-caller is already getting the exception). A removed instance's reports are
+independent of whether the widget catches the exception; offers the fix actions straight
+away for a tempui file or a manifest (which have no frame); and only logs a python hook
+(its caller is already getting the exception).
+
+**Fix actions** (clicking the marker, or straight away when there is no frame): *Copy
+command* puts the short `agent_command` on the clipboard; *Launch agent console* opens a
+Claude (Desk) widget (the way the `[CHAT]` button does) seeded with `agent_instructions`
+-- the id, old API, replacement and message from the registry, where Desk saw the use
+(widget kind, instance, source directory, the file or manifest), and "find the code,
+switch it to the replacement, check it works; do not go looking for documentation of the
+old API"; or *Dismiss*. A removed instance's reports are
 forgotten, so a re-placed one reports again.
 
 ## Preserving the old documentation
@@ -87,11 +95,11 @@ the no-leak rules.
 ## Status
 
 Built (TODO `df8138a`): the registry, the tombstones for all five surfaces, once-per
--instance reporting, the `[ERROR]`-marker/notification handling, and the first real
+-instance reporting, the `[ERROR]`-marker handling and the fix actions (copy command / launch
+agent console, TODO `18fa45f`), and the first real
 deprecation, DEPR-001 (the shared per-launch Bridge token as caller identity), which is
 now a tombstone. Planned follow-ups: a scan for deprecated usage before it runs (TODO
-`284bfbd`), previewed/confirmed rewriters (TODO `cc78e9d`), and the agent handoff
-actions in the UI (TODO `18fa45f`). Direction on what happens to the old *documentation*
+`284bfbd`), and previewed/confirmed rewriters (TODO `cc78e9d`). Direction on what happens to the old *documentation*
 later: "micro-tombstoning" -- it is removed from the tree in one commit and an immediate
 follow-up commit records that commit's id with keywords so it stays findable in git history
 (details parked in `PARKINGLOT.md`). Whether the tombstone stubs themselves are ever removed

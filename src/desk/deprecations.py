@@ -81,6 +81,35 @@ def format_error(dep: Deprecation, where: str | None = None) -> str:
     return f"{dep.old} was replaced by {dep.replacement}. {dep.message} [{dep.id}] To have an agent fix it, paste: {agent_command(dep, where)}"
 
 
+def agent_instructions(dep: Deprecation, where: str | None = None, context: list[str] | None = None) -> str:
+    """The body of the instructions an agent console is seeded with (TODO
+    18fa45f): what changed (from the registry, never the old docs), where Desk
+    saw the use, and what to do. Complete on its own."""
+    lines = [
+        "Fix a use of a replaced Desk API. Desk reported that something still uses an API that no longer works.",
+        "",
+        "## What changed",
+        f"- Deprecation id: {dep.id}",
+        f"- Old: `{dep.old}`",
+        f"- Use instead: `{dep.replacement}`",
+        f"- Details: {dep.message}",
+        "",
+        "## Where Desk saw it",
+    ]
+    where_lines = list(context or [])
+    if where and where not in where_lines:
+        where_lines.insert(0, f"Reported at: {where}")
+    lines += [f"- {line}" for line in where_lines] or ["- (Desk has no more specific location; search for the old name.)"]
+    lines += [
+        "",
+        "## What to do",
+        "Find the code that uses the old API (start from the locations above and search the source for the old "
+        "name), change it to use the replacement, and check that it works. Everything you need is on this page: "
+        "do not go looking for documentation of the old API.",
+    ]
+    return "\n".join(lines)
+
+
 class DeprecatedApiError(Exception):
     def __init__(self, deprecation: Deprecation, where: str | None = None) -> None:
         super().__init__(format_error(deprecation, where))

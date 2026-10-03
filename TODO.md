@@ -6,7 +6,7 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
-18fa45f. Deprecation agent handoff: the always-available alternative to a rewrite
+18fa45f. COMPLETED: Deprecation agent handoff: the always-available alternative to a rewrite
    (piece 6 of TODO `df8138a`). Wherever Desk reports a tombstone use, offer (1) a
    short command to copy into an agent console (the `agent_command` text, naming the
    deprecation id and the affected files) and (2) a "launch an agent console"
@@ -14,6 +14,20 @@ reordered or its description edited.
    Claude (Desk) widget scoped to a widget, seeded with instructions describing the
    deprecation (replacement and message from the registry -- never the old docs).
    Today the command is only embedded in the error text and the `[ERROR]` dialog.
+
+   [planned: deprecation-agent-handoff.md (COMPLETED)]
+
+   COMPLETED 2026-10-03: `[ERROR]`-marker clicks on a tombstone use (the marker
+   remembers the report; a later different error still gets the plain dialog)
+   and frameless usage (tempui file, manifest) now offer a dialog with **Copy
+   command** (the `agent_command` text, onto the clipboard), **Launch agent
+   console** (`DeskWindow.open_deprecation_agent`: a Claude (Desk) widget placed
+   beside the affected widget, or view-centered, seeded with
+   `agent_instructions` -- registry message plus where Desk saw the use, never
+   the old docs, never the history store) and **Dismiss**. A python-hook use
+   stays log-only. Verified by `verify_deprecation_agent_handoff.py` (26
+   checks, including the real clipboard and the written instructions file) and
+   the updated `verify_deprecations.py` (44).
 
 f8da2c5. COMPLETED: Claude (Desk) widget: the staleness tracker's "no response" timer (TODO
    `5ce8447`, `src/desk/claude_staleness.py`) must not fire while Claude

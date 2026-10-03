@@ -246,12 +246,15 @@ class _Frame:
 
 
 def window_stub(frames):
-    notices = []
+    offered = []
+    window_cls = desk.shell.window.DeskWindow
     stub = types.SimpleNamespace(
         find_frame_by_instance_id=lambda iid: frames.get(iid),
-        _notify_deprecated_usage=lambda message, command: notices.append((message, command)),
+        _display_name_for_instance=lambda iid: f"Widget ({iid})",
+        _offer_deprecation_actions=lambda report: offered.append(report),
     )
-    return stub, notices
+    stub._deprecation_where = lambda report: window_cls._deprecation_where(stub, report)
+    return stub, offered
 
 
 def test_window_handles_reports():
@@ -271,15 +274,16 @@ def test_window_handles_reports():
         return UsageReport(d, "widget", instance, detail, 0.0)
 
     window_cls._on_deprecation_reported(stub, usage(js, "inst-1", "fs.oldRead"))
-    check("a Bridge JS tombstone use lights the widget's [ERROR] marker with the full message and agent command", frame.errors and frame.errors[-1][0] is True and "fs.readFile" in frame.errors[-1][1] and "paste:" in frame.errors[-1][1])
+    check("a Bridge JS tombstone use lights the widget's [ERROR] marker with the full message and agent command naming the widget", frame.errors and frame.errors[-1][0] is True and "fs.readFile" in frame.errors[-1][1] and "paste:" in frame.errors[-1][1] and "Widget (inst-1)" in frame.errors[-1][1])
+    check("and remembers the report so clicking the marker can offer the fix actions", getattr(frame, "deprecation_report", None) is not None and frame.deprecation_report.deprecation.id == "DEPR-910")
     window_cls._on_deprecation_reported(stub, usage(wire, "inst-1"))
     check("a wire-path tombstone use does the same for the claimed instance", len(frame.errors) == 2)
     window_cls._on_deprecation_reported(stub, usage(js, "not-placed"))
     check("a report for an instance with no frame is harmless", len(frame.errors) == 2 and notices == [])
     window_cls._on_deprecation_reported(stub, usage(tui, "file-uuid", "OldKw Title"))
-    check("a tempui tombstone use shows a notification with the message and the command naming the file's keyword line", len(notices) == 1 and "Kw" in notices[0][0] and "OldKw Title" in notices[0][1])
+    check("a tempui tombstone use offers the fix actions straight away", len(notices) == 1 and notices[0].instance_id == "file-uuid")
     window_cls._on_deprecation_reported(stub, usage(man, "/p/widget.json", "/p/widget.json: old_field"))
-    check("a manifest tombstone shows a notification too", len(notices) == 2 and "widget.json" in notices[1][1])
+    check("a manifest tombstone offers them too", len(notices) == 2 and notices[1].instance_id == "/p/widget.json")
     window_cls._on_deprecation_reported(stub, usage(hook, "/p/x.py:3", "/p/x.py:3"))
     check("a python hook tombstone is logged only (its caller is already getting the exception)", len(notices) == 2 and len(frame.errors) == 2)
 

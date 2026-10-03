@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from PyQt6.QtCore import QObject, QPointF, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QPixmap
+from PyQt6.QtGui import QGuiApplication, QPixmap
 from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QWidget
 
 from desk.custom_widgets import LikelySourceCandidate, build_from_source, find_likely_source_candidates, materialize
@@ -40,7 +40,12 @@ from desk.promotion_deps import (
     rewrite_files_entries,
     rewrite_out_dir,
 )
-from desk.deprecations import agent_command, format_error, get_registry as get_deprecation_registry
+from desk.deprecations import (
+    agent_command,
+    agent_instructions,
+    format_error,
+    get_registry as get_deprecation_registry,
+)
 from desk.recently_removed import RECENTLY_REMOVED_CHANGED_EVENT, RECENTLY_REMOVED_MAX
 from desk.canvas_layout import ARRANGEMENTS, restorable, snapshot_moves
 from desk.widget_overview import WIDGET_OVERVIEW_CHANGED_EVENT
@@ -2022,29 +2027,115 @@ class DeskWindow(QMainWindow):
         """A tombstoned API was used (TODO df8138a). A placed widget instance
         gets its titlebar `[ERROR]` marker with the full tombstone message (what
         to use now, plus the command to give an agent) -- independent of whether
-        the widget catches the exception; a tempui file or a manifest, which
-        have no frame, get a notification. A python hook (reported by call
-        site) is logged only: its own caller is already getting the exception."""
+        the widget catches the exception; clicking it offers the fix actions
+        (TODO 18fa45f). A tempui file or a manifest, which have no frame, offer
+        them straight away. A python hook (reported by call site) is logged only:
+        its own caller is already getting the exception."""
         dep = report.deprecation
-        where = report.detail if dep.surface in ("tempui_keyword", "manifest_field", "python_hook") else None
-        text = format_error(dep, where)
-        logging.getLogger("desk.deprecations").warning("%s used by %s/%s: %s", dep.id, report.widget_id, report.instance_id, report.detail)
+        logging.getLogger("desk.deprecations").warning(
+            "%s used by %s/%s: %s", dep.id, report.widget_id, report.instance_id, report.detail
+        )
         if dep.surface in ("bridge_js", "wire_path"):
             frame = self.find_frame_by_instance_id(report.instance_id)
             if frame is not None:
+                text = format_error(dep, self._deprecation_where(report))
+                frame.deprecation_report = report
                 frame.set_error(True, text)
         elif dep.surface in ("tempui_keyword", "manifest_field"):
-            self._notify_deprecated_usage(text, agent_command(dep, where))
+            self._offer_deprecation_actions(report)
 
-    def _notify_deprecated_usage(self, message: str, command: str) -> None:
-        """Split out so headless verification can monkeypatch just this one
-        method instead of driving a real modal QMessageBox."""
+    def _deprecation_where(self, report) -> str | None:
+        """What the agent command says the use was *in*."""
+        if report.deprecation.surface in ("tempui_keyword", "manifest_field", "python_hook"):
+            return report.detail
+        if self.find_frame_by_instance_id(report.instance_id) is not None:
+            return self._display_name_for_instance(report.instance_id)
+        return None
+
+    def _deprecation_context(self, report) -> list[str]:
+        """Facts Desk has about where a tombstone use happened, for the seeded
+        agent console (never anything about the old API's documentation)."""
+        lines: list[str] = []
+        surface = report.deprecation.surface
+        if surface in ("bridge_js", "wire_path"):
+            frame = self.find_frame_by_instance_id(report.instance_id)
+            widget_id = frame.content.widget_id if frame is not None else report.widget_id
+            info = self._widgets.get(widget_id)
+            lines.append(f"Widget kind: `{widget_id}`" + (f" (\"{info.name}\", kind {info.kind})" if info is not None else ""))
+            lines.append(f"Instance id: `{report.instance_id}`")
+            if info is not None:
+                lines.append(f"Widget source directory: `{info.path}`")
+            definition = self._custom_widget_definitions.get(widget_id)
+            if definition is not None and getattr(definition, "source_path", None):
+                lines.append(f"Authored from source at: `{definition.source_path}`")
+            if report.detail:
+                lines.append(f"Call that tripped it: `{report.detail}`")
+        elif surface == "tempui_keyword":
+            lines.append(f"Tempui file: `{TEMP_UI_DIRNAME}/{report.instance_id}`")
+            if report.detail:
+                lines.append(f"Its first line: `{report.detail}`")
+        elif surface == "manifest_field":
+            lines.append(f"Manifest: `{report.instance_id}`")
+        elif surface == "python_hook" and report.detail:
+            lines.append(f"Call site: `{report.detail}`")
+        return lines
+
+    def _offer_deprecation_actions(self, report) -> None:
+        """TODO 18fa45f: wherever a tombstone use is surfaced, offer the
+        always-available fix paths -- copy a short command to paste into an
+        agent console, or launch an agent console already seeded with what to
+        do -- or neither."""
+        dep = report.deprecation
+        where = self._deprecation_where(report)
+        command = agent_command(dep, where)
+        action = self._ask_deprecation_action(format_error(dep, where), command)
+        if action == "copy":
+            QGuiApplication.clipboard().setText(command)
+        elif action == "launch":
+            self.open_deprecation_agent(report)
+
+    def _ask_deprecation_action(self, message: str, command: str) -> str:
+        """"copy", "launch" or "dismiss". Split out so headless verification can
+        monkeypatch just this one method instead of driving a real modal
+        QMessageBox."""
         box = QMessageBox(self)
         box.setWindowTitle("Deprecated Desk API")
         box.setText(message)
-        box.setInformativeText(f"To have an agent fix it, paste: {command}")
-        box.addButton("OK", QMessageBox.ButtonRole.AcceptRole)
+        box.setInformativeText(f"To have an agent fix it, paste:\n{command}")
+        copy_button = box.addButton("Copy command", QMessageBox.ButtonRole.ActionRole)
+        launch_button = box.addButton("Launch agent console", QMessageBox.ButtonRole.ActionRole)
+        box.addButton("Dismiss", QMessageBox.ButtonRole.RejectRole)
         box.exec()
+        clicked = box.clickedButton()
+        if clicked is copy_button:
+            return "copy"
+        if clicked is launch_button:
+            return "launch"
+        return "dismiss"
+
+    def open_deprecation_agent(self, report) -> WidgetFrame | None:
+        """TODO 18fa45f: places a fresh Claude (Desk) widget (the way the
+        `[CHAT]` button does) seeded with instructions for fixing this
+        tombstone use -- the replacement and message from the registry, where
+        Desk saw the use, never the old API's documentation. Positioned just
+        right of the widget it is about when there is one, else view-centered."""
+        widget = self._widgets.get(CLAUDE_DESK_WIDGET_ID)
+        if widget is None:
+            return None
+        dep = report.deprecation
+        source = self.find_frame_by_instance_id(report.instance_id)
+        proxy = source.graphicsProxyWidget() if source is not None else None
+        if proxy is not None:
+            rect = proxy.sceneBoundingRect()
+            pos = (rect.right() + 24, rect.top())
+        else:
+            center = self.view.mapToScene(self.view.viewport().rect().center())
+            pos = (center.x(), center.y())
+        body = agent_instructions(dep, self._deprecation_where(report), self._deprecation_context(report))
+        extra_instructions = self._write_claude_instructions_file(body, prefix="deprecation")
+        return self._place_widget(
+            CLAUDE_DESK_WIDGET_ID, widget, pos, widget.default_size, claude_extra_instructions=extra_instructions
+        )
 
     def _handle_deprecated_tempui_file(self, path: Path) -> bool:
         """True if `path` starts with a tombstoned tempui keyword: it is reported
@@ -3622,6 +3713,17 @@ class DeskWindow(QMainWindow):
         ""` fallback), and gating on the message itself made the button
         light up and then silently do nothing for exactly that case."""
         if not frame.has_error:
+            return
+        # TODO 18fa45f: a tombstone use lit this marker -- offer the fix
+        # actions instead of the plain message (unless a later, different
+        # error has since replaced the message).
+        deprecation_report = getattr(frame, "deprecation_report", None)
+        if deprecation_report is not None and frame.last_error_message == format_error(
+            deprecation_report.deprecation, self._deprecation_where(deprecation_report)
+        ):
+            frame.deprecation_report = None
+            frame.set_error(False)
+            self._offer_deprecation_actions(deprecation_report)
             return
         self._confirm_widget_error_dismissed(frame.last_error_message or "(no error message was captured)")
         frame.set_error(False)
