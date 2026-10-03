@@ -27,6 +27,18 @@ from desk.claude_task_panel import NO_LOG_TEXT, TaskPanel, tail_preview  # noqa:
 from desk.event_mediator import EventMediator  # noqa: E402
 from desk.shell import current_context  # noqa: E402
 
+_KEEP_ALIVE = []
+
+
+def _keep(mediator):
+    """An EventSubscription's destroyed-callback calls mediator.unsubscribe_all
+    when the widget is garbage collected; if the mediator was collected first
+    (interpreter shutdown order is arbitrary) that raises and aborts the
+    process. Keep every test mediator alive for the whole run."""
+    _KEEP_ALIVE.append(mediator)
+    return mediator
+
+
 passed = 0
 failed = 0
 
@@ -158,7 +170,7 @@ def make_widget():
 
 def test_task_events_build_a_log_and_publish():
     widget = make_widget()
-    mediator = EventMediator()
+    mediator = _keep(EventMediator())
     mediator.subscribe("listener", CLAUDE_DESK_TASK_LOG_EVENT)
     widget.bind_event_mediator("src-1", mediator)
     mediator.drain("listener")
@@ -221,7 +233,7 @@ def test_open_task_log_hook_dedup_and_zoom():
 def test_log_widget_seeds_and_filters_live_updates():
     widget = log_mod.build()
     check("unseeded widget explains itself", "No log available" in widget._title.text())
-    mediator = EventMediator()
+    mediator = _keep(EventMediator())
     widget.bind_event_mediator("log-1", mediator)
     widget.seed("src-1", "t1", "build [running]", [{"kind": "notice", "text": "started: build", "ts": 5.0, "turn_id": 2}])
     (first,) = widget._history.entries()

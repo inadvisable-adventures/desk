@@ -84,6 +84,7 @@ from desk.shell.schema_file_watcher import SCHEMA_FILES_DIRNAME, TOP_LEVEL_SCHEM
 from desk.shell.temp_ui_manager import TempUiManager
 from desk.shell.widget_frame import MIN_HEIGHT, WidgetFrame
 from desk.transforms import PROJECT_TRANSFORMS_DIRNAME, TEMP_TRANSFORMS_DIRNAME
+from desk_services.documents import get_service as get_documents_service
 from desk_services.popups import get_service as get_popups_service
 from desk_services.transforms import get_service as get_transforms_service
 from desk.temp_ui import (
@@ -533,6 +534,12 @@ class DeskWindow(QMainWindow):
         current_context.set_widget_height_adjuster(self.adjust_widget_instance_height)
         current_context.set_background_task_log_opener(self.open_background_task_log)
         current_context.set_widget_overview_provider(self.get_widget_overview)
+        # TODO 8e4711e: desk.documents resolves relative paths against, and
+        # caches under, whichever Desk is current.
+        get_documents_service().configure(
+            lambda: self.current_desk.directory,
+            lambda: self.current_desk.directory / TEMP_UI_DIRNAME / "documents_cache",
+        )
         current_context.set_stale_widgets_reloader(self.reload_all_stale_widgets)
         # TODO 53779f4: coalesced (a desk load places many widgets in one
         # go) live updates for the Open Widgets widget.

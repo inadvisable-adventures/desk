@@ -229,6 +229,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "OpenWithWidget places any widget with a file #051616",
     "project-authored python widgets in desk_widgets #473197",
     "hmsvc service.json custom interpreter #892147",
+    "desk.documents cached byte-range reads #655544",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1130,6 +1131,15 @@ built for genuine cross-widget signaling:
   target directory exists before writing into it. This is
   same-directory file I/O, not a way to signal another widget — see the
   `events` callout above if that's what you're after.
+- `desk.documents.open(path)` / `.read(handle, {offset, length})` /
+  `.close(handle)` (capability `documents`) — virtualized raw byte-range
+  reads of large or binary files, cached Desk-side (`.desk_temp/
+  documents_cache/`, invalidated when the file changes). `open` returns a
+  handle without reading the file; `read` returns `{data: base64, eof}`
+  (binary-safe; `length` is clamped to 8 MiB per call); relative paths
+  resolve against the current Desk's directory like `desk.fs.*`. Use this
+  instead of base64-ing a whole file through a transform just to show part
+  of it (e.g. page one of a large PDF).
 - `desk.widgets.list()` / `.open(widgetId, opts)` / `.close(instanceId)`
   (capability `widgets`) — inspect/manage placed widget instances.
 - `desk.introspect.snapshot(targetInstanceId)` (capability
@@ -1925,6 +1935,21 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "desk.documents cached byte-range reads #655544": """- New Bridge API `desk.documents` (capability `documents`) for reading
+  large or binary files without base64-ing the whole file through a
+  transform: `desk.documents.open(path)` returns a server-side handle (the
+  path resolves like `desk.fs.*`: relative to the current Desk's directory;
+  content is not read), `desk.documents.read(handle, {offset, length})`
+  returns `{data: <base64>, eof: <bool>}` for a raw byte range (binary-safe
+  -- unlike `desk.fs.readFile`, which decodes UTF-8 and throws on binary;
+  `length` is clamped to 8 MiB per call), and `desk.documents.close(handle)`.
+  Reads are cached Desk-side under `.desk_temp/documents_cache/`, keyed by
+  the file's path, mtime and size, so a repeated range doesn't re-hit disk
+  and a changed file is re-read rather than served stale. Raw bytes only (no
+  format awareness); editing and live change notifications are not part of
+  v1. A `kind: "python"` widget reaches the same service via
+  `desk.shell.current_context.get_documents_service()`.
+""",
     "project-authored python widgets in desk_widgets #473197": """- A project's own `desk_widgets/` directory (at the project root) can
   now hold a real `kind: "python"` widget package -- the exact same
   `widget.json`/`entry` shape as one of Desk's own built-in
@@ -3293,8 +3318,8 @@ class CustomWidgetDefinition:
     the raw `keyword`); `html_b64` is the widget's entire
     implementation -- one self-contained, base64-encoded HTML
     document. `capabilities` (TODO f693275) are the Bridge API
-    capabilities (`"workspace"`, `"state"`, `"fs"`, `"widgets"`, `"events"`,
-    `"media"`, ...) this widget kind is allowed to use -- same coarse,
+    capabilities (`"workspace"`, `"state"`, `"fs"`, `"documents"`, `"widgets"`,
+    `"events"`, `"media"`, ...) this widget kind is allowed to use -- same coarse,
     resource-level strings a real `widgets/<id>/widget.json`'s own
     `capabilities` list already uses; defaults to none declared, same
     as a manifest with no `capabilities` key. `state_schema` (TODO af7898b) is the

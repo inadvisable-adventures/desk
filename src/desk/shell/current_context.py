@@ -585,6 +585,15 @@ def get_widget_height_adjuster() -> Callable[[str, int], None] | None:
     return _widget_height_adjuster
 
 
+def get_documents_service():
+    """TODO 8e4711e: the shared `desk_services.documents` service, for a
+    `kind: "python"` widget (a `kind: "html"` one uses the Bridge API's
+    `desk.documents.*`). Qt-free, so synchronous calls are fine."""
+    from desk_services.documents import get_service
+
+    return get_service()
+
+
 def set_widget_overview_provider(provider: Callable[[], list[dict]]) -> None:
     """TODO 53779f4: `provider()` -> every placed widget instance as
     `{instance_id, widget_id, title, kind, stale}`; see

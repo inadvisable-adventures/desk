@@ -21,6 +21,18 @@ from desk.shell import current_context  # noqa: E402
 from desk.shell.canvas import WorkspaceView  # noqa: E402
 from desk.widget_overview import WIDGET_OVERVIEW_CHANGED_EVENT  # noqa: E402
 
+_KEEP_ALIVE = []
+
+
+def _keep(mediator):
+    """An EventSubscription's destroyed-callback calls mediator.unsubscribe_all
+    when the widget is garbage collected; if the mediator was collected first
+    (interpreter shutdown order is arbitrary) that raises and aborts the
+    process. Keep every test mediator alive for the whole run."""
+    _KEEP_ALIVE.append(mediator)
+    return mediator
+
+
 passed = 0
 failed = 0
 
@@ -116,7 +128,7 @@ def test_live_updates_replace_the_table():
     saved = with_hooks(overview(("a1", "editor", "E", "python", False)))
     try:
         widget = module.build()
-        mediator = EventMediator()
+        mediator = _keep(EventMediator())
         widget.bind_event_mediator("ow-1", mediator)
         check("no stale -> the reload button is disabled", not widget._reload_button.isEnabled())
         mediator.publish(WIDGET_OVERVIEW_CHANGED_EVENT, {"widgets": overview(("a1", "editor", "E", "python", False), ("c3", "x", "X", "html", True))}, "desk")

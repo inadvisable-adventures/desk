@@ -1314,3 +1314,14 @@ faithfully -- the "no live repro" in the original report was avoidable, and the
 screenshot concern in it doesn't apply; (3) every label added to a crowded
 widget row widens its minimum -- check `minimumSizeHint()` against
 `default_size` when adding to one.
+
+`EventSubscription` + a test-local `EventMediator` (found via
+`verify_minimap.py` aborting with `-6` at interpreter exit, intermittently
+passing): `EventSubscription` connects `destroyed` to a closure calling
+`mediator.unsubscribe_all(instance_id)`. If a test builds a widget with a
+mediator that is only referenced from a test function's locals, the mediator
+can be garbage collected before the widget at shutdown, and the callback hits a
+half-torn-down mediator (`AttributeError: ... no attribute '_lock'`) -- an abort,
+not a failure, and order-dependent so it passes most runs. Keep every test
+mediator alive for the whole run (the `_keep` helper in the newer
+`verify_*` scripts).

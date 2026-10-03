@@ -20,6 +20,18 @@ from desk.claude_session import CLAUDE_DESK_STATUS_EVENT  # noqa: E402
 from desk.event_mediator import EventMediator  # noqa: E402
 from desk.shell import current_context  # noqa: E402
 
+_KEEP_ALIVE = []
+
+
+def _keep(mediator):
+    """An EventSubscription's destroyed-callback calls mediator.unsubscribe_all
+    when the widget is garbage collected; if the mediator was collected first
+    (interpreter shutdown order is arbitrary) that raises and aborts the
+    process. Keep every test mediator alive for the whole run."""
+    _KEEP_ALIVE.append(mediator)
+    return mediator
+
+
 passed = 0
 failed = 0
 
@@ -62,7 +74,7 @@ class _FakeSession:
 
 
 def make_publisher():
-    mediator = EventMediator()
+    mediator = _keep(EventMediator())
     mediator.subscribe("listener", CLAUDE_DESK_STATUS_EVENT)
     widget = desk_mod.build()
     widget._session = _FakeSession()
@@ -176,7 +188,7 @@ def test_status_widget_end_to_end():
     current_context.set_main_window(windows)
     current_context.set_widget_zoomer(lambda iid: zooms.append(iid) or True)
     try:
-        mediator = EventMediator()
+        mediator = _keep(EventMediator())
         widget = status_mod.build()
         widget.bind_event_mediator("status-1", mediator)
         check("only claude_desk instances listed", widget._list.count() == 2)

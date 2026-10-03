@@ -15,6 +15,7 @@ from desk.hmsvc import HmsvcManager, service_name_from_caller_id
 from desk.installed_jobs import INSTALLED_JOB_RUN_TIMEOUT_SECONDS
 from desk.shell.bridge import GuiBridge
 from desk.widgets import WidgetInfo, discover_widgets
+from desk_services.documents import DocumentsError, get_service as get_documents_service
 
 # src/desk/server/app.py -> repo root, then the widgets directory.
 DEFAULT_WIDGETS_DIR = Path(__file__).resolve().parents[3] / "widgets"
@@ -144,6 +145,20 @@ class CloseWidgetRequest(BaseModel):
 class WriteFileRequest(BaseModel):
     path: str
     contents: str
+
+
+class DocumentsOpenRequest(BaseModel):
+    path: str
+
+
+class DocumentsReadRequest(BaseModel):
+    handle: str
+    offset: int = 0
+    length: int = 1_048_576
+
+
+class DocumentsCloseRequest(BaseModel):
+    handle: str
 
 
 class SetLocalStorageRequest(BaseModel):
@@ -471,6 +486,33 @@ def create_app(
         except OSError as e:
             raise HTTPException(400, str(e)) from e
         return {"ok": True}
+
+    # --- documents (TODO 8e4711e): virtualized, Desk-cached raw byte-range
+    # reads -- see desk_services.documents / plans/desk-documents-v1.md.
+    # Blocking file I/O, so each call runs in a worker thread.
+    @app.post("/api/bridge/documents/open")
+    async def documents_open(
+        body: DocumentsOpenRequest,
+        widget: WidgetInfo = Depends(require_caller("documents")),
+        instance_id: str = Depends(require_instance_id),
+    ):
+        resolved = await _resolve_fs_path(body.path)
+        try:
+            handle = await asyncio.to_thread(get_documents_service().open, resolved, instance_id)
+        except DocumentsError as e:
+            raise HTTPException(400, str(e)) from e
+        return {"handle": handle}
+
+    @app.post("/api/bridge/documents/read")
+    async def documents_read(body: DocumentsReadRequest, widget: WidgetInfo = Depends(require_caller("documents"))):
+        try:
+            return await asyncio.to_thread(get_documents_service().read, body.handle, body.offset, body.length)
+        except DocumentsError as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.post("/api/bridge/documents/close")
+    async def documents_close(body: DocumentsCloseRequest, widget: WidgetInfo = Depends(require_caller("documents"))):
+        return {"closed": get_documents_service().close(body.handle)}
 
     @app.get("/api/bridge/widgets/list")
     async def widgets_list(widget: WidgetInfo = Depends(require_caller("widgets"))):

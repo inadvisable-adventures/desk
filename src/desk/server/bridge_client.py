@@ -97,6 +97,12 @@ BRIDGE_CLIENT_TEMPLATE = """
       writeFile: (path, contents) =>
         call("POST", "/api/bridge/fs/writeFile", { path, contents }),
     },
+    documents: {
+      open: (path) => call("POST", "/api/bridge/documents/open", { path }),
+      read: (handle, range) =>
+        call("POST", "/api/bridge/documents/read", { handle, ...(range || {}) }),
+      close: (handle) => call("POST", "/api/bridge/documents/close", { handle }),
+    },
     widgets: {
       list: () => call("GET", "/api/bridge/widgets/list"),
       open: (widgetId, opts) =>

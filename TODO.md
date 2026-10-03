@@ -10650,7 +10650,7 @@ d0a4c7b. COMPLETED: Fix widget stacking on the canvas (`src/desk/shell/canvas.py
    `verify_recently_removed.py` (26 checks; real `WorkspaceView`, stub window);
    a real `DeskWindow` run was skipped.
 
-8e4711e. `desk.documents` v1: virtualized, Desk-cached reads of large or
+8e4711e. COMPLETED: `desk.documents` v1: virtualized, Desk-cached reads of large or
    binary files. `desk.documents.open(path)` -> a server-side handle
    (path resolved like `desk.fs.*`, content not read);
    `desk.documents.read(handle, {offset, length})` -> `{data: base64,
@@ -10669,6 +10669,21 @@ d0a4c7b. COMPLETED: Fix widget stacking on the canvas (`src/desk/shell/canvas.py
    changelog tag/entry (a new Bridge API). v2 (editing and live change
    notifications) is parked in `PARKINGLOT.md`. Cites
    `../FEEDBACK/FEEDBACK-DESK-virtualized-document-loader-service-2026-08-04-2043.md`.
+   [planned: desk-documents-v1.md (COMPLETED)]
+
+   COMPLETED: `desk_services.documents.DocumentsService` (Qt-free,
+   thread-safe): `open(path)` -> handle (no content read, relative paths
+   resolve against the Desk dir, 256-handle cap), `read(handle, {offset,
+   length})` -> `{data: base64, eof}` (raw, binary-safe, length clamped to
+   8 MiB), `close(handle)`; reads cached on disk under
+   `.desk_temp/documents_cache/<sha1(path|mtime_ns|size)>/` (a changed file
+   gets a new key and its old directory is deleted; 64 MiB per-document cap,
+   oldest evicted). Bridge routes `/api/bridge/documents/*` (capability
+   `documents`), JS client `desk.documents.*`, and
+   `current_context.get_documents_service()` for python widgets. Tempui
+   changelog tag `desk.documents cached byte-range reads #655544` + entry and
+   docs bullet added. Verified by `verify_documents_service.py` (25 checks)
+   and `verify_documents_bridge_api.py` (11 checks, real server).
 
 94c2566. Write a `.desk_temp` doc on porting existing app code into
    Desk (generated from `src/desk/temp_ui.py` like the other tempui

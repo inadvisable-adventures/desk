@@ -25,6 +25,18 @@ from desk.shell import current_context  # noqa: E402
 from desk.shell.canvas import WorkspaceView  # noqa: E402
 
 DeskWindow = desk.shell.window.DeskWindow
+_KEEP_ALIVE = []
+
+
+def _keep(mediator):
+    """An EventSubscription's destroyed-callback calls mediator.unsubscribe_all
+    when the widget is garbage collected; if the mediator was collected first
+    (interpreter shutdown order is arbitrary) that raises and aborts the
+    process. Keep every test mediator alive for the whole run."""
+    _KEEP_ALIVE.append(mediator)
+    return mediator
+
+
 passed = 0
 failed = 0
 
@@ -85,7 +97,7 @@ class _Stub:
             "editor": types.SimpleNamespace(kind="python", default_size=(480, 360)),
             "html1": types.SimpleNamespace(kind="html", default_size=(480, 360)),
         }
-        self._event_mediator = EventMediator()
+        self._event_mediator = _keep(EventMediator())
         self._event_mediator.subscribe("listener", RECENTLY_REMOVED_CHANGED_EVENT)
         self.local_storage = {}
         self.saves = 0
@@ -227,7 +239,7 @@ def test_widget():
         widget._clear_button.click()
         check("confirming clears", window.calls[-1] == ("clear",))
 
-        mediator = EventMediator()
+        mediator = _keep(EventMediator())
         widget.bind_event_mediator("rr-1", mediator)
         mediator.publish(RECENTLY_REMOVED_CHANGED_EVENT, {"entries": entries(("z", "Z"))}, "desk")
         widget._subscription._poll()
