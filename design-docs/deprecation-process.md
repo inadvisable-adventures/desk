@@ -91,5 +91,8 @@ Built (TODO `df8138a`): the registry, the tombstones for all five surfaces, once
 deprecation, DEPR-001 (the shared per-launch Bridge token as caller identity), which is
 now a tombstone. Planned follow-ups: a scan for deprecated usage before it runs (TODO
 `284bfbd`), previewed/confirmed rewriters (TODO `cc78e9d`), and the agent handoff
-actions in the UI (TODO `18fa45f`). Open question: whether tombstones are ever deleted
-(and on what evidence) or are permanent.
+actions in the UI (TODO `18fa45f`). Direction on what happens to the old *documentation*
+later: "micro-tombstoning" -- it is removed from the tree in one commit and an immediate
+follow-up commit records that commit's id with keywords so it stays findable in git history
+(details parked in `PARKINGLOT.md`). Whether the tombstone stubs themselves are ever removed
+is still open.

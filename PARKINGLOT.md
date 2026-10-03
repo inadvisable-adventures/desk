@@ -1150,3 +1150,24 @@ This file captures thoughts and TODO items that arise during work on other thing
   add a fourth. Wait for v1's handle/cache primitives to have a real
   second user before designing. Cites
   `../FEEDBACK/FEEDBACK-DESK-virtualized-document-loader-service-2026-08-04-2043.md`.
+
+- **Micro-tombstoning: how replaced-API documentation eventually leaves the tree**
+
+  Direction from the user (2026-10-03), answering the open question left by TODO
+  `df8138a` ("are tombstones ever deleted?"), details deliberately TBD: a process
+  called *micro-tombstoning*. The documentation of a replaced API (today kept
+  verbatim in the isolated history store, see the guard line in `CLAUDE.md`) is
+  **removed from the tree in one commit**, and an **immediate subsequent commit**
+  records the removal commit's id together with a few keywords, so that if
+  something genuinely needs the old text it can be found in git history (by
+  searching for the keywords, then reading the recorded commit). The point is to
+  stop the history store from growing forever while keeping the old docs
+  recoverable. To work out: where the follow-up commit records the id/keywords (a
+  file kept in the tree, the commit message alone, or both); the keyword
+  conventions; whether it is per-deprecation or batched; what triggers removal
+  (age, a release, evidence nothing uses the old API); how it interacts with the
+  isolation rules (no current doc may point at the history store, so the pointer
+  must live somewhere agents don't load); and whether the tombstones themselves
+  (the stubs in code) are ever removed or only their docs. Related: TODO
+  `df8138a`, `design-docs/deprecation-process.md`.
+

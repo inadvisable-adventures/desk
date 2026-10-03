@@ -11012,8 +11012,12 @@ df8138a. COMPLETED: Deprecations by tombstone: plan the process and build the fi
    (37) and an added real-Chromium scenario. Deferred, as separate items because
    each is real work: pieces (4) scan (TODO `284bfbd`), (5) rewriters (TODO
    `cc78e9d`) and (6) agent handoff in the UI (TODO `18fa45f`); the registry
-   already carries `detector`/`rewriter` fields for them. Open question left in
-   the process doc: whether tombstones are ever deleted.
+   already carries `detector`/`rewriter` fields for them. Open question from
+   this item, since answered in direction: the old docs eventually leave the tree
+   by "micro-tombstoning" (removed in one commit, an immediate follow-up commit
+   records its id plus keywords so it stays findable in git history; details
+   parked in `PARKINGLOT.md`); whether the stubs themselves are ever removed is
+   still open.
 
 284bfbd. Deprecation scan: detect tombstoned API usage in widget source before it
    runs (piece 4 of TODO `df8138a`; see `design-docs/deprecation-process.md`).
