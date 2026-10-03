@@ -10508,7 +10508,7 @@ d0a4c7b. COMPLETED: Fix widget stacking on the canvas (`src/desk/shell/canvas.py
    item. Verified by `verify_canvas_widget_stacking.py` (9 checks; 4 fail
    without the fix).
 
-53779f4. An "Open Widgets" widget: a table of every placed widget
+53779f4. COMPLETED: An "Open Widgets" widget: a table of every placed widget
    instance (instance id/title/kind plus a **stale** column), where
    double-clicking a row does what clicking that widget's eye icon does
    (center, and bring to front per TODO `d0a4c7b`). Data flow: give
@@ -10527,6 +10527,20 @@ d0a4c7b. COMPLETED: Fix widget stacking on the canvas (`src/desk/shell/canvas.py
    share the same live stale signal. Cites
    `../FEEDBACK/FEEDBACK-DESK-widget-findability-zorder-and-overview-2026-08-16-0107.md`
    (part 3).
+   [planned: open-widgets-widget.md (COMPLETED)]
+
+   COMPLETED: `widgets/open_widgets/` (table of title/kind/instance/stale),
+   loaded from `current_context.get_widget_overview_provider()`
+   (`DeskWindow.get_widget_overview`) and kept live by
+   `desk.widgets.overview_changed` events -- published, coalesced, from
+   `WorkspaceView.frames_changed` (add/remove/clear) and the new
+   `WidgetFrame.stale_changed`. Double-click zooms (and now raises:
+   `zoom_to_widget_by_instance_id` gained `bring_to_front`, so the Event
+   Subscribers / Claude (Desk) Status eye buttons raise too). "Reload all
+   stale widgets" confirms once, then reloads each stale instance via the
+   shared `_reload_stale_frame`. Verified by `verify_open_widgets.py` (29
+   checks) with stubbed windows; a real `DeskWindow` run was skipped (no
+   existing test constructs one).
 
 669b690. A minimap widget for navigating the Desk canvas (merged from
    the former `PARKINGLOT.md` "Add a minimap for navigating the Desk

@@ -1279,3 +1279,19 @@ unsolicited flag. Recognize the symptom as replies consistently filed
 under an earlier request. Unfixable without CLI-side request ids: an
 unsolicited turn that begins after our query is sent but runs first is
 still attributed to our turn.
+
+TODO `53779f4` (`WidgetFrame.stale_changed` -> `WorkspaceView.frames_changed`):
+connecting a *lambda* to the new `WidgetFrame.stale_changed` signal inside
+`WorkspaceView.add_widget` (`frame.stale_changed.connect(lambda _s:
+self.frames_changed.emit())`) deterministically broke
+`verify_widget_focus.py`, `verify_trap_widget_tab_focus.py` (focused/unfocused
+titlebar colors never updated) and made `verify_stale_marker_click_dialog.py`
+segfault, even though nothing ever emitted the signal in those tests.
+Connecting a bound method on the view
+(`frame.stale_changed.connect(self._on_frame_stale_changed)`) made all of them
+pass again. The mechanism wasn't pinned down (it looks like an interaction
+between a Python closure slot on a `WidgetFrame` and the focus-tracking/
+teardown of frames), so: when adding signal wiring on `WidgetFrame`, use a
+bound method on a long-lived object, not a lambda, and run the focus and stale
+verify scripts. Found because the full `tests/verify/` sweep caught it; the
+isolated new-feature script (`verify_open_widgets.py`) passed either way.

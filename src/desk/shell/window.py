@@ -38,6 +38,7 @@ from desk.promotion_deps import (
     rewrite_files_entries,
     rewrite_out_dir,
 )
+from desk.widget_overview import WIDGET_OVERVIEW_CHANGED_EVENT
 from desk.file_type_registry import (
     FILE_TYPE_REGISTRY_UPDATED_EVENT,
     entry_from_dict,
@@ -527,6 +528,12 @@ class DeskWindow(QMainWindow):
         current_context.set_widget_subtitle_setter(self.set_widget_subtitle)
         current_context.set_widget_height_adjuster(self.adjust_widget_instance_height)
         current_context.set_background_task_log_opener(self.open_background_task_log)
+        current_context.set_widget_overview_provider(self.get_widget_overview)
+        current_context.set_stale_widgets_reloader(self.reload_all_stale_widgets)
+        # TODO 53779f4: coalesced (a desk load places many widgets in one
+        # go) live updates for the Open Widgets widget.
+        self._overview_publish_pending = False
+        self.view.frames_changed.connect(self._schedule_overview_publish)
         self._sync_tempui_doc()
         self._open_crash_log_widgets()
 
@@ -996,6 +1003,79 @@ class DeskWindow(QMainWindow):
         widget_info = self._widgets.get(frame.content.widget_id)
         if widget_info is not None:
             self._place_widget_chat_about(frame, widget_info)
+
+    def get_widget_overview(self) -> list[dict]:
+        """TODO 53779f4: every placed widget instance, in placement order,
+        as {instance_id, widget_id, title, kind, stale} -- `stale` is the
+        frame's own live [STALE] bit (same signal as get_state_dict's)."""
+        overview = []
+        for frame in self.view._frames:
+            widget_id = frame.content.widget_id
+            info = self._widgets.get(widget_id)
+            overview.append(
+                {
+                    "instance_id": frame.instance_id,
+                    "widget_id": widget_id,
+                    "title": self._display_name_for_instance(frame.instance_id),
+                    "kind": info.kind if info is not None else "unknown",
+                    "stale": frame.is_stale(),
+                }
+            )
+        return overview
+
+    def _schedule_overview_publish(self) -> None:
+        if self._overview_publish_pending:
+            return
+        self._overview_publish_pending = True
+        QTimer.singleShot(0, self._publish_widget_overview)
+
+    def _publish_widget_overview(self) -> None:
+        self._overview_publish_pending = False
+        self._event_mediator.publish(WIDGET_OVERVIEW_CHANGED_EVENT, {"widgets": self.get_widget_overview()}, "desk")
+
+    def reload_all_stale_widgets(self) -> int:
+        """TODO 53779f4: after ONE confirmation, does for every [STALE]
+        instance what clicking its [STALE] tag does (_reload_stale_frame);
+        returns how many were reloaded (0 if none, or declined)."""
+        stale = [frame for frame in self.view._frames if frame.is_stale() and isinstance(frame.content, ChromiumWidget)]
+        if not stale or not self._confirm_reload_all_stale(len(stale)):
+            return 0
+        rebuilt: set[str] = set()
+        reloaded = 0
+        for frame in stale:
+            keyword = frame.content.widget_id
+            if keyword in self._promoted_widget_source_dirty and keyword not in rebuilt:
+                definition = self._custom_widget_definitions.get(keyword)
+                if definition is None or not self._register_custom_widget(definition, source="desk"):
+                    self._notify_promoted_widget_rebuild_failed(keyword)
+                    continue
+                self._promoted_widget_source_dirty.discard(keyword)
+                rebuilt.add(keyword)
+            elif keyword in self._promoted_widget_source_dirty:
+                continue  # its rebuild failed above
+            self._reload_stale_frame(frame)
+            reloaded += 1
+        return reloaded
+
+    def _reload_stale_frame(self, frame: WidgetFrame) -> None:
+        """Reloads one stale instance onto its keyword's current content and
+        clears its [STALE] bit (shared by the per-instance click and the
+        batch reload)."""
+        frame.content.reload()
+        frame.placed_content_hash = self._custom_widget_content_hash.get(frame.content.widget_id)
+        frame.set_stale(False)
+
+    def _confirm_reload_all_stale(self, count: int) -> bool:
+        """Split out so headless verification can monkeypatch just this one
+        method instead of driving a real modal QMessageBox (like the other
+        stale confirms)."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Reload Stale Widgets")
+        box.setText(f"Reload {count} stale widget instance(s) onto their current definitions?")
+        reload_button = box.addButton("Reload All", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        return box.clickedButton() is reload_button
 
     def open_background_task_log(
         self, source_instance_id: str, task_id: str, title: str, entries: list[dict]
@@ -1836,6 +1916,9 @@ class DeskWindow(QMainWindow):
         frame = self.find_frame_by_instance_id(instance_id)
         if frame is None:
             return False
+        # TODO 53779f4 (with TODO d0a4c7b): centering a widget that is
+        # still hidden behind another would show the wrong thing.
+        self.view.bring_to_front(frame)
         self.view.zoom_to_widget(frame)
         return True
 
@@ -3187,9 +3270,7 @@ class DeskWindow(QMainWindow):
             return
         if not self._confirm_stale_reload(frame.placed_content_hash, current_hash):
             return
-        frame.content.reload()
-        frame.placed_content_hash = current_hash
-        frame.set_stale(False)
+        self._reload_stale_frame(frame)
 
     def _confirm_stale_reload(self, placed_hash: str | None, current_hash: str) -> bool:
         """Split out so headless verification can monkeypatch just this

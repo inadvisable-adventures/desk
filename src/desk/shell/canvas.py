@@ -105,6 +105,8 @@ class WorkspaceView(QGraphicsView):
     widget_stale_clicked = pyqtSignal(WidgetFrame)  # TODO 3e2c4f2
     widget_error_clicked = pyqtSignal(WidgetFrame)  # TODO d4d6c71
     chat_button_clicked = pyqtSignal(WidgetFrame)  # TODO 93364f9
+    # TODO 53779f4: a widget was added/removed/cleared, or one's [STALE] flipped.
+    frames_changed = pyqtSignal()
     popup_closed = pyqtSignal(WidgetFrame)  # TODO 359684f: a popup's close (X) button
     new_scratch_requested = pyqtSignal()  # TODO 945b086: the lower-left hover button clicked
     empty_canvas_double_clicked = pyqtSignal(QPointF)  # TODO 496d685: scene pos of the double-click
@@ -190,7 +192,12 @@ class WorkspaceView(QGraphicsView):
         self._frames.append(frame)
         # TODO d0a4c7b: a fresh widget must not land behind existing ones.
         self.bring_to_front(frame)
+        frame.stale_changed.connect(self._on_frame_stale_changed)
+        self.frames_changed.emit()
         return proxy
+
+    def _on_frame_stale_changed(self, _is_stale: bool) -> None:
+        self.frames_changed.emit()
 
     def add_popup(self, frame: WidgetFrame) -> QGraphicsProxyWidget:
         """Places a desk-internal popup (TODO 359684f, `WidgetFrame(...,
@@ -357,6 +364,7 @@ class WorkspaceView(QGraphicsView):
             if proxy is not None:
                 self.scene().removeItem(proxy)
         self._frames = []
+        self.frames_changed.emit()
         # TODO 359684f: a popup happening to still be open across a Desk
         # switch must not leave its caller's blocking show_blocking()
         # nested event loop stuck forever -- emit popup_closed first so
@@ -386,6 +394,7 @@ class WorkspaceView(QGraphicsView):
         if frame in self._frames:
             self._frames.remove(frame)
         frame.deleteLater()
+        self.frames_changed.emit()
 
     def get_view_state(self) -> tuple[float, float, float]:
         """Returns (scene_x, scene_y, scale) for the point currently

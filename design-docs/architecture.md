@@ -863,6 +863,16 @@ Desk Bridge API.
     the resolved path in the error/log rather than silently falling back
     to Desk's interpreter. See `plans/hmsvc-custom-interpreter.md`.
 
+32. **Open Widgets widget** (`widgets/open_widgets/`, TODO `53779f4`) — a live
+    table of every placed widget instance (title, kind, instance id, stale).
+    `DeskWindow.get_widget_overview()` is the read API
+    (`current_context.get_widget_overview_provider`); live updates come from
+    `desk.widgets.overview_changed` events, published (coalesced) whenever
+    `WorkspaceView.frames_changed` fires -- widget added/removed/cleared, or a
+    frame's new `WidgetFrame.stale_changed` flips. Double-click does what the
+    eye button does (center *and* raise); "Reload all stale widgets" confirms
+    once and reloads every `[STALE]` instance.
+
 ### Widget Model
 
 See `design-docs/widget-ux.md` for the interactive chrome (titlebar/drag,

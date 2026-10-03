@@ -217,6 +217,7 @@ _FakeWindow._notify_schema_conflict = DeskWindow._notify_schema_conflict
 _FakeWindow._show_schema_conflict_popup = DeskWindow._show_schema_conflict_popup
 _FakeWindow.find_frame_by_instance_id = DeskWindow.find_frame_by_instance_id
 _FakeWindow._on_widget_stale_clicked = DeskWindow._on_widget_stale_clicked
+_FakeWindow._reload_stale_frame = DeskWindow._reload_stale_frame  # TODO 53779f4: shared reload helper
 _FakeWindow._on_promoted_widget_source_changed = DeskWindow._on_promoted_widget_source_changed
 _FakeWindow._on_promoted_widget_stale_clicked = DeskWindow._on_promoted_widget_stale_clicked
 

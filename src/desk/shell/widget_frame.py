@@ -1,6 +1,6 @@
 import uuid
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont, QFontMetrics
 from PyQt6.QtWidgets import (
     QHBoxLayout,
@@ -619,6 +619,9 @@ class WidgetFrame(QWidget):
     design-docs/widget-ux.md for why (embedded-widget mouse events don't
     reliably reflect real screen coordinates at non-unity view scale)."""
 
+    # TODO 53779f4: emitted when the `[STALE]` bit actually flips.
+    stale_changed = pyqtSignal(bool)
+
     def __init__(
         self,
         title: str,
@@ -813,8 +816,11 @@ class WidgetFrame(QWidget):
         """Shows/hides the titlebar's clickable `[STALE]` button (TODO
         5995ffd/3e2c4f2) -- see
         `desk.shell.window.DeskWindow._refresh_stale_indicators_for`."""
+        changed = self._titlebar.is_stale() != is_stale
         self._titlebar.set_stale(is_stale)
         self._update_chrome_state()
+        if changed:
+            self.stale_changed.emit(is_stale)  # TODO 53779f4
 
     def is_stale(self) -> bool:
         """TODO f0da2e9: the live `[STALE]` bit currently showing on

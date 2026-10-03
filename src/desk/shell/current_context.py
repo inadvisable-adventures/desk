@@ -150,6 +150,8 @@ _installed_jobs_provider: Callable[[], list[dict]] | None = None
 _installed_job_uninstaller: Callable[[str], bool] | None = None
 _widget_subtitle_setter: Callable[[str, str | None], None] | None = None
 _widget_height_adjuster: Callable[[str, int], None] | None = None
+_widget_overview_provider: Callable[[], list[dict]] | None = None
+_stale_widgets_reloader: Callable[[], int] | None = None
 _background_task_log_opener: Callable[[str, str, str, list[dict]], str | None] | None = None
 
 
@@ -581,6 +583,30 @@ def set_widget_height_adjuster(adjuster: Callable[[str, int], None]) -> None:
 
 def get_widget_height_adjuster() -> Callable[[str, int], None] | None:
     return _widget_height_adjuster
+
+
+def set_widget_overview_provider(provider: Callable[[], list[dict]]) -> None:
+    """TODO 53779f4: `provider()` -> every placed widget instance as
+    `{instance_id, widget_id, title, kind, stale}`; see
+    `desk.shell.window.DeskWindow.get_widget_overview`."""
+    global _widget_overview_provider
+    _widget_overview_provider = provider
+
+
+def get_widget_overview_provider() -> Callable[[], list[dict]] | None:
+    return _widget_overview_provider
+
+
+def set_stale_widgets_reloader(reloader: Callable[[], int]) -> None:
+    """TODO 53779f4: `reloader()` confirms once, then reloads every `[STALE]`
+    widget instance, returning how many were reloaded. See
+    `desk.shell.window.DeskWindow.reload_all_stale_widgets`."""
+    global _stale_widgets_reloader
+    _stale_widgets_reloader = reloader
+
+
+def get_stale_widgets_reloader() -> Callable[[], int] | None:
+    return _stale_widgets_reloader
 
 
 def set_background_task_log_opener(opener: Callable[[str, str, str, list[dict]], str | None]) -> None:
