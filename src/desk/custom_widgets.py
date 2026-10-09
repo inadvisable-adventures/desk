@@ -190,6 +190,31 @@ def build_from_source(project_dir: Path, source_path: str) -> Path | None:
     return build_dir
 
 
+def read_source_manifest(project_dir: Path, source_path: str) -> tuple[list[str], dict[str, str]] | None:
+    """TODO 8bbc484: the `capabilities` list and `state_schema` dict
+    currently declared by a source-backed widget's own `widget.json`, so a
+    rebuild can bring a promoted widget's stored definition back in sync
+    (the stored copy is otherwise frozen at promotion time). `None` if the
+    manifest is missing, unparseable or malformed -- the caller then keeps
+    what it has, since a half-written file mid-edit must never strip a
+    widget's capabilities."""
+    try:
+        manifest = json.loads((project_dir / source_path / "widget.json").read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(manifest, dict):
+        return None
+    capabilities = manifest.get("capabilities", [])
+    state_schema = manifest.get("state_schema", {})
+    if not isinstance(capabilities, list) or not all(isinstance(c, str) for c in capabilities):
+        return None
+    if not isinstance(state_schema, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) for k, v in state_schema.items()
+    ):
+        return None
+    return list(capabilities), dict(state_schema)
+
+
 def source_watch_exclusions(widget_dir: Path) -> set[Path]:
     """TODO 4eb3d9e: directories under `widget_dir` that
     build_from_source itself writes/reads as build output --

@@ -232,6 +232,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "hmsvc service.json custom interpreter #892147",
     "desk.documents cached byte-range reads #655544",
     "porting existing apps guide doc #968159",
+    "promoted widget rebuild re-reads widget.json #645093",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1040,7 +1041,10 @@ directly (`<name>.ts`, `widget.html`, ...) and save — Desk watches
 that directory itself and marks every already-placed instance
 `[STALE]`, exactly like a still-`.desk_temp`-sourced `DefineWidget`'s
 own live edits already do; click it to rebuild (`tsc`, same as before)
-and reload.
+and reload. The rebuild also re-reads `widget.json`'s `"capabilities"`
+and `"state_schema"` into the widget's stored definition, so changing
+them there works the same way (a newly *added* capability asks the user
+to confirm; never hand-edit the `.desk` file to change them).
 
 ## Reusable UI components
 
@@ -2063,6 +2067,19 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "promoted widget rebuild re-reads widget.json #645093": """- A promoted widget's `[STALE]` rebuild (single instance, or "reload
+  all stale") now re-reads `desk_widgets/<name>/widget.json`'s
+  `"capabilities"` and `"state_schema"` and applies them to the
+  widget's stored definition, so editing them and rebuilding works
+  like any other source edit (before, the stored copy was frozen at
+  promotion and the widget reloaded cleanly, then failed at runtime
+  with a Bridge `403 ... lacks capability`). A capability you *add*
+  asks the user for confirmation first (declining keeps the old list
+  and still applies removals and schema changes); every applied change
+  also raises a notification. A missing or malformed `widget.json`
+  leaves the stored values alone. Never hand-edit the `.desk` file for
+  this.
+""",
     "porting existing apps guide doc #968159": """- New doc `tempui-porting-existing-apps.md` (linked from the main
   tempui doc: "for more information on porting existing app code to
   Desk"): a repeatable six-step process for figuring out how to port an

@@ -6,7 +6,7 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
-8bbc484. Promoted widget `capabilities` (and `state_schema`) are a frozen copy: the documented
+8bbc484. COMPLETED: Promoted widget `capabilities` (and `state_schema`) are a frozen copy: the documented
    "edit `desk_widgets/<name>/` and save" workflow can never change them. Finding 2 of
    `../FEEDBACK/FEEDBACK-DESK-hmsvc-discovery-friction-and-promoted-widget-capabilities-2026-10-09-1351.md`.
    A promoted widget's `capabilities` come from the `.desk` file's `custom_widgets[]`
@@ -25,6 +25,10 @@ reordered or its description edited.
    Update `tempui-custom-widgets.md` (and the tempui changelog docs, per
    `development-process.md`) to match. Related, already completed: TODO `13f4ad5`
    (same shape, for the source path and `html_b64`).
+
+   [planned: promoted-widget-manifest-sync.md (COMPLETED)]
+
+   COMPLETED 2026-10-09: a promoted widget's `[STALE]` rebuild (single and reload-all) re-reads its source `widget.json`'s `capabilities` and `state_schema` into the stored definition; an added capability asks for confirmation (declining still applies removals/schema), every change notifies; a malformed manifest leaves stored values alone. Docs and tempui changelog tag #645093 updated. Verified by `verify_promoted_widget_manifest_sync.py` (22 checks).
 
 879bfb4. Write a dedicated `tempui-hmsvc.md` in `.desk_temp/`: today the permanent docs give
    hmsvc one sentence (`tempui-custom-widgets.md`'s Bridge API list, and one in

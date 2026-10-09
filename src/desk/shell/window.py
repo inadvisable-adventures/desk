@@ -15,7 +15,7 @@ from PyQt6.QtCore import QObject, QPointF, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QGuiApplication, QPixmap
 from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QWidget
 
-from desk.custom_widgets import LikelySourceCandidate, build_from_source, find_likely_source_candidates, materialize
+from desk.custom_widgets import LikelySourceCandidate, build_from_source, find_likely_source_candidates, materialize, read_source_manifest
 from desk.desks import (
     DESK_SUFFIX,
     Desk,
@@ -1205,8 +1205,7 @@ class DeskWindow(QMainWindow):
         for frame in stale:
             keyword = frame.content.widget_id
             if keyword in self._promoted_widget_source_dirty and keyword not in rebuilt:
-                definition = self._custom_widget_definitions.get(keyword)
-                if definition is None or not self._register_custom_widget(definition, source="desk"):
+                if not self._rebuild_promoted_widget(keyword):
                     self._notify_promoted_widget_rebuild_failed(keyword)
                     continue
                 self._promoted_widget_source_dirty.discard(keyword)
@@ -3713,14 +3712,84 @@ class DeskWindow(QMainWindow):
         this clicked instance."""
         if not self._confirm_promoted_widget_rebuild(keyword):
             return
-        definition = self._custom_widget_definitions.get(keyword)
-        if definition is None or not self._register_custom_widget(definition, source="desk"):
+        if not self._rebuild_promoted_widget(keyword):
             self._notify_promoted_widget_rebuild_failed(keyword)
             return
         self._promoted_widget_source_dirty.discard(keyword)
         frame.content.reload()
         frame.placed_content_hash = self._custom_widget_content_hash.get(keyword)
         frame.set_stale(False)
+
+    def _rebuild_promoted_widget(self, keyword: str) -> bool:
+        """TODO 8bbc484: the one rebuild path for a promoted widget whose
+        source changed -- re-syncs the stored definition's `capabilities`
+        and `state_schema` from the source's own `widget.json` (they were
+        otherwise frozen at promotion time, so editing the manifest
+        reloaded cleanly and then 403'd at runtime), then re-registers."""
+        definition = self._custom_widget_definitions.get(keyword)
+        if definition is None:
+            return False
+        self._sync_definition_from_manifest(definition)
+        return self._register_custom_widget(definition, source="desk")
+
+    def _sync_definition_from_manifest(self, definition: CustomWidgetDefinition) -> None:
+        """Updates `definition` (the same object the saved Desk holds) in
+        place from its source's `widget.json`. A newly *added* capability
+        widens what the widget may do, so it needs the user's
+        confirmation; declining keeps the stored list. Removed
+        capabilities and `state_schema` changes apply, with a
+        notification either way a change was made."""
+        if definition.source_path is None:
+            return
+        manifest = read_source_manifest(self.current_desk.directory, definition.source_path)
+        if manifest is None:
+            return
+        capabilities, state_schema = manifest
+        added = [c for c in capabilities if c not in definition.capabilities]
+        removed = [c for c in definition.capabilities if c not in capabilities]
+        if added and not self._confirm_added_capabilities(definition.label, added):
+            capabilities = [c for c in capabilities if c not in added]
+            added = []
+        schema_changed = state_schema != definition.state_schema
+        if capabilities == definition.capabilities and not schema_changed:
+            return
+        definition.capabilities = capabilities
+        definition.state_schema = state_schema
+        parts = []
+        if added:
+            parts.append("added capabilities: " + ", ".join(added))
+        if removed:
+            parts.append("removed capabilities: " + ", ".join(removed))
+        if schema_changed:
+            parts.append("state schema updated")
+        self._notify_widget_manifest_synced(definition.keyword, definition.label, "; ".join(parts))
+
+    def _confirm_added_capabilities(self, label: str, added: list[str]) -> bool:
+        """Split out for headless verification, like
+        _confirm_promoted_widget_rebuild."""
+        box = QMessageBox(self)
+        box.setWindowTitle("Widget Capabilities Changed")
+        box.setText(f"“{label}”’s widget.json now asks for additional capabilities:")
+        box.setInformativeText(", ".join(added) + "\n\nGrant them?")
+        grant_button = box.addButton("Grant", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("Don't Grant", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        return box.clickedButton() is grant_button
+
+    def _notify_widget_manifest_synced(self, keyword: str, label: str, summary: str) -> None:
+        """Split out for headless verification: a clickable notification
+        saying what the rebuild changed from the widget's `widget.json`."""
+        message = f"“{label}”: {summary}"
+        self.view.notify_temp_ui(
+            Path(f"widget-manifest-synced:{keyword}"),
+            f"Widget manifest applied: {label}",
+            lambda: self._show_info_popup(f"Widget manifest applied: {label}", message),
+        )
+
+    def _show_info_popup(self, title: str, message: str) -> None:
+        opener = current_context.get_popup_opener()
+        if opener is not None:
+            opener(title, message, ["OK"], "OK")
 
     def _confirm_promoted_widget_rebuild(self, keyword: str) -> bool:
         """Split out so headless verification can monkeypatch just this
