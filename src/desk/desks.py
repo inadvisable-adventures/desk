@@ -288,8 +288,17 @@ def desk_state_dict(desk: Desk, stale_by_instance_id: dict[str, bool] | None = N
     }
 
 
+# State keys Desk itself maintains from live runtime facts (TODO 8925b2e:
+# `desk.hmsvc.<name>`, a microservice's current status/URL, whose port
+# changes every launch). They live in the in-memory state store like any
+# other key, but are never written to the `.desk` file: persisting a
+# stale port would be wrong on reload and would churn the file.
+RUNTIME_STATE_KEY_PREFIXES = ("desk.hmsvc.",)
+
+
 def save_desk(desk: Desk) -> None:
     desk.path.parent.mkdir(parents=True, exist_ok=True)
     data = desk_state_dict(desk)
+    data["state"] = {k: v for k, v in data["state"].items() if not k.startswith(RUNTIME_STATE_KEY_PREFIXES)}
     del data["name"]  # derived from the filename itself, not stored in it
     desk.path.write_text(json.dumps(data, indent=2))

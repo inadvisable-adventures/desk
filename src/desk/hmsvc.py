@@ -36,6 +36,9 @@ SERVICE_MANIFEST_FILENAME = "service.json"
 HMSVC_CHANGED_EVENT = "desk.hmsvc.changed"
 DEFAULT_CAPABILITIES = ("state", "events")
 CALLER_ID_PREFIX = "hmsvc:"
+# TODO 8925b2e: `desk.hmsvc.<name>` in the shared state store holds
+# `{"status", "url"}` for each service (see DeskWindow._sync_hmsvc_state).
+STATE_KEY_PREFIX = "desk.hmsvc."
 
 LOG_LINE_LIMIT = 500
 STARTUP_TIMEOUT_SECONDS = 15.0
@@ -50,6 +53,10 @@ STATUS_CRASHED = "crashed"  # exited on its own, non-zero (or never became ready
 # src/desk/hmsvc.py -> src/, put on a service subprocess's PYTHONPATH so
 # `from desk.hmsvc_client import desk` works inside service code.
 _SRC_DIR = Path(__file__).resolve().parents[1]
+
+
+def state_key(name: str) -> str:
+    return STATE_KEY_PREFIX + name
 
 
 def caller_id(name: str) -> str:

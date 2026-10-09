@@ -102,7 +102,7 @@ f9e24e0. COMPLETED: `OpenWithWidget` should not leak its placeholder `path` into
 
    COMPLETED 2026-10-09: `OpenWithWidget` takes an optional fourth tab-separated `label` used verbatim as the notification text (else `Open <path>`); three-field files unchanged; doc and changelog tag #041937. The widget-name-fallback alternative was not done (needs the widget built to know). Verified by `verify_open_with_widget_label.py` (11 checks); `verify_open_with_widget.py` still passes.
 
-8925b2e. Publish each hmsvc service's URL under a well-known `desk.state` key, so a widget that
+8925b2e. COMPLETED: Publish each hmsvc service's URL under a well-known `desk.state` key, so a widget that
    only needs to find a service's port needn't declare the all-or-nothing `hmsvc`
    capability. Finding 3 (the user's own suggested design) of
    `../FEEDBACK/FEEDBACK-DESK-hmsvc-discovery-friction-and-promoted-widget-capabilities-2026-10-09-1351.md`.
@@ -114,6 +114,10 @@ f9e24e0. COMPLETED: `OpenWithWidget` should not leak its placeholder `path` into
    `desk.hmsvc.<name>` = `{status, url}`; on stop/crash/restart the key stays, with
    `status` `stopped`/`error` and `url` null (so subscribers get a change event).
    Still to settle in the plan: interaction with the state-store schema rules.
+
+   [planned: hmsvc-url-in-desk-state.md (COMPLETED)]
+
+   COMPLETED 2026-10-09: each service's `{status, url}` is mirrored to `desk.hmsvc.<name>` (GUI-thread sync driven by the manager listener, only changed values written, key kept on stop/crash, `removed` if gone), runtime-only (not saved to the `.desk` file); `tempui-hmsvc.md` and changelog tag #095433 updated. Schema-rule interaction decided: reserved namespace, no special handling. Verified by `verify_hmsvc_state_keys.py` (17 checks).
 
 a7618c8. COMPLETED: Scratch widgets not attached to a file should store their text in a file in `.desk_temp`,
    so that if Desk restarts, the text will still be there. Today a manually-placed

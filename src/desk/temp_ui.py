@@ -237,6 +237,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "check new-features doc for thin feature docs #888639",
     "hmsvc dir live watcher + new service alert #008485",
     "OpenWithWidget optional label field #041937",
+    "hmsvc service url published to desk.state #095433",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1904,7 +1905,29 @@ Also available: `desk.hmsvc.logs(name, limit)`, `start(name)`,
 `stop(name)`, `restart(name)`. Every status change is broadcast as the
 mediated event `desk.hmsvc.changed` (`{"services": [...]}`), so a widget
 can subscribe instead of polling. The `hmsvc` capability covers every
-service in the project; it is broader than "tell me one URL".
+service in the project; it is broader than "tell me one URL" -- for just
+that, see the next section.
+
+### Just need the URL? Read `desk.state` instead
+
+Desk mirrors each service's current `{status, url}` into the shared state
+store as the key **`desk.hmsvc.<name>`** and updates it on every status
+change, so a widget holding only the `state` capability (which most
+cross-widget widgets already do) needs no `hmsvc` capability to find a
+service:
+
+```js
+const { value } = await desk.state.get("desk.hmsvc.hello");   // value: {status, url}, or null
+await desk.events.subscribe(["desk.state.changed"]);   // then watch key === "desk.hmsvc.hello"
+```
+
+`status` is one of `starting`, `running`, `stopped`, `exited`, `crashed`
+(or `removed` if the service directory is gone); `url` is non-null only
+while `running`. A stopped or crashed service keeps its key (with `url`
+null) so subscribers hear the change. Use the `hmsvc` capability only if
+the widget needs start/stop/restart/logs. These keys are runtime-only:
+never saved to the `.desk` file, so a freshly opened project has them
+only once its services have been scanned.
 
 ### CORS is mandatory
 
@@ -2273,6 +2296,17 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "hmsvc service url published to desk.state #095433": """- Desk now mirrors each microservice's `{"status", "url"}` into the
+  shared state store as the key `desk.hmsvc.<name>`, updated on every
+  status change (including a restart's new port). A widget that only
+  holds the `state` capability can therefore learn a service's URL with
+  `desk.state.get("desk.hmsvc.<name>")` (its `value`) or by subscribing to
+  `desk.state.changed`, without declaring the broader `hmsvc` capability
+  (which also grants start/stop/restart/logs on every service). A
+  stopped or crashed service keeps its key with `url` null; one removed
+  from disk gets status `removed`. These keys are runtime-only (never
+  saved to the `.desk` file). See `tempui-hmsvc.md`.
+""",
     "OpenWithWidget optional label field #041937": """- `OpenWithWidget` takes an optional fourth, tab-separated field, a
   `label`: `OpenWithWidget<TAB>widget_id<TAB>path<TAB>label`. When
   present, the notification reads exactly the label instead of `Open

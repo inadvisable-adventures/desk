@@ -57,7 +57,7 @@ from desk.file_type_registry import (
     find_git_diff_handler,
     looks_like_text_file,
 )
-from desk.hmsvc import HMSVC_CHANGED_EVENT
+from desk.hmsvc import HMSVC_CHANGED_EVENT, STATE_KEY_PREFIX, state_key
 from desk.installed_jobs import (
     ENTRY_FILENAME as INSTALLED_JOB_ENTRY_FILENAME,
     INSTALLED_JOB_NEEDS_DIRNAME,
@@ -320,6 +320,11 @@ class DeskWindow(QMainWindow):
     window exists for now, and it can only have one Desk open at a time —
     see design-docs/architecture.md's Desk Model)."""
 
+    # TODO 8925b2e: emitted from whichever thread changed a microservice's
+    # status; its slot (_sync_hmsvc_state) runs on the GUI thread, where
+    # the shared state store lives.
+    hmsvc_state_dirty = pyqtSignal()
+
     def __init__(
         self,
         widgets: dict[str, WidgetInfo],
@@ -442,6 +447,8 @@ class DeskWindow(QMainWindow):
                 sender_instance_id=SYSTEM_SENDER_INSTANCE_ID,
             )
         )
+        self.hmsvc_state_dirty.connect(self._sync_hmsvc_state)
+        self._hmsvc.add_listener(self.hmsvc_state_dirty.emit)
 
         # The desk.state.* schema registry (TODO af7898b) -- same
         # "one shared, runtime-only instance for the whole app run" shape
@@ -3039,6 +3046,28 @@ class DeskWindow(QMainWindow):
         ephemeral_dir = temp_dir / SCHEMA_FILES_DIRNAME if temp_dir is not None else None
         self._schema_file_watcher.provision(ephemeral_dir, directory)
 
+    def _sync_hmsvc_state(self) -> None:
+        """TODO 8925b2e: mirrors every microservice's current
+        `{"status", "url"}` into the shared state store under
+        `desk.hmsvc.<name>`, so a widget that only holds the `state`
+        capability can learn a service's URL (a new port every launch)
+        without the broad `hmsvc` capability. Only a changed value is
+        written, so subscribers to `desk.state.changed` hear real changes
+        only. A stopped/crashed service keeps its key, with `url` null;
+        a service that no longer exists on disk gets status "removed".
+        These keys are runtime-only (see desks.RUNTIME_STATE_KEY_PREFIXES)."""
+        current: dict[str, dict] = {}
+        for info in self._hmsvc.list_services():
+            current[state_key(info["name"])] = {"status": info["status"], "url": info["url"]}
+        for key in list(self.current_desk.state):
+            if key.startswith(STATE_KEY_PREFIX) and key not in current:
+                current[key] = {"status": "removed", "url": None}
+        for key, value in current.items():
+            entry = self.current_desk.state.get(key)
+            if entry is not None and entry.value == value:
+                continue
+            self.set_state(key, value, None, SYSTEM_SENDER_INSTANCE_ID)
+
     def _on_hmsvc_dir_changed(self) -> None:
         """TODO c40c5c5: `desk_hmsvc/` changed on disk -- rescan, and tell
         the user about each service not seen before in this project."""
@@ -3416,6 +3445,7 @@ class DeskWindow(QMainWindow):
         current_context.set_hmsvc_manager(self._hmsvc)
         self._hmsvc.set_directory(self.current_desk.directory)
         self._hmsvc_dir_watcher.provision(self.current_desk.directory)
+        self._sync_hmsvc_state()
         current_context.set_installed_job_uninstaller(self.uninstall_job)
         # Same choke point, for the same reason (TODO 54d8c18): a
         # transform invocation after a Desk switch resolves against the
