@@ -30,8 +30,13 @@ text when Desk restarts. Give each such instance a backing file under
 - **Debounced (300 ms) atomic write** (temp file + `os.replace`); the desk
   save (`_capture_desk_state`) flushes any pending write so a quit never
   loses the last keystrokes.
-- **Closing the widget deletes the file** (Scratch is in
-  `TEMP_UI_WIDGET_IDS`, so it's never tombstoned/revivable). A desk switch
+- **Closing the widget deletes the file**, but first tombstones it into
+  Recently Removed with `{label, text}` inlined in the tombstone state
+  (`_tombstone_state`; Scratch is exempted from the tempui skip in
+  `_tombstone_widget`). Revive applies it via `set_widget_local_storage`,
+  which Scratch implements with no `get_` counterpart so ordinary desk
+  saves don't copy text into the `.desk` file (a stale copy would clobber
+  the fresher backing file on restore). A desk switch
   or quit leaves it alone.
 - Restore order: the backing file loads first; `_bind_temp_ui_widget` is a
   no-op for a non-tempui id, so nothing overwrites it.

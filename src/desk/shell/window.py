@@ -2208,15 +2208,24 @@ class DeskWindow(QMainWindow):
             credentials.revoke_instance(instance_id)
         get_deprecation_registry().forget_instance(instance_id)
 
+    def _tombstone_state(self, frame: WidgetFrame) -> dict:
+        if frame.content.widget_id == SCRATCH_WIDGET_ID and isinstance(frame.content, PythonWidgetHost):
+            content = frame.content.current
+            if content is not None and hasattr(content, "body"):
+                return {"label": content.label_text, "text": content.body.toPlainText()}
+        return self._get_widget_local_storage(frame)
+
     def _tombstone_widget(self, frame: WidgetFrame) -> None:
         """Snapshots `frame` into Desk.recently_removed (newest first,
         capped) *before* it is removed and the desk re-saved -- the one
         point its widget-local-storage state still exists. Widgets whose
         instance id is their source file's identity (tempui-backed, crash
         log) are skipped: a revived copy with a fresh id couldn't
-        reconnect."""
+        reconnect. Scratch is the exception (TODO a7618c8): its label and
+        text are inlined into the tombstone's state instead, so a revived
+        copy doesn't need any file."""
         widget_id = frame.content.widget_id
-        if widget_id in TEMP_UI_WIDGET_IDS or widget_id == CRASH_LOG_WIDGET_ID:
+        if widget_id != SCRATCH_WIDGET_ID and (widget_id in TEMP_UI_WIDGET_IDS or widget_id == CRASH_LOG_WIDGET_ID):
             return
         proxy = frame.graphicsProxyWidget()
         size = proxy.size() if proxy is not None else None
@@ -2226,7 +2235,7 @@ class DeskWindow(QMainWindow):
             kind=info.kind if info is not None else "unknown",
             label=self._display_name_for_instance(frame.instance_id),
             instance_id=frame.instance_id,
-            state=self._get_widget_local_storage(frame),
+            state=self._tombstone_state(frame),
             width=size.width() if size is not None else 0.0,
             height=size.height() if size is not None else 0.0,
             removed_at=time.time(),

@@ -139,6 +139,19 @@ class ScratchWidget(QWidget):
         self._save_timer.stop()
         self._backing_file = path
 
+    def set_widget_local_storage(self, data: dict) -> None:
+        """Applies a tombstone's inlined `{"label", "text"}` (TODO
+        a7618c8) when a closed Scratch is revived from Recently Removed.
+        Deliberately has no `get_widget_local_storage` counterpart --
+        `DeskWindow._tombstone_widget` inlines the text itself, and a
+        regular desk save must not (the backing file is the live copy,
+        and a stale desk-file copy would overwrite it on restore). An
+        empty dict, which every ordinary restore passes, is a no-op."""
+        if "text" not in data:
+            return
+        self._title_row.set_label(str(data.get("label", "")))
+        self._body.setPlainText(str(data["text"]))
+
     def _schedule_save(self) -> None:
         if self._backing_file is not None:
             self._save_timer.start()

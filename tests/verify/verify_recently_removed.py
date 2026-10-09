@@ -140,6 +140,7 @@ _Stub.find_frame_by_instance_id = DeskWindow.find_frame_by_instance_id
 _Stub._schedule_chromium_profile_cleanup = lambda self, iid: None
 _Stub._revoke_bridge_credential = lambda self, iid: None
 _Stub._delete_scratch_backing_file = lambda self, frame: None
+_Stub._tombstone_state = DeskWindow._tombstone_state
 _Stub._confirm_fn = lambda self, t, m: (lambda: True)
 
 
@@ -166,7 +167,7 @@ def test_cap_and_skipped_kinds():
         ids = [r.instance_id for r in win.current_desk.recently_removed]
         check("the list is capped, oldest dropped", len(ids) == RECENTLY_REMOVED_MAX and ids[0] == f"inst{RECENTLY_REMOVED_MAX + 5}" and "inst1" not in ids)
         win2 = _Stub(Path(d))
-        for skipped in sorted(desk.shell.window.TEMP_UI_WIDGET_IDS) + [desk.shell.window.CRASH_LOG_WIDGET_ID]:
+        for skipped in sorted(desk.shell.window.TEMP_UI_WIDGET_IDS - {desk.shell.window.SCRATCH_WIDGET_ID}) + [desk.shell.window.CRASH_LOG_WIDGET_ID]:
             win2.close_widget_by_instance_id(win2.add(skipped).instance_id)
         check("tempui-backed and crash-log widgets are never tombstoned", win2.current_desk.recently_removed == [])
 

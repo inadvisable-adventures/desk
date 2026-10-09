@@ -1169,7 +1169,8 @@ now, and it can only have one Desk open at a time).
   attached to a tempui file (its instance id names no `.desk_temp` file)
   persists its label and text in `.desk_temp/scratch-text/<instance_id>.json`
   (debounced atomic write, flushed on every desk save, deleted when the
-  widget is closed). A subdirectory, so the tempui watcher never sees it. A
+  widget is closed; closing also tombstones it into Recently Removed with its
+  label and text inlined, so it can be revived without the file). A subdirectory, so the tempui watcher never sees it. A
   tempui-backed Scratch still restores from its tempui file. See
   `plans/scratch-text-persistence.md`.
 - **Saving**: on quit, and immediately before switching to a different

@@ -60,10 +60,16 @@ class _FakeWindow:
         self._event_mediator = EventMediator()
 
 
+_FakeWindow._display_name_for_instance = lambda self, iid: iid
+_FakeWindow._get_widget_local_storage = lambda self, frame: {}
+_FakeWindow._publish_recently_removed = lambda self: None
+_FakeWindow.save_current_desk = lambda self: None
+
 for name in (
     "_place_widget _bind_event_mediator _bind_external_indicator _bind_error_indicator "
     "find_frame_by_instance_id open_widget open_widget_content _scratch_backing_file "
-    "_bind_scratch_backing_file _flush_scratch_backing_files _delete_scratch_backing_file"
+    "_bind_scratch_backing_file _flush_scratch_backing_files _delete_scratch_backing_file "
+    "_tombstone_state _tombstone_widget revive_removed_widget _bind_widget_local_storage"
 ).split():
     setattr(_FakeWindow, name, getattr(DeskWindow, name))
 
@@ -115,6 +121,30 @@ with tempfile.TemporaryDirectory() as tmp:
     restored.body.setPlainText("late")
     restored.flush_pending_save()
     check("late flush doesn't resurrect it", not backing(win2, iid).exists())
+
+with tempfile.TemporaryDirectory() as tmp:
+    win = _FakeWindow(Path(tmp))
+    content = win.open_widget_content(SCRATCH_WIDGET_ID, pos=(0, 0))
+    content.set_label("keep me")
+    content.body.setPlainText("inlined text")
+    frame = win.view._frames[0]
+    old = frame.instance_id
+    win._tombstone_widget(frame)
+    tomb = win.current_desk.recently_removed[0]
+    check("tombstone is made for a Scratch", tomb.widget_id == SCRATCH_WIDGET_ID)
+    check("tombstone inlines label and text", tomb.state == {"label": "keep me", "text": "inlined text"})
+    win._delete_scratch_backing_file(frame)
+    win.view.remove_widget(frame)
+    new = win.revive_removed_widget(old)
+    check("revive returns a new instance", new is not None and new != old)
+    revived = win.find_frame_by_instance_id(new).content.current
+    check("revived text", revived.body.toPlainText() == "inlined text")
+    check("revived label", revived.label_text == "keep me")
+    check("tombstone dropped after revive", not win.current_desk.recently_removed)
+    revived.flush_pending_save()
+    check("revived Scratch has its own backing file", json.loads(backing(win, new).read_text())["text"] == "inlined text")
+    revived.set_widget_local_storage({})
+    check("empty local storage is a no-op", revived.body.toPlainText() == "inlined text")
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
