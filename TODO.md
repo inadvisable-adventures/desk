@@ -89,7 +89,7 @@ c40c5c5. COMPLETED: Live file-watcher for `desk_hmsvc/`, plus a real "new micros
 
    COMPLETED 2026-10-09: `desk_hmsvc/` is watched live (`HmsvcDirWatcher`); a service new to the project raises a 'New microservice available' notification that places/focuses the Microservices widget (never starts it); `tempui-hmsvc.md` updated, changelog tag #008485. Verified by `verify_hmsvc_dir_watcher.py` (19 checks); `verify_hmsvc.py` and `verify_hmsvc_custom_interpreter.py` still pass.
 
-f9e24e0. `OpenWithWidget` should not leak its placeholder `path` into the notification text.
+f9e24e0. COMPLETED: `OpenWithWidget` should not leak its placeholder `path` into the notification text.
    Finding 1 (last suggested-fix bullet) of `../FEEDBACK/FEEDBACK-DESK-hmsvc-discovery-friction-and-promoted-widget-capabilities-2026-10-09-1351.md`.
    For a widget that consumes no file (e.g. `hmsvc_manager`), the format still
    requires a syntactically valid `path`, and the notification is labelled with it
@@ -97,6 +97,10 @@ f9e24e0. `OpenWithWidget` should not leak its placeholder `path` into the notifi
    an optional third (label) field, and/or fall back to the target widget's own name
    when it implements neither file-opening mechanism, instead of echoing `path`.
    Update `tempui-open-with-widget.md` and the changelog docs. 
+
+   [planned: open-with-widget-label.md (COMPLETED)]
+
+   COMPLETED 2026-10-09: `OpenWithWidget` takes an optional fourth tab-separated `label` used verbatim as the notification text (else `Open <path>`); three-field files unchanged; doc and changelog tag #041937. The widget-name-fallback alternative was not done (needs the widget built to know). Verified by `verify_open_with_widget_label.py` (11 checks); `verify_open_with_widget.py` still passes.
 
 8925b2e. Publish each hmsvc service's URL under a well-known `desk.state` key, so a widget that
    only needs to find a service's port needn't declare the all-or-nothing `hmsvc`

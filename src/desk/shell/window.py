@@ -121,6 +121,7 @@ from desk.temp_ui import (
     parse_open_image,
     parse_open_markdown,
     parse_open_with_widget,
+    parse_open_with_widget_label,
     parse_scratch,
     parse_temp_ui,
     sync_custom_widgets_doc_section,
@@ -3213,7 +3214,7 @@ class DeskWindow(QMainWindow):
             elif kind.startswith("open_with_widget:"):
                 parsed = parse_open_with_widget(content_text)
                 if parsed:
-                    text = f"Open {parsed[1]}"
+                    text = parse_open_with_widget_label(content_text) or f"Open {parsed[1]}"
             elif kind == "scratch":
                 parsed = parse_scratch(content_text)
                 if parsed and parsed[0]:

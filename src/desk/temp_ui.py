@@ -236,6 +236,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "dedicated hmsvc doc tempui-hmsvc.md #812810",
     "check new-features doc for thin feature docs #888639",
     "hmsvc dir live watcher + new service alert #008485",
+    "OpenWithWidget optional label field #041937",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -819,8 +820,8 @@ form, for any other widget kind that supports being opened with a
 file. This is a *pointer* to an existing file elsewhere on disk, the
 same shape as `OpenMarkdown`/`OpenImage`.
 
-- `OpenWithWidget<TAB>widget_id<TAB>path` — the first (and normally
-  only) line, **tab-separated** (like `DefineWidget`), since `path` may
+- `OpenWithWidget<TAB>widget_id<TAB>path[<TAB>label]` — the first (and
+  normally only) line, **tab-separated** (like `DefineWidget`), since `path` may
   itself contain spaces. `widget_id` is a real, currently-discovered
   widget id (the same id `desk.workspace.getState()`/
   `desk_list_widget_instances` report per instance, or a `DefineWidget`
@@ -828,7 +829,12 @@ same shape as `OpenMarkdown`/`OpenImage`.
   a silent no-op, not an error, so double-check it against a live
   instance or the widget's own `widget.json`/`DefineWidget` line if
   nothing happens. `path` is the file to open, absolute or relative to
-  the current Desk's own directory.
+  the current Desk's own directory. The optional fourth field, `label`,
+  is the text shown in the notification (otherwise it reads `Open
+  <path>`). Use it when the widget doesn't actually consume a file --
+  e.g. to just place the Microservices widget, give `path` any
+  existing path and a `label` like `New microservice` so the
+  placeholder path isn't what the user sees.
 
 Example:
 
@@ -2267,6 +2273,13 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "OpenWithWidget optional label field #041937": """- `OpenWithWidget` takes an optional fourth, tab-separated field, a
+  `label`: `OpenWithWidget<TAB>widget_id<TAB>path<TAB>label`. When
+  present, the notification reads exactly the label instead of `Open
+  <path>`, so a widget that doesn't consume a file no longer shows its
+  placeholder path to the user. Existing three-field files are
+  unchanged. See `tempui-open-with-widget.md`.
+""",
     "hmsvc dir live watcher + new service alert #008485": """- `desk_hmsvc/` is now watched live: a service directory you add,
   edit or remove while Desk is running is noticed without a project
   reopen or a manual Rescan click (the Microservices widget's Rescan
@@ -4014,6 +4027,21 @@ def parse_open_with_widget(text: str) -> tuple[str, str] | None:
         if len(parts) < 3 or not parts[1].strip() or not parts[2].strip():
             return None
         return parts[1].strip(), parts[2].strip()
+    return None
+
+
+def parse_open_with_widget_label(text: str) -> str | None:
+    """The optional fourth, tab-separated field of an OpenWithWidget
+    file's first line -- a human-readable label for the notification
+    (TODO f9e24e0), for a widget that doesn't meaningfully consume
+    `path`. None if absent/blank, or the file isn't a valid
+    OpenWithWidget file."""
+    if parse_open_with_widget(text) is None:
+        return None
+    for line in text.splitlines():
+        if line.strip():
+            parts = line.split("\t")
+            return parts[3].strip() or None if len(parts) > 3 else None
     return None
 
 
