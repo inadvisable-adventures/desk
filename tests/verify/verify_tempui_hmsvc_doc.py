@@ -64,5 +64,13 @@ sent.clear()
 asyncio.run(run("OPTIONS"))
 check("example answers preflight 204", sent[0]["status"] == 204)
 
+from desk.temp_ui import DOC_TEMPLATE  # noqa: E402
+
+nav_tag = next(t for t in CURRENT_TAGS if "check new-features doc" in t)
+check("TODO 601dae5: overview has the thin-doc navigation rule", "too thinly to act on" in DOC_TEMPLATE and "FEEDBACK file" in DOC_TEMPLATE)
+check("TODO 601dae5: changelog entry for the rule", nav_tag in _NEW_FEATURES)
+dev = open("development-process.md").read()
+check("TODO 601dae5: process doc has the dedicated-doc policy", "Give agent-visible features a real doc" in dev and "SPLIT_DOC_CONTENT" in dev)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

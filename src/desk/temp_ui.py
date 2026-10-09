@@ -234,6 +234,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "porting existing apps guide doc #968159",
     "promoted widget rebuild re-reads widget.json #645093",
     "dedicated hmsvc doc tempui-hmsvc.md #812810",
+    "check new-features doc for thin feature docs #888639",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -311,7 +312,21 @@ names exactly which tags are new to this project, with their own
 descriptions included directly in the notification itself — read that
 first, and only open these two files yourself if you want the fuller,
 permanent record instead of re-reading this whole doc set and diffing it
-against memory. There's also
+against memory.
+
+**When a doc covers a feature too thinly to act on** — a single
+sentence, no schema, no example — and you're about to write real code
+against it, check `tempui-new-features.md`'s own section for that
+feature's tag *before* reaching for Desk's own source or another
+project's code. The changelog entry written when a feature shipped is
+often its fullest existing write-up, even for a tag your own project has
+long since "seen" (so no doc-upgrade notification will ever point you at
+it again). If you still end up having to read outside this doc set to
+understand a feature, say so in your summary to the user and offer to
+write a FEEDBACK file about the gap, so the next agent doesn't pay the
+same cost.
+
+There's also
 `build_widget.py` — not a doc at all, but a ready-to-run script; see
 "Authoring from real source" in `tempui-custom-widgets.md`. Likewise
 `build_job_or_desk_proc.py` — packages a plain script into a
@@ -2247,6 +2262,13 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "check new-features doc for thin feature docs #888639": """- `desk-temporary-ui.md` gained a navigation rule: when another doc
+  covers a feature only briefly and you're about to write real code
+  against it, read that feature's tag section in `tempui-new-features.md`
+  first -- even for a tag your project has already seen -- before
+  reading Desk's source or another project's code; and if you still had
+  to read outside the doc set, say so and offer a FEEDBACK file.
+""",
     "dedicated hmsvc doc tempui-hmsvc.md #812810": """- New doc `tempui-hmsvc.md`: the full reference for Desk-hosted
   microservices -- the `service.json` schema, the `service.py` ASGI
   contract (and that `uvicorn` must be importable), discovery timing,

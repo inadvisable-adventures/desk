@@ -53,7 +53,7 @@ reordered or its description edited.
 
    COMPLETED 2026-10-09: new doc `tempui-hmsvc.md` (service.json schema, service.py contract, discovery, management-only networking, mandatory CORS, logs, worked example), linked from the custom-widgets and porting docs; changelog tag #812810. Verified by `verify_tempui_hmsvc_doc.py` (20 checks, including running the worked example).
 
-601dae5. Doc-navigation rule and a standing process policy against one-line tempui doc
+601dae5. COMPLETED: Doc-navigation rule and a standing process policy against one-line tempui doc
    mentions. Finding 2 ("the general gap") of `../FEEDBACK/FEEDBACK-DESK-hmsvc-docs-too-thin-forced-source-spelunking-2026-10-09-1400.md`.
    (a) Add a general rule to `desk-temporary-ui.md`: if a doc covers a feature only
    briefly (a sentence, no schema, no example) and you're about to write real code
@@ -68,6 +68,10 @@ reordered or its description edited.
    a FEEDBACK file. Mint a tempui changelog tag for (a), since it changes what an
    agent inside Desk needs to know.
    See also the hmsvc doc TODO `879bfb4` (the motivating case).
+
+   [planned: tempui-doc-navigation-policy.md (COMPLETED)]
+
+   COMPLETED 2026-10-09: added the thin-doc navigation rule to `desk-temporary-ui.md` (changelog tag #888639) and the dedicated-doc policy to `development-process.md`; verified textually in `verify_tempui_hmsvc_doc.py`.
 
 c40c5c5. Live file-watcher for `desk_hmsvc/`, plus a real "new microservice" notification.
    Finding 1 of `../FEEDBACK/FEEDBACK-DESK-hmsvc-discovery-friction-and-promoted-widget-capabilities-2026-10-09-1351.md`.

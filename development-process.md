@@ -71,6 +71,26 @@ at runtime (not checked-in files), all in the same commit as the
 change. This is a standing part of the Desk-development workflow, not
 a one-off backfill.
 
+### Give agent-visible features a real doc, not a one-line mention
+
+The changelog (`tempui-new-features.md`) *announces* a feature once; it
+is not meant to be the only place an agent can learn how to use it. Any
+new agent-visible feature that needs more than a one-line mention gets
+its own dedicated doc file in `.desk_temp/` (the `tempui-installed-jobs.md`/
+`tempui-hmsvc.md`/`tempui-lightning-round.md` pattern: register it in
+`SPLIT_DOC_CONTENT`), written in the same commit as the feature and linked
+from **both** its changelog entry **and** whichever higher-level doc
+(`tempui-custom-widgets.md`'s Bridge API list,
+`tempui-porting-existing-apps.md`'s "What Desk gives you", the overview in
+`desk-temporary-ui.md`) would otherwise summarize it in passing. A
+higher-level doc points to the dedicated file rather than trying to fit
+the whole story in one line.
+
+As the safety net for when upkeep lapses, `desk-temporary-ui.md` tells an
+agent that finds a doc too thin to check the changelog section first, and
+to say so (and offer a FEEDBACK file) if it had to read Desk's source or
+another project's code. See TODO `601dae5`.
+
 ## Shared development process
 
 See [shared_development_process.md](./shared_development_process.md)
