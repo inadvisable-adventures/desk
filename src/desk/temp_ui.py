@@ -233,6 +233,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "desk.documents cached byte-range reads #655544",
     "porting existing apps guide doc #968159",
     "promoted widget rebuild re-reads widget.json #645093",
+    "dedicated hmsvc doc tempui-hmsvc.md #812810",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -765,7 +766,7 @@ Desk Bridge API", for each call's exact shape.
 - Desk-hosted microservices (`desk.hmsvc.*`, a `service.json` per
   service): a long-running background process Desk starts, stops, logs
   and restarts for you -- the answer for "this project needs a local
-  backend".
+  backend". Full reference: `tempui-hmsvc.md`.
 
 **Seeing and driving Desk itself**
 - `desk.introspect.*` plus the screenshot/reveal/list MCP tools
@@ -1306,6 +1307,13 @@ built for genuine cross-widget signaling:
   connection to Desk's own canvas chrome (wrong styling, no
   zoom/pan-aware positioning, and blocking in a way that can behave
   surprisingly inside an embedded `ChromiumWidget`).
+- `desk.hmsvc.list()` / `.logs(name, limit)` / `.start(name)` /
+  `.stop(name)` / `.restart(name)` (capability `hmsvc`) — manage the
+  project's Desk-hosted microservices (`desk_hmsvc/<name>/`). This is
+  *management only*: `list()` gives each running service's current
+  `url` (a new port every launch) and your widget then calls `fetch()`
+  against it itself, so the service must send its own CORS headers. See
+  `tempui-hmsvc.md` for the whole story.
 - `desk.transforms.run(transformId, input, config)` (capability
   `transforms`) — runs a transform (a separate entity from a widget:
   converts data of one named type into another, e.g. a Mermaid
@@ -1775,6 +1783,178 @@ print(f"screenshot saved: {result}")
 ```
 """
 
+_HMSVC_DOC = """# Desk-hosted microservices (hmsvc)
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its current set of tags. Like Installed
+Jobs, hmsvc is **not** a tempui-DSL file type: you author a directory
+under `desk_hmsvc/`, not a file dropped here.
+
+A Desk-hosted microservice is a long-running Python process Desk starts,
+supervises, logs and restarts for you -- the answer for "this project
+needs a local backend" (an API over a database, a file indexer, a
+bridge to some device). Each runs in its own subprocess, so a crashing
+or blocking service can't stall Desk.
+
+## Layout
+
+```
+<project>/desk_hmsvc/<name>/service.py     required: the ASGI app
+<project>/desk_hmsvc/<name>/service.json   optional: settings
+```
+
+A directory without a `service.py` is not a service. Other files beside
+`service.py` can be imported by it (`import helper`; the service's own
+directory is first on `sys.path`).
+
+## `service.py`
+
+It must expose a module-level ASGI callable named `app` (FastAPI works,
+and so does a raw ASGI function). Desk serves it with
+`uvicorn.run(app, host, port)`, so **`uvicorn` must be importable under
+whichever interpreter runs the service** (Desk's own by default -- see
+`venv`/`python` below). Bind nothing yourself: Desk allocates the port
+and passes it as `DESK_SERVICE_PORT` (and the bind address as
+`DESK_SERVICE_HOST`). A file with no `app` exits with an error in the
+service's log.
+
+Also set in the environment: `DESK_SERVICE_NAME`, `DESK_PROJECT_DIR`,
+`DESK_BRIDGE_URL`, `DESK_BRIDGE_TOKEN` (the last two let the service
+call Desk itself -- see below). A service that doesn't start accepting
+connections within 15 seconds is killed and marked `crashed`.
+
+## `service.json`
+
+Every key is optional. A missing, unparseable or non-object file just
+means all defaults.
+
+- `description` (string): shown in the Microservices widget and in
+  `desk.hmsvc.list()`.
+- `autostart` (bool, default `false`): start whenever this project opens.
+- `external` (bool, default `false`): `false` binds loopback only
+  (`127.0.0.1`); `true` binds all interfaces so other devices on the
+  local network can reach it (the widget then also shows its LAN URL).
+  Either way the port is **unauthenticated** -- add your own auth to an
+  external service.
+- `capabilities` (list, default `["state", "events"]`; `workspace` is
+  also available): which Bridge capabilities the service's own calls to
+  Desk hold. A call needing one it lacks fails with HTTP 403.
+- `venv` (string): a project-relative venv directory; the service runs
+  under `<venv>/bin/python`.
+- `python` (string): an absolute interpreter path (for a venv outside
+  the project). Wins over `venv` if both are set. Neither set: Desk's
+  own interpreter. A configured-but-missing interpreter fails
+  immediately, naming the path, with no silent fallback. The interpreter
+  needs `uvicorn` installed.
+
+## Discovery and lifecycle
+
+Services are found by a plain filesystem scan of `desk_hmsvc/` -- there
+is no approval prompt. The scan runs when the project opens or
+switches and when the user clicks **Rescan** in the Microservices
+widget; **there is no live file watcher**, so a service directory
+created while Desk is running is not noticed until one of those happens.
+Tell the user to click Rescan (or switch projects) after you add one.
+Services with `autostart` start when the project opens; switching to a
+different project stops every running service of the old one.
+
+Statuses: `stopped`, `starting`, `running`, `exited` (ended on its own
+with code 0), `crashed` (non-zero exit, or never became ready). A stop
+request gives the process a short grace period, then kills it.
+
+## Reaching a service from a widget -- the networking model
+
+`desk.hmsvc.*` is **management only**; it does not proxy requests into
+the service. A `kind: "html"` widget with the `hmsvc` capability:
+
+1. calls `await desk.hmsvc.list()` -- each entry is `{name, description,
+   status, port, pid, url, external, lan_url, capabilities, autostart,
+   started_at, exit_code}`; `url` (e.g. `http://127.0.0.1:53211/`) is
+   `null` unless the service is `running`, and **the port is new on
+   every launch**, so never hard-code or cache it across restarts;
+2. then does its own direct `fetch()` against that `url`.
+
+Also available: `desk.hmsvc.logs(name, limit)`, `start(name)`,
+`stop(name)`, `restart(name)`. Every status change is broadcast as the
+mediated event `desk.hmsvc.changed` (`{"services": [...]}`), so a widget
+can subscribe instead of polling. The `hmsvc` capability covers every
+service in the project; it is broader than "tell me one URL".
+
+### CORS is mandatory
+
+A widget page is served from a different origin than the service's own
+port (each placed `kind: "html"` instance is its own browser origin), so
+every `fetch()` is cross-origin. **The service must send CORS headers
+itself** -- at minimum `Access-Control-Allow-Origin` on every response,
+and an answer to the `OPTIONS` preflight (with
+`Access-Control-Allow-Methods`/`-Headers`) for any non-simple request
+such as a JSON `POST`. Without this the widget's `fetch()` fails with an
+opaque network error and nothing in Desk's log says why.
+
+## Calling Desk from inside a service
+
+`from desk.hmsvc_client import desk` (stdlib only, blocking calls --
+wrap in `asyncio.to_thread` inside an `async def` handler):
+`desk.state_get(key)`, `desk.state_set(key, value)`,
+`desk.events_subscribe(names)`, `desk.events_publish(name, payload)`,
+`desk.events_poll(timeout)`, and (with the `workspace` capability)
+`desk.workspace_get_state()`. Events use the same mediated channel
+widgets use, under sender id `hmsvc:<name>`.
+
+## Logs
+
+A service's stdout and stderr, plus Desk's own `[desk]` lines, are kept
+in memory only -- the last 500 lines -- not in
+`.desk_temp/logs/desk.log`. View them in the Microservices widget or via
+`desk.hmsvc.logs(name, limit)`.
+
+## Minimal worked example
+
+`desk_hmsvc/hello/service.json`:
+
+```json
+{"description": "Says hello", "autostart": true}
+```
+
+`desk_hmsvc/hello/service.py` (raw ASGI, no dependencies, CORS wired in):
+
+```python
+import json
+
+CORS = [
+    (b"access-control-allow-origin", b"*"),
+    (b"access-control-allow-methods", b"GET, POST, OPTIONS"),
+    (b"access-control-allow-headers", b"content-type"),
+]
+
+
+async def app(scope, receive, send):
+    if scope["type"] != "http":
+        return  # (a real service also answers the "lifespan" scope)
+    if scope["method"] == "OPTIONS":
+        await send({"type": "http.response.start", "status": 204, "headers": CORS})
+        await send({"type": "http.response.body", "body": b""})
+        return
+    body = json.dumps({"hello": "world", "path": scope["path"]}).encode()
+    await send({
+        "type": "http.response.start",
+        "status": 200,
+        "headers": [(b"content-type", b"application/json"), *CORS],
+    })
+    await send({"type": "http.response.body", "body": body})
+```
+
+In a widget with the `hmsvc` capability:
+
+```js
+const services = await desk.hmsvc.list();
+const hello = services.find(s => s.name === "hello");
+if (hello && hello.url) {
+  const reply = await (await fetch(hello.url + "greet")).json();
+}
+```
+"""
+
 _INSTALLED_JOBS_DOC = """# Installed Jobs
 
 See `desk-temporary-ui.md` (in this same directory) for this
@@ -2067,6 +2247,16 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "dedicated hmsvc doc tempui-hmsvc.md #812810": """- New doc `tempui-hmsvc.md`: the full reference for Desk-hosted
+  microservices -- the `service.json` schema, the `service.py` ASGI
+  contract (and that `uvicorn` must be importable), discovery timing,
+  the management-only networking model (`desk.hmsvc.list()` gives the
+  `url`, the widget then calls `fetch()` itself), mandatory CORS,
+  in-memory logs, and a minimal worked example. Linked from
+  `tempui-custom-widgets.md` and `tempui-porting-existing-apps.md`.
+  The `Desk-hosted microservices (hmsvc) #285553` entry below remains
+  as the announcement; this doc is the reference.
+""",
     "promoted widget rebuild re-reads widget.json #645093": """- A promoted widget's `[STALE]` rebuild (single instance, or "reload
   all stale") now re-reads `desk_widgets/<name>/widget.json`'s
   `"capabilities"` and `"state_schema"` and applies them to the
@@ -3223,6 +3413,7 @@ DISCUSS_PARKING_LOT_ITEM_DOC_FILENAME = "tempui-discuss-parking-lot-item.md"
 JOBS_DOC_FILENAME = "tempui-jobs.md"
 DESK_PROC_DOC_FILENAME = "tempui-desk-proc.md"
 INSTALLED_JOBS_DOC_FILENAME = "tempui-installed-jobs.md"
+HMSVC_DOC_FILENAME = "tempui-hmsvc.md"
 BREAKING_CHANGES_DOC_FILENAME = "tempui-breaking-changes.md"
 NEW_FEATURES_DOC_FILENAME = "tempui-new-features.md"
 BUILD_WIDGET_SCRIPT_FILENAME = "build_widget.py"
@@ -3249,6 +3440,7 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     JOBS_DOC_FILENAME: _JOBS_DOC,
     DESK_PROC_DOC_FILENAME: _DESK_PROC_DOC,
     INSTALLED_JOBS_DOC_FILENAME: _INSTALLED_JOBS_DOC,
+    HMSVC_DOC_FILENAME: _HMSVC_DOC,
     BREAKING_CHANGES_DOC_FILENAME: _BREAKING_CHANGES_DOC,
     NEW_FEATURES_DOC_FILENAME: _NEW_FEATURES_DOC,
     BUILD_WIDGET_SCRIPT_FILENAME: _BUILD_WIDGET_SCRIPT,

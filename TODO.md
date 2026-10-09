@@ -30,7 +30,7 @@ reordered or its description edited.
 
    COMPLETED 2026-10-09: a promoted widget's `[STALE]` rebuild (single and reload-all) re-reads its source `widget.json`'s `capabilities` and `state_schema` into the stored definition; an added capability asks for confirmation (declining still applies removals/schema), every change notifies; a malformed manifest leaves stored values alone. Docs and tempui changelog tag #645093 updated. Verified by `verify_promoted_widget_manifest_sync.py` (22 checks).
 
-879bfb4. Write a dedicated `tempui-hmsvc.md` in `.desk_temp/`: today the permanent docs give
+879bfb4. COMPLETED: Write a dedicated `tempui-hmsvc.md` in `.desk_temp/`: today the permanent docs give
    hmsvc one sentence (`tempui-custom-widgets.md`'s Bridge API list, and one in
    `tempui-porting-existing-apps.md`), so an agent authoring a service has to read
    Desk's source and sibling projects. Finding 1 ("content gap") of
@@ -48,6 +48,10 @@ reordered or its description edited.
    `hmsvc_host.py`. Link the new doc from both `tempui-custom-widgets.md` and
    `tempui-porting-existing-apps.md`, and from the changelog entries. Mint a tempui
    changelog tag per `development-process.md`.
+
+   [planned: tempui-hmsvc-doc.md (COMPLETED)]
+
+   COMPLETED 2026-10-09: new doc `tempui-hmsvc.md` (service.json schema, service.py contract, discovery, management-only networking, mandatory CORS, logs, worked example), linked from the custom-widgets and porting docs; changelog tag #812810. Verified by `verify_tempui_hmsvc_doc.py` (20 checks, including running the worked example).
 
 601dae5. Doc-navigation rule and a standing process policy against one-line tempui doc
    mentions. Finding 2 ("the general gap") of `../FEEDBACK/FEEDBACK-DESK-hmsvc-docs-too-thin-forced-source-spelunking-2026-10-09-1400.md`.
