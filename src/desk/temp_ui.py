@@ -235,6 +235,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "promoted widget rebuild re-reads widget.json #645093",
     "dedicated hmsvc doc tempui-hmsvc.md #812810",
     "check new-features doc for thin feature docs #888639",
+    "hmsvc dir live watcher + new service alert #008485",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1865,11 +1866,15 @@ means all defaults.
 ## Discovery and lifecycle
 
 Services are found by a plain filesystem scan of `desk_hmsvc/` -- there
-is no approval prompt. The scan runs when the project opens or
-switches and when the user clicks **Rescan** in the Microservices
-widget; **there is no live file watcher**, so a service directory
-created while Desk is running is not noticed until one of those happens.
-Tell the user to click Rescan (or switch projects) after you add one.
+is no approval prompt. The scan runs when the project opens or switches,
+and **Desk also watches `desk_hmsvc/` live**: adding, editing or removing
+a service directory (its `service.py` or `service.json`) is picked up
+within a moment, with no reopen needed, and a service Desk hasn't seen
+before in this project raises a top-right notification ("New
+microservice available: `<name>` -- `<description>`"); clicking it places
+(or focuses) the Microservices widget so the user can start it. Desk
+never starts a service just because it appeared (only `autostart` does,
+at project open). The widget's **Rescan** button still forces a rescan.
 Services with `autostart` start when the project opens; switching to a
 different project stops every running service of the old one.
 
@@ -2262,6 +2267,15 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "hmsvc dir live watcher + new service alert #008485": """- `desk_hmsvc/` is now watched live: a service directory you add,
+  edit or remove while Desk is running is noticed without a project
+  reopen or a manual Rescan click (the Microservices widget's Rescan
+  button still works). A service not seen before in the project raises
+  a top-right notification, "New microservice available: <name> --
+  <description>"; clicking it places or focuses the Microservices widget
+  (it does not start the service). Nothing about authoring a service
+  changed. See `tempui-hmsvc.md`.
+""",
     "check new-features doc for thin feature docs #888639": """- `desk-temporary-ui.md` gained a navigation rule: when another doc
   covers a feature only briefly and you're about to write real code
   against it, read that feature's tag section in `tempui-new-features.md`

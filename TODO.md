@@ -73,7 +73,7 @@ reordered or its description edited.
 
    COMPLETED 2026-10-09: added the thin-doc navigation rule to `desk-temporary-ui.md` (changelog tag #888639) and the dedicated-doc policy to `development-process.md`; verified textually in `verify_tempui_hmsvc_doc.py`.
 
-c40c5c5. Live file-watcher for `desk_hmsvc/`, plus a real "new microservice" notification.
+c40c5c5. COMPLETED: Live file-watcher for `desk_hmsvc/`, plus a real "new microservice" notification.
    Finding 1 of `../FEEDBACK/FEEDBACK-DESK-hmsvc-discovery-friction-and-promoted-widget-capabilities-2026-10-09-1351.md`.
    `HmsvcManager.refresh()`/`set_directory()` has a single call site
    (`shell/window.py`, project open/switch), so a service directory created while
@@ -84,6 +84,10 @@ c40c5c5. Live file-watcher for `desk_hmsvc/`, plus a real "new microservice" not
    `<name>` -- `<description>`") whose click places/focuses the Microservices
    widget (decided: it does not start the service). Update the hmsvc docs and the tempui changelog accordingly. See
    TODO `879bfb4` (docs currently say there's no live watcher).
+
+   [planned: hmsvc-dir-watcher.md (COMPLETED)]
+
+   COMPLETED 2026-10-09: `desk_hmsvc/` is watched live (`HmsvcDirWatcher`); a service new to the project raises a 'New microservice available' notification that places/focuses the Microservices widget (never starts it); `tempui-hmsvc.md` updated, changelog tag #008485. Verified by `verify_hmsvc_dir_watcher.py` (19 checks); `verify_hmsvc.py` and `verify_hmsvc_custom_interpreter.py` still pass.
 
 f9e24e0. `OpenWithWidget` should not leak its placeholder `path` into the notification text.
    Finding 1 (last suggested-fix bullet) of `../FEEDBACK/FEEDBACK-DESK-hmsvc-discovery-friction-and-promoted-widget-capabilities-2026-10-09-1351.md`.

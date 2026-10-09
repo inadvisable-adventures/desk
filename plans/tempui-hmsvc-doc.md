@@ -24,5 +24,5 @@ management-only networking model, mandatory CORS (+ preflight), the
   the existing `#285553`/`#892147` changelog entries; constants (log cap,
   startup timeout, default capabilities) are asserted against the code.
 - The worked example is executed by the verify script (GET and preflight).
-- Documents the *current* discovery behavior (no live watcher); TODO
-  `c40c5c5` updates this when that changes.
+- Written for the original discovery behavior (no live watcher); TODO
+  `c40c5c5` then updated the discovery section for the live watcher.

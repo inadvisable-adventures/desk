@@ -163,6 +163,9 @@ class HmsvcManager:
         self._listeners: list[Callable[[], None]] = []
         self._bridge_url = ""
         self._bridge_token = ""
+        # TODO c40c5c5: every service name seen since the last
+        # set_directory, so refresh() can report which are new.
+        self._ever_seen: set[str] = set()
         # TODO 929e730: per-service Bridge credentials. Unset, a service gets
         # the shared launch token (the deprecated legacy path).
         self._credential_issuer: Callable[[str], str] | None = None
@@ -215,6 +218,7 @@ class HmsvcManager:
         with self._lock:
             self._directory = directory
             self._services = {}
+            self._ever_seen = set()
         self.refresh()
         for name in [s.name for s in self._snapshot_services() if s.autostart]:
             self.start(name)
@@ -230,10 +234,13 @@ class HmsvcManager:
 
     # -- discovery -----------------------------------------------------
 
-    def refresh(self) -> None:
+    def refresh(self) -> list[str]:
         """Rescans `desk_hmsvc/` -- picks up new/removed services and
         re-reads `service.json`, keeping runtime state for any service
-        already known."""
+        already known. Returns the names not seen before in this project
+        since it was opened (TODO c40c5c5) -- the caller decides whether
+        that merits telling the user (the scan at project open does not;
+        a later one from the directory watcher does)."""
         root = self.services_dir
         found: dict[str, tuple[str, list[str], bool, bool, str | None, str | None]] = {}
         if root is not None and root.is_dir():
@@ -241,6 +248,8 @@ class HmsvcManager:
                 if path.is_dir() and (path / SERVICE_ENTRY_FILENAME).is_file():
                     found[path.name] = _read_manifest(path)
         with self._lock:
+            new_names = sorted(name for name in found if name not in self._ever_seen)
+            self._ever_seen.update(found)
             for name in list(self._services):
                 service = self._services[name]
                 if name not in found and service.process is None:
@@ -254,6 +263,7 @@ class HmsvcManager:
                 service.venv = venv
                 service.python = python
         self._notify()
+        return new_names
 
     # -- queries -------------------------------------------------------
 

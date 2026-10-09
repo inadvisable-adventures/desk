@@ -29,7 +29,7 @@ check("changelog entry exists for its tag", tag in _NEW_FEATURES and "tempui-hms
 for key in ("description", "autostart", "external", "capabilities", "venv", "python"):
     check(f"documents service.json key {key!r}", f"- `{key}`" in doc)
 check("documents module-level `app`", "module-level ASGI" in doc and "uvicorn" in doc)
-check("documents Rescan / no live watcher", "Rescan" in doc and "no live file watcher" in doc)
+check("documents Rescan and the live watcher", "Rescan" in doc and "watches `desk_hmsvc/` live" in doc and "New\nmicroservice available" in doc)
 check("documents management-only networking", "management only" in doc and "fetch()" in doc)
 check("documents CORS + preflight", "CORS is mandatory" in doc and "OPTIONS" in doc)
 check("log cap in doc matches code", f"{hmsvc.LOG_LINE_LIMIT} lines" in doc)

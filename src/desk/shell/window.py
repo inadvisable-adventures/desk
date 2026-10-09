@@ -86,6 +86,7 @@ from desk.shell.chromium_widget import ChromiumWidget
 from desk.shell.new_desk_dialog import NewDeskDialog
 from desk.shell.promoted_widget_source_watcher import PromotedWidgetSourceWatcher
 from desk.shell.python_widget import PythonWidgetHost
+from desk.shell.hmsvc_dir_watcher import HmsvcDirWatcher
 from desk.shell.schema_file_watcher import SCHEMA_FILES_DIRNAME, TOP_LEVEL_SCHEMAS_DIRNAME, SchemaFileWatcher
 from desk.shell.temp_ui_manager import TempUiManager
 from desk.shell.widget_frame import MIN_HEIGHT, WidgetFrame
@@ -155,6 +156,7 @@ DESK_PROC_RUNNER_WIDGET_ID = "desk_proc_runner"
 # widget kind, just one Desk guarantees at most one placed instance of
 # (see _ensure_state_manager_placed).
 STATE_MANAGER_WIDGET_ID = "state_manager"
+HMSVC_MANAGER_WIDGET_ID = "hmsvc_manager"
 # TODO 7f51230: crash logs now live in .desk_temp/DESK-CRASH-*.log --
 # matches desk.crash_handler's own filename convention.
 CRASH_LOG_GLOB = "DESK-CRASH-*.log"
@@ -468,6 +470,9 @@ class DeskWindow(QMainWindow):
         # widget's own permanent registration, tracked separately by
         # _refresh_builtin_schemas), so a desk switch can clear exactly
         # those before re-provisioning for the newly-opened directory.
+        # TODO c40c5c5: a service directory added/edited while Desk runs.
+        self._hmsvc_dir_watcher = HmsvcDirWatcher()
+        self._hmsvc_dir_watcher.changed.connect(self._on_hmsvc_dir_changed)
         self._schema_file_watcher = SchemaFileWatcher()
         self._schema_file_watcher.changed.connect(self._on_schema_file_changed)
         self._known_schema_file_sources: set[str] = set()
@@ -3033,6 +3038,30 @@ class DeskWindow(QMainWindow):
         ephemeral_dir = temp_dir / SCHEMA_FILES_DIRNAME if temp_dir is not None else None
         self._schema_file_watcher.provision(ephemeral_dir, directory)
 
+    def _on_hmsvc_dir_changed(self) -> None:
+        """TODO c40c5c5: `desk_hmsvc/` changed on disk -- rescan, and tell
+        the user about each service not seen before in this project."""
+        for name in self._hmsvc.refresh():
+            info = self._hmsvc.get(name) or {}
+            self._notify_new_hmsvc_service(name, info.get("description", ""))
+
+    def _notify_new_hmsvc_service(self, name: str, description: str) -> None:
+        """A clickable top-right notification for a newly discovered
+        microservice; clicking places (or focuses) the Microservices
+        widget so the user can start it -- nothing is started for them."""
+        text = f"New microservice available: {name}"
+        if description:
+            text += f" — {description}"
+        self.view.notify_temp_ui(Path(f"hmsvc-new:{name}"), text, self._reveal_hmsvc_manager)
+
+    def _reveal_hmsvc_manager(self) -> None:
+        for frame in self.view._frames:
+            if frame.content.widget_id == HMSVC_MANAGER_WIDGET_ID:
+                self.view.bring_to_front(frame)
+                self.view.zoom_to_widget(frame)
+                return
+        self.open_widget_content_centered(HMSVC_MANAGER_WIDGET_ID)
+
     def _ensure_questions_watcher(self) -> None:
         """(Re)watches the nearest QUESTIONS.md for the current Desk's
         directory (TODO a801180) -- called alongside _provision_temp_ui
@@ -3385,6 +3414,7 @@ class DeskWindow(QMainWindow):
         # Desk's microservices and autostarts the new one's.
         current_context.set_hmsvc_manager(self._hmsvc)
         self._hmsvc.set_directory(self.current_desk.directory)
+        self._hmsvc_dir_watcher.provision(self.current_desk.directory)
         current_context.set_installed_job_uninstaller(self.uninstall_job)
         # Same choke point, for the same reason (TODO 54d8c18): a
         # transform invocation after a Desk switch resolves against the
