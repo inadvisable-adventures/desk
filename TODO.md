@@ -6,6 +6,23 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+a7618c8. COMPLETED: Scratch widgets not attached to a file should store their text in a file in `.desk_temp`,
+   so that if Desk restarts, the text will still be there. Today a manually-placed
+   Scratch (new-Scratch button, double-click on empty canvas, seeded README, the
+   "Can't open" note) keeps its label and body only in the live `QPlainTextEdit`;
+   its random instance id matches no `.desk_temp` file, so the restore path
+   (`_load_desk_widgets` -> `_bind_temp_ui_widget`) falls through to a blank widget.
+   A tempui-backed Scratch (instance id == its `.desk_temp` file) is already
+   restorable from that file and is out of scope.
+
+   [planned: scratch-text-persistence.md (COMPLETED)]
+
+   COMPLETED 2026-10-09: a non-tempui Scratch now keeps its label and text in
+   `.desk_temp/scratch-text/<instance_id>.json` (debounced atomic write, flushed
+   on every desk save, deleted on close) and reloads it on restore. Verified by
+   `verify_scratch_text_persistence.py` (13 checks); the neighbouring verify
+   scripts' fake windows were updated for the new `DeskWindow` methods.
+
 18fa45f. COMPLETED: Deprecation agent handoff: the always-available alternative to a rewrite
    (piece 6 of TODO `df8138a`). Wherever Desk reports a tombstone use, offer (1) a
    short command to copy into an agent console (the `agent_command` text, naming the

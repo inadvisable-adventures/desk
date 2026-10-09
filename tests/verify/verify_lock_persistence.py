@@ -77,6 +77,7 @@ class _FakeWindow:
 
 
 _FakeWindow._capture_desk_state = DeskWindow._capture_desk_state
+_FakeWindow._flush_scratch_backing_files = DeskWindow._flush_scratch_backing_files
 
 
 def test_capture_desk_state_includes_locked():

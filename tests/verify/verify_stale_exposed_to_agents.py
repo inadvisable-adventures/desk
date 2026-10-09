@@ -101,6 +101,8 @@ class _FakeWindow:
 _FakeWindow._register_custom_widget = DeskWindow._register_custom_widget
 _FakeWindow._refresh_stale_indicators_for = DeskWindow._refresh_stale_indicators_for
 _FakeWindow._place_widget = DeskWindow._place_widget
+_FakeWindow._scratch_backing_file = DeskWindow._scratch_backing_file
+_FakeWindow._bind_scratch_backing_file = DeskWindow._bind_scratch_backing_file
 _FakeWindow._check_schema_conflict = DeskWindow._check_schema_conflict
 _FakeWindow._is_instance_currently_placed = DeskWindow._is_instance_currently_placed
 _FakeWindow._notify_schema_conflict = DeskWindow._notify_schema_conflict
@@ -113,6 +115,7 @@ _FakeWindow._bind_event_mediator = DeskWindow._bind_event_mediator
 _FakeWindow._bind_error_indicator = DeskWindow._bind_error_indicator
 _FakeWindow._bind_widget_local_storage = DeskWindow._bind_widget_local_storage
 _FakeWindow._capture_desk_state = DeskWindow._capture_desk_state
+_FakeWindow._flush_scratch_backing_files = DeskWindow._flush_scratch_backing_files
 _FakeWindow._get_widget_local_storage = DeskWindow._get_widget_local_storage
 _FakeWindow.get_state_dict = DeskWindow.get_state_dict
 _FakeWindow._on_promoted_widget_source_changed = DeskWindow._on_promoted_widget_source_changed

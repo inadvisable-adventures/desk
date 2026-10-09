@@ -1,4 +1,8 @@
-from PyQt6.QtCore import Qt, pyqtSignal
+import json
+import os
+from pathlib import Path
+
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -10,6 +14,7 @@ from PyQt6.QtWidgets import (
 )
 
 DEFAULT_LABEL = "untitled"
+SAVE_DEBOUNCE_MS = 300
 
 
 class _DisplayLabel(QLabel):
@@ -28,6 +33,8 @@ class _TitleRow(QWidget):
     """Shows `Scratch: {label}`; double-clicking swaps to an editable
     QLineEdit, committing back to display form on Enter or focus-out.
     Falls back to DEFAULT_LABEL if committed to empty/whitespace-only."""
+
+    label_changed = pyqtSignal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -71,6 +78,7 @@ class _TitleRow(QWidget):
         self._label_text = text if text else DEFAULT_LABEL
         self._refresh_display()
         self._stack.setCurrentWidget(self._display)
+        self.label_changed.emit()
 
     @property
     def label_text(self) -> str:
@@ -79,6 +87,7 @@ class _TitleRow(QWidget):
     def set_label(self, text: str) -> None:
         self._label_text = text.strip() or DEFAULT_LABEL
         self._refresh_display()
+        self.label_changed.emit()
 
     def start_editing(self) -> None:
         """Exposed for headless verification (simulating a double-click
@@ -101,6 +110,55 @@ class ScratchWidget(QWidget):
         layout.setSpacing(0)
         layout.addWidget(self._title_row)
         layout.addWidget(self._body, stretch=1)
+
+        # TODO a7618c8: set by set_backing_file for a Scratch that isn't
+        # attached to a tempui file.
+        self._backing_file: Path | None = None
+        self._save_timer = QTimer(self)
+        self._save_timer.setSingleShot(True)
+        self._save_timer.setInterval(SAVE_DEBOUNCE_MS)
+        self._save_timer.timeout.connect(self.flush_pending_save)
+        self._body.textChanged.connect(self._schedule_save)
+        self._title_row.label_changed.connect(self._schedule_save)
+
+    def set_backing_file(self, path: Path) -> None:
+        """TODO a7618c8: persist this Scratch's label and text in `path`
+        (JSON), restoring them from it if it already exists, so they
+        survive a Desk restart. Called by `DeskWindow` only for a Scratch
+        with no tempui file of its own."""
+        self._backing_file = None  # don't write back while loading
+        try:
+            data = json.loads(path.read_text())
+            label, text = str(data.get("label", "")), str(data.get("text", ""))
+        except (OSError, ValueError, AttributeError):
+            label, text = "", None
+        if text is not None:
+            self._title_row.set_label(label)
+            self._body.setPlainText(text)
+            self._body.document().setModified(False)
+        self._save_timer.stop()
+        self._backing_file = path
+
+    def _schedule_save(self) -> None:
+        if self._backing_file is not None:
+            self._save_timer.start()
+
+    def flush_pending_save(self) -> None:
+        """Writes the backing file now (atomic replace). Also called by
+        `DeskWindow` whenever it saves the desk, so a quit never loses
+        the last edits to the debounce."""
+        self._save_timer.stop()
+        path = self._backing_file
+        if path is None:
+            return
+        payload = json.dumps({"label": self.label_text, "text": self._body.toPlainText()})
+        tmp = path.with_name(path.name + ".tmp")
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(payload)
+            os.replace(tmp, path)
+        except OSError:
+            pass
 
     @property
     def label_text(self) -> str:

@@ -207,6 +207,11 @@ TEMP_UI_WIDGET_IDS = {
     DESK_PROC_RUNNER_WIDGET_ID,
 }
 
+# TODO a7618c8: subdirectory of .desk_temp holding a non-tempui Scratch's
+# persisted label/text. A subdirectory so the tempui watcher (direct
+# children only) never mistakes it for a tempui file.
+SCRATCH_TEXT_DIRNAME = "scratch-text"
+
 WIDGET_SPACING = 700
 # The shared state store's (TODO f68383f) per-key history cap -- a
 # fixed, small default, not per-key configurable this pass (see
@@ -784,6 +789,8 @@ class DeskWindow(QMainWindow):
             self._bind_claude_desk_widget(
                 frame, resume=restore, extra_instructions=claude_extra_instructions
             )
+        if widget_id == SCRATCH_WIDGET_ID:
+            self._bind_scratch_backing_file(frame)
         self._bind_external_indicator(frame)
         self._bind_event_mediator(frame)
         self._bind_error_indicator(frame)
@@ -812,6 +819,46 @@ class DeskWindow(QMainWindow):
                 if widget_id in self._promoted_widget_source_dirty:
                     frame.set_stale(True)
         return frame
+
+    def _scratch_backing_file(self, instance_id: str) -> Path:
+        return self.current_desk.directory / TEMP_UI_DIRNAME / SCRATCH_TEXT_DIRNAME / f"{instance_id}.json"
+
+    def _bind_scratch_backing_file(self, frame: WidgetFrame) -> None:
+        """TODO a7618c8: a Scratch not attached to a tempui file (its
+        instance id names no `.desk_temp` file) keeps its label and text
+        in `.desk_temp/scratch-text/<instance_id>.json`, so they survive a
+        restart. A tempui-backed Scratch restores from its tempui file
+        instead (see _bind_temp_ui_content)."""
+        if not isinstance(frame.content, PythonWidgetHost):
+            return
+        content = frame.content.current
+        if content is None or not hasattr(content, "set_backing_file"):
+            return
+        if (self.current_desk.directory / TEMP_UI_DIRNAME / frame.instance_id).exists():
+            return
+        content.set_backing_file(self._scratch_backing_file(frame.instance_id))
+
+    def _delete_scratch_backing_file(self, frame: WidgetFrame) -> None:
+        """A permanently-closed Scratch's text goes with it (Scratch is
+        never tombstoned -- see _tombstone_widget). Its pending-save timer
+        is stopped first so a late debounce can't resurrect the file."""
+        if frame.content.widget_id != SCRATCH_WIDGET_ID:
+            return
+        content = getattr(frame.content, "current", None)
+        timer = getattr(content, "_save_timer", None)
+        if timer is not None:
+            timer.stop()
+        if content is not None and hasattr(content, "_backing_file"):
+            content._backing_file = None
+        self._scratch_backing_file(frame.instance_id).unlink(missing_ok=True)
+
+    def _flush_scratch_backing_files(self) -> None:
+        for frame in self.view._frames:
+            if frame.content.widget_id != SCRATCH_WIDGET_ID or not isinstance(frame.content, PythonWidgetHost):
+                continue
+            flush = getattr(frame.content.current, "flush_pending_save", None)
+            if flush is not None:
+                flush()
 
     def _chromium_profile_dir(self, instance_id: str) -> Path:
         """TODO a5f66cc: where a kind:"html" widget instance's own
@@ -2012,6 +2059,7 @@ class DeskWindow(QMainWindow):
             return False
         self._tombstone_widget(frame)
         self.view.remove_widget(frame)
+        self._delete_scratch_backing_file(frame)
         self._revoke_bridge_credential(frame.instance_id)
         # Belt-and-suspenders for kind:"html" widgets specifically (TODO
         # 6f9c51b): they have no destroyed-signal-based cleanup path the
@@ -2301,6 +2349,7 @@ class DeskWindow(QMainWindow):
         return pixmap.save(str(resolved), "PNG")
 
     def _capture_desk_state(self) -> Desk:
+        self._flush_scratch_backing_files()
         widget_states = []
         for frame in self.view._frames:
             proxy = frame.graphicsProxyWidget()
@@ -2783,6 +2832,7 @@ class DeskWindow(QMainWindow):
         instance_id = frame.instance_id
         self._tombstone_widget(frame)
         self.view.remove_widget(frame)
+        self._delete_scratch_backing_file(frame)
         self._revoke_bridge_credential(instance_id)
         self._event_mediator.unsubscribe_all(instance_id)
         self.save_current_desk()

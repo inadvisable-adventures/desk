@@ -130,6 +130,7 @@ class _FakeCaptureWindow:
 
 
 _FakeCaptureWindow._capture_desk_state = DeskWindow._capture_desk_state
+_FakeCaptureWindow._flush_scratch_backing_files = DeskWindow._flush_scratch_backing_files
 _FakeCaptureWindow.get_state_dict = DeskWindow.get_state_dict
 
 

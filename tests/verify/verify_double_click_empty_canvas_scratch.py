@@ -78,6 +78,8 @@ class _FakeWindow:
 
 
 _FakeWindow._place_widget = DeskWindow._place_widget
+_FakeWindow._scratch_backing_file = DeskWindow._scratch_backing_file
+_FakeWindow._bind_scratch_backing_file = DeskWindow._bind_scratch_backing_file
 _FakeWindow._bind_event_mediator = DeskWindow._bind_event_mediator
 _FakeWindow._bind_external_indicator = DeskWindow._bind_external_indicator
 _FakeWindow._bind_error_indicator = DeskWindow._bind_error_indicator

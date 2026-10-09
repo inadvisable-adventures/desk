@@ -139,6 +139,7 @@ for name in ("_tombstone_widget", "get_recently_removed", "_publish_recently_rem
 _Stub.find_frame_by_instance_id = DeskWindow.find_frame_by_instance_id
 _Stub._schedule_chromium_profile_cleanup = lambda self, iid: None
 _Stub._revoke_bridge_credential = lambda self, iid: None
+_Stub._delete_scratch_backing_file = lambda self, frame: None
 _Stub._confirm_fn = lambda self, t, m: (lambda: True)
 
 

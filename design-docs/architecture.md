@@ -1165,6 +1165,13 @@ now, and it can only have one Desk open at a time).
   original behavior of placing one instance of every discovered widget,
   which was a leftover bootstrapping default rather than a meaningful
   onboarding experience. See `plans/new-desk-default-widgets.md`.
+- **Scratch text survives restarts** (TODO `a7618c8`): a Scratch not
+  attached to a tempui file (its instance id names no `.desk_temp` file)
+  persists its label and text in `.desk_temp/scratch-text/<instance_id>.json`
+  (debounced atomic write, flushed on every desk save, deleted when the
+  widget is closed). A subdirectory, so the tempui watcher never sees it. A
+  tempui-backed Scratch still restores from its tempui file. See
+  `plans/scratch-text-persistence.md`.
 - **Saving**: on quit, and immediately before switching to a different
   Desk or changing the current Desk's directory (so switching can never
   silently lose layout changes) — not continuously/debounced on every
