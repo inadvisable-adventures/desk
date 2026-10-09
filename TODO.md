@@ -6,6 +6,95 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+8bbc484. Promoted widget `capabilities` (and `state_schema`) are a frozen copy: the documented
+   "edit `desk_widgets/<name>/` and save" workflow can never change them. Finding 2 of
+   `../FEEDBACK/FEEDBACK-DESK-hmsvc-discovery-friction-and-promoted-widget-capabilities-2026-10-09-1351.md`.
+   A promoted widget's `capabilities` come from the `.desk` file's `custom_widgets[]`
+   entry (`_register_custom_widget` -> `CustomWidgetDefinition`), written at promotion
+   and never re-read from `widget.json`; the `[STALE]` rebuild
+   (`_on_promoted_widget_stale_clicked` -> `build_from_source`) rebuilds only the
+   html/ts, so an edited `capabilities` array reloads with no error and then fails
+   at runtime with a Bridge 403 (`lacks capability 'hmsvc'`). The only working fix
+   today is hand-editing the `.desk` file while Desk is running, which races Desk's
+   autosave. Fix: the `[STALE]` rebuild path re-reads `widget.json`'s `capabilities`
+   and `state_schema`, updates the `custom_widgets[]` entry to match, and reports the
+   change (decided: a newly *added* capability asks for confirmation in a dialog
+   before it applies, since it widens the widget's privileges; removals and
+   `state_schema` changes apply with a notification). Declining leaves the stored
+   copy as is.
+   Update `tempui-custom-widgets.md` (and the tempui changelog docs, per
+   `development-process.md`) to match. Related, already completed: TODO `13f4ad5`
+   (same shape, for the source path and `html_b64`).
+
+879bfb4. Write a dedicated `tempui-hmsvc.md` in `.desk_temp/`: today the permanent docs give
+   hmsvc one sentence (`tempui-custom-widgets.md`'s Bridge API list, and one in
+   `tempui-porting-existing-apps.md`), so an agent authoring a service has to read
+   Desk's source and sibling projects. Finding 1 ("content gap") of
+   `../FEEDBACK/FEEDBACK-DESK-hmsvc-docs-too-thin-forced-source-spelunking-2026-10-09-1400.md`.
+   Cover, mirroring `tempui-installed-jobs.md`: the `service.json` schema
+   (`description`, `autostart`, `external`, `capabilities` + default, `venv`/`python`
+   and precedence, fallback to defaults for a missing/bad file); the `service.py`
+   contract (module-level ASGI `app`, served by uvicorn); discovery/lifecycle timing;
+   the management-only networking model (`desk.hmsvc.list()` returns the URL, the
+   widget then `fetch()`es it directly -- no proxying); mandatory CORS
+   (`Access-Control-Allow-Origin`); in-memory logs capped at 500 lines; and a minimal
+   worked example with CORS wired in. Most of it already exists in the
+   `tempui-new-features.md` entry for tag `#285553` (and `#892147` for the
+   interpreter), so this is mostly transcription from that and `hmsvc.py`/
+   `hmsvc_host.py`. Link the new doc from both `tempui-custom-widgets.md` and
+   `tempui-porting-existing-apps.md`, and from the changelog entries. Mint a tempui
+   changelog tag per `development-process.md`.
+
+601dae5. Doc-navigation rule and a standing process policy against one-line tempui doc
+   mentions. Finding 2 ("the general gap") of `../FEEDBACK/FEEDBACK-DESK-hmsvc-docs-too-thin-forced-source-spelunking-2026-10-09-1400.md`.
+   (a) Add a general rule to `desk-temporary-ui.md`: if a doc covers a feature only
+   briefly (a sentence, no schema, no example) and you're about to write real code
+   against it, check `tempui-new-features.md`'s section for that feature's tag before
+   reading Desk's source or another project's code -- even for a tag the project has
+   already "seen".
+   (b) Add a policy to `development-process.md`'s "Keep the tempui changelog docs
+   current" section: any agent-visible feature needing more than a one-line mention
+   gets its own dedicated `tempui-<feature>.md`, linked from its changelog entry and
+   from whichever higher-level doc would otherwise summarize it in passing; and an
+   agent that had to fall back to source or sibling projects should say so and offer
+   a FEEDBACK file. Mint a tempui changelog tag for (a), since it changes what an
+   agent inside Desk needs to know.
+   See also the hmsvc doc TODO `879bfb4` (the motivating case).
+
+c40c5c5. Live file-watcher for `desk_hmsvc/`, plus a real "new microservice" notification.
+   Finding 1 of `../FEEDBACK/FEEDBACK-DESK-hmsvc-discovery-friction-and-promoted-widget-capabilities-2026-10-09-1351.md`.
+   `HmsvcManager.refresh()`/`set_directory()` has a single call site
+   (`shell/window.py`, project open/switch), so a service directory created while
+   Desk is running is invisible until a reopen/switch plus a manual Rescan click in
+   the Microservices widget. Add a watcher mirroring `desk_widgets/` and
+   `.desk_temp/` that calls `refresh()`, and when `refresh()` finds a service not
+   seen this session, raise a top-right notification ("New microservice available:
+   `<name>` -- `<description>`") whose click places/focuses the Microservices
+   widget (decided: it does not start the service). Update the hmsvc docs and the tempui changelog accordingly. See
+   TODO `879bfb4` (docs currently say there's no live watcher).
+
+f9e24e0. `OpenWithWidget` should not leak its placeholder `path` into the notification text.
+   Finding 1 (last suggested-fix bullet) of `../FEEDBACK/FEEDBACK-DESK-hmsvc-discovery-friction-and-promoted-widget-capabilities-2026-10-09-1351.md`.
+   For a widget that consumes no file (e.g. `hmsvc_manager`), the format still
+   requires a syntactically valid `path`, and the notification is labelled with it
+   (the user saw the `.desk` filename instead of anything meaningful). Give the line
+   an optional third (label) field, and/or fall back to the target widget's own name
+   when it implements neither file-opening mechanism, instead of echoing `path`.
+   Update `tempui-open-with-widget.md` and the changelog docs. 
+
+8925b2e. Publish each hmsvc service's URL under a well-known `desk.state` key, so a widget that
+   only needs to find a service's port needn't declare the all-or-nothing `hmsvc`
+   capability. Finding 3 (the user's own suggested design) of
+   `../FEEDBACK/FEEDBACK-DESK-hmsvc-discovery-friction-and-promoted-widget-capabilities-2026-10-09-1351.md`.
+   `HmsvcManager` already knows the per-launch dynamic loopback URL the moment a
+   service becomes `running` (it populates `desk.hmsvc.changed`); also write it to
+   e.g. `desk.hmsvc.<name>` (cleared/updated on stop and restart) with no opt-in from
+   the service author, so a widget holding `state` discovers it via `desk.state.get`
+   or `desk.state.changed`. Decided: one key per service,
+   `desk.hmsvc.<name>` = `{status, url}`; on stop/crash/restart the key stays, with
+   `status` `stopped`/`error` and `url` null (so subscribers get a change event).
+   Still to settle in the plan: interaction with the state-store schema rules.
+
 a7618c8. COMPLETED: Scratch widgets not attached to a file should store their text in a file in `.desk_temp`,
    so that if Desk restarts, the text will still be there. Today a manually-placed
    Scratch (new-Scratch button, double-click on empty canvas, seeded README, the
