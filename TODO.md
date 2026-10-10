@@ -12286,7 +12286,7 @@ b6abde2. De-prioritized (moved to the end of the queue on request --
    questions.
    [planned: system-clipboard-regression-tests.md]
 
-9d52dc4. Build a Pipeline widget (`kind: "python"`) that visualizes and
+9d52dc4. COMPLETED: Build a Pipeline widget (`kind: "python"`) that visualizes and
    controls the execution of a pipe-chained verb DSL pipeline
    (`desk.pipeline_dsl`, TODO `63bfd42`) as a Mermaid flowchart
    (`desk.mermaid`, TODO `a76e723`) -- one rect node per top-level
