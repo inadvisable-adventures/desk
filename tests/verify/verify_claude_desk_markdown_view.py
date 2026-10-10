@@ -26,6 +26,32 @@ passed = 0
 failed = 0
 
 
+
+def _real_centered_opener(opened, *widget_ids):
+    """The REAL DeskWindow.open_widget_content_centered bound to a minimal
+    stand-in (TODO 66aa766), recording what reaches open_widget_content --
+    a lambda copy of the documented hook shape can't catch the real
+    method's signature drifting from it."""
+    from desk.shell.canvas import WorkspaceView
+    from desk.shell.window import DeskWindow
+    from desk.widgets import WidgetInfo
+
+    class _StandIn:
+        def __init__(self):
+            self._widgets = {
+                w: WidgetInfo(id=w, path=Path("."), kind="python", name=w, entry="widget.py", capabilities=[], default_size=(400, 300))
+                for w in widget_ids
+            }
+            self.view = WorkspaceView()
+            self.view.resize(800, 600)
+
+        def open_widget_content(self, widget_id, pos=None, size=None, instance_id=None, path=None):
+            opened.append((widget_id, path))
+
+    _StandIn.open_widget_content_centered = DeskWindow.open_widget_content_centered
+    stand_in = _StandIn()
+    return stand_in.open_widget_content_centered
+
 def check(name, condition):
     global passed, failed
     if condition:
@@ -160,7 +186,7 @@ def test_widget_renders_the_whole_turn_and_opens_the_markdown_widget():
     previous_dir = current_context.get_current_desk_directory()
     with tempfile.TemporaryDirectory() as d:
         current_context.set_current_desk_directory(Path(d))
-        current_context.set_centered_widget_opener(lambda wid, path: opened.append((wid, path)))
+        current_context.set_centered_widget_opener(_real_centered_opener(opened, "markdown"))
         try:
             first_assistant._markdown_button.click()
             check("opens the markdown widget on a file", len(opened) == 1 and opened[0][0] == "markdown")

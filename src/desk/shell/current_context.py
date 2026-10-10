@@ -108,10 +108,25 @@ placed frame by a given pixel delta (e.g. the Claude (Desk) widget's
 background-tasks panel growing the whole widget when expanded, instead
 of squeezing its existing content), without needing to import
 `desk.shell.window`/`desk.shell.canvas` directly -- see
-`desk.shell.window.DeskWindow.adjust_widget_instance_height`."""
+`desk.shell.window.DeskWindow.adjust_widget_instance_height`.
+
+The `Callable[...]` aliases on the hook variables below are trusted,
+UNCHECKED documentation of a real bound method on `DeskWindow` (Python
+doesn't verify them, and `Callable` can't express parameter names,
+keyword-only status or defaults). Changing either side without the
+other is how TODO 66aa766's bug shipped invisibly: the alias said
+`path` was the centered opener's second positional argument while the
+real method had it fourth, and every test fake copied the alias.
+`tests/verify/verify_current_context_hook_signatures.py` compares each
+`set_X(self.method)` binding in `DeskWindow` to its alias, and the
+centered opener's two-way contract is a `Protocol` (CenteredWidgetOpener)
+checked against the real method's signature. Update all of them
+together, and call a hook positionally through the real method at least
+once in a test; a hand-written fake only proves the caller matches the
+documentation."""
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from PyQt6.QtCore import QPoint
 from PyQt6.QtWidgets import QWidget
@@ -120,9 +135,27 @@ from desk.event_mediator import EventMediator
 from desk.hotreload import HotReloadBroker
 from desk.temp_ui import JobDefinition
 
+
+
+class CenteredWidgetOpener(Protocol):
+    """The contract of `set_centered_widget_opener`'s hook, single-sourced
+    (TODO 66aa766): `DeskWindow.open_widget_content_centered`'s signature
+    must equal `__call__`'s (a verify script compares them), so a caller
+    may rely on `path` being second and `size`/`instance_id` keyword-only."""
+
+    def __call__(
+        self,
+        widget_id: str,
+        path: Path | None = None,
+        *,
+        size: tuple[int, int] | None = None,
+        instance_id: str | None = None,
+    ) -> QWidget | None: ...
+
+
 _current_directory: Path | None = None
 _widget_opener: Callable[[str], QWidget | None] | None = None
-_centered_widget_opener: Callable[[str, Path | None], QWidget | None] | None = None
+_centered_widget_opener: CenteredWidgetOpener | None = None
 _editor_or_scrap_opener: Callable[[Path], None] | None = None
 _git_diff_opener: Callable[[Path], None] | None = None
 _transform_runner_blocking: Callable[[str, str, dict | None], str] | None = None
@@ -188,7 +221,7 @@ def get_widget_opener() -> Callable[[str], QWidget | None] | None:
     return _widget_opener
 
 
-def set_centered_widget_opener(opener: Callable[[str, Path | None], QWidget | None]) -> None:
+def set_centered_widget_opener(opener: CenteredWidgetOpener) -> None:
     """Like set_widget_opener, but the opened instance is placed
     centered in the current view (TODO efdad99) -- get_widget_opener's
     own DeskWindow.open_widget_content places at (0, 0) by default,
@@ -196,7 +229,8 @@ def set_centered_widget_opener(opener: Callable[[str, Path | None], QWidget | No
     codebase (_place_discuss_claude_widget) deliberately avoid; this
     hook gives a kind:"python" widget the same centered convention
     without needing to reach into DeskWindow's own view/scene math
-    itself. `path` (TODO 83427f4, second positional arg -- `None` when
+    itself. `path` (TODO 83427f4, second positional arg -- see
+    CenteredWidgetOpener for the exact shape; `None` when
     the caller has no file to associate with the new instance) tells a
     kind:"python" widget via set_file and a kind:"html" widget via
     self.getOpenedFile which file it was opened for."""
@@ -204,7 +238,7 @@ def set_centered_widget_opener(opener: Callable[[str, Path | None], QWidget | No
     _centered_widget_opener = opener
 
 
-def get_centered_widget_opener() -> Callable[[str, Path | None], QWidget | None] | None:
+def get_centered_widget_opener() -> CenteredWidgetOpener | None:
     return _centered_widget_opener
 
 

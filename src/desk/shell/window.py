@@ -1450,9 +1450,10 @@ class DeskWindow(QMainWindow):
     def open_widget_content_centered(
         self,
         widget_id: str,
+        path: Path | None = None,
+        *,
         size: tuple[int, int] | None = None,
         instance_id: str | None = None,
-        path: Path | None = None,
     ) -> QWidget | None:
         """Like open_widget_content, but placed centered in the current
         view (TODO efdad99) instead of open_widget's own `(0, 0)`
@@ -1461,7 +1462,13 @@ class DeskWindow(QMainWindow):
         .set_centered_widget_opener` for a `kind: "python"` widget that
         wants this placement convention without reaching into the
         view/scene directly. `path` (TODO 83427f4) passes straight
-        through to `open_widget_content`."""
+        through to `open_widget_content`. Its shape is the contract
+        `current_context.CenteredWidgetOpener` declares (TODO
+        66aa766): `path` is the second positional parameter and
+        `size`/`instance_id` are keyword-only, so a caller written
+        against the documented `(widget_id, path)` call can't put a
+        Path where a size belongs. verify_current_context_hook_signatures
+        compares the two."""
         widget = self._widgets.get(widget_id)
         if widget is None:
             return None

@@ -6,6 +6,23 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+66aa766. COMPLETED: Fix the centered-opener hook mismatch behind the Claude (Desk) "Markdown View" /
+   `[image]` crash: `current_context` documented `(widget_id, path)` but
+   `DeskWindow.open_widget_content_centered` took `(widget_id, size, instance_id, path)`, so the
+   `Path` landed in `size` (`../FEEDBACK/FEEDBACK-DESK-claude-desk-markdown-view-button-crashes-opener-arg-mismatch-2026-10-09-1420.md`).
+   Make `path` the second parameter and `size`/`instance_id` keyword-only, single-source the
+   contract as a `Protocol`, note in `current_context.py` that the other `Callable` aliases are
+   unchecked documentation, add a verify script comparing every hook binding to its alias, and make
+   the Claude (Desk) tests drive the real method instead of a lambda. Pre-investigation (why
+   doc/impl/tests diverged, and whether a pre-commit check is warranted): `investigations/hook-signature-drift.md`.
+
+   [planned: hook-signature-conformance.md (COMPLETED)]
+
+   COMPLETED 2026-10-09: `open_widget_content_centered(widget_id, path=None, *, size, instance_id)`;
+   `current_context.CenteredWidgetOpener` Protocol; `verify_current_context_hook_signatures.py`
+   (fails on the old signature); Claude (Desk) verify scripts use the real method;
+   `development-process.md` rule.
+
 8bbc484. COMPLETED: Promoted widget `capabilities` (and `state_schema`) are a frozen copy: the documented
    "edit `desk_widgets/<name>/` and save" workflow can never change them. Finding 2 of
    `../FEEDBACK/FEEDBACK-DESK-hmsvc-discovery-friction-and-promoted-widget-capabilities-2026-10-09-1351.md`.

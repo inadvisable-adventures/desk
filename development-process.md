@@ -57,6 +57,20 @@ bin/python3 tests/verify/<script>.py`) and printing its own `PASS`/
   assertion staleness), not a real regression worth chasing down
   immediately.
 
+- A hook in `src/desk/shell/current_context.py` (the `set_X`/`get_X`
+  pairs a `python` widget uses to reach `DeskWindow`) has its shape
+  written in several places that Python never compares: the
+  `Callable[...]` alias, the real `DeskWindow` method, and any fake a
+  test registers. Change them together, and exercise the hook
+  positionally through the REAL method at least once; a test that
+  registers a hand-written fake only shows the caller matches the
+  documentation, not the code (TODO `66aa766`,
+  `investigations/hook-signature-drift.md`).
+  `tests/verify/verify_current_context_hook_signatures.py` mechanically
+  compares every binding to its alias; a new hook with optional or
+  keyword parameters gets a `Protocol` like `CenteredWidgetOpener`
+  instead of a bare `Callable`.
+
 ### Keep the tempui changelog docs current
 
 Whenever a change made to Desk itself is a breaking change or a new

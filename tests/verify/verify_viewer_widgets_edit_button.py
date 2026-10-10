@@ -65,7 +65,7 @@ class _FakeWindow:
     def get_file_type_registry_dicts(self):
         return self._registry_dicts if hasattr(self, "_registry_dicts") else []
 
-    def open_widget_content_centered(self, widget_id, size=None, instance_id=None, path=None):
+    def open_widget_content_centered(self, widget_id, path=None, *, size=None, instance_id=None):
         # TODO 83427f4: the real DeskWindow.open_widget_content_centered
         # now handles set_file itself when given path -- this fake
         # reproduces just enough of that (including the broken-set_file
