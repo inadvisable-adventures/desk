@@ -1326,6 +1326,55 @@ class DeskWindow(QMainWindow):
             claude_extra_instructions=extra_instructions,
         )
 
+    def _widget_chat_code_paths(self, widget_info: WidgetInfo) -> str:
+        """The "The code" section's path bullets for the `[CHAT]` note
+        (TODO 1697645): the widget's *real* manifest/source locations,
+        resolved from what Desk itself loaded the widget from -- never
+        reconstructed from the widget id (a `keyword` like
+        `SamothraceMap` isn't its source directory's name, and a
+        project/promoted widget doesn't live under `widgets/` at all).
+        Three shapes: a source-backed promoted/tempui widget (its
+        recorded `source_path`, naming the *source* entry point rather
+        than the `.build/` output a rebuild overwrites), a still
+        -inline tempui `DefineWidget` (no editable source directory at
+        all), and everything else (a built-in or `desk_widgets/` real
+        package, whose `WidgetInfo.path` is already its real
+        directory). Paths are project-relative when inside the project,
+        absolute otherwise (a built-in widget's directory is in Desk's
+        own checkout, not the project's)."""
+        project_dir = self.current_desk.directory
+
+        def display(path: Path) -> str:
+            try:
+                return str(path.relative_to(project_dir))
+            except ValueError:
+                return str(path)
+
+        definition = self._custom_widget_definitions.get(widget_info.id)
+        if definition is not None and definition.source_path is not None:
+            source_dir = Path(os.path.normpath(project_dir / definition.source_path))
+            return (
+                f"- Source directory: `{display(source_dir)}`\n"
+                f"- Manifest: `{display(source_dir / 'widget.json')}`\n"
+                f"- Source entry point: `{display(source_dir / 'widget.html')}` "
+                "(plus the `.ts` files and `tsconfig.json` beside it)\n"
+                f"- Build output (don't edit; overwritten on every rebuild): "
+                f"`{display(source_dir / SOURCE_BUILD_CACHE_DIRNAME / 'index.html')}`\n"
+            )
+        if definition is not None:
+            origin = self._custom_widget_source_paths.get(widget_info.id)
+            defined_in = f" in `{display(origin)}`" if origin is not None else ""
+            return (
+                f"- No editable source directory: this is an inline `DefineWidget` tempui widget, "
+                f"defined as a base64-encoded HTML document{defined_in}.\n"
+                f"- Decoded entry point (generated; don't edit): "
+                f"`{display(widget_info.path / widget_info.entry)}`\n"
+            )
+        return (
+            f"- Manifest: `{display(widget_info.path / 'widget.json')}`\n"
+            f"- Entry point: `{display(widget_info.path / widget_info.entry)}`\n"
+        )
+
     def _build_widget_chat_instructions(self, frame: WidgetFrame, widget_info: WidgetInfo) -> str:
         """The `[CHAT]` button's initial-prompt body (TODO 93364f9),
         covering the three things the item asked for: the live
@@ -1356,8 +1405,7 @@ class DeskWindow(QMainWindow):
             "note was written, so don't rely on this file for that.\n\n"
             "## The code\n"
             f"- kind: {widget_info.kind}\n"
-            f"- Manifest: `widgets/{widget_info.id}/widget.json`\n"
-            f"- Entry point: `widgets/{widget_info.id}/{widget_info.entry}`\n"
+            f"{self._widget_chat_code_paths(widget_info)}"
             "Read these yourself rather than guessing at the implementation.\n\n"
             "## The definition / shared state\n"
             f"- Declared capabilities: {capabilities}\n"

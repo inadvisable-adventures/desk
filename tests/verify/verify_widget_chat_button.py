@@ -36,6 +36,7 @@ from desk.shell import current_context  # noqa: E402
 from desk.shell.canvas import WorkspaceView  # noqa: E402
 from desk.shell.widget_frame import _TitleBar  # noqa: E402
 from desk.shell.window import CLAUDE_DESK_WIDGET_ID, DeskWindow  # noqa: E402
+from desk.temp_ui import CustomWidgetDefinition  # noqa: E402
 from desk.widgets import WidgetInfo  # noqa: E402
 
 passed = 0
@@ -110,6 +111,7 @@ class _FakeWindow:
         self._event_mediator = EventMediator()
         self._custom_widget_sources = {}
         self._custom_widget_definitions = {}
+        self._custom_widget_source_paths = {}
         self._custom_widget_content_hash = {}
         # TODO 4eb3d9e: _place_widget now also touches this.
         self._promoted_widget_source_dirty = set()
@@ -131,6 +133,7 @@ _FakeWindow.find_frame_by_instance_id = DeskWindow.find_frame_by_instance_id
 _FakeWindow._on_chat_button_clicked = DeskWindow._on_chat_button_clicked
 _FakeWindow._place_widget_chat_about = DeskWindow._place_widget_chat_about
 _FakeWindow._build_widget_chat_instructions = DeskWindow._build_widget_chat_instructions
+_FakeWindow._widget_chat_code_paths = DeskWindow._widget_chat_code_paths
 _FakeWindow._write_claude_instructions_file = DeskWindow._write_claude_instructions_file
 
 
@@ -225,8 +228,10 @@ def test_on_chat_button_clicked_places_scoped_claude_desk_session():
         current_context.set_current_desk_directory(directory)
         try:
             win = _FakeWindow(directory)
-            source_info = _python_widget_info(directory)
-            _write_widget_py(directory)
+            widget_dir = directory / "desk_widgets" / "ordinary_python"
+            widget_dir.mkdir(parents=True)
+            source_info = _python_widget_info(widget_dir)
+            _write_widget_py(widget_dir)
             win._widgets[source_info.id] = source_info
             win._widgets[CLAUDE_DESK_WIDGET_ID] = WidgetInfo(
                 id=CLAUDE_DESK_WIDGET_ID,
@@ -260,8 +265,15 @@ def test_on_chat_button_clicked_places_scoped_claude_desk_session():
             check("mentions the source widget's kind", f"`{source_info.id}`" in text)
             check("mentions the source widget's instance_id", source_instance_id in text)
             check("mentions the source widget's title", source_info.name in text)
-            check("mentions the manifest path", f"widgets/{source_info.id}/widget.json" in text)
-            check("mentions the entry path", f"widgets/{source_info.id}/widget.py" in text)
+            check(
+                "mentions the real (project-relative) manifest path",
+                "`desk_widgets/ordinary_python/widget.json`" in text,
+            )
+            check(
+                "mentions the real entry path",
+                "`desk_widgets/ordinary_python/widget.py`" in text,
+            )
+            check("does not invent a widgets/<id>/ path", f"`widgets/{source_info.id}/" not in text)
             check("mentions desk_list_widget_instances", "desk_list_widget_instances" in text)
             check("mentions desk.state and where schemas live", "desk.state" in text and "desk-schemas" in text)
             check("mentions Installed Jobs infrastructure", "desk_run_installed_job" in text)
@@ -300,6 +312,81 @@ def test_on_chat_button_clicked_noop_if_widget_kind_unknown():
 
 
 test_on_chat_button_clicked_noop_if_widget_kind_unknown()
+
+
+# ---------- TODO 1697645: the note names the widget's REAL source locations ----------
+
+
+def _code_paths(win, info):
+    return win._widget_chat_code_paths(info)
+
+
+def test_code_paths_source_backed_widget_uses_kebab_dir_not_keyword():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        directory = Path(d)
+        win = _FakeWindow(directory)
+        # keyword is PascalCase, the real source directory is kebab-case:
+        # the exact mismatch that made a naive widgets/ -> desk_widgets/
+        # prefix swap still wrong.
+        definition = CustomWidgetDefinition(
+            keyword="SamothraceMap", label="Samothrace Map", html_b64="x",
+            source_path="desk_widgets/samothrace-map",
+        )
+        win._custom_widget_definitions["SamothraceMap"] = definition
+        info = WidgetInfo(
+            id="SamothraceMap", path=directory / "desk_widgets" / "samothrace-map" / ".build",
+            kind="html", name="Samothrace Map", entry="index.html", capabilities=[], default_size=None,
+        )
+        text = _code_paths(win, info)
+        check("source-backed: manifest in the kebab-case source dir",
+              "`desk_widgets/samothrace-map/widget.json`" in text)
+        check("source-backed: source entry point is widget.html",
+              "`desk_widgets/samothrace-map/widget.html`" in text)
+        check("source-backed: .build/index.html flagged as build output, not the entry point",
+              "don't edit" in text and "`desk_widgets/samothrace-map/.build/index.html`" in text
+              and "Entry point: `desk_widgets/samothrace-map/.build" not in text)
+        check("source-backed: never uses the keyword as a directory name",
+              "SamothraceMap/" not in text and "widgets/SamothraceMap" not in text)
+
+
+test_code_paths_source_backed_widget_uses_kebab_dir_not_keyword()
+
+
+def test_code_paths_inline_define_widget_has_no_source_directory():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        directory = Path(d)
+        win = _FakeWindow(directory)
+        win._custom_widget_definitions["Inline"] = CustomWidgetDefinition(
+            keyword="Inline", label="Inline", html_b64="x",
+        )
+        win._custom_widget_source_paths["Inline"] = directory / ".desk_temp" / "abc-uuid"
+        info = WidgetInfo(
+            id="Inline", path=directory / ".desk_temp" / "widgets" / "Inline", kind="html",
+            name="Inline", entry="index.html", capabilities=[], default_size=None,
+        )
+        text = _code_paths(win, info)
+        check("inline: says there is no editable source directory", "No editable source directory" in text)
+        check("inline: names the DefineWidget file", "`.desk_temp/abc-uuid`" in text)
+        check("inline: no invented widgets/ path", "`widgets/" not in text)
+
+
+test_code_paths_inline_define_widget_has_no_source_directory()
+
+
+def test_code_paths_builtin_widget_outside_project_is_absolute():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as d:
+        directory = Path(d)
+        win = _FakeWindow(directory)
+        info = WidgetInfo(
+            id="todo", path=REPO_ROOT / "widgets" / "todo", kind="python", name="TODO",
+            entry="widget.py", capabilities=[], default_size=None,
+        )
+        text = _code_paths(win, info)
+        check("built-in outside the project: absolute manifest path",
+              f"`{REPO_ROOT / 'widgets' / 'todo' / 'widget.json'}`" in text)
+
+
+test_code_paths_builtin_widget_outside_project_is_absolute()
 
 
 print(f"\n{passed} passed, {failed} failed")

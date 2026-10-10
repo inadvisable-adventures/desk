@@ -238,6 +238,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "hmsvc dir live watcher + new service alert #008485",
     "OpenWithWidget optional label field #041937",
     "hmsvc service url published to desk.state #095433",
+    "visual debugging of widget geometry guidance #733899",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1069,6 +1070,59 @@ and reload. The rebuild also re-reads `widget.json`'s `"capabilities"`
 and `"state_schema"` into the widget's stored definition, so changing
 them there works the same way (a newly *added* capability asks the user
 to confirm; never hand-edit the `.desk` file to change them).
+
+## Debugging a widget's own rendering/geometry visually
+
+When what a user sees and where your code *thinks* something is
+disagree (a canvas widget whose hover/click only lands when the pointer
+is "down and to the left" of the feature), don't iterate on guesses —
+each plausible fix costs a build/`[STALE]`/reload round and can leave the
+symptom untouched. Make the internal state visible and compare it in
+one screenshot instead. The four pieces below are a reusable pattern:
+
+1. **A build marker in the widget's own UI.** One `const BUILD_MARKER =
+   N` bumped on every edit and rendered as plain text. It removes "is
+   this actually the new code?" as a variable before anything else is
+   debugged — a promoted widget's edit → `[STALE]` click → rebuild cycle
+   has enough steps that a stale reload is easy to make and easy to
+   mistake for a real symptom.
+2. **A toggleable debug layer that records the real outcomes of the
+   code path under test**, plotted at the exact values that path used —
+   e.g. every actual hit-test call (not a swept grid of synthetic
+   probes), green dot for a hit, red for a miss, at the exact coordinates
+   handed to `isPointInPath`. Because it sits downstream of the same
+   inputs, the visualization cannot introduce a discrepancy of its own.
+3. **Ground-truth markers computed by the same function you are
+   verifying.** Record *which* feature each hit matched, then draw a
+   labeled crosshair at that feature's true center using the very
+   projection function (`toScreen()` or equivalent) that renders it. One
+   screenshot now shows both answers drawn on top of each other: where
+   the feature is (render path) versus where clicking it registers
+   (hit-test path). Crosshairs on the polygons but dots displaced from
+   them, growing with distance from the origin, means a transform/scale
+   mismatch specific to hit-testing, not rendering.
+4. **Close the loop yourself with `desk_screenshot_widget` /
+   `desk_reveal_widget`** rather than asking the user to describe what
+   they see in words ("it's offset down and to the left"): take the
+   screenshot, read pixel positions off it, and compare. Pass
+   `max_width` to keep the image small. Still ask the user for the one
+   thing you cannot do — there is currently no way for an agent to
+   synthesize a pointer/keyboard event against a placed widget, so a
+   human has to move the mouse before each screenshot is informative.
+
+Worked example of what this found: a canvas map whose hit-testing was
+offset by an amount that varied non-proportionally with both the
+widget's internal zoom and Desk's own canvas zoom. Two hypothesis-driven
+fixes (measuring the wrong element's bounding box; a stale
+`devicePixelRatio`) were real improvements but missed. The trace layer
+with ground-truth crosshairs found the cause in one round:
+`CanvasRenderingContext2D.isPointInPath()`'s query point is not reliably
+subject to the current transformation matrix the way `fill()`/`stroke()`
+are, so testing under the `devicePixelRatio`-scaled drawing transform
+compared mismatched coordinate spaces. Running the hit-test under an
+identity transform (matching the raw CSS-pixel numbers the `Path2D`s are
+built from) fixed it. Remove the marker/overlay (or leave them behind a
+toggle) once the bug is closed.
 
 ## Reusable UI components
 
@@ -2296,6 +2350,14 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "visual debugging of widget geometry guidance #733899": """- `tempui-custom-widgets.md` has a new section, "Debugging a widget's own
+  rendering/geometry visually": a named pattern (a build marker in the
+  widget's UI, a toggleable overlay recording real hit-test/render
+  outcomes, ground-truth markers drawn via the same projection function,
+  and closing the loop yourself with `desk_screenshot_widget`) for
+  spatial bugs where what the user sees disagrees with where the code
+  thinks something is. Guidance only; no API changed.
+""",
     "hmsvc service url published to desk.state #095433": """- Desk now mirrors each microservice's `{"status", "url"}` into the
   shared state store as the key `desk.hmsvc.<name>`, updated on every
   status change (including a restart's new port). A widget that only

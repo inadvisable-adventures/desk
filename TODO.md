@@ -12408,3 +12408,27 @@ b6abde2. De-prioritized (moved to the end of the queue on request --
    dependency-relocation problem within the current widget-shaped
    layout this TODO replaces.
 
+
+1697645. COMPLETED: The `[CHAT]` button's session note names the widget's real source locations
+   (from `../FEEDBACK/FEEDBACK-DESK-chat-button-session-note-wrong-widget-source-location-2026-10-09-1501.md`):
+   it hardcoded `widgets/<widget id>/widget.json` and `.../index.html`, which don't exist for a
+   `desk_widgets/` project widget, whose real directory is kebab-case rather than the PascalCase
+   keyword, and whose source entry point is `widget.html` (`.build/index.html` is overwritten output).
+   Resolve the paths from what Desk itself loaded (a definition's recorded `source_path`, a real
+   widget's `WidgetInfo.path`), test against a keyword that differs from its directory name.
+
+   [planned: chat-note-real-widget-source-paths.md (COMPLETED)]
+
+   COMPLETED 2026-10-09: `DeskWindow._widget_chat_code_paths`; `verify_widget_chat_button.py` (31 checks).
+
+b9c7828. COMPLETED: Teach the visual-debugging pattern for widget geometry bugs in
+   `tempui-custom-widgets.md` (from
+   `../FEEDBACK/FEEDBACK-DESK-visual-debugging-techniques-for-widget-geometry-bugs-2026-10-09-1606.md`):
+   a build marker, a debug layer recording real hit-test outcomes, ground-truth markers via the
+   same projection function, and closing the loop with `desk_screenshot_widget`. Changelog tag
+   `visual debugging of widget geometry guidance #733899` + entry. The feedback's separate
+   suggestion (synthesizing pointer events against a placed widget) is parked in `PARKINGLOT.md`.
+
+   [planned: doc-visual-debugging-widget-geometry.md (COMPLETED)]
+
+   COMPLETED 2026-10-09: new `_CUSTOM_WIDGETS_DOC` section; `verify_tempui_visual_debugging_doc.py` (10 checks).

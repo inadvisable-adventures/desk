@@ -4,6 +4,23 @@ This file captures thoughts and TODO items that arise during work on other thing
 
 ## Items
 
+- **Synthesize pointer/keyboard events against a placed widget (agent-driven interaction)**
+
+  From `../FEEDBACK/FEEDBACK-DESK-visual-debugging-techniques-for-widget-geometry-bugs-2026-10-09-1606.md`
+  (TODO `b9c7828`): there is no documented way for an agent to *synthesize*
+  a pointer/keyboard event against a placed widget instance -- only to
+  observe one via screenshot after a human produces it. The visual
+  debugging loop therefore still needs the user to move the mouse before
+  every screenshot is informative. A `deskproc`-style
+  `synthesize_pointer_event(instance_id, ...)` (or similar, scoped the same
+  no-sandboxing way `deskproc.screenshot_widget` is) would let an agent
+  drive the interaction and observe the result with no human in the loop.
+  Needs design: `kind: "html"` (inject into the page) versus `kind:
+  "python"` (post Qt events), coordinate space (widget-local versus
+  scene), and keyboard. Once resolved, `b9c7828`'s doc line saying no such
+  tool exists needs updating, and the feedback file can move to
+  `../FEEDBACK/implemented/`.
+
 - **Subprocess-isolated `kind: "python"` transforms with their own
   project-scoped dependencies**
 
