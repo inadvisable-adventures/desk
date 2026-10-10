@@ -1253,3 +1253,45 @@ This file captures thoughts and TODO items that arise during work on other thing
   must trust. To work out: the set of `kind`s, whether the conventional directories remain as
   defaults, how overlapping/duplicate declarations and id collisions across directories resolve,
   and how this interacts with `discover_project_widgets` (TODO `99eb1bc`).
+  **Folded into** the "What belongs in `.desk` vs `.desk_temp/`" item below, which
+  supersedes this one: declared directories become part of the `.desk` file's
+  project metadata there.
+
+
+- **What belongs in `.desk` vs `.desk_temp/`: `.desk` as project metadata only, plus view templates**
+
+  Consider redesigning which information is stored in the `.desk` file and which in
+  `.desk_temp/`. Motivation: in a more complicated project where Desk is a guest, Desk
+  should not force the top level of the project to fill up with Desk-specific files and
+  directories.
+
+  Proposal:
+  - **`.desk` holds only metadata about the project.** For example:
+    - A relative reference to the expected location of `.desk_temp/`. That location is
+      hard-coded today; it could be made configurable later.
+    - Every known-blessed project directory: if a directory such as `./desk_*/` exists,
+      `.desk` records its relative path and the type of blessing it carries (for example
+      `widget-source`). This **incorporates and supersedes** the "`desk_declare_watched_directory(path, kind)`"
+      parking-lot item above (agents requesting that new directories be blessed): the
+      MCP call to request a blessing would write into this part of `.desk`, and the
+      conventional directories (`desk_widgets/`, `desk-installed-jobs/`, `desk-schemas/`,
+      and so on) would become defaults rather than the only possibility. Not just the
+      directories Desk already knows about: the same mechanism would cover
+      `./desk_non_desk/` (TODO `0de7685`).
+  - **`.desk` does not contain the locations of specific widgets.** (Placed-widget
+    state is the part to move out; see the next point.)
+  - **View templates: a new Desk concept.** A view template can be stored in source
+    control and holds a list of placed widgets. The `.desk` file can reference one view
+    template as the thing to load when there is no local `.desk_temp/` directory, so a
+    fresh checkout gets a sensible starting layout instead of an empty canvas.
+
+  To work out (not decided): where the live, per-user layout state lives once it leaves
+  `.desk` (presumably `.desk_temp/`, which is gitignored); migration of existing `.desk`
+  files, which today carry placed widgets and `custom_widgets[]` entries (including the
+  frozen `capabilities` copy, see TODO `8bbc484`); whether a view template stores widget
+  state or only placement; how a template handles widgets that do not exist in the new
+  checkout; the set of blessing types and how overlapping or duplicate blessings and id
+  collisions resolve; and how this interacts with `discover_project_widgets` (TODO
+  `99eb1bc`) and the shared-libraries work (TODO `9bed685`). This changes what agents
+  need to know about project layout, so when it is worked it needs a dedicated doc and
+  tempui changelog entry.
