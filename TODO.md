@@ -11237,6 +11237,24 @@ df8138a. COMPLETED: Deprecations by tombstone: plan the process and build the fi
    parked in `PARKINGLOT.md`); whether the stubs themselves are ever removed is
    still open.
 
+d16c5eb. Audit every built-in widget (all of `widgets/*/`) so it persists only project-relative
+   paths in its saved state, never absolute ones, so a `.desk` file (and a view template, see the
+   `PARKINGLOT.md` item on `.desk` vs `.desk_temp/`) stays portable between checkouts and machines.
+   Prioritized on request. The Markdown widget is the known offender: it at least sometimes stores an
+   absolute path (`widgets/markdown/widget.py`, restore via `desk.persisted_path.resolve_persisted_path`,
+   which today just does `Path(raw)` with no project-relative handling). Other widgets already using
+   that helper: `markdown_old_basic`, `git_diff`, `editor`. Steps: (1) inventory every widget's
+   `get_state`/saved-state fields (and any `kind: "html"` widget state via `desk.state`) for
+   path-like values: file, directory, document and image paths, recent-file lists, working
+   directories (Console), repository paths; (2) decide the rule: paths inside the project directory
+   are stored relative to it, a path outside the project is the only case that may stay absolute
+   (decide whether that is stored as-is, warned about, or refused); (3) add one shared save/restore
+   helper pair (extending `desk.persisted_path`) and move every offender onto it, restoring old
+   absolute values already in existing `.desk` files (resolve them as-is, and re-save relative);
+   (4) a verify script that fails if a widget's saved state contains an absolute path for a file
+   inside the project. Not agent-visible unless a widget's documented state format changes; if
+   one does, mint a changelog tag + entry.
+
 0de7685. Non-desk service dependency: a new Desk concept for an independent daemon a project
    relies on that Desk neither starts nor owns (the motivating case is a local Postgres cluster; see
    `../FEEDBACK/FEEDBACK-DESK-external-service-dependency-concept-2026-08-03-1634.md`). Distinct from
