@@ -1235,3 +1235,21 @@ This file captures thoughts and TODO items that arise during work on other thing
   (the stubs in code) are ever removed or only their docs. Related: TODO
   `df8138a`, `design-docs/deprecation-process.md`.
 
+
+- **`desk_declare_watched_directory(path, kind)`: project-declared locations for Desk content**
+
+  From `../FEEDBACK/FEEDBACK-DESK-project-widgets-directory-confusion-2026-09-19-1734.md`
+  (bigger-picture suggestion). Desk hardcodes a conventional location for each kind of
+  project content (`desk_widgets/`, `desk-installed-jobs/`, `desk-schemas/`,
+  `.desk_temp/widgets/`, `.desk_temp/schemas/`), which gives no flexibility to a project where
+  Desk-related code is a small part of a larger tree, and makes agents guess the current
+  correct name from docs that can drift. Suggested: an MCP API (something like
+  `desk_declare_watched_directory(path, kind)`, or a small family of calls) that registers an
+  arbitrary directory tree as somewhere Desk should watch for a given kind of content (real
+  widgets, Installed Jobs, schema files, ...), not limited to one fixed location or to the
+  project root. The registered list would live in the project's `.desk` file (per-project,
+  versioned with the rest of the Desk configuration) and be introspectable, so "what directories
+  does this project declare for widgets?" is a live, queryable fact instead of a doc an agent
+  must trust. To work out: the set of `kind`s, whether the conventional directories remain as
+  defaults, how overlapping/duplicate declarations and id collisions across directories resolve,
+  and how this interacts with `discover_project_widgets` (TODO `99eb1bc`).

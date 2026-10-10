@@ -12446,3 +12446,15 @@ b9c7828. COMPLETED: Teach the visual-debugging pattern for widget geometry bugs 
    [planned: doc-visual-debugging-widget-geometry.md (COMPLETED)]
 
    COMPLETED 2026-10-09: new `_CUSTOM_WIDGETS_DOC` section; `verify_tempui_visual_debugging_doc.py` (10 checks).
+
+a34df1a. Fix stale/misleading project-widgets wording in the generated tempui docs
+   (`src/desk/temp_ui.py`, around the "Authoring from real source" section and the "never Python"
+   callout): say plainly that a project's own real widgets live in `desk_widgets/<name>/` at the
+   project root, and that a top-level `widgets/` directory refers to Desk's own repo only. From
+   `../FEEDBACK/FEEDBACK-DESK-project-widgets-directory-confusion-2026-09-19-1734.md`. Wording
+   change to tempui guidance, so mint a changelog tag + entry.
+
+42de4de. Make `desk.widgets.open` with an unresolvable widget id fail loudly: first check what the
+   caller actually gets back today (the feedback never observed it), and if it is an empty/absent
+   success rather than an error, return a real, visible error. From
+   `../FEEDBACK/FEEDBACK-DESK-project-widgets-directory-confusion-2026-09-19-1734.md`.
