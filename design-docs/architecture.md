@@ -1238,7 +1238,7 @@ into each Chromium Widget's page via a `QWebEngineScript` at
 | `desk.self.getLocalStorage()` / `setLocalStorage(data)` | Persist/restore this *instance's* own state across a Desk reload (TODO `5734529`) | none |
 
 A widget ported from an existing project (e.g. `widgets/hex_flower`,
-see `DESK_FEEDBACK-2026-07-13T012144.md`/TODO `4ab5875`) very likely
+see `investigations/hex_flower_blank_page.md`/TODO `4ab5875`) very likely
 already has its own persistence mechanism (custom events, a global
 variable, `localStorage`, whatever the original project used) — none
 of that survives a Desk reload here, and porting the widget does not

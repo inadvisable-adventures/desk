@@ -424,7 +424,7 @@ This file captures thoughts and TODO items that arise during work on other thing
   blank-page investigation)**
 
   A cluster of related findings/suggestions from
-  `DESK_FEEDBACK-2026-07-13T012144.md` (TODO `4ab5875`, investigating
+  `investigations/hex_flower_blank_page.md` (TODO `4ab5875`, investigating
   `widgets/hex_flower`'s blank page). The root-cause fix (a same-origin
   cookie, `TokenAuthMiddleware`/`_token_from_scope` in
   `src/desk/server/app.py`) plus per-instance `QWebEngineProfile`
@@ -564,7 +564,7 @@ This file captures thoughts and TODO items that arise during work on other thing
       `hex_flower` failure mode**, and won't catch the same *class* of
       failure for any future widget with an unrelated network-level
       problem: confirmed directly in the original investigation
-      (`DESK_FEEDBACK-2026-07-13T012144.md:52-55`) that "the browser's
+      (`investigations/hex_flower_blank_page.md` ("Diagnosis" section)) that "the browser's
       own module loader reports failed sub-resource fetches to the
       network layer, not to console, and nothing in Desk surfaces
       network-level failures back to the widget or the user." A 401
@@ -719,7 +719,7 @@ This file captures thoughts and TODO items that arise during work on other thing
 
   Widget(s) porting/supporting `hexsheet`'s own tools. Connects to
   `widgets/hex_flower`'s own investigation (TODO `4ab5875`,
-  `DESK_FEEDBACK-2026-07-13T012144.md`) -- an earlier, incomplete
+  `investigations/hex_flower_blank_page.md`) -- an earlier, incomplete
   attempt at part of this. Follow-on: once built, generalize the tools
   to also support ordinary tables, not just hex layouts.
 

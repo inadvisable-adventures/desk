@@ -10941,7 +10941,7 @@ feff1ec. COMPLETED: Review and discuss all of the new FEEDBACK items (feedback
    this item is just the reminder to have that discussion.
 
    COMPLETED: Reviewed with the user, one item or related group at a
-   time. Scope: the in-repo `DESK_FEEDBACK-2026-07-13T012144.md` plus
+   time. Scope: the in-repo `investigations/hex_flower_blank_page.md` plus
    the 24 top-level `../FEEDBACK/FEEDBACK-DESK-*.md` files no
    `TODO.md`/`PARKINGLOT.md` entry cited yet. Outcomes:
    - Already handled, archived to `../FEEDBACK/implemented/`:
@@ -10950,7 +10950,7 @@ feff1ec. COMPLETED: Review and discuss all of the new FEEDBACK items (feedback
      missing-source-directory commit `e518a47`),
      webengineprofile-teardown-segfault-on-quit (commit `5056e00`,
      confirmed with the user).
-   - `DESK_FEEDBACK-2026-07-13T012144.md` (hex_flower): already fully
+   - `investigations/hex_flower_blank_page.md` (hex_flower): already fully
      dispositioned -- cookie fix TODO `a5f66cc`, persistence guidance
      TODO `411d0e0`, the remaining suggestions parked in
      `PARKINGLOT.md`. Nothing new filed.
@@ -11355,7 +11355,7 @@ a5f66cc. COMPLETED: Fix `kind: "html"` widgets' sub-resource requests (`<script
    per-launch auth token, which silently 401s and aborts the
    module/resource graph with no console output -- the root cause
    found investigating `widgets/hex_flower`'s blank page (TODO
-   `4ab5875`, `DESK_FEEDBACK-2026-07-13T012144.md`) and independently
+   `4ab5875`, `investigations/hex_flower_blank_page.md`) and independently
    cited by `../FEEDBACK/FEEDBACK-DESK-widget-extraction-communication-gaps-2026-08-03-1634.md`
    as the top blocker for splitting any multi-component app into
    widgets. Moved out of its `PARKINGLOT.md` cluster (via TODO
