@@ -4,22 +4,69 @@ This file captures thoughts and TODO items that arise during work on other thing
 
 ## Items
 
-- **Synthesize pointer/keyboard events against a placed widget (agent-driven interaction)**
+- **Agent-synthesized input events, scoped to a user-approved widget instance**
 
   From `../FEEDBACK/FEEDBACK-DESK-visual-debugging-techniques-for-widget-geometry-bugs-2026-10-09-1606.md`
-  (TODO `b9c7828`): there is no documented way for an agent to *synthesize*
-  a pointer/keyboard event against a placed widget instance -- only to
-  observe one via screenshot after a human produces it. The visual
-  debugging loop therefore still needs the user to move the mouse before
-  every screenshot is informative. A `deskproc`-style
-  `synthesize_pointer_event(instance_id, ...)` (or similar, scoped the same
-  no-sandboxing way `deskproc.screenshot_widget` is) would let an agent
-  drive the interaction and observe the result with no human in the loop.
-  Needs design: `kind: "html"` (inject into the page) versus `kind:
-  "python"` (post Qt events), coordinate space (widget-local versus
-  scene), and keyboard. Once resolved, `b9c7828`'s doc line saying no such
-  tool exists needs updating, and the feedback file can move to
-  `../FEEDBACK/implemented/`.
+  (TODO `b9c7828`). The feedback's request: there is no documented way
+  for an agent to *synthesize* a pointer/keyboard event against a placed
+  widget instance -- only to observe one via screenshot after a human
+  produces it. The visual-debugging loop therefore still needs the user
+  to move the mouse before every screenshot is informative. It suggested
+  a `deskproc`-style `synthesize_pointer_event(instance_id, ...)` (scoped
+  the way `deskproc.screenshot_widget` is) so an agent can drive the
+  interaction *and* observe the result with no human in the loop.
+
+  **Safety constraint (decided with the user, overrides the feedback's
+  "no-sandboxing" framing):** letting an agent click in Desk in general
+  is unacceptable. Claude's own permission and question prompts are
+  widgets on the canvas, so general input injection would let an agent
+  approve its own permission requests. Instead, synthetic events are
+  scoped to particular widget instances, and each grant needs the user's
+  explicit permission **per agent, per widget instance, per Desk
+  session**. The grant is held in memory only: never written to disk, not
+  in the `.desk` file, and gone when the session ends. (Same
+  live-confirmation family as the `introspect` capability's per-request
+  confirmation, but remembered for the session rather than asked every
+  call, and keyed on the agent as well as the instance.) Calls without a
+  live grant are refused with an error that says how to get one.
+
+  Design notes from the analysis so far (none decided beyond the above):
+  - **Coordinates:** widget-local, matching `desk_screenshot_widget`
+    (`frame.grab()` is independent of canvas zoom), so an agent can read
+    pixel (x, y) off a screenshot and use it directly. Say so in the
+    tool docs, including that `max_width` downsampling changes the
+    screenshot's scale but not the coordinate space.
+  - **Delivery:** prefer real Qt events through the canvas (post a
+    `QMouseEvent` to the `QGraphicsView` viewport at the position the
+    widget-local point maps to), not JS `dispatchEvent` (untrusted,
+    skips real hit-testing) and not straight to the widget. The bug that
+    prompted the feedback varied with Desk's own canvas zoom, so only the
+    through-canvas path would have reproduced it. Cost: the widget must
+    be on screen and unoccluded (the agent calls `desk_reveal_widget`
+    first); otherwise a clear error. A direct-to-widget mode (works
+    offscreen, skips the canvas-zoom layer) could come later.
+  - **Scope of a first version:** pointer (move, press/release, click,
+    double-click, wheel, drag) and keyboard (key, text) in one tool taking
+    an `events` array, so hover-then-click and drags are one call.
+  - **One-call loop:** an optional `screenshot_path`/`max_width` on the
+    same call, waiting for Chromium to repaint before capturing.
+  - **Surface:** an MCP tool first (the agent-in-a-session case); a
+    `deskproc` form only if wanted.
+  - **Never grantable:** the Claude (`claude_desk`) widget and any
+    permission/question prompt widget -- an instance an agent could use
+    to approve its own requests -- regardless of user grant. Native
+    dialogs (`QMessageBox`) are separate windows that widget-targeted
+    events can't reach anyway.
+
+  Open design questions: how the grant prompt is shown and how an
+  "agent" is identified for the per-agent key (session id?); revoke
+  affordance (a list of live grants, per-grant revoke); whether a grant
+  expires on its own (idle timeout) or only at session end; how
+  `kind: "html"` and `kind: "python"` widgets differ in event delivery.
+  Once resolved, `b9c7828`'s doc line saying no such tool exists (item 4
+  of "Debugging a widget's own rendering/geometry visually" in
+  `tempui-custom-widgets.md`) needs updating, with a tempui changelog
+  entry, and the feedback file can move to `../FEEDBACK/implemented/`.
 
 - **Subprocess-isolated `kind: "python"` transforms with their own
   project-scoped dependencies**
