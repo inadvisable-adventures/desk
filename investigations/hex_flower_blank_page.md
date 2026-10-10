@@ -1,11 +1,43 @@
-# Desk feedback: widgets/hex_flower renders a blank page
+# Investigation: widgets/hex_flower renders a blank page
 
 Written per TODO `4ab5875`, in response to a report that
 `widgets/hex_flower` (a port of `../../claude-projects/hexsheet`'s
 hex-flower sheet item, built by another Claude instance running inside
 a Desk) comes up blank when the Desk is actually run. This is an
 investigation + feedback document only -- no source was changed as
-part of this item, including `widgets/hex_flower` itself.
+part of this item, including `widgets/hex_flower` itself. (It was
+originally a root-level `DESK_FEEDBACK-2026-07-13T012144.md`; converted
+to an investigation once most of it had been acted on.)
+
+## Status of the findings and suggestions (checked 2026-10-09)
+
+Mostly, but not entirely, implemented. The Diagnosis and the
+suggestions below are preserved as originally written.
+
+Done:
+- **Root cause** (sub-resource requests lose the auth token): fixed by
+  TODO `a5f66cc` -- a same-origin cookie in `TokenAuthMiddleware`
+  (`src/desk/server/app.py`), verified end to end by
+  `tests/verify/verify_kind_html_auth_token_and_profile_isolation.py`.
+- **(a), `architecture.md` doesn't mention the token**: now documents
+  the query-param/header/cookie credentials and why the cookie is
+  needed (`design-docs/architecture.md`, `kind: "html"` section).
+- **Persistence re-wiring for ported widgets**: TODO `411d0e0`
+  (`_CUSTOM_WIDGETS_DOC` in `src/desk/temp_ui.py`, plus the Bridge API
+  section of `architecture.md`).
+
+Not done (all still tracked in `PARKINGLOT.md`, "`kind: "html"` widget
+robustness and docs"):
+- A visible failure signal for `kind: "html"` widgets. Console output
+  is now captured (`get_console_log`, the `[ERROR]` indicator), but a
+  failed sub-resource fetch still produces no console message, so this
+  failure class remains silent.
+- Reconsidering `DefineWidget`'s single-inlined-file requirement.
+- A known-good minimal multi-file `kind: "html"` widget template.
+- A single doc of what does and doesn't work for a from-scratch
+  `kind: "html"` widget, and a "how to debug a blank widget" note.
+
+Also note `widgets/hex_flower` no longer exists in the tree.
 
 ## Diagnosis
 

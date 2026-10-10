@@ -1,4 +1,4 @@
-# Investigate widgets/hex_flower's blank page, write a DESK_FEEDBACK doc (COMPLETED)
+# Investigate widgets/hex_flower's blank page, write a feedback investigation (COMPLETED)
 
 TODO `4ab5875`.
 
@@ -9,7 +9,7 @@ built, porting `../../claude-projects/hexsheet`'s hex-flower sheet
 item -- TypeScript compiled via `tsc` to `dist/*.js`, plain CSS files,
 loaded by `index.html` via ordinary relative-path `<script src>`/
 `<link href>` tags) renders as a blank page. Deliverable requested:
-investigate the root cause and write `DESK_FEEDBACK-<timestamp>.md`
+investigate the root cause and write a feedback document
 with (a) documentation suggestions and (b) tempui-widget-feature
 improvement suggestions -- not a code fix to `hex_flower` or to Desk
 itself, which is deliberately out of scope for this item (see the doc
@@ -76,7 +76,7 @@ second, independent finding worth feeding back.
 
 ## Deliverable
 
-`DESK_FEEDBACK-2026-07-13T012144.md` (project root, alongside
+`investigations/hex_flower_blank_page.md` (originally project root as `DESK_FEEDBACK-2026-07-13T012144.md`, alongside
 `TODO.md`/`PARKINGLOT.md`/`LEARNINGS.md`) -- the diagnosis above,
 plus organized (a) documentation and (b) tempui-widget-feature
 improvement suggestions, the most significant being: fix the
@@ -96,7 +96,7 @@ one document just to sidestep this constraint.
 
 ## Affected files
 
-- `DESK_FEEDBACK-2026-07-13T012144.md` (new, project root) -- the
+- `investigations/hex_flower_blank_page.md` (new; originally `DESK_FEEDBACK-2026-07-13T012144.md` at the project root) -- the
   actual deliverable.
 
 No source code changed -- deliberately out of scope for this item

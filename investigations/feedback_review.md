@@ -22,7 +22,7 @@ items below).
 
 **First pass — read in full:**
 
-- `DESK_FEEDBACK-2026-07-13T012144.md` (this repo's own root, not
+- `investigations/hex_flower_blank_page.md` (originally this repo's own root as `investigations/hex_flower_blank_page.md`; not
   `../FEEDBACK/` — an older, differently-named convention: an
   investigation+feedback doc Desk itself produced about its own
   `widgets/hex_flower`)
@@ -67,7 +67,7 @@ concerns are already closed.
 ## First-pass discussion (recorded as given to the user)
 
 I read through all the current feedback: the one local
-`DESK_FEEDBACK-2026-07-13T012144.md` in this repo, and the ten
+`investigations/hex_flower_blank_page.md` in this repo, and the ten
 not-yet-`implemented/` `FEEDBACK-DESK-*.md` docs in `../FEEDBACK/`
 (there's also one `FEEDBACK-CLAUDECODE-*` doc, but it's about Claude
 Code tooling itself, not Desk — out of scope here unless the user

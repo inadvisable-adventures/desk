@@ -1,6 +1,6 @@
 # Document that porting a widget requires re-wiring its persistence to the Bridge API (COMPLETED)
 
-TODO `411d0e0`, from a `DESK_FEEDBACK-2026-07-13T012144.md`
+TODO `411d0e0`, from a `investigations/hex_flower_blank_page.md`
 (TODO `4ab5875`) tempui-widget-feature suggestion.
 
 ## Summary
