@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 import desk.shell.widget_frame  # noqa: E402  (imported before QApplication -- WebEngine ordering)
 import desk.shell.canvas  # noqa: E402
@@ -220,6 +220,11 @@ _FakeWindow._on_widget_stale_clicked = DeskWindow._on_widget_stale_clicked
 _FakeWindow._reload_stale_frame = DeskWindow._reload_stale_frame  # TODO 53779f4: shared reload helper
 _FakeWindow._on_promoted_widget_source_changed = DeskWindow._on_promoted_widget_source_changed
 _FakeWindow._on_promoted_widget_stale_clicked = DeskWindow._on_promoted_widget_stale_clicked
+_FakeWindow._rebuild_promoted_widget = DeskWindow._rebuild_promoted_widget  # TODO 8bbc484
+_FakeWindow._sync_definition_from_manifest = DeskWindow._sync_definition_from_manifest
+_FakeWindow._confirm_added_capabilities = DeskWindow._confirm_added_capabilities
+_FakeWindow._notify_widget_manifest_synced = DeskWindow._notify_widget_manifest_synced
+_FakeWindow._show_info_popup = DeskWindow._show_info_popup
 
 
 def _promoted_definition(keyword="KanbanBoard", label="Kanban Board", source_path="desk_widgets/KanbanBoard"):
