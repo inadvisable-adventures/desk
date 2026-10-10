@@ -90,8 +90,9 @@ This file captures thoughts and TODO items that arise during work on other thing
   from two other angles in
   `../FEEDBACK/FEEDBACK-DESK-batch-ingestion-job-concept-2026-08-03-1634.md`/
   `../FEEDBACK/FEEDBACK-DESK-external-service-dependency-concept-2026-08-03-1634.md`
-  (not yet itself moved into `TODO.md`/`PARKINGLOT.md` -- see
-  `investigations/feedback_review.md`) -- worth designing together
+  (the external-service one is now parked as the non-desk service dependency
+  item in this file; the batch-ingestion one is not yet moved into
+  `TODO.md`/`PARKINGLOT.md` -- see `investigations/feedback_review.md`) -- worth designing together
   with those rather than in isolation, if/when this gets picked up.
 
 - **Browser widget's back/forward buttons can get stuck stale
@@ -1277,7 +1278,7 @@ This file captures thoughts and TODO items that arise during work on other thing
       conventional directories (`desk_widgets/`, `desk-installed-jobs/`, `desk-schemas/`,
       and so on) would become defaults rather than the only possibility. Not just the
       directories Desk already knows about: the same mechanism would cover
-      `./desk_non_desk/` (TODO `0de7685`).
+      `./desk_non_desk/` (see the parked non-desk service dependency item below).
   - **`.desk` does not contain the locations of specific widgets.** (Placed-widget
     state is the part to move out; see the next point.)
   - **View templates: a new Desk concept.** A view template can be stored in source
@@ -1295,3 +1296,101 @@ This file captures thoughts and TODO items that arise during work on other thing
   `99eb1bc`) and the shared-libraries work (TODO `9bed685`). This changes what agents
   need to know about project layout, so when it is worked it needs a dedicated doc and
   tempui changelog entry.
+
+
+- **Non-desk service dependency (NDS): a Desk concept for services Desk doesn't own**
+
+  **Note: this is trying to be a secure, generalized design for something Desk doesn't
+  really need at that level.** The motivating case is one project's local Postgres plus a
+  Node server (see the parked FEEDBACK file). Much of the design below (an approval state
+  per service, a standard bridge contract, isolation from Desk, a manager widget) is
+  generality and security machinery that outweighs the problem at hand. Before picking this
+  up, look for a much smaller version: for example only docs that say how a widget, job or
+  hmsvc should reach a non-Desk service, or one hmsvc per service. Parked at the user's
+  request (2026-10-10); this item replaces TODOs `0de7685` and `59f9dae`.
+
+  Origin: `../FEEDBACK/parkinglot/FEEDBACK-DESK-external-service-dependency-concept-2026-08-03-1634.md`
+  (moved there when this was parked). hmsvc now covers part of that request (Desk-owned
+  Python services); hmsvc health-check and auto-restart stay as TODOs `0486102` and `c48aba6`.
+  Related items kept elsewhere: the `.desk` vs `.desk_temp/` item above (the single NDS
+  source-directory field would be part of `.desk` metadata), and the "managed external
+  subprocess" primitive in the Transforms-dependencies item near the top of this file, which
+  the batch-ingestion FEEDBACK also wants (`investigations/feedback_review.md`).
+
+  **Design as discussed (2026-10-10):**
+  - **`.desk` carries one NDS field: the NDS source directory.** Everything else lives in
+    each NDS's own `nds.json`, by analogy with `widget.json`. For now the directory is always
+    `desk_non_desk`, but it is a field rather than a hard-coded name so the `.desk`
+    redesign can move it. The MCP provides a way to request a directory for an NDS given a
+    label; Desk ensures the source directory exists and then the label subdirectory.
+  - **Runtime model.** Desk holds a map keyed by label with one NDS object for every
+    subdirectory of the source directory. Each object has `ensure()` and `shutdown()`, which
+    call whichever corresponding scripts `nds.json` references. `ensure()` returns the
+    *bridge*, an object with no type guarantees; `nds.json` points to a Python file with a
+    function named `bridge`. "Ensure" rather than "start" because Desk doesn't own what an
+    NDS represents (a Postgres daemon, a cloud provider, possibly Claude itself someday).
+  - **No status concept in Desk.** A bridge may offer its own, but Desk can't rely on one.
+  - **Principles agreed:** (A) an NDS represents something Desk neither owns nor controls;
+    (B) not every non-desk service needs one, since a widget can use a web service directly,
+    and an NDS earns its place when Desk, jobs and hmsvc services would otherwise each
+    re-write the same access code (several widgets on different Postgres databases should
+    each get an hmsvc middle-tier, and none of those should re-implement "access the local
+    Postgres"); (C) an NDS may be isolated from Desk but needn't be, must add no
+    dependencies to Desk itself, and may own a process it must shut down cleanly on Desk
+    unload (so Desk calls a shutdown API then); for Postgres that means a shell script that
+    ensures the daemon is running and starts the owned process (Python in a custom venv, say),
+    in-Desk-process bridge code that talks to the owned process by whatever IPC fits, and a
+    shutdown handler; Desk requires only the in-process bridge, with standard
+    placement and naming for the startup/shutdown scripts and the rest of the code;
+    (D) design with upcoming rearchitectures in mind but don't write code to get there;
+    (E) NDS implementations own themselves but should follow best practice, e.g. no secrets
+    in code.
+  - **Trust model: deliberately not built.** A per-NDS approval state (`Unknown | Denied |
+    Enabled`, with `ensure()` rejecting while `Unknown` and queueing a notification) was
+    considered and dropped: it would be obnoxious to the user, and its security posture runs
+    against how Desk works today (project code such as widgets and hmsvc services is already
+    trusted). An NDS would be trusted like other project code. A **zero-trust approach** is
+    a possible future, but a very different way of thinking about Desk as a whole, not a
+    feature to bolt onto NDS.
+  - **Still open:** how a separate process (a job or an hmsvc service) reaches an
+    in-process bridge; when `ensure()` is called (on project load, lazily on first use, or
+    manually); which fields `nds.json` has beyond the bridge and script references; what
+    triggers `shutdown()` (Desk quit, perhaps a desk switch) and what happens when it hangs;
+    the manager widget's scope; and whether the MCP offers anything beyond requesting a
+    directory. From the FEEDBACK file, not covered at all: a visible "starting dependency..."
+    state in the widget's own chrome, and project-level shared service definitions.
+  - **Rule kept from the FEEDBACK discussion:** no `depends_on`-style field in widget
+    manifests or `.desk` files for hmsvc (a widget finds an hmsvc by its localhost URL and
+    port from Desk's shared state); TODO `ed25783` confirms none exists.
+
+  **Folded-in TODO `0de7685`** (the earlier, pre-discussion text, superseded by the design
+  above where they differ; it assumed start/health-check/stop scripts, instances stored in
+  `.desk`, per-agent registration through the MCP and a manager widget):
+
+  0de7685. Non-desk service dependency: a new Desk concept for an independent daemon a project
+     relies on that Desk neither starts nor owns (the motivating case is a local Postgres cluster; see
+     `../FEEDBACK/FEEDBACK-DESK-external-service-dependency-concept-2026-08-03-1634.md`). Distinct from
+     hmsvc, which supervises Python services Desk itself launches. Prioritized on request. Parts:
+     (a) The concept itself: stored in the `.desk` file, with individual instances registerable by
+     agents through the MCP (an MCP tool to add/list/update/remove a registration).
+     (b) A widget to manage these dependencies: list them, show start/health/stop state, and run the
+     available actions.
+     (c) Each instance may have optional associated Python scripts, kept in a subdirectory of an
+     ensured `./desk_non_desk/` directory, to start, health-check and stop it (Postgres would have no
+     stop option, for example), plus a Python bridge so Desk, `kind: "python"` widgets, jobs and
+     hmsvcs can reach it (for Postgres, whatever light wrapper is needed around the relevant Python
+     dependencies). Every script is optional.
+     (d) Guidance: a non-Python (html) widget that wants one of these should go through an hmsvc
+     middle-tier built for it, rather than reaching it directly.
+     Needs a design pass first (registration schema, script contract, how the bridge is exposed,
+     capability and trust model for running project scripts), and a dedicated agent-facing doc plus
+     tempui changelog tag/entry per `development-process.md`. Related: TODO `59f9dae` (docs),
+     `0486102`/`c48aba6` (hmsvc health-check / restart).
+
+  **Folded-in TODO `59f9dae`** (docs; depends on this feature existing):
+
+  59f9dae. Update the agent-facing docs (tempui porting and hmsvc docs, plus the "Known gaps" text in
+     the porting doc about external service dependencies) to say that an agent that wants to write a
+     Node HTTP service should build and manage it as a non-desk service dependency and, as needed, an
+     hmsvc middle-tier. Depends on TODO `0de7685`. Wording/guidance change to tempui docs, so mint a
+     changelog tag + entry.

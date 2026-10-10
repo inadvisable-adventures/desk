@@ -120,6 +120,9 @@ Grouped by theme, with the connections found between them:
   they want the same managed-subprocess-lifecycle primitive, just
   configured differently (finite vs. indefinite). Worth designing
   once.
+  (Update 2026-10-10: the external-service half is parked as the
+  "Non-desk service dependency (NDS)" item in `PARKINGLOT.md`, and its
+  FEEDBACK file moved to `../FEEDBACK/parkinglot/`.)
 
 **Cross-widget communication / porting a real multi-component app —
 the biggest, most speculative cluster**
