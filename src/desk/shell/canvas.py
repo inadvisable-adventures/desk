@@ -81,6 +81,9 @@ _BUTTON_KINDS = {
 # Max total mouse displacement (view-space px) between a titlebar press
 # and its release still counted as a click (TODO a1c701d), not a drag.
 TITLEBAR_CLICK_THRESHOLD = 4
+# TODO 19052bc: how long without a scale-changing event before a continuous zoom
+# (wheel/pinch/slider) counts as over and frames go back to live content.
+ZOOM_GESTURE_END_MS = 150
 
 # A large, fixed bound for the "infinite" canvas. Without this,
 # QGraphicsView derives its scene rect from the current items' bounding
@@ -140,6 +143,15 @@ class WorkspaceView(QGraphicsView):
         # mouseReleaseEvent below).
         self._button_press: tuple[WidgetFrame, str] | None = None
         self._forwarding_wheel = False
+        # TODO 19052bc: a continuous zoom (wheel/pinch/slider) is "in flight"
+        # until no scale-changing event has arrived for ZOOM_GESTURE_END_MS
+        # (there is no explicit end signal); frames show cached snapshots
+        # meanwhile.
+        self._zoom_gesture_active = False
+        self._zoom_gesture_timer = QTimer(self)
+        self._zoom_gesture_timer.setSingleShot(True)
+        self._zoom_gesture_timer.setInterval(ZOOM_GESTURE_END_MS)
+        self._zoom_gesture_timer.timeout.connect(self._end_zoom_gesture)
         # A titlebar press is always tracked here (TODO a1c701d),
         # separately from _drag_frame -- so a locked widget's titlebar
         # (TODO 8d05920, which skips setting _drag_frame) still supports
@@ -162,7 +174,7 @@ class WorkspaceView(QGraphicsView):
         self.zoom_control = ZoomControl(self.viewport())
         self.zoom_control.fit_requested.connect(self.zoom_to_fit)
         self.zoom_control.reset_requested.connect(self.reset_zoom)
-        self.zoom_control.zoom_changed.connect(self._apply_zoom_centered)
+        self.zoom_control.zoom_changed.connect(self._on_zoom_slider)
         self._position_zoom_control()
 
         self.desk_picker = DeskPicker(self.viewport())
@@ -364,6 +376,7 @@ class WorkspaceView(QGraphicsView):
         """Removes every placed widget from the canvas (used when switching
         to a different Desk — see desk.shell.window.DeskWindow)."""
         self.hud.clear()
+        self._end_zoom_gesture()
         for frame in self._frames:
             proxy = frame.graphicsProxyWidget()
             if proxy is not None:
@@ -1028,12 +1041,40 @@ class WorkspaceView(QGraphicsView):
 
     def _apply_zoom(self, factor: float) -> None:
         """Wheel/pinch: relative factor, anchored under the cursor."""
+        self._begin_zoom_gesture()
         self._rescale(self._scale * factor)
 
-    def _apply_zoom_centered(self, target_scale: float) -> None:
+    def _begin_zoom_gesture(self) -> None:
+        """TODO 19052bc: swaps every eligible frame's content for a cached
+        snapshot on the first event of a continuous zoom, and (re)arms the
+        debounce that restores the live content once events stop. The frame
+        holding keyboard focus stays live (hiding its content would drop
+        focus and flicker its titlebar); WidgetFrame.begin_zoom_snapshot has
+        the other exclusions."""
+        if not self._zoom_gesture_active:
+            self._zoom_gesture_active = True
+            focus_item = self.scene().focusItem()
+            for frame in self._frames:
+                if frame.graphicsProxyWidget() is not focus_item:
+                    frame.begin_zoom_snapshot()
+        self._zoom_gesture_timer.start()
+
+    def _end_zoom_gesture(self) -> None:
+        self._zoom_gesture_active = False
+        self._zoom_gesture_timer.stop()
+        for frame in self._frames:
+            frame.end_zoom_snapshot()
+
+    def _on_zoom_slider(self, target_scale: float) -> None:
+        self._apply_zoom_centered(target_scale, gesture=True)
+
+    def _apply_zoom_centered(self, target_scale: float, gesture: bool = False) -> None:
         """HUD-triggered (slider/reset): absolute target, anchored at the
         view center rather than wherever the cursor happens to be over the
-        HUD itself."""
+        HUD itself. `gesture`: a continuous slider drag (TODO 19052bc), as
+        opposed to the discrete reset, which is one repaint either way."""
+        if gesture:
+            self._begin_zoom_gesture()
         previous_anchor = self.transformationAnchor()
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
         try:

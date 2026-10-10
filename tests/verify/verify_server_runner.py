@@ -5,7 +5,7 @@ import urllib.request
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-sys.path.insert(0, "/Users/mphair/inadvisable-adventures/desk/src")
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from desk.server.runner import start_server  # noqa: E402
 from desk.widgets import WidgetInfo  # noqa: E402

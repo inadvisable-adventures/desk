@@ -1,7 +1,8 @@
 import uuid
 
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QFont, QFontMetrics
+from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QFont, QFontMetrics, QPainter, QPixmap
+from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -602,6 +603,31 @@ class _ResizeHandle(QWidget):
             self.setFixedHeight(thickness)
 
 
+class _SnapshotPage(QWidget):
+    """TODO 19052bc's transient zoom page: paints one cached pixmap of the
+    frame's content, stretched over the page. Reports a 1x1 size hint so,
+    like the greek page, it never raises the frame's derived minimum size
+    (TODO 9585a5a)."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.pixmap: QPixmap | None = None
+
+    def sizeHint(self) -> QSize:
+        return QSize(1, 1)
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(1, 1)
+
+    def paintEvent(self, event) -> None:
+        if self.pixmap is None:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.drawPixmap(self.rect(), self.pixmap)
+        painter.end()
+
+
 class WidgetFrame(QWidget):
     """Wraps any widget content (a PythonWidgetHost or ChromiumWidget) with
     the common Desk widget chrome: a draggable titlebar and left/right/
@@ -701,7 +727,15 @@ class WidgetFrame(QWidget):
         body.setSpacing(0)
         self._left_handle = _ResizeHandle("left")
         body.addWidget(self._left_handle)
-        body.addWidget(content, stretch=1)
+        # TODO 19052bc: the content sits in its own two-page stack so a zoom
+        # gesture can swap just it (not the counter-scaled chrome) for a
+        # cached snapshot -- see begin_zoom_snapshot.
+        self._content_stack = QStackedWidget()
+        self._content_stack.addWidget(content)
+        self._snapshot_page = _SnapshotPage()
+        self._content_stack.addWidget(self._snapshot_page)
+        self.zoom_snapshotted = False
+        body.addWidget(self._content_stack, stretch=1)
         self._right_handle = _ResizeHandle("right")
         body.addWidget(self._right_handle)
         normal_layout.addLayout(body, stretch=1)
@@ -922,6 +956,37 @@ class WidgetFrame(QWidget):
     def _apply_content_page(self) -> None:
         greek = self._chrome_state == "greeked" and not getattr(self, "hud_pinned", False)
         self._stack.setCurrentIndex(GREEK_PAGE_INDEX if greek else NORMAL_PAGE_INDEX)
+
+    def begin_zoom_snapshot(self) -> bool:
+        """TODO 19052bc: while a zoom gesture is in flight, shows one cached
+        pixmap of the content instead of re-laying-out and repainting the
+        live widget on every intermediate scale step. Returns whether it
+        did. Never for: an already-snapshotted frame, a greeked one (already
+        the cheapest page), a HUD-pinned one (the overlay renders its live
+        content and a stale one would be wrong), or one showing a web view
+        (its grab() is not reliably the real page, so it stays live)."""
+        if self.zoom_snapshotted or self._chrome_state == "greeked" or getattr(self, "hud_pinned", False):
+            return False
+        content = self.content
+        if content.width() < 1 or content.height() < 1 or not content.isVisible():
+            return False
+        if isinstance(content, QWebEngineView) or content.findChildren(QWebEngineView):
+            return False
+        pixmap = content.grab()
+        if pixmap.isNull():
+            return False
+        self._snapshot_page.pixmap = pixmap
+        self._content_stack.setCurrentIndex(1)
+        self.zoom_snapshotted = True
+        return True
+
+    def end_zoom_snapshot(self) -> None:
+        """Back to the live content, at the final scale -- one real repaint."""
+        if not self.zoom_snapshotted:
+            return
+        self.zoom_snapshotted = False
+        self._content_stack.setCurrentIndex(0)
+        self._snapshot_page.pixmap = None
 
     def set_hud_pinned(self, pinned: bool) -> None:
         self.hud_pinned = pinned

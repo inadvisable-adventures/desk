@@ -6,6 +6,20 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+19052bc. COMPLETED: Transient zoom-gesture snapshot (`../FEEDBACK/FEEDBACK-DESK-greek-widgets-during-zoom-performance-2026-10-09-1923.md`):
+   every scale step of a wheel/pinch/slider zoom re-lays-out and repaints every placed widget's
+   live content, though only the end state is read. While a continuous zoom is in flight each
+   frame shows one cached pixmap of its content, restored to live content (one real repaint) once
+   events stop (debounced). Excluded: HUD-pinned frames (per the feedback), already-greeked frames,
+   the keyboard-focused frame, and web-view frames (unreliable `grab()`). Must not reintroduce the
+   low-zoom regrow (`verify_widget_frame_low_zoom_size.py`).
+
+   [planned: zoom-gesture-snapshot.md (COMPLETED)]
+
+   COMPLETED 2026-10-09: `WidgetFrame._content_stack` + `begin/end_zoom_snapshot`,
+   `WorkspaceView._begin_zoom_gesture`, `verify_zoom_gesture_snapshot.py`, `widget-ux.md` section.
+   Headless-verified and not benchmarked.
+
 9ae13c0. COMPLETED: HUD render mode (first of three, from `../FEEDBACK/FEEDBACK-DESK-minimap-pan-attached-to-own-position-hud-render-mode-2026-10-09-1918.md`): a `kind: "python"`
    widget can pin a declared sub-region of itself fixed to the *viewport*, so a control that pans
    the canvas (the Minimap) no longer slides out from under its own pointer. Decided with the user:

@@ -439,6 +439,24 @@ over-wide/-tall content clips rather than moving the frame, and the real size
 floors are `WorkspaceView`'s own resize-drag clamps. See
 `tests/verify/verify_widget_frame_low_zoom_size.py`.
 
+**Transient zoom snapshot (TODO `19052bc`).** Greeking above is a permanent
+function of the settled on-screen size. A second, transient trigger covers
+the cost of the *gesture*: every scale step of a wheel/pinch/slider zoom
+re-laid-out and repainted every placed widget's live content though only the
+end state is read. `WorkspaceView._begin_zoom_gesture` (first event of
+`_apply_zoom`, or a slider drag) has each eligible frame show one cached
+`content.grab()` pixmap on the second page of the frame's own content
+stack (`WidgetFrame._content_stack` -- only the content swaps, the
+counter-scaled chrome keeps scaling); a debounce (`ZOOM_GESTURE_END_MS`, no
+explicit end signal exists) restores the live content once events stop, for
+exactly one real repaint at the final scale. Discrete zooms (reset, fit,
+restoring a saved view) are one repaint anyway and never snapshot. Excluded:
+the keyboard-focused frame (hiding its content would drop focus and flicker
+its titlebar), an already-greeked frame, a HUD-pinned frame (`desk.shell.hud`
+renders its live content), and any frame showing a `QWebEngineView` (its
+`grab()` isn't reliably the real page). The snapshot page reports a 1x1 size
+hint so, like the greek page, it never raises the frame's minimum size.
+
 Both thresholds are computed from the same fixed on-screen constants the
 counter-scaling itself targets (`CLOSE_BUTTON_SIZE`, `TITLEBAR_FONT_PT`,
 ...) — e.g. `_TempuiPromoteButton`'s target width is measured via
