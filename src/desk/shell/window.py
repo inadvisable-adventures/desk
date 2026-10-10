@@ -540,6 +540,7 @@ class DeskWindow(QMainWindow):
         )
         current_context.set_widget_opener(self.open_widget_content)
         current_context.set_centered_widget_opener(self.open_widget_content_centered)
+        current_context.set_hud_controller(self.view.hud)
         current_context.set_editor_or_scrap_opener(self.open_editor_or_scrap)
         current_context.set_popup_opener(self._popups_service.show_blocking)
         current_context.set_transform_runner_blocking(self.run_transform_blocking)
@@ -1174,6 +1175,19 @@ class DeskWindow(QMainWindow):
 
     def pan_canvas_to(self, x: float, y: float) -> None:
         self.view.centerOn(QPointF(x, y))
+
+    # -- HUD render mode (TODO 9ae13c0, desk.shell.hud) ---------------------
+
+    def get_hud_layout(self) -> dict:
+        """The viewport's size in pixels and every widget region pinned in
+        HUD mode at its fixed on-screen rect -- the HUD manager widget's
+        schematic."""
+        viewport = self.view.viewport()
+        return {"view": {"w": viewport.width(), "h": viewport.height()}, "overlays": self.view.hud.entries()}
+
+    def leave_hud(self, instance_id: str) -> bool:
+        """Returns a HUD-pinned widget to normal scene placement."""
+        return self.view.hud.leave_instance(instance_id)
 
     def _move_frames(self, positions: dict[str, tuple[float, float]]) -> None:
         for frame in self.view._frames:

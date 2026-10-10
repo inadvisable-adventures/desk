@@ -882,7 +882,26 @@ Desk Bridge API.
     restoring only widgets still present). It reaches `DeskWindow`'s
     `get_canvas_layout`/`pan_canvas_to`/`arrange_canvas`/
     `undo_canvas_arrangement` through `get_main_window()`, polls while visible
-    and refreshes on the overview event.
+    and refreshes on the overview event. Its map pins itself in HUD mode on
+    press (TODO `1ce5130`, below), so a drag-to-pan tracks 1:1.
+
+    **HUD render mode** (`desk.shell.hud`, TODO `9ae13c0`; `widgets/
+    hud_manager/`, TODO `93f79ca`) — a `kind: "python"` widget can pin a
+    declared sub-region of itself fixed to the viewport. It is a render/input
+    mode, not a widget kind: the widget stays in its scene frame (same
+    instance and state, never reparented) while a `HudOverlay` (a viewport
+    child, like the zoom control) paints a live ~50%-opacity copy of the
+    region and forwards mouse events to the real sub-widget. A widget declares
+    `hud_trigger()` (the region whose presses enter HUD mode, decided before
+    the gesture starts, so the first press is already routed to the overlay,
+    placed exactly where the region was) or calls `current_context.
+    get_hud_controller().enter(region)`. It stays pinned until returned (the
+    overlay's right-click "Return to canvas", `HudController.leave`, or the
+    HUD Manager widget's click-to-return schematic); runtime-only, not saved in
+    the `.desk` file. While pinned, the frame never swaps to its greek page (the
+    overlay renders that content live), and `WorkspaceView.scrollContentsBy`
+    re-asserts overlay positions (QWidget.scroll would otherwise drag them
+    along, TODO `82d66c0`). html widgets have no equivalent yet.
 
 34. **Recently Removed widget** (`widgets/recently_removed/`, TODO `454d718`) —
     removing a widget used to destroy its widget-local-storage for good. Both

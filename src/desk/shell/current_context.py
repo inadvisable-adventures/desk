@@ -126,7 +126,7 @@ once in a test; a hand-written fake only proves the caller matches the
 documentation."""
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from PyQt6.QtCore import QPoint
 from PyQt6.QtWidgets import QWidget
@@ -134,6 +134,9 @@ from PyQt6.QtWidgets import QWidget
 from desk.event_mediator import EventMediator
 from desk.hotreload import HotReloadBroker
 from desk.temp_ui import JobDefinition
+
+if TYPE_CHECKING:
+    from desk.shell.hud import HudController
 
 
 
@@ -156,6 +159,7 @@ class CenteredWidgetOpener(Protocol):
 _current_directory: Path | None = None
 _widget_opener: Callable[[str], QWidget | None] | None = None
 _centered_widget_opener: CenteredWidgetOpener | None = None
+_hud_controller: "HudController | None" = None
 _editor_or_scrap_opener: Callable[[Path], None] | None = None
 _git_diff_opener: Callable[[Path], None] | None = None
 _transform_runner_blocking: Callable[[str, str, dict | None], str] | None = None
@@ -240,6 +244,21 @@ def set_centered_widget_opener(opener: CenteredWidgetOpener) -> None:
 
 def get_centered_widget_opener() -> CenteredWidgetOpener | None:
     return _centered_widget_opener
+
+
+def set_hud_controller(controller: "HudController | None") -> None:
+    """HUD render mode (TODO 9ae13c0, desk.shell.hud): lets a `python`
+    widget pin a sub-region of itself fixed to the viewport --
+    `controller.enter(region, opacity=0.5)`, `controller.leave(widget)`,
+    `controller.is_pinned(widget)`. A widget that only wants presses in a
+    region to start it needs no hook: it declares a `hud_trigger()`
+    method returning that region."""
+    global _hud_controller
+    _hud_controller = controller
+
+
+def get_hud_controller() -> "HudController | None":
+    return _hud_controller
 
 
 def set_editor_or_scrap_opener(opener: Callable[[Path], None]) -> None:

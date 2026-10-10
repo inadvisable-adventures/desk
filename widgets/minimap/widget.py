@@ -148,6 +148,14 @@ class MinimapWidget(QWidget):
     def _window(self):
         return current_context.get_main_window()
 
+    def hud_trigger(self):
+        """TODO 1ce5130 (HUD render mode, desk.shell.hud): a press on the
+        map pins it fixed to the viewport, so a drag-to-pan tracks 1:1
+        instead of the map sliding away under the pointer as the canvas
+        (and this frame with it) pans. The buttons are deliberately not
+        part of it."""
+        return self._map
+
     def refresh(self) -> None:
         window = self._window()
         if window is None:

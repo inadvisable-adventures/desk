@@ -6,6 +6,40 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+9ae13c0. COMPLETED: HUD render mode (first of three, from `../FEEDBACK/FEEDBACK-DESK-minimap-pan-attached-to-own-position-hud-render-mode-2026-10-09-1918.md`): a `kind: "python"`
+   widget can pin a declared sub-region of itself fixed to the *viewport*, so a control that pans
+   the canvas (the Minimap) no longer slides out from under its own pointer. Decided with the user:
+   a ghost overlay (the widget stays in its scene frame, same instance and state, never reparented;
+   the shell paints a live copy of the declared sub-widget in a viewport-child overlay at ~50%
+   opacity with no titlebar, and forwards mouse events to the real sub-widget); the widget
+   pre-declares its HUD trigger region (`hud_trigger()`), so the very first press inside it enters
+   HUD mode with the overlay placed exactly where the region already is on screen; pinned HUD
+   widgets stay pinned until returned (decided: stay pinned, not auto-return on mouse-up); scope is
+   `kind: "python"` only (html/Bridge API left for a later TODO). Also a `current_context` hook for a
+   widget to enter/leave HUD programmatically, and a right-click "Return to canvas" on the overlay.
+   Runtime-only (not saved in the `.desk` file).
+
+   [planned: hud-render-mode.md (COMPLETED)]
+
+   COMPLETED 2026-10-09: `desk.shell.hud` (HudController/HudOverlay), canvas/frame/window/current_context wiring, `verify_hud_mode.py`; headless-verified only.
+
+1ce5130. COMPLETED: Minimap click/drag-to-pan uses HUD render mode (second of three, from `../FEEDBACK/FEEDBACK-DESK-minimap-pan-attached-to-own-position-hud-render-mode-2026-10-09-1918.md`): the
+   Minimap declares its map view as its HUD trigger, so pressing on it pins the map to the viewport
+   and the drag then tracks 1:1 while the canvas pans underneath. Depends on `9ae13c0`.
+
+   [planned: minimap-hud-pan.md (COMPLETED)]
+
+   COMPLETED 2026-10-09: Minimap declares `hud_trigger()` -> its map view.
+
+93f79ca. COMPLETED: HUD manager widget (third of three, from `../FEEDBACK/FEEDBACK-DESK-minimap-pan-attached-to-own-position-hud-render-mode-2026-10-09-1918.md`): a small built-in widget showing a schematic
+   of the viewport with a rectangle per HUD-pinned widget at its fixed on-screen position; clicking
+   one returns that widget to normal scene placement. The safety valve for `9ae13c0`: a pinned
+   widget no longer appears among the scene-placed widgets. Depends on `9ae13c0`.
+
+   [planned: hud-manager-widget.md (COMPLETED)]
+
+   COMPLETED 2026-10-09: `widgets/hud_manager/`.
+
 66aa766. COMPLETED: Fix the centered-opener hook mismatch behind the Claude (Desk) "Markdown View" /
    `[image]` crash: `current_context` documented `(widget_id, path)` but
    `DeskWindow.open_widget_content_centered` took `(widget_id, size, instance_id, path)`, so the

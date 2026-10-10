@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
 )
 
 from desk.shell.desk_picker import DeskPicker
+from desk.shell.hud import HudController
 from desk.shell.new_scratch_button import NewScratchButton
 from desk.shell.qt_utils import deferred
 from desk.shell.temp_ui_notifications import TempUiNotificationStack
@@ -169,6 +170,9 @@ class WorkspaceView(QGraphicsView):
 
         self.temp_ui_notifications = TempUiNotificationStack(self.viewport())
         self._position_temp_ui_notifications()
+
+        # TODO 9ae13c0: viewport-fixed overlays for widget regions pinned in HUD mode.
+        self.hud = HudController(self)
 
         self.new_scratch_button = NewScratchButton(self.viewport())
         self.new_scratch_button.clicked.connect(self.new_scratch_requested)
@@ -359,6 +363,7 @@ class WorkspaceView(QGraphicsView):
     def clear_widgets(self) -> None:
         """Removes every placed widget from the canvas (used when switching
         to a different Desk — see desk.shell.window.DeskWindow)."""
+        self.hud.clear()
         for frame in self._frames:
             proxy = frame.graphicsProxyWidget()
             if proxy is not None:
@@ -388,6 +393,7 @@ class WorkspaceView(QGraphicsView):
         widget depends on its destroyed signal actually firing to clean up
         its PTY/subprocess (see LEARNINGS.md), which needs a real
         deleteLater() in a running event loop."""
+        self.hud.leave(frame)
         proxy = frame.graphicsProxyWidget()
         if proxy is not None:
             self.scene().removeItem(proxy)
@@ -412,6 +418,7 @@ class WorkspaceView(QGraphicsView):
         self._position_desk_picker()
         self._position_temp_ui_notifications()
         self._position_new_scratch_button()
+        self.hud.reposition()
 
     def scrollContentsBy(self, dx: int, dy: int) -> None:
         """Panning (and, less obviously, zoom operations that re-center the
@@ -447,6 +454,8 @@ class WorkspaceView(QGraphicsView):
             self._position_temp_ui_notifications()
         if hasattr(self, "new_scratch_button"):
             self._position_new_scratch_button()
+        if hasattr(self, "hud"):
+            self.hud.reposition()
 
     def _position_new_scratch_button(self) -> None:
         """Same reasoning/shape as _position_desk_picker (bottom-left
@@ -550,6 +559,12 @@ class WorkspaceView(QGraphicsView):
                 event.accept()
                 return
             if self._frame_at(event.position()) is not None:
+                # TODO 9ae13c0: a press in a widget's declared HUD trigger
+                # region pins that region to the viewport and is routed to
+                # the HUD overlay from its very first event.
+                if self.hud.trigger_press(event.position(), event):
+                    event.accept()
+                    return
                 # TODO 3846190: the press landed inside some placed
                 # widget's own content (not chrome, not empty canvas).
                 # Qt's own ScrollHandDrag fallback (see __init__) only
@@ -577,6 +592,9 @@ class WorkspaceView(QGraphicsView):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
+        if self.hud.forward_view_event(event):
+            event.accept()
+            return
         if self._drag_frame is not None:
             current = event.position()
             dx = (current.x() - self._drag_last_pos.x()) / self._scale
@@ -590,6 +608,9 @@ class WorkspaceView(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
+        if self.hud.forward_view_event(event):
+            event.accept()
+            return
         if self._button_press is not None:
             frame, kind = self._button_press
             self._button_press = None

@@ -745,6 +745,12 @@ class WidgetFrame(QWidget):
         self.has_error: bool = False
         self._view_scale = 1.0
         self._chrome_state = "full"
+        # TODO 9ae13c0: while a region of this widget is pinned in HUD mode
+        # (desk.shell.hud) its content must stay on the normal page even
+        # when zoomed out far enough to greek -- the HUD overlay renders
+        # that live content, and a hidden page would freeze it (and stop
+        # a widget's visible-only timers).
+        self.hud_pinned = False
         self._apply_border_scale(1.0)
 
     def _apply_border_scale(self, view_scale: float) -> None:
@@ -911,7 +917,15 @@ class WidgetFrame(QWidget):
             return
         self._chrome_state = new_state
         self._titlebar.set_buttons_hidden(new_state != "full")
-        self._stack.setCurrentIndex(GREEK_PAGE_INDEX if new_state == "greeked" else NORMAL_PAGE_INDEX)
+        self._apply_content_page()
+
+    def _apply_content_page(self) -> None:
+        greek = self._chrome_state == "greeked" and not getattr(self, "hud_pinned", False)
+        self._stack.setCurrentIndex(GREEK_PAGE_INDEX if greek else NORMAL_PAGE_INDEX)
+
+    def set_hud_pinned(self, pinned: bool) -> None:
+        self.hud_pinned = pinned
+        self._apply_content_page()
 
     def remember_focused_widget(self, widget: QWidget) -> None:
         """Records the most recently focused descendant inside

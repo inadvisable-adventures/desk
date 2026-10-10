@@ -41,7 +41,9 @@ def _callable_args(hint):
 
 # 1. Every `set_X(self.method)` binding in DeskWindow: the alias' positional
 #    parameters must be accepted, in order and with equal types, by the method.
-module_hints = typing.get_type_hints(current_context)
+from desk.shell.hud import HudController  # noqa: E402  (a TYPE_CHECKING-only name in current_context)
+
+module_hints = typing.get_type_hints(current_context, localns={"HudController": HudController})
 source = Path("src/desk/shell/window.py").read_text(encoding="utf-8")
 bindings = re.findall(r"current_context\.set_(\w+)\(self\.(\w+)\)", source)
 check("found the hook bindings", len(bindings) > 20, str(len(bindings)))
