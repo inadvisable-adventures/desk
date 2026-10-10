@@ -11237,6 +11237,26 @@ df8138a. COMPLETED: Deprecations by tombstone: plan the process and build the fi
    parked in `PARKINGLOT.md`); whether the stubs themselves are ever removed is
    still open.
 
+0de7685. Non-desk service dependency: a new Desk concept for an independent daemon a project
+   relies on that Desk neither starts nor owns (the motivating case is a local Postgres cluster; see
+   `../FEEDBACK/FEEDBACK-DESK-external-service-dependency-concept-2026-08-03-1634.md`). Distinct from
+   hmsvc, which supervises Python services Desk itself launches. Prioritized on request. Parts:
+   (a) The concept itself: stored in the `.desk` file, with individual instances registerable by
+   agents through the MCP (an MCP tool to add/list/update/remove a registration).
+   (b) A widget to manage these dependencies: list them, show start/health/stop state, and run the
+   available actions.
+   (c) Each instance may have optional associated Python scripts, kept in a subdirectory of an
+   ensured `./desk_non_desk/` directory, to start, health-check and stop it (Postgres would have no
+   stop option, for example), plus a Python bridge so Desk, `kind: "python"` widgets, jobs and
+   hmsvcs can reach it (for Postgres, whatever light wrapper is needed around the relevant Python
+   dependencies). Every script is optional.
+   (d) Guidance: a non-Python (html) widget that wants one of these should go through an hmsvc
+   middle-tier built for it, rather than reaching it directly.
+   Needs a design pass first (registration schema, script contract, how the bridge is exposed,
+   capability and trust model for running project scripts), and a dedicated agent-facing doc plus
+   tempui changelog tag/entry per `development-process.md`. Related: TODO `59f9dae` (docs),
+   `0486102`/`c48aba6` (hmsvc health-check / restart).
+
 284bfbd. Deprecation scan: detect tombstoned API usage in widget source before it
    runs (piece 4 of TODO `df8138a`; see `design-docs/deprecation-process.md`).
    A tombstone only fires when its code path executes, so an unopened widget
@@ -12458,3 +12478,28 @@ a34df1a. Fix stale/misleading project-widgets wording in the generated tempui do
    caller actually gets back today (the feedback never observed it), and if it is an empty/absent
    success rather than an error, return a real, visible error. From
    `../FEEDBACK/FEEDBACK-DESK-project-widgets-directory-confusion-2026-09-19-1734.md`.
+
+ed25783. Review the agent-facing hmsvc docs (`tempui-hmsvc.md` and every doc that mentions hmsvc,
+   generated from `src/desk/temp_ui.py`). They were changed on 2026-10-09 to say a widget reaches an
+   hmsvc over localhost, using the URL (including port) from Desk's shared state; check that is
+   stated accurately and consistently everywhere. With that guidance, no widget manifest or `.desk`
+   file should need an hmsvc dependency field: confirm none exists in the manifest schema,
+   `.desk` schema or code, and that no doc says or implies that one does (fix any that do).
+   Related: TODO `879bfb4`, `c40c5c5`.
+
+59f9dae. Update the agent-facing docs (tempui porting and hmsvc docs, plus the "Known gaps" text in
+   the porting doc about external service dependencies) to say that an agent that wants to write a
+   Node HTTP service should build and manage it as a non-desk service dependency and, as needed, an
+   hmsvc middle-tier. Depends on TODO `0de7685`. Wording/guidance change to tempui docs, so mint a
+   changelog tag + entry.
+
+0486102. Ensure hmsvc has a health-check: first check what exists today (readiness is only the
+   startup wait, `STARTUP_TIMEOUT_SECONDS`, in `src/desk/hmsvc.py`), then give each service an
+   ongoing health status that is visible via `desk.hmsvc.list()` and the hmsvc manager, with a
+   documented way for a service to expose its own health endpoint. Agent-visible, so docs plus
+   changelog tag + entry. Related: TODO `0de7685`, `c48aba6`.
+
+c48aba6. Optional auto-restart on crash for hmsvc, opt-in per service in `service.json`. It restarts
+   at most once; if the restarted service crashes again (or the restart fails) it stays down and
+   Desk raises a Desk-level notification that the service is crashing. A deliberate stop never
+   triggers a restart. Agent-visible, so docs plus changelog tag + entry. Related: TODO `0486102`.
