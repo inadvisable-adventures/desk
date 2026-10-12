@@ -12495,3 +12495,23 @@ c48aba6. Optional auto-restart on crash for hmsvc, opt-in per service in `servic
    at most once; if the restarted service crashes again (or the restart fails) it stays down and
    Desk raises a Desk-level notification that the service is crashing. A deliberate stop never
    triggers a restart. Agent-visible, so docs plus changelog tag + entry. Related: TODO `0486102`.
+
+1f74c27. Agent/widget command-query, Track A: a `WidgetLogStore` (named, time-stamped, bounded logs), a
+   fire-and-forget Bridge `log` capability (`desk.log.append`/`line`), and MCP tools
+   `desk_query_widget_log`/`desk_list_widget_logs` hosted by Claude (Desk). Starts with the shared
+   contracts (store + clock, event payload constants). Related: TODO `9df5246`, `51db3bd`.
+
+   [planned: agent-widget-command-query.md]
+
+9df5246. Agent/widget command-query, Track B: Claude (Desk) recording keeps the timecoded transcript in
+   `.desk_temp/timecoded-transcripts/`, prepends a relative-path note plus a standard separator to the
+   pasted transcription, and publishes `recording`/`stopped_recording` desk events. Needs word/segment
+   timestamps retained from `desk.speech`. Related: TODO `1f74c27`, `51db3bd`.
+
+   [planned: agent-widget-command-query.md]
+
+51db3bd. Agent/widget command-query, Track C: dedicated `tempui` doc, changelog tag + entry,
+   `design-docs/architecture.md` update, and a reference HTML widget that logs while recording.
+   Do after (or alongside the tail of) TODO `1f74c27` and `9df5246`.
+
+   [planned: agent-widget-command-query.md]
