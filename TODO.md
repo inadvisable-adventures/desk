@@ -12530,3 +12530,11 @@ c48aba6. Optional auto-restart on crash for hmsvc, opt-in per service in `servic
    from the overview, `tempui-custom-widgets.md` and `tempui-porting-existing-apps.md`,
    `design-docs/architecture.md`, `verify_tempui_widget_logs_doc.py`. The reference widget is the doc's
    worked example (no new built-in widget).
+
+0532852. Live end-to-end check of the agent/widget command-query work in a running Desk (everything so far
+   was verified headlessly): a small `DefineWidget` with the `log` and `events` capabilities logs clicks
+   and the `recording`/`stopped_recording` events; record a clip in Claude (Desk); confirm the pasted
+   note and transcript file, `desk_list_widget_logs`/`desk_query_widget_log` in a real session, and that
+   an agent can correlate transcript timecodes with the log. Fix or file whatever rough edges turn up
+   (the `keepalive` fetch in real Chromium, capability acceptance, prompt wording). Related: TODO
+   `1f74c27`, `9df5246`, `51db3bd`; `plans/agent-widget-command-query.md`.

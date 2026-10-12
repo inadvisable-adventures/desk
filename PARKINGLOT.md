@@ -1394,3 +1394,15 @@ This file captures thoughts and TODO items that arise during work on other thing
      Node HTTP service should build and manage it as a non-desk service dependency and, as needed, an
      hmsvc middle-tier. Depends on TODO `0de7685`. Wording/guidance change to tempui docs, so mint a
      changelog tag + entry.
+
+- **Widget logs / recording: design limits to revisit**
+
+  Left over from the agent/widget command-query work (TODOs `1f74c27`, `9df5246`, `51db3bd`;
+  `plans/agent-widget-command-query.md`). None is urgent:
+
+  - Logs are memory-only (cleared on a Desk switch or quit); consider optional persistence.
+  - A widget's JS cannot learn its own instance id, so log names rely on a random suffix the widget
+    keeps in `getLocalStorage`; consider exposing the instance id (e.g. `desk.self.instanceId`).
+  - The transcript's absolute times can be off by up to the microphone's start-up time
+    (`started_at_ms` is stamped just after capture starts); unmeasured.
+  - The pasted transcript note is always on; consider a disable option.
