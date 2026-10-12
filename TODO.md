@@ -12518,17 +12518,15 @@ c48aba6. Optional auto-restart on crash for hmsvc, opt-in per service in `servic
    `recording_id`/`started_at_ms`/`stopped_at_ms`, new `desk.timecoded_transcript`, and
    `widgets/claude_desk/widget.py` wiring; `tests/verify/verify_recording_integration.py`.
 
-51db3bd. Agent/widget command-query, Track C: dedicated `tempui` doc, changelog tag + entry,
+51db3bd. COMPLETED: Agent/widget command-query, Track C: dedicated `tempui` doc, changelog tag + entry,
    `design-docs/architecture.md` update, and a reference HTML widget that logs while recording.
    Do after (or alongside the tail of) TODO `1f74c27` and `9df5246`.
 
    [planned: agent-widget-command-query.md]
 
-   PARTIAL 2026-10-11 (the log half): `tempui-widget-logs.md` (registered in `SPLIT_DOC_CONTENT`), tag
-   `named widget logs + log query MCP tools #211800` + `_NEW_FEATURES` entry, links from the overview,
-   `tempui-custom-widgets.md` and `tempui-porting-existing-apps.md`, `design-docs/architecture.md`,
-   `verify_tempui_widget_logs_doc.py`. The reference widget is the doc's worked example (no new
-   built-in widget). REMAINING, once TODO `9df5246` lands: document the `recording`/`stopped_recording`
-   events and the timecoded-transcript note/path/separator in `tempui-widget-logs.md` (new changelog
-   tag or amend this one if unreleased), extend the worked example to log while recording, then mark
-   this item COMPLETED.
+   COMPLETED 2026-10-11: `tempui-widget-logs.md` (registered in `SPLIT_DOC_CONTENT`; log API, MCP tools,
+   recording events, transcript format, worked example), tags `named widget logs + log query MCP tools
+   #211800` and `recording events + timecoded transcripts #920929` with `_NEW_FEATURES` entries, links
+   from the overview, `tempui-custom-widgets.md` and `tempui-porting-existing-apps.md`,
+   `design-docs/architecture.md`, `verify_tempui_widget_logs_doc.py`. The reference widget is the doc's
+   worked example (no new built-in widget).

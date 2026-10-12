@@ -240,6 +240,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "hmsvc service url published to desk.state #095433",
     "visual debugging of widget geometry guidance #733899",
     "named widget logs + log query MCP tools #211800",
+    "recording events + timecoded transcripts #920929",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -774,10 +775,71 @@ All times are epoch milliseconds underneath, from one clock (the Desk
 process's), so a widget's `Date.now()` on the same machine lines up
 with the entries it did not stamp itself.
 
+## Recording events and timecoded transcripts (Claude (Desk) voice input)
+
+When the user dictates into a Claude (Desk) widget with its record
+button, two things happen that tie widget logs to what was said.
+
+**Desk events.** Claude (Desk) publishes, through the ordinary
+`desk.events` channel (capability `events` to subscribe):
+
+- `recording` -- `{ "recording_id": "rec-<ms>-<hex>", "started_at_ms":
+  <epoch ms> }`, when capture begins. A widget that wants to log only
+  while the user is talking starts logging here.
+- `stopped_recording` -- `{ "recording_id": ..., "started_at_ms": ...,
+  "stopped_at_ms": <epoch ms> }`, when capture ends. It fires for every
+  recording that started, including one that ends up capturing no audio.
+  A recording that fails to start (no microphone) publishes neither.
+
+Subscribe with `desk.events.subscribe(["recording",
+"stopped_recording"])` then `desk.events.onMessage(callback)`; the
+payload is the callback's second argument. Transcription happens after
+`stopped_recording`, so the transcript file below does not exist yet when
+that event arrives.
+
+**The timecoded transcript.** Once transcription finishes, Desk writes
+`.desk_temp/timecoded-transcripts/<recording_id>.txt` (relative to the
+project's Desk directory) and puts a note at the start of the text it
+pastes into that widget's prompt box:
+
+```
+[Timecoded transcript: .desk_temp/timecoded-transcripts/<recording_id>.txt]
+--- transcription ---
+<the transcription, exactly as dictated>
+```
+
+The separator line `--- transcription ---` is always the same, so you
+(or the user, who may delete the note before sending) can split on it.
+If the file cannot be written, the plain transcription is pasted with no
+note. The file looks like:
+
+```
+recording_id: rec-1760000000000-ab12
+started_at_ms: 1760000000000
+started_at: 2026-10-11T14:13:20.000-07:00
+
+[00:00.000] first segment text
+[00:03.420] second segment text
+```
+
+Timecodes are `[mm:ss.mmm]` offsets from the start of the audio, one
+line per speech segment (a transcript with no segment data is one plain
+text line instead). The absolute time of a line is `started_at_ms` plus
+its offset in milliseconds (accurate to roughly the time the microphone
+took to start, well under a second), the same epoch-millisecond clock
+widget logs use.
+
+**Correlating them.** To find what a widget was doing while a sentence
+was spoken: read the transcript, compute that line's absolute time (and
+the next line's, as the end), then call `desk_query_widget_log` with
+`start`/`end` set to those epoch-ms values. A widget can make this
+easier by including the `recording_id` in the entries it logs while
+recording.
+
 ## Minimal worked example
 
 In a widget with the `log` capability (and `Capability<TAB>log` in its
-`DefineWidget`):
+`DefineWidget`; add `Capability<TAB>events` for the recording part below):
 
 ```js
 const { data } = await desk.self.getLocalStorage();
@@ -789,7 +851,15 @@ const LOG = "clicker-" + data.logId;
 let clicks = 0;
 document.querySelector("button").addEventListener("click", () => {
   clicks += 1;
-  desk.log.line(LOG, "clicked (" + clicks + " so far)");
+  desk.log.line(LOG, "clicked (" + clicks + " so far)" + (recordingId ? " [" + recordingId + "]" : ""));
+});
+
+// Tag entries made while the user is dictating with their recording id.
+let recordingId = null;
+desk.events.subscribe(["recording", "stopped_recording"]);
+desk.events.onMessage((name, payload) => {
+  recordingId = name === "recording" ? payload.recording_id : null;
+  desk.log.line(LOG, name + " " + payload.recording_id);
 });
 ```
 
@@ -2476,6 +2546,18 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "recording events + timecoded transcripts #920929": """- Claude (Desk)'s record button now publishes the desk events
+  `recording` (`{ recording_id, started_at_ms }`) and `stopped_recording`
+  (`{ recording_id, started_at_ms, stopped_at_ms }`), which widgets can
+  subscribe to via `desk.events` to know when to log. The transcription
+  it pastes now starts with a note giving the relative path of a
+  timecoded transcript, `.desk_temp/timecoded-transcripts/<recording_id>.txt`
+  (`[mm:ss.mmm]` offsets plus the absolute `started_at_ms`), then the
+  separator line `--- transcription ---`, then the transcription itself.
+  Use the absolute times with `desk_query_widget_log` to see what a
+  widget logged while a sentence was spoken. See
+  `tempui-widget-logs.md`, "Recording events and timecoded transcripts".
+""",
     "named widget logs + log query MCP tools #211800": """- New Bridge capability `log` (and doc `tempui-widget-logs.md`): a widget
   calls `desk.log.append(name, [{ s, t? }])` / `desk.log.line(name, s)` --
   fire-and-forget (returns `undefined`, never throws) -- to append

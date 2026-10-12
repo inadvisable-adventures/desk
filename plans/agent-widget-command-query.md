@@ -256,3 +256,16 @@ skipped, so word/segment `start`/`end` keys from mlx_whisper are as yet
 unconfirmed against a live run.
 
 NOTE from user: I have verified that the timestamping works.
+### Track C (TODO 51db3bd) completed 2026-10-11
+
+After Track B merged (reviewed: events published from the widget's existing
+mediator binding, transcript write failure falls back to plain text, the
+`recording_stopped` event also precedes the "No audio captured." error, and a
+failed mic start publishes nothing), `tempui-widget-logs.md` gained "Recording
+events and timecoded transcripts" (event payloads, the note + separator, the
+file format, correlating with `desk_query_widget_log`) and the worked example
+now tags log lines with the active `recording_id`. New changelog tag
+`recording events + timecoded transcripts #920929` (the log tag `#211800` was
+left untouched so projects that already saw it are not confused). The doc's
+statements are checked against `desk.timecoded_transcript`/`desk.widget_logs`
+by `verify_tempui_widget_logs_doc.py`. Whole plan: all three TODOs complete.

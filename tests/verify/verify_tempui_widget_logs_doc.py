@@ -38,4 +38,18 @@ check("both documented MCP tools exist", {"desk_list_widget_logs", "desk_query_w
 check("doc names both tools", "desk_list_widget_logs" in doc and "desk_query_widget_log" in doc)
 check("documents inclusive bounds, order, and the python-widget path", "**inclusive**" in doc and '"desc"' in doc and "get_widget_log_store" in doc)
 check("tells the widget how to get a unique suffix (no instance id in JS)", "getLocalStorage" in doc and "randomUUID" in doc)
+
+# --- recording events / timecoded transcripts (TODO 9df5246 documented) ---
+from desk import speech, timecoded_transcript as tt  # noqa: E402
+
+rtag = next((t for t in CURRENT_TAGS if "recording events" in t), None)
+check("recording tag has an entry linking the doc", rtag in _NEW_FEATURES and "tempui-widget-logs.md" in _NEW_FEATURES[rtag])
+check("doc names both events and the payload keys", all(k in doc for k in (widget_logs.RECORDING_EVENT, widget_logs.STOPPED_RECORDING_EVENT, "recording_id", "started_at_ms", "stopped_at_ms")))
+check("doc shows the real separator line", tt.TRANSCRIPT_NOTE_SEPARATOR.strip() in doc)
+check("doc shows the real directory name", widget_logs.TIMECODED_TRANSCRIPTS_DIRNAME in doc)
+rendered = tt.render_transcript("rec-1-ab", 1_760_000_000_000, speech.TranscriptionResult(
+    text="a b", words=[], segments=[speech.TranscriptSegment(0.0, 1.0, "a"), speech.TranscriptSegment(3.42, 4.0, "b")]))
+check("doc sample uses the header keys render_transcript writes", all(key + ":" in doc for key in [l.split(":")[0] for l in rendered.splitlines()[:3]]))
+check("rendered timecodes use the documented [mm:ss.mmm] shape", "[00:03.420] b" in rendered and "started_at_ms: 1760000000000" in rendered)
+check("doc's note line matches with_transcript_note", tt.with_transcript_note("x", "P").split("\n")[0] == "[Timecoded transcript: P]" and "[Timecoded transcript: .desk_temp/timecoded-transcripts/<recording_id>.txt]" in doc)
 sys.exit(1 if failed else 0)

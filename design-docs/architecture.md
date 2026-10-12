@@ -1319,7 +1319,10 @@ Bridge call at all: two read-only tools on Desk's in-process MCP server
 session query a log by time range. All times are epoch milliseconds from
 one clock (`desk.widget_logs.now_ms`). The same module also fixes the
 payload shape of the `recording`/`stopped_recording` desk events Claude
-(Desk) is to publish (TODO `9df5246`, not yet implemented). See `plans/agent-widget-command-query.md`
+(Desk) publishes (TODO `9df5246`): the widget's record button publishes them
+through the event mediator, and writes each recording's timecoded transcript
+to `.desk_temp/timecoded-transcripts/<recording_id>.txt`
+(`desk.timecoded_transcript`), pointing at it from the pasted text. See `plans/agent-widget-command-query.md`
 and the agent-facing `tempui-widget-logs.md`.
 
 **`introspect` (TODO `9767c1a`) is the first Bridge API capability
