@@ -191,3 +191,15 @@ confirm the pasted note's relative path resolves, the transcript timecodes
 line up with `desk_query_widget_log` results, and `recording` /
 `stopped_recording` arrive at the widget. Browser/mic steps may be skipped
 in headless runs; note any skipped step here.
+
+## Status
+
+Contracts 1 and 2 implemented (2026-10-11) in `src/desk/widget_logs.py`
+(`WidgetLogStore`, `now_ms`, `parse_time_ms`, `format_time_iso`, the
+`RECORDING_EVENT`/`STOPPED_RECORDING_EVENT` names, payload builders,
+`new_recording_id`, `TIMECODED_TRANSCRIPTS_DIRNAME`), wired as
+`ServerHandle.widget_logs` (`desk.server.runner`), cleared on desk switch,
+and exposed to python widgets/the MCP server as
+`current_context.get_widget_log_store()`. Query ranges are inclusive on both
+ends. `tests/verify/verify_widget_log_store.py` passes. Tracks A, B, C should
+build on these without changing them (changes go through the user).

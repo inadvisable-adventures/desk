@@ -432,6 +432,7 @@ class DeskWindow(QMainWindow):
         # and a subscribe from a kind:"python" widget go through the exact
         # same mediator. See _bind_event_mediator/_refresh_picker below.
         self._event_mediator = handle.event_mediator
+        self._widget_logs = handle.widget_logs  # TODO 1f74c27
 
         # Desk-hosted microservices (TODO e75b165) -- shared with the
         # Local Web Server's hmsvc Bridge routes (handle.hmsvc_manager).
@@ -550,6 +551,7 @@ class DeskWindow(QMainWindow):
         current_context.set_widget_path_resolver(self.view.describe_widget_at_global_pos)
         current_context.set_discuss_starter(self.start_discussion)
         current_context.set_event_mediator(self._event_mediator)
+        current_context.set_widget_log_store(self._widget_logs)
         current_context.set_widget_zoomer(self.zoom_to_widget_by_instance_id)
         current_context.set_widget_display_name_resolver(self._display_name_for_instance)
         current_context.set_widget_catalog_provider(self.get_widget_catalog_dicts)
@@ -2882,6 +2884,7 @@ class DeskWindow(QMainWindow):
         # Same reasoning, same spot (TODO 6f9c51b): every subscription
         # belonged to a frame view.clear_widgets() just destroyed.
         self._event_mediator.clear_all()
+        self._widget_logs.clear()
         # Same reasoning again (TODO 9767c1a): every introspect grant
         # named instance ids that belonged to frames just destroyed too.
         self._introspect_grants.clear()

@@ -132,6 +132,7 @@ from PyQt6.QtCore import QPoint
 from PyQt6.QtWidgets import QWidget
 
 from desk.event_mediator import EventMediator
+from desk.widget_logs import WidgetLogStore
 from desk.hotreload import HotReloadBroker
 from desk.temp_ui import JobDefinition
 
@@ -168,6 +169,7 @@ _main_window: QWidget | None = None
 _widget_path_resolver: Callable[[QPoint], str | None] | None = None
 _discuss_starter: Callable[[str, str, int | None], None] | None = None
 _event_mediator: EventMediator | None = None
+_widget_log_store: WidgetLogStore | None = None
 _widget_zoomer: Callable[[str], bool] | None = None
 _widget_display_name_resolver: Callable[[str], str] | None = None
 _file_type_registry_provider: Callable[[], list[dict]] | None = None
@@ -374,6 +376,17 @@ def set_event_mediator(mediator: EventMediator) -> None:
 
 def get_event_mediator() -> EventMediator | None:
     return _event_mediator
+
+
+def set_widget_log_store(store: WidgetLogStore) -> None:
+    """TODO 1f74c27: the shared named-log store, for python widgets
+    appending and the MCP server querying."""
+    global _widget_log_store
+    _widget_log_store = store
+
+
+def get_widget_log_store() -> WidgetLogStore | None:
+    return _widget_log_store
 
 
 def set_widget_zoomer(zoomer: Callable[[str], bool]) -> None:

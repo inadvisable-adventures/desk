@@ -15,6 +15,7 @@ from desk.schema_registry import SchemaRegistry
 from desk.server.app import DEFAULT_WIDGETS_DIR, create_app
 from desk.server.credentials import CredentialRegistry
 from desk.shell.bridge import GuiBridge
+from desk.widget_logs import WidgetLogStore
 from desk.widgets import WidgetInfo, discover_widgets
 
 
@@ -32,6 +33,7 @@ class ServerHandle:
     widgets: dict[str, WidgetInfo]  # kind:"html" widgets served by this server
     gui_bridge: GuiBridge
     event_mediator: EventMediator
+    widget_logs: WidgetLogStore
     schema_registry: SchemaRegistry
     hmsvc_manager: HmsvcManager
     credentials: CredentialRegistry
@@ -117,6 +119,8 @@ def start_server(
     # DeskWindow (via ServerHandle.event_mediator) share the exact same
     # instance, the same "one shared mediator" shape GuiBridge itself uses.
     event_mediator = EventMediator()
+    # TODO 1f74c27: the named widget logs, same one-shared-instance shape.
+    widget_logs = WidgetLogStore()
     # Same "one shared instance for the whole app run" reasoning as
     # event_mediator above (TODO af7898b) -- runtime-only, never
     # persisted, rebuilt fresh on every process start. Given the same
@@ -170,6 +174,7 @@ def start_server(
         widgets=html_widgets,
         gui_bridge=gui_bridge,
         event_mediator=event_mediator,
+        widget_logs=widget_logs,
         schema_registry=schema_registry,
         hmsvc_manager=hmsvc_manager,
         credentials=credentials,
