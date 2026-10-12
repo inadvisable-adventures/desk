@@ -17,6 +17,7 @@ from pathlib import Path
 from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtMultimedia import QAudioFormat, QAudioSource, QMediaDevices
 
+from desk.widget_logs import new_recording_id, now_ms
 from desk.speech import (
     EXPECTED_SAMPLE_RATE,
     TranscriptionResult,
@@ -81,6 +82,11 @@ class MicRecorder(QObject):
         self._audio_source: QAudioSource | None = None
         self._audio_io = None
         self._captured_chunks: list[bytes] = []
+        # TODO 9df5246: identity/timing of the latest recording, valid
+        # from recording_started on (through transcription_finished).
+        self.recording_id: str | None = None
+        self.started_at_ms: int | None = None
+        self.stopped_at_ms: int | None = None
 
     def is_recording(self) -> bool:
         return self._audio_source is not None
@@ -103,6 +109,9 @@ class MicRecorder(QObject):
         self._audio_source = QAudioSource(device, fmt, self)
         self._audio_io = self._audio_source.start()
         self._audio_io.readyRead.connect(self._on_audio_ready_read)
+        self.started_at_ms = now_ms()
+        self.stopped_at_ms = None
+        self.recording_id = new_recording_id(self.started_at_ms)
         self.recording_started.emit()
 
     def _on_audio_ready_read(self) -> None:
@@ -117,6 +126,7 @@ class MicRecorder(QObject):
         self._audio_source.stop()
         self._audio_source = None
         self._audio_io = None
+        self.stopped_at_ms = now_ms()
         self.recording_stopped.emit()
         self._process_captured_audio()
 

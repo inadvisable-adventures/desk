@@ -237,3 +237,22 @@ instance id in JS, so the doc advises a random suffix kept in
 transcript sections of the doc (documenting them now would describe
 behavior that does not exist yet) and a worked example that logs while
 recording.
+
+### Track B status (TODO `9df5246`): COMPLETED 2026-10-11
+
+Implemented as planned: `TranscriptSegment` and `start`/`end` on
+`WordConfidence` (`speech.py`, backward-compatible defaults); `MicRecorder`
+exposes `recording_id`/`started_at_ms`/`stopped_at_ms`;
+`src/desk/timecoded_transcript.py` renders/writes
+`.desk_temp/timecoded-transcripts/<recording_id>.txt` and builds the pasted
+note (`TRANSCRIPT_NOTE_SEPARATOR = "\n--- transcription ---\n"`); the Claude
+(Desk) widget publishes `recording` on start and `stopped_recording` on every
+`recording_stopped` (which also precedes the "No audio captured." error), via
+the mediator hook it already had. If the transcript file can't be written the
+plain text is pasted. The note is always on (no disable option yet).
+Verified headless with `tests/verify/verify_recording_integration.py` (fake
+mediator, no mic/whisper); real-mic and real-whisper timestamp output was
+skipped, so word/segment `start`/`end` keys from mlx_whisper are as yet
+unconfirmed against a live run.
+
+NOTE from user: I have verified that the timestamping works.

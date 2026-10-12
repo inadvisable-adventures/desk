@@ -12502,17 +12502,21 @@ c48aba6. Optional auto-restart on crash for hmsvc, opt-in per service in `servic
    contracts (store + clock, event payload constants). Related: TODO `9df5246`, `51db3bd`.
 
    [planned: agent-widget-command-query.md]
-
    COMPLETED 2026-10-11: contracts in `da16e68`; Bridge `log` capability (`/api/bridge/log/append`,
    `/log/list`, `desk.log.append`/`line`) and MCP tools `desk_list_widget_logs`/`desk_query_widget_log`;
    `verify_widget_log_store.py`, `verify_widget_log_bridge_and_mcp.py`. Docs/changelog left to TODO `51db3bd`.
 
-9df5246. Agent/widget command-query, Track B: Claude (Desk) recording keeps the timecoded transcript in
+
+9df5246. COMPLETED: Agent/widget command-query, Track B: Claude (Desk) recording keeps the timecoded transcript in
    `.desk_temp/timecoded-transcripts/`, prepends a relative-path note plus a standard separator to the
    pasted transcription, and publishes `recording`/`stopped_recording` desk events. Needs word/segment
    timestamps retained from `desk.speech`. Related: TODO `1f74c27`, `51db3bd`.
 
    [planned: agent-widget-command-query.md]
+
+   COMPLETED 2026-10-11: `speech.TranscriptSegment` + word/segment times, `MicRecorder`
+   `recording_id`/`started_at_ms`/`stopped_at_ms`, new `desk.timecoded_transcript`, and
+   `widgets/claude_desk/widget.py` wiring; `tests/verify/verify_recording_integration.py`.
 
 51db3bd. Agent/widget command-query, Track C: dedicated `tempui` doc, changelog tag + entry,
    `design-docs/architecture.md` update, and a reference HTML widget that logs while recording.
