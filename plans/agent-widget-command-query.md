@@ -203,3 +203,20 @@ and exposed to python widgets/the MCP server as
 `current_context.get_widget_log_store()`. Query ranges are inclusive on both
 ends. `tests/verify/verify_widget_log_store.py` passes. Tracks A, B, C should
 build on these without changing them (changes go through the user).
+
+### Track B status (TODO `9df5246`): COMPLETED 2026-10-11
+
+Implemented as planned: `TranscriptSegment` and `start`/`end` on
+`WordConfidence` (`speech.py`, backward-compatible defaults); `MicRecorder`
+exposes `recording_id`/`started_at_ms`/`stopped_at_ms`;
+`src/desk/timecoded_transcript.py` renders/writes
+`.desk_temp/timecoded-transcripts/<recording_id>.txt` and builds the pasted
+note (`TRANSCRIPT_NOTE_SEPARATOR = "\n--- transcription ---\n"`); the Claude
+(Desk) widget publishes `recording` on start and `stopped_recording` on every
+`recording_stopped` (which also precedes the "No audio captured." error), via
+the mediator hook it already had. If the transcript file can't be written the
+plain text is pasted. The note is always on (no disable option yet).
+Verified headless with `tests/verify/verify_recording_integration.py` (fake
+mediator, no mic/whisper); real-mic and real-whisper timestamp output was
+skipped, so word/segment `start`/`end` keys from mlx_whisper are as yet
+unconfirmed against a live run.

@@ -30,6 +30,13 @@ from desk.connectivity_probe import ConnectivityProbe
 from desk.shell import current_context
 from desk.speech import TranscriptionResult
 from desk.temp_ui import DOC_FILENAME, TEMP_UI_DIRNAME
+from desk.timecoded_transcript import transcript_relative_path, with_transcript_note, write_transcript
+from desk.widget_logs import (
+    RECORDING_EVENT,
+    STOPPED_RECORDING_EVENT,
+    recording_payload,
+    stopped_recording_payload,
+)
 from desk.voice_capture import MicRecorder
 
 # Duplicated from widgets/claude/widget.py rather than imported --
@@ -855,7 +862,15 @@ class ClaudeDeskWidget(QWidget):
         else:
             self._mic_recorder.start()
 
+    def _publish_recording_event(self, event_name: str, payload: dict) -> None:
+        if self._mediator is not None and self._mediator_instance_id is not None:
+            self._mediator.publish(event_name, payload, self._mediator_instance_id)
+
     def _on_mic_recording_started(self) -> None:
+        # TODO 9df5246: let widgets know to start logging.
+        self._publish_recording_event(
+            RECORDING_EVENT, recording_payload(self._mic_recorder.recording_id, self._mic_recorder.started_at_ms)
+        )
         self._mic_button.setText("■")
         self._mic_button.setToolTip("Stop")
         self._prompt_input.setEnabled(False)
@@ -863,6 +878,14 @@ class ClaudeDeskWidget(QWidget):
         self._status_label.setText("Recording...")
 
     def _on_mic_recording_stopped(self) -> None:
+        # Fires for every started recording, including ones that end in
+        # "No audio captured." (the recorder emits this before that error).
+        self._publish_recording_event(
+            STOPPED_RECORDING_EVENT,
+            stopped_recording_payload(
+                self._mic_recorder.recording_id, self._mic_recorder.started_at_ms, self._mic_recorder.stopped_at_ms
+            ),
+        )
         self._mic_button.setText("●")
         self._mic_button.setToolTip("Record")
         self._mic_button.setEnabled(False)
@@ -890,8 +913,25 @@ class ClaudeDeskWidget(QWidget):
         # Set, not sent: the user reviews/edits a dictated prompt the
         # same way they would review anything they typed -- nothing
         # goes to Claude until they hit Send/Enter themselves.
-        self._prompt_input.setPlainText(result.text)
+        self._prompt_input.setPlainText(self._with_transcript_note(result))
         self._status_label.setText("Idle.")
+
+    def _with_transcript_note(self, result: TranscriptionResult) -> str:
+        """TODO 9df5246: keeps the timecoded transcript under
+        .desk_temp/timecoded-transcripts/ and prefixes the pasted text with
+        a relative-path note + separator. Plain text if there's no recording
+        context or the file can't be written (dictation must still work)."""
+        recording_id = self._mic_recorder.recording_id
+        started_at_ms = self._mic_recorder.started_at_ms
+        if recording_id is None or started_at_ms is None:
+            return result.text
+        directory = current_context.get_current_desk_directory()
+        base = (directory / TEMP_UI_DIRNAME) if directory is not None else Path(TEMP_UI_DIRNAME)
+        try:
+            write_transcript(base, recording_id, started_at_ms, result)
+        except OSError:
+            return result.text
+        return with_transcript_note(result.text, transcript_relative_path(recording_id, TEMP_UI_DIRNAME))
 
     def _on_assistant_text(self, text: str) -> None:
         self._add_entry("assistant", text, from_stream=True)

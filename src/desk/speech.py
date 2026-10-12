@@ -9,7 +9,7 @@ pipeline needs its own local transcription step.
 """
 import contextlib
 import wave
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -49,12 +49,27 @@ class WordConfidence:
 
     word: str
     probability: float  # 0.0-1.0, mlx_whisper's own per-word score
+    # Seconds from the start of the audio (TODO 9df5246); None when unknown.
+    start: float | None = None
+    end: float | None = None
+
+
+@dataclass(frozen=True)
+class TranscriptSegment:
+    """One of mlx_whisper's own segments (TODO 9df5246): its text plus
+    start/end seconds from the start of the audio. Segment timing is the
+    guaranteed floor; per-word timing lives on WordConfidence."""
+
+    start: float
+    end: float
+    text: str
 
 
 @dataclass(frozen=True)
 class TranscriptionResult:
     text: str
     words: list[WordConfidence]
+    segments: list[TranscriptSegment] = field(default_factory=list)
 
 
 def _model_is_cached() -> bool:
@@ -157,8 +172,17 @@ def transcribe(audio_path: Path) -> TranscriptionResult:
     with _force_hub_offline():
         result = mlx_whisper.transcribe(samples, path_or_hf_repo=MODEL_REPO, word_timestamps=True)
     words = [
-        WordConfidence(word=word["word"], probability=word["probability"])
+        WordConfidence(
+            word=word["word"],
+            probability=word["probability"],
+            start=float(word["start"]) if "start" in word else None,
+            end=float(word["end"]) if "end" in word else None,
+        )
         for segment in result["segments"]
         for word in segment.get("words", [])
     ]
-    return TranscriptionResult(text=result["text"].strip(), words=words)
+    segments = [
+        TranscriptSegment(start=float(segment["start"]), end=float(segment["end"]), text=segment["text"].strip())
+        for segment in result["segments"]
+    ]
+    return TranscriptionResult(text=result["text"].strip(), words=words, segments=segments)
