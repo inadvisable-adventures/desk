@@ -12519,3 +12519,12 @@ c48aba6. Optional auto-restart on crash for hmsvc, opt-in per service in `servic
    Do after (or alongside the tail of) TODO `1f74c27` and `9df5246`.
 
    [planned: agent-widget-command-query.md]
+
+   PARTIAL 2026-10-11 (the log half): `tempui-widget-logs.md` (registered in `SPLIT_DOC_CONTENT`), tag
+   `named widget logs + log query MCP tools #211800` + `_NEW_FEATURES` entry, links from the overview,
+   `tempui-custom-widgets.md` and `tempui-porting-existing-apps.md`, `design-docs/architecture.md`,
+   `verify_tempui_widget_logs_doc.py`. The reference widget is the doc's worked example (no new
+   built-in widget). REMAINING, once TODO `9df5246` lands: document the `recording`/`stopped_recording`
+   events and the timecoded-transcript note/path/separator in `tempui-widget-logs.md` (new changelog
+   tag or amend this one if unreleased), extend the worked example to log while recording, then mark
+   this item COMPLETED.

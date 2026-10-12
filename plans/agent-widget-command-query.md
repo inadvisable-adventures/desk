@@ -224,3 +224,16 @@ build on these without changing them (changes go through the user).
   reference widget.
 - Fixed a stale fake in `verify_new_desk_flow.py` (it lacked `_widget_logs`
   after the contracts commit made `switch_desk` clear it).
+
+### Track C (TODO 51db3bd), log half, 2026-10-11
+
+Done: `tempui-widget-logs.md`, tag `named widget logs + log query MCP tools
+#211800`, links (overview, custom-widgets Bridge list, porting "What Desk
+gives you"), architecture.md paragraph, `verify_tempui_widget_logs_doc.py`.
+Decision: the "reference widget" is the doc's worked example rather than a
+new built-in widget (less to maintain); a widget cannot learn its own
+instance id in JS, so the doc advises a random suffix kept in
+`getLocalStorage`. Left for after Track B: the recording-events and
+transcript sections of the doc (documenting them now would describe
+behavior that does not exist yet) and a worked example that logs while
+recording.

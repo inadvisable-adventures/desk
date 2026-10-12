@@ -239,6 +239,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "OpenWithWidget optional label field #041937",
     "hmsvc service url published to desk.state #095433",
     "visual debugging of widget geometry guidance #733899",
+    "named widget logs + log query MCP tools #211800",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -344,7 +345,11 @@ to run repeatedly: install it once from real source at
 it as many times as you like via an MCP tool call with no further
 prompt. Not a dropped-tempui-file DSL keyword like the ones above --
 installation happens via an MCP tool call against a directory you
-already wrote, never via a file dropped in this directory.
+already wrote, never via a file dropped in this directory. And
+[tempui-widget-logs.md](./tempui-widget-logs.md) -- the `log` Bridge
+capability and its `desk_list_widget_logs`/`desk_query_widget_log` MCP
+tools, for letting an agent query what a widget has been doing; also not
+a dropped-file keyword.
 
 ## Project widgets
 
@@ -685,6 +690,118 @@ created and opened immediately (no notification needed for your own
 just-performed drop).
 """
 
+_WIDGET_LOGS_DOC = """# Widget logs (let an agent ask a widget what happened)
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its current set of tags. This is not a
+tempui-DSL file type: it is a Bridge API capability (`log`) for your
+widget's own code, plus two MCP tools an agent calls to read what the
+widget wrote.
+
+A widget **appends** short, time-stamped strings to a **named log**; an
+agent **queries** a log by time range. Use it to give an agent a
+compact, timeline-shaped record of what a widget has been doing (user
+actions, state changes, sensor readings, errors) without the agent
+having to screenshot or poll the widget. It is a record for later
+questions, not a command channel: the agent cannot push anything to the
+widget through it.
+
+## Appending (in the widget)
+
+Declare the capability (`Capability<TAB>log` in a `DefineWidget`, or
+`"log"` in a real `widget.json`'s `capabilities`), then:
+
+- `desk.log.append(name, entries)` -- `entries` is an array of
+  `{ s: "text", t: 1700000000000 }`. `s` is required; `t` is optional
+  epoch **milliseconds** (UTC, e.g. `Date.now()`); omit it and Desk
+  stamps the moment the entry arrives.
+- `desk.log.line(name, s)` -- shorthand for `append(name, [{ s }])`.
+
+Both are **fire-and-forget**: they return `undefined` (no promise to
+await or catch), never throw, and send with `fetch(..., { keepalive:
+true })`. A failed send (server down, capability missing, bad name) is
+silently dropped, apart from one `console.warn` per page, so do not use
+a log for anything you must not lose. Batch several entries into one
+`append` call when you have them.
+
+A log's **name** is any non-empty string. Pick a short descriptive name
+followed by something unique per widget instance, so two copies of one
+widget do not interleave, e.g. `"kanban-" + shortId`. A widget's JS is
+not handed its instance id, so mint a short random suffix once and keep
+it in `desk.self.getLocalStorage()`/`setLocalStorage()` (per instance,
+survives a reload -- see the worked example). The agent discovers names
+with `desk_list_widget_logs`, so a readable prefix matters.
+
+Limits (silent, per Desk run): each log keeps its newest 10000 entries;
+an entry's text is cut to 4096 characters; at most 500 distinct logs
+exist at once. Logs live in Desk's memory only: they are cleared when
+the Desk is switched or Desk quits, never written to disk.
+
+Entries are kept in timestamp order (a client-supplied `t` may arrive
+out of order; equal timestamps keep arrival order).
+
+There is no JS read call: the capability's debugging route
+`GET /api/bridge/log/list` returns `{ logs: [{ name, count, first_t,
+last_t }] }` for anything that calls the Bridge directly, and reading
+entries is the agent's job (below).
+
+A `kind: "python"` widget skips HTTP and the capability:
+`current_context.get_widget_log_store().append(name, [(None, "text")])`
+(each entry a `(epoch_ms_or_None, text)` pair).
+
+## Querying (the agent, via MCP)
+
+Two read-only tools on the `desk` MCP server hosted by Claude (Desk);
+like Desk's other tools they go through the normal approval prompt:
+
+- `desk_list_widget_logs` -- JSON array of `{ name, count, first, last
+  }` (times are local-zone ISO-8601). Call this first to see what
+  exists.
+- `desk_query_widget_log` -- arguments `log_name` (required), `start`,
+  `end`, `limit` (default 200), `order`.
+  - `start`/`end`: optional, **inclusive**; an ISO-8601 datetime (no
+    zone means the Desk machine's local time, a trailing `Z` means UTC)
+    or epoch milliseconds.
+  - `order`: `"asc"` (default) returns the first `limit` entries in
+    range, oldest first; `"desc"` returns the newest `limit`, newest
+    first.
+  - Result: one `<ISO time><TAB><text>` line per entry; if the range
+    held more than `limit`, a final line says so (narrow the range or
+    raise `limit`). An empty range says `(no entries in range)`; an
+    unknown log name is an error.
+
+All times are epoch milliseconds underneath, from one clock (the Desk
+process's), so a widget's `Date.now()` on the same machine lines up
+with the entries it did not stamp itself.
+
+## Minimal worked example
+
+In a widget with the `log` capability (and `Capability<TAB>log` in its
+`DefineWidget`):
+
+```js
+const { data } = await desk.self.getLocalStorage();
+if (!data.logId) {
+  data.logId = crypto.randomUUID().slice(0, 8);
+  await desk.self.setLocalStorage(data);
+}
+const LOG = "clicker-" + data.logId;
+let clicks = 0;
+document.querySelector("button").addEventListener("click", () => {
+  clicks += 1;
+  desk.log.line(LOG, "clicked (" + clicks + " so far)");
+});
+```
+
+Then the agent can ask for the last minute of it:
+
+```
+desk_list_widget_logs {}
+desk_query_widget_log { "log_name": "clicker-<logId>",
+                        "start": "2026-10-11T14:00:00", "limit": 50 }
+```
+"""
+
 _PORTING_DOC = """# Porting an existing app into Desk
 
 See `desk-temporary-ui.md` (in this same directory) for this directory's
@@ -760,6 +877,10 @@ Desk Bridge API", for each call's exact shape.
 - `desk.events.*` (capability `events`): publish/subscribe on a shared
   channel keyed by widget *instance*; widgets never call each other
   directly.
+- `desk.log.append/line` (capability `log`): fire-and-forget, time-stamped
+  strings into a named log an agent can query by time range
+  (`desk_query_widget_log`); the way to let an agent ask a widget what it
+  has been doing. Full reference: `tempui-widget-logs.md`.
 - `desk.state.get/set/getHistory` (capability `state`): a shared,
   project-scoped key/value store with an edit history; a widget may also
   declare the keys it needs (a state schema).
@@ -1319,6 +1440,11 @@ built for genuine cross-widget signaling:
   `.publish(name, payload)` / `.onMessage(callback)` (capability
   `events`) — send and receive named messages to/from other widgets.
   See "Sending and receiving named messages" below.
+- `desk.log.append(name, entries)` / `.line(name, s)` (capability `log`)
+  -- fire-and-forget, time-stamped strings into a named log that an
+  agent reads back by time range with the `desk_query_widget_log` MCP
+  tool. Not a message channel to other widgets (that is `events`); a
+  record for an agent. See `tempui-widget-logs.md`.
 - `desk.workspace.getState()` (capability `workspace`) — the current
   Desk's live widget layout: one entry per placed instance (widget id,
   instance id, position/size, `state`, `locked`, `placed_content_hash`)
@@ -2350,6 +2476,16 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "named widget logs + log query MCP tools #211800": """- New Bridge capability `log` (and doc `tempui-widget-logs.md`): a widget
+  calls `desk.log.append(name, [{ s, t? }])` / `desk.log.line(name, s)` --
+  fire-and-forget (returns `undefined`, never throws) -- to append
+  time-stamped strings to a named, in-memory log, and an agent reads
+  them back with two new read-only MCP tools on the `desk` server:
+  `desk_list_widget_logs` and `desk_query_widget_log` (inclusive
+  `start`/`end` as ISO-8601 or epoch ms, `limit`, `order`). A `kind:
+  "python"` widget appends through
+  `current_context.get_widget_log_store()`. See `tempui-widget-logs.md`.
+""",
     "visual debugging of widget geometry guidance #733899": """- `tempui-custom-widgets.md` has a new section, "Debugging a widget's own
   rendering/geometry visually": a named pattern (a build marker in the
   widget's UI, a toggleable overlay recording real hit-test/render
@@ -3559,6 +3695,7 @@ JOBS_DOC_FILENAME = "tempui-jobs.md"
 DESK_PROC_DOC_FILENAME = "tempui-desk-proc.md"
 INSTALLED_JOBS_DOC_FILENAME = "tempui-installed-jobs.md"
 HMSVC_DOC_FILENAME = "tempui-hmsvc.md"
+WIDGET_LOGS_DOC_FILENAME = "tempui-widget-logs.md"
 BREAKING_CHANGES_DOC_FILENAME = "tempui-breaking-changes.md"
 NEW_FEATURES_DOC_FILENAME = "tempui-new-features.md"
 BUILD_WIDGET_SCRIPT_FILENAME = "build_widget.py"
@@ -3586,6 +3723,7 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     DESK_PROC_DOC_FILENAME: _DESK_PROC_DOC,
     INSTALLED_JOBS_DOC_FILENAME: _INSTALLED_JOBS_DOC,
     HMSVC_DOC_FILENAME: _HMSVC_DOC,
+    WIDGET_LOGS_DOC_FILENAME: _WIDGET_LOGS_DOC,
     BREAKING_CHANGES_DOC_FILENAME: _BREAKING_CHANGES_DOC,
     NEW_FEATURES_DOC_FILENAME: _NEW_FEATURES_DOC,
     BUILD_WIDGET_SCRIPT_FILENAME: _BUILD_WIDGET_SCRIPT,

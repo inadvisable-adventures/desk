@@ -1305,6 +1305,23 @@ mediator-pattern pub/sub core this sits on top of, shared unchanged by
 (`desk.shell.event_broker.EventSubscription`) rather than this REST
 surface.
 
+**`log` (TODO `1f74c27`) is a fire-and-forget write path with an
+agent-facing read path.** A widget appends time-stamped strings to a
+named log (`POST /api/bridge/log/append`, via `desk.log.append`/`line`,
+which use `fetch` with `keepalive` and return nothing — a failed send is
+dropped, by design); the entries live in `desk.widget_logs.WidgetLogStore`,
+a Qt-free, thread-safe, in-memory, bounded store constructed once in
+`desk.server.runner.start_server` (like the event mediator) and shared with
+`kind: "python"` widgets and the MCP server through
+`current_context.get_widget_log_store()`. The read side is not a widget
+Bridge call at all: two read-only tools on Desk's in-process MCP server
+(`desk_list_widget_logs`, `desk_query_widget_log`) let a Claude (Desk)
+session query a log by time range. All times are epoch milliseconds from
+one clock (`desk.widget_logs.now_ms`). The same module also fixes the
+payload shape of the `recording`/`stopped_recording` desk events Claude
+(Desk) is to publish (TODO `9df5246`, not yet implemented). See `plans/agent-widget-command-query.md`
+and the agent-facing `tempui-widget-logs.md`.
+
 **`introspect` (TODO `9767c1a`) is the first Bridge API capability
 gated by a live user confirmation, not just a manifest declaration** —
 see [Security Considerations](#security-considerations). Building it
