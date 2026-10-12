@@ -1,6 +1,6 @@
-# Agent <-> widget command/query: named widget logs, timecoded transcripts, recording events, log-query MCP tool
+# Agent <-> widget command/query: named widget logs, timecoded transcripts, recording events, log-query MCP tool [COMPLETED]
 
-TODO items: Track A `1f74c27`, Track B `9df5246`, Track C `51db3bd`.
+TODO items: Track A `1f74c27`, Track B `9df5246`, Track C `51db3bd`, live end-to-end check `0532852`.
 
 ## Summary
 
@@ -269,3 +269,48 @@ now tags log lines with the active `recording_id`. New changelog tag
 left untouched so projects that already saw it are not confused). The doc's
 statements are checked against `desk.timecoded_transcript`/`desk.widget_logs`
 by `verify_tempui_widget_logs_doc.py`. Whole plan: all three TODOs complete.
+
+### TODO `0532852` (live end-to-end check) completed 2026-10-11
+
+Built a disposable `DefineWidget` (`.desk_temp/widgets/recording-log-check/`,
+TS custom element, `log` + `events` capabilities, not promoted -- it's a
+throwaway test instrument, not a feature) that logs a line per button
+click and per `recording`/`stopped_recording` event, tagging click-entries
+made while recording with the active `recording_id`, per
+`tempui-widget-logs.md`'s worked example. Placed it in a real, running
+Desk; the user recorded a clip narrating click counts while clicking the
+widget's button.
+
+Verified in the live session:
+- `desk_list_widget_logs`/`desk_query_widget_log` worked end to end against
+  a real Chromium-hosted widget (not headless) -- 9 entries (`recording`,
+  7 clicks, `stopped_recording`), matching the widget's own on-page
+  client-side counter exactly. **No entries were lost over the `keepalive`
+  fetch** in real Chromium -- the one specifically flagged risk in the
+  TODO didn't materialize.
+- The pasted note + separator (`[Timecoded transcript: ...]` /
+  `--- transcription ---`) and the transcript file
+  (`.desk_temp/timecoded-transcripts/rec-1791772249929-2ab4.txt`) matched
+  the documented format exactly (header fields, `[mm:ss.mmm]` per-segment
+  lines).
+- Correlation: computed each transcript segment's absolute time
+  (`started_at_ms` + offset) and compared to the widget log's own
+  timestamps. `recording` logged 40ms after `started_at_ms`;
+  `stopped_recording` logged 131ms after `stopped_at_ms`; narrated click
+  references ("I did six clicks before I said anything", "going to do
+  another click now") landed within ~0.4-0.8s of the corresponding logged
+  click entries -- well within the natural lag between describing an
+  action and performing it. An agent can reliably correlate the two.
+- No capability-acceptance prompt or wording issue arose -- `log`/`events`
+  are plain manifest-declared capabilities (unlike `introspect`), and the
+  widget ran immediately on placement with no confirmation dialog.
+- One non-issue worth recording: the user's narration mentioned a second
+  "another one now" click (implying 8 total) that never actually
+  registered -- the widget's own client-side counter also stopped at 7,
+  confirming the gap was a real human action (or a missed click), not a
+  dropped log entry.
+
+No code changes needed -- no rough edges found to fix or file. Test widget
+left un-promoted and disposable per the TODO's own framing; its
+`.desk_temp/` source and the placed instance are not durable project
+artifacts.
