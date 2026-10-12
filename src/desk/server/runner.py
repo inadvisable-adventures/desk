@@ -141,6 +141,7 @@ def start_server(
         widgets_dir=widgets_dir,
         gui_bridge=gui_bridge,
         event_mediator=event_mediator,
+        widget_logs=widget_logs,
         hmsvc_manager=hmsvc_manager,
         credentials=credentials,
     )

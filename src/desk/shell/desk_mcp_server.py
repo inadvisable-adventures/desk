@@ -47,6 +47,7 @@ from typing import Any
 from claude_agent_sdk import McpSdkServerConfig, create_sdk_mcp_server, tool
 
 from desk import pipeline_dsl
+from desk.widget_logs import format_time_iso, parse_time_ms
 from desk.shell import current_context
 from desk.todo_file import TodoItem, find_nearest_todo_file, parse_todo_file
 
@@ -241,6 +242,77 @@ async def _get_next_todo_item(args: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool(
+    "desk_list_widget_logs",
+    "List the named, time-stamped logs widgets have appended to (TODO 1f74c27) -- name, entry "
+    "count, and first/last entry time (ISO-8601, local zone). Read-only. Call this to discover "
+    "what desk_query_widget_log can be asked about; log names are chosen by the widgets, "
+    "conventionally a short descriptive name followed by a unique suffix.",
+    {},
+)
+async def _list_widget_logs(args: dict[str, Any]) -> dict[str, Any]:
+    store = current_context.get_widget_log_store()
+    if store is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    logs = [
+        {
+            "name": log.name,
+            "count": log.count,
+            "first": format_time_iso(log.first_t) if log.first_t is not None else None,
+            "last": format_time_iso(log.last_t) if log.last_t is not None else None,
+        }
+        for log in store.list_logs()
+    ]
+    return _text_result(json.dumps(logs))
+
+
+@tool(
+    "desk_query_widget_log",
+    "Time-range query of one named widget log (see desk_list_widget_logs). start and end are "
+    "optional and INCLUSIVE; each is an ISO-8601 datetime (no zone = the Desk machine's local "
+    "time; a trailing Z = UTC) or epoch milliseconds. limit (default 200) caps the result: with "
+    "order \"asc\" (default) you get the first `limit` entries in range, oldest first; with "
+    "\"desc\" the newest `limit`, newest first. Output is one `<ISO-time>\\t<text>` line per "
+    "entry, plus a trailing note if the range held more than limit. Read-only. Pair with a "
+    "timecoded transcript's absolute start time to correlate a widget's log with what was said.",
+    {
+        "type": "object",
+        "properties": {
+            "log_name": {"type": "string"},
+            "start": {"type": ["string", "integer"]},
+            "end": {"type": ["string", "integer"]},
+            "limit": {"type": "integer"},
+            "order": {"type": "string", "enum": ["asc", "desc"]},
+        },
+        "required": ["log_name"],
+    },
+)
+async def _query_widget_log(args: dict[str, Any]) -> dict[str, Any]:
+    store = current_context.get_widget_log_store()
+    if store is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        start = parse_time_ms(args["start"]) if args.get("start") is not None else None
+        end = parse_time_ms(args["end"]) if args.get("end") is not None else None
+    except ValueError as e:
+        return _text_result(str(e), is_error=True)
+    limit = args.get("limit", 200)
+    if not isinstance(limit, int) or limit < 1:
+        return _text_result("limit must be a positive integer", is_error=True)
+    newest_first = args.get("order", "asc") == "desc"
+    # One extra entry only to learn whether the range held more than limit.
+    entries = store.query(args["log_name"], start, end, limit + 1, newest_first)
+    truncated = len(entries) > limit
+    lines = [f"{format_time_iso(entry.t)}\t{entry.text}" for entry in entries[:limit]]
+    if truncated:
+        lines.append(f"[more entries in range; showing {limit} -- narrow start/end or raise limit]")
+    elif not entries and not any(log.name == args["log_name"] for log in store.list_logs()):
+        return _text_result(f"No such log: {args['log_name']!r} (see desk_list_widget_logs)", is_error=True)
+    if not lines:
+        return _text_result("(no entries in range)")
+    return _text_result("\n".join(lines))
+
+
+@tool(
     "desk_install_job",
     "Register (or re-register, if its source changed) the Installed Job at "
     "desk-installed-jobs/<name>/ -- either main.py (python kind) or a Cargo.toml + src/ (rust kind, "
@@ -350,6 +422,8 @@ _TOOLS = [
     _save_desk,
     _list_todo_items,
     _get_next_todo_item,
+    _list_widget_logs,
+    _query_widget_log,
     _install_job,
     _run_installed_job_tool,
     _run_pipeline,

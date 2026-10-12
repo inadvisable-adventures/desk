@@ -12496,12 +12496,16 @@ c48aba6. Optional auto-restart on crash for hmsvc, opt-in per service in `servic
    Desk raises a Desk-level notification that the service is crashing. A deliberate stop never
    triggers a restart. Agent-visible, so docs plus changelog tag + entry. Related: TODO `0486102`.
 
-1f74c27. Agent/widget command-query, Track A: a `WidgetLogStore` (named, time-stamped, bounded logs), a
+1f74c27. COMPLETED: Agent/widget command-query, Track A: a `WidgetLogStore` (named, time-stamped, bounded logs), a
    fire-and-forget Bridge `log` capability (`desk.log.append`/`line`), and MCP tools
    `desk_query_widget_log`/`desk_list_widget_logs` hosted by Claude (Desk). Starts with the shared
    contracts (store + clock, event payload constants). Related: TODO `9df5246`, `51db3bd`.
 
    [planned: agent-widget-command-query.md]
+
+   COMPLETED 2026-10-11: contracts in `da16e68`; Bridge `log` capability (`/api/bridge/log/append`,
+   `/log/list`, `desk.log.append`/`line`) and MCP tools `desk_list_widget_logs`/`desk_query_widget_log`;
+   `verify_widget_log_store.py`, `verify_widget_log_bridge_and_mcp.py`. Docs/changelog left to TODO `51db3bd`.
 
 9df5246. Agent/widget command-query, Track B: Claude (Desk) recording keeps the timecoded transcript in
    `.desk_temp/timecoded-transcripts/`, prepends a relative-path note plus a standard separator to the

@@ -7,6 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, "src")
 
 from desk.event_mediator import EventMediator  # noqa: E402
+from desk.widget_logs import WidgetLogStore  # noqa: E402
 from desk.schema_registry import SchemaRegistry  # noqa: E402
 from desk.shell.new_desk_dialog import NewDeskDialog  # noqa: E402
 from desk.shell.temp_ui_manager import TempUiManager  # noqa: E402
@@ -278,6 +279,8 @@ class _OrderTrackingWindow:
         self._html_widget_opened_file = {}
         # TODO 6f9c51b: switch_desk also calls self._event_mediator.clear_all().
         self._event_mediator = EventMediator()
+        # TODO 1f74c27: switch_desk also clears the widget log store.
+        self._widget_logs = WidgetLogStore()
         # switch_desk also clears this Bridge API introspection-grant cache.
         self._introspect_grants = set()
         # TODO 4eb3d9e: switch_desk also stops every active promoted

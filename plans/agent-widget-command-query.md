@@ -203,3 +203,24 @@ and exposed to python widgets/the MCP server as
 `current_context.get_widget_log_store()`. Query ranges are inclusive on both
 ends. `tests/verify/verify_widget_log_store.py` passes. Tracks A, B, C should
 build on these without changing them (changes go through the user).
+
+### Track A (TODO 1f74c27) completed 2026-10-11
+
+- `app.py`: `POST /api/bridge/log/append` (`{name, entries:[{s, t?}]}`) and
+  `GET /api/bridge/log/list`, both gated on capability `log` (capabilities
+  are free-form strings in `widget.json`; no registry to update).
+- `bridge_client.py`: `desk.log.append(name, entries)` / `desk.log.line(name, s)`,
+  fire-and-forget (`fetch` with `keepalive`, returns `undefined`, never throws,
+  one `console.warn` per page on a non-OK response).
+- `desk_mcp_server.py`: `desk_list_widget_logs`, `desk_query_widget_log`
+  (inclusive `start`/`end`, ISO or epoch ms, `limit`, `order` asc/desc,
+  truncation note). Read-only; deliberately NOT in the permission-bypass
+  list, so they go through the normal approval flow like the other read-only
+  Desk tools (`desk_list_widget_instances` etc.).
+- Python widgets append through `current_context.get_widget_log_store()`
+  directly (no HTTP, no capability check).
+- Verified headlessly; the real-browser reference-widget run (a Chromium
+  widget logging from a timer) was **skipped** and belongs with Track C's
+  reference widget.
+- Fixed a stale fake in `verify_new_desk_flow.py` (it lacked `_widget_logs`
+  after the contracts commit made `switch_desk` clear it).

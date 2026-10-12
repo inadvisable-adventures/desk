@@ -47,6 +47,30 @@ BRIDGE_CLIENT_TEMPLATE = """
     return response.json();
   }
 
+  let logWarned = false;
+  function sendLog(name, entries) {
+    try {
+      fetch("/api/bridge/log/append", {
+        method: "POST",
+        keepalive: true,
+        headers: {
+          "X-Desk-Token": TOKEN,
+          "X-Desk-Widget-Id": WIDGET_ID,
+          "X-Desk-Instance-Id": INSTANCE_ID,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name, entries }),
+      }).then((response) => {
+        if (!response.ok && !logWarned) {
+          logWarned = true;
+          console.warn(`desk.log.append dropped entries (${response.status})`);
+        }
+      }, () => {});
+    } catch (e) {
+      // fire-and-forget: never throws into the caller
+    }
+  }
+
   // events.onMessage (TODO 6f9c51b): a long-poll loop, started lazily by
   // the first onMessage call and left running for the page's lifetime --
   // there's no offMessage in this first cut, since the whole page (and
@@ -122,6 +146,14 @@ BRIDGE_CLIENT_TEMPLATE = """
         eventListeners.push(callback);
         pollEvents();
       },
+    },
+    // log (TODO 1f74c27): fire-and-forget -- both calls return undefined
+    // (no promise to manage) and never throw; a failed send is dropped
+    // (one console.warn per page). `t` is optional epoch ms; omitted, Desk
+    // stamps arrival time. Requires the "log" capability.
+    log: {
+      append: (name, entries) => sendLog(name, entries),
+      line: (name, s) => sendLog(name, [{ s }]),
     },
     hmsvc: {
       list: () => call("GET", "/api/bridge/hmsvc/list"),

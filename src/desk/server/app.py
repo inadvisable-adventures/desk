@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from desk.event_mediator import EventMediator
+from desk.widget_logs import WidgetLogStore
 from desk.deprecations import DeprecationRegistry, format_error, get_registry as get_deprecation_registry
 from desk.server.credentials import CredentialRegistry
 from desk.file_type_registry import FILE_TYPE_REGISTRY_UPDATED_EVENT
@@ -197,6 +198,16 @@ class EventPublishRequest(BaseModel):
     payload: object = None
 
 
+class LogEntryRequest(BaseModel):
+    s: str
+    t: int | None = None  # epoch ms; omitted -> stamped with arrival time
+
+
+class LogAppendRequest(BaseModel):
+    name: str
+    entries: list[LogEntryRequest]
+
+
 class SetStateRequest(BaseModel):
     key: str
     value: object
@@ -252,6 +263,7 @@ def create_app(
     widgets_dir: Path = DEFAULT_WIDGETS_DIR,
     gui_bridge: GuiBridge | None = None,
     event_mediator: EventMediator | None = None,
+    widget_logs: WidgetLogStore | None = None,
     hmsvc_manager: HmsvcManager | None = None,
     credentials: CredentialRegistry | None = None,
     deprecations: DeprecationRegistry | None = None,
@@ -659,6 +671,35 @@ def create_app(
         loop = asyncio.get_event_loop()
         event = await loop.run_in_executor(None, mediator.poll, instance_id, timeout)
         return {"event": _event_dict(event) if event is not None else None}
+
+    # --- log (TODO 1f74c27) -- named, time-stamped widget logs an agent
+    # can later query through the desk_query_widget_log MCP tool. Cheap
+    # (one lock + list insert), so called directly on the request thread.
+    # append is fire-and-forget on the client side: the JS helper never
+    # surfaces this response.
+
+    def require_widget_logs() -> WidgetLogStore:
+        if widget_logs is None:
+            raise HTTPException(503, "Widget log store not available")
+        return widget_logs
+
+    @app.post("/api/bridge/log/append")
+    async def log_append(body: LogAppendRequest, widget: WidgetInfo = Depends(require_caller("log"))):
+        store = require_widget_logs()
+        try:
+            stored = store.append(body.name, [(entry.t, entry.s) for entry in body.entries])
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        return {"ok": True, "stored": stored}
+
+    @app.get("/api/bridge/log/list")
+    async def log_list(widget: WidgetInfo = Depends(require_caller("log"))):
+        return {
+            "logs": [
+                {"name": log.name, "count": log.count, "first_t": log.first_t, "last_t": log.last_t}
+                for log in require_widget_logs().list_logs()
+            ]
+        }
 
     # --- hmsvc (TODO e75b165) -- Desk-hosted microservices. The manager
     # is plain thread-safe Python, so these run directly on the request
