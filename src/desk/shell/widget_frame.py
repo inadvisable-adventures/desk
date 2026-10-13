@@ -12,6 +12,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from desk import focus_logger
+
 TITLEBAR_HEIGHT = 28
 HANDLE_THICKNESS = 6
 TITLEBAR_FONT_PT = 10
@@ -1008,6 +1010,7 @@ class WidgetFrame(QWidget):
         (Qt just makes the container itself the focus item), correct
         and useful for one that has."""
         target = self._last_focused_widget or self.content
+        focus_logger.note("focus_last_widget", frame=self.instance_id, target=focus_logger.describe_widget(target))
         target.setFocus(Qt.FocusReason.MouseFocusReason)
 
     def focusNextPrevChild(self, next: bool) -> bool:
@@ -1033,6 +1036,9 @@ class WidgetFrame(QWidget):
         case where handing focus to a sibling WidgetFrame is actually
         wanted, so there's nothing to conditionally allow."""
         target_before = self.focusWidget()
+        focus_logger.note(
+            "tab_nav", frame=self.instance_id, next=next, from_widget=focus_logger.describe_widget(target_before)
+        )
         super().focusNextPrevChild(next)
         QTimer.singleShot(0, lambda: self._reclaim_focus_if_escaped(next, target_before))
         return True
@@ -1042,7 +1048,11 @@ class WidgetFrame(QWidget):
         if proxy is None:
             return
         scene = proxy.scene()
-        if scene is None or scene.focusItem() is proxy:
+        if scene is None:
+            return
+        escaped = scene.focusItem() is not proxy
+        focus_logger.note("tab_reclaim", frame=self.instance_id, escaped=escaped)
+        if not escaped:
             return
         focusable = [
             w
@@ -1051,4 +1061,5 @@ class WidgetFrame(QWidget):
         ]
         target = (focusable[0] if next else focusable[-1]) if focusable else fallback
         if target is not None:
+            focus_logger.note("tab_reclaim_target", frame=self.instance_id, target=focus_logger.describe_widget(target))
             target.setFocus(Qt.FocusReason.TabFocusReason)

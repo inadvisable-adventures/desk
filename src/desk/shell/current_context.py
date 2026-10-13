@@ -132,6 +132,7 @@ from PyQt6.QtCore import QPoint
 from PyQt6.QtWidgets import QWidget
 
 from desk.event_mediator import EventMediator
+from desk.focus_logger import FocusLogger
 from desk.widget_logs import WidgetLogStore
 from desk.hotreload import HotReloadBroker
 from desk.temp_ui import JobDefinition
@@ -170,6 +171,7 @@ _widget_path_resolver: Callable[[QPoint], str | None] | None = None
 _discuss_starter: Callable[[str, str, int | None], None] | None = None
 _event_mediator: EventMediator | None = None
 _widget_log_store: WidgetLogStore | None = None
+_focus_logger: FocusLogger | None = None
 _widget_zoomer: Callable[[str], bool] | None = None
 _widget_display_name_resolver: Callable[[str], str] | None = None
 _file_type_registry_provider: Callable[[], list[dict]] | None = None
@@ -387,6 +389,17 @@ def set_widget_log_store(store: WidgetLogStore) -> None:
 
 def get_widget_log_store() -> WidgetLogStore | None:
     return _widget_log_store
+
+
+def set_focus_logger(logger: FocusLogger) -> None:
+    """TODO b4d99a1: the switchable focus logger (`desk.focus_logger`), for
+    the Focus Logger widget (TODO 00ea6b3)."""
+    global _focus_logger
+    _focus_logger = logger
+
+
+def get_focus_logger() -> FocusLogger | None:
+    return _focus_logger
 
 
 def set_widget_zoomer(zoomer: Callable[[str], bool]) -> None:

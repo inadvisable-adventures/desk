@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from desk import focus_logger
 from desk.shell.desk_picker import DeskPicker
 from desk.shell.hud import HudController
 from desk.shell.new_scratch_button import NewScratchButton
@@ -735,6 +736,21 @@ class WorkspaceView(QGraphicsView):
         widget = item.widget()
         return widget if isinstance(widget, WidgetFrame) else None
 
+    def placed_frames(self) -> list[WidgetFrame]:
+        """Every frame on the canvas, desk-internal popups included (TODO
+        b4d99a1's focus logger reads geometry from it)."""
+        return [*self._frames, *self._popup_frames]
+
+    def chrome_at(self, view_pos: QPointF) -> tuple[str, str] | None:
+        """Public, read-only form of `_hit_test_chrome`: `(instance_id, part)`
+        for a press on a frame's chrome (`titlebar`, a resize edge, or a
+        button kind), else None."""
+        hit = self._hit_test_chrome(view_pos)
+        if hit is None:
+            return None
+        frame, edge = hit
+        return frame.instance_id, (edge if edge is not None else "titlebar")
+
     def _hit_test_chrome(self, view_pos: QPointF) -> tuple[WidgetFrame, str | None] | None:
         """Determines whether a press at this viewport position landed on a
         widget's titlebar or a resize handle. Done here (not in the chrome
@@ -870,6 +886,7 @@ class WorkspaceView(QGraphicsView):
             return
         max_z = max((z for z in self._frame_z_values()), default=0.0)
         proxy.setZValue(max_z + 1)
+        focus_logger.note("bring_to_front", frame=frame.instance_id, z=proxy.zValue())
 
     def send_to_back(self, frame: WidgetFrame) -> None:
         proxy = frame.graphicsProxyWidget()
@@ -877,6 +894,7 @@ class WorkspaceView(QGraphicsView):
             return
         min_z = min((z for z in self._frame_z_values()), default=0.0)
         proxy.setZValue(min_z - 1)
+        focus_logger.note("send_to_back", frame=frame.instance_id, z=proxy.zValue())
 
     def _frame_z_values(self):
         for other in self._frames:

@@ -839,6 +839,23 @@ via realistic event simulation at 0.25×–4× zoom for the titlebar and all
 three resize handles; real-hardware confirmation is still the ultimate
 check, per usual for interactive UX in this environment.)
 
+## Focus logging (TODO `b4d99a1`)
+
+`desk.focus_logger.FocusLogger` (owned by `DeskWindow`, reachable as
+`current_context.get_focus_logger()`) is a switchable, off-by-default
+recorder for diagnosing focus misbehaviour (see
+`investigations/text-focus-stability.md`). While enabled it writes one-line
+`kind key=value` entries to the named widget log `desk-focus`: scene focus
+changes (`focus_item`, plus `focus_settled` when the scene resolves focus
+differently a turn later), focus moving between controls of one widget
+(`focus_in`/`focus_out` -- no scene signal fires for those), the key and mouse
+input just before (`key`, coalesced `typing n=...`, `mouse_press` with the
+frame stack under the cursor), the gap to the nearest neighbouring frame, z-order
+changes, Tab navigation/reclaim, and a compact Python call stack (`py=`) that
+names the caller of a programmatic `setFocus()`. Printable characters are never
+recorded. Enable at startup with `DESK_FOCUS_LOG=1`. Other shell code reports
+into it with the no-op-when-off `focus_logger.note(kind, **fields)`.
+
 ## Future Work
 
 - Minimize/collapse affordances in the titlebar (close is implemented —

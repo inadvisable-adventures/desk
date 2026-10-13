@@ -1,4 +1,4 @@
-# Focus logging inside Desk (TODO b4d99a1)
+# Focus logging inside Desk (TODO b4d99a1) -- COMPLETED
 
 Part of the text-focus-stability investigation (`investigations/text-focus-stability.md`):
 instrument Desk so that when the text caret jumps out of the box being typed in, the data to
@@ -69,3 +69,18 @@ Headless `verify_focus_logger.py` with a real `WorkspaceView`, two close/overlap
 focus moves; Tab through a multi-field widget (`tab_nav`/`tab_reclaim`); typing coalesced with no
 characters leaked; mouse press stack and gap; z-order notes; programmatic `py=` stack; `rec` tag.
 Real-app interactive use is skipped here (belongs with TODO `00ea6b3`).
+
+## Status: COMPLETED 2026-10-13
+
+Implemented as planned. Deviations/notes:
+- `py=` lists every non-library Python frame above the focus slot (skipping only
+  `site-packages`, stdlib and `focus_logger.py` itself), so input-triggered changes show
+  `canvas.py:<n>:event`-style frames; `native` appears only when no Python frame is
+  involved at all.
+- `focus_in`'s `from=` is the control that most recently lost focus (set on `focus_out`),
+  falling back to the scene's focused control at `enable()`.
+- Added public `WorkspaceView.placed_frames()` and `chrome_at()` for the logger.
+- Verified headlessly by `verify_focus_logger.py` (22 checks) and the 139 existing
+  verify scripts touching `WidgetFrame`/`WorkspaceView`/`window`/`current_context`
+  (all pass). Interactive use in a running Desk was not exercised (belongs with TODO
+  `00ea6b3`, the widget); the app-level event filter's runtime overhead is unmeasured.

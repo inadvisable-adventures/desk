@@ -1325,3 +1325,16 @@ half-torn-down mediator (`AttributeError: ... no attribute '_lock'`) -- an abort
 not a failure, and order-dependent so it passes most runs. Keep every test
 mediator alive for the whole run (the `_keep` helper in the newer
 `verify_*` scripts).
+
+## Focus moving between controls of ONE embedded widget fires no scene-level signal
+
+TODO `b4d99a1` (the focus logger): `QGraphicsScene.focusItemChanged` reports a change
+of *proxy item*, so focus moving from one `QLineEdit` to another inside the same
+`WidgetFrame` produces no `focus_item` at all (confirmed directly, headlessly). The
+only place to see it is the per-widget `QEvent.FocusIn`/`FocusOut` (with their
+`reason()`), which an app-level event filter receives for each embedded control. A
+diagnosis built only on `focusItemChanged` is blind to "the caret jumped to another
+box in the same widget". Handy corollary: both signals are delivered *synchronously*
+from inside `setFocus()`, so a Python slot's own call stack
+(`sys._getframe`) contains the Python code that requested the focus change; if it
+contains none, Qt itself (key/mouse handling) did it.

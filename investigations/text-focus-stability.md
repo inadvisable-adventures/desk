@@ -1,6 +1,6 @@
 # Investigation: text caret jumps out of the box being typed in
 
-**Status:** open. TODOs `b4d99a1` (focus logging in Desk), `00ea6b3` (Focus Logger widget),
+**Status:** open; focus logging is implemented in Desk (TODO `b4d99a1`, `desk.focus_logger`, log name `desk-focus`, enable with `DESK_FOCUS_LOG=1` until the widget exists), no data collected yet. TODOs `b4d99a1` (focus logging in Desk), `00ea6b3` (Focus Logger widget),
 `9e74c40` (agent guidance). Nothing has been reproduced or fixed yet; this records what has been
 established, what has not, and where to go next. Related, already-fixed: TODO `e69f209` (Tab handing
 focus to an unrelated sibling widget); see `LEARNINGS.md`, "Pressing Tab in a
@@ -99,3 +99,12 @@ Code reading only (no reproduction, no instrumentation yet):
 
 `LEARNINGS.md` (Tab escape, click-to-focus in proxy widgets, `focusChanged` level, GUI-thread
 stalls), `design-docs/widget-ux.md`, `plans/agent-widget-command-query.md`, `tempui-widget-logs.md`.
+
+## Update 2026-10-13: the instrumentation exists
+
+`desk.focus_logger` records the events listed in `plans/focus-logging-in-desk.md` into the
+`desk-focus` named log. Two things learned while building it: focus moving between controls
+of one widget produces *no* scene-level signal (so it is logged from `FocusIn`/`FocusOut`
+instead; LEARNINGS), and a `py=` call stack on each focus entry names the Python code that
+requested a change, or shows only input-handling frames when Qt itself did it. That makes
+hypothesis 5 (programmatic `setFocus`) directly testable from the first captured jump.

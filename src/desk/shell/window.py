@@ -29,6 +29,7 @@ from desk.desks import (
     save_desk,
     state_entry_dict,
 )
+from desk.focus_logger import FocusLogger
 from desk.jobs import materialize as materialize_job
 from desk.logging_setup import set_log_directory
 from desk.promotion_deps import (
@@ -433,6 +434,10 @@ class DeskWindow(QMainWindow):
         # same mediator. See _bind_event_mediator/_refresh_picker below.
         self._event_mediator = handle.event_mediator
         self._widget_logs = handle.widget_logs  # TODO 1f74c27
+        # TODO b4d99a1: off unless DESK_FOCUS_LOG=1 (or a widget enables it).
+        self._focus_logger = FocusLogger(self.view, self._widget_logs, parent=self)
+        if os.environ.get("DESK_FOCUS_LOG") == "1":
+            self._focus_logger.enable()
 
         # Desk-hosted microservices (TODO e75b165) -- shared with the
         # Local Web Server's hmsvc Bridge routes (handle.hmsvc_manager).
@@ -552,6 +557,7 @@ class DeskWindow(QMainWindow):
         current_context.set_discuss_starter(self.start_discussion)
         current_context.set_event_mediator(self._event_mediator)
         current_context.set_widget_log_store(self._widget_logs)
+        current_context.set_focus_logger(self._focus_logger)
         current_context.set_widget_zoomer(self.zoom_to_widget_by_instance_id)
         current_context.set_widget_display_name_resolver(self._display_name_for_instance)
         current_context.set_widget_catalog_provider(self.get_widget_catalog_dicts)

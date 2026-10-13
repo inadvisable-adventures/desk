@@ -12549,7 +12549,7 @@ c48aba6. Optional auto-restart on crash for hmsvc, opt-in per service in `servic
    capability-acceptance prompt/wording issue arose. No rough edges found needing a fix. Details in the
    plan file's own Status section.
 
-b4d99a1. Focus logging inside Desk (text-focus-stability investigation, see
+b4d99a1. COMPLETED: Focus logging inside Desk (text-focus-stability investigation, see
    `investigations/text-focus-stability.md`): a core, switchable hook in the shell that records, into a
    named widget log (`desk.widget_logs`), every scene-level focus change (old/new frame instance id,
    focused control class/objectName) together with the key and mouse events that immediately preceded
@@ -12558,7 +12558,10 @@ b4d99a1. Focus logging inside Desk (text-focus-stability investigation, see
    characters must not be logged (key identity only), since the log is agent-readable. Off by default,
    cheap when off. Related: TODO `00ea6b3`, `9e74c40`.
 
-   [planned: focus-logging-in-desk.md]
+   [planned: focus-logging-in-desk.md (COMPLETED)]
+
+   COMPLETED 2026-10-13: `desk.focus_logger.FocusLogger` (log `desk-focus`), `current_context.get_focus_logger()`,
+   `DESK_FOCUS_LOG=1`, `verify_focus_logger.py`; `design-docs/widget-ux.md` section, LEARNINGS entry.
 
 00ea6b3. Focus Logger widget: a `kind: "python"` widget that manages the focus logging of TODO
    `b4d99a1` -- start/stop it by hand, show the log live -- and also subscribes to the `recording` and
