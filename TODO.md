@@ -12558,6 +12558,8 @@ b4d99a1. Focus logging inside Desk (text-focus-stability investigation, see
    characters must not be logged (key identity only), since the log is agent-readable. Off by default,
    cheap when off. Related: TODO `00ea6b3`, `9e74c40`.
 
+   [planned: focus-logging-in-desk.md]
+
 00ea6b3. Focus Logger widget: a `kind: "python"` widget that manages the focus logging of TODO
    `b4d99a1` -- start/stop it by hand, show the log live -- and also subscribes to the `recording` and
    `stopped_recording` desk events (TODO `9df5246`) so focus logging switches on and off with the
