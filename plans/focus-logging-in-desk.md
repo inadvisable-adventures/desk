@@ -80,7 +80,7 @@ Implemented as planned. Deviations/notes:
 - `focus_in`'s `from=` is the control that most recently lost focus (set on `focus_out`),
   falling back to the scene's focused control at `enable()`.
 - Added public `WorkspaceView.placed_frames()` and `chrome_at()` for the logger.
-- Verified headlessly by `verify_focus_logger.py` (22 checks) and the 139 existing
+- Verified headlessly by `verify_focus_logger.py` (21 checks) and the 139 existing
   verify scripts touching `WidgetFrame`/`WorkspaceView`/`window`/`current_context`
   (all pass). Interactive use in a running Desk was not exercised (belongs with TODO
   `00ea6b3`, the widget); the app-level event filter's runtime overhead is unmeasured.
