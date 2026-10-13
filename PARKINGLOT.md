@@ -1406,3 +1406,26 @@ This file captures thoughts and TODO items that arise during work on other thing
   - The transcript's absolute times can be off by up to the microphone's start-up time
     (`started_at_ms` is stamped just after capture starts); unmeasured.
   - The pasted transcript note is always on; consider a disable option.
+
+- **Agent-accessible diagnostic widgets as a hand-off pattern**
+
+  Parked (the user wants to think more about whether and how to formalize this, and whether it would
+  actually be useful). The approach, as first used for the text-focus-stability investigation
+  (`investigations/text-focus-stability.md`; TODOs `b4d99a1`, `00ea6b3`, `9e74c40`): when a bug is
+  intermittent and only reproducible while the user works, hand the investigation off *inside Desk*
+  instead of asking the user to describe it from memory:
+
+  1. Put the instrumentation in Desk itself, switchable and cheap when off, writing into a named
+     widget log (`desk.widget_logs`).
+  2. Give it a small `kind: "python"` interface widget that can start/stop the instrumentation, show
+     its log live, and listen for the `recording`/`stopped_recording` desk events so it runs while
+     the user is dictating a description of what they are doing.
+  3. Write an agent-facing doc so an agent can ask for the widget to be placed on the canvas for the
+     user, then read the log (`desk_query_widget_log`) and the timecoded transcript and correlate
+     them, continuing the investigation interactively without a human relaying what they saw.
+
+  Open questions: is "instrumentation + interface widget + agent doc" a reusable shape (a template, a
+  checklist in the development process, a generic "diagnostic session" widget) or only worth doing
+  case by case? How should the user's narration, the log and the agent's analysis be kept together
+  (an investigation doc, a session directory)? What privacy rules apply to agent-readable logs
+  (e.g. no typed characters)?

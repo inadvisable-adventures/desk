@@ -12548,3 +12548,24 @@ c48aba6. Optional auto-restart on crash for hmsvc, opt-in per service in `servic
    documented format; transcript timecodes correlated with logged events within sub-second lag; no
    capability-acceptance prompt/wording issue arose. No rough edges found needing a fix. Details in the
    plan file's own Status section.
+
+b4d99a1. Focus logging inside Desk (text-focus-stability investigation, see
+   `investigations/text-focus-stability.md`): a core, switchable hook in the shell that records, into a
+   named widget log (`desk.widget_logs`), every scene-level focus change (old/new frame instance id,
+   focused control class/objectName) together with the key and mouse events that immediately preceded
+   it, plus context useful to the bug (distance to the nearest neighbouring frame, z-order changes
+   such as bring-to-front, programmatic `setFocus` callers where cheaply capturable). Printable
+   characters must not be logged (key identity only), since the log is agent-readable. Off by default,
+   cheap when off. Related: TODO `00ea6b3`, `9e74c40`.
+
+00ea6b3. Focus Logger widget: a `kind: "python"` widget that manages the focus logging of TODO
+   `b4d99a1` -- start/stop it by hand, show the log live -- and also subscribes to the `recording` and
+   `stopped_recording` desk events (TODO `9df5246`) so focus logging switches on and off with the
+   user's dictation, tagging entries with the `recording_id`. Writes to the named-log store so agents
+   can read the data with `desk_query_widget_log`. Related: TODO `b4d99a1`, `9e74c40`.
+
+9e74c40. Explain to an agent how to use the Focus Logger: a dedicated `tempui` doc (registered in
+   `SPLIT_DOC_CONTENT`) plus changelog tag + entry, linked from `tempui-widget-logs.md`, covering how
+   an agent asks for the widget to be placed so the user can start a session, the log's name and
+   entry format, how to query it and correlate it with a timecoded transcript, and how to read the
+   result against `investigations/text-focus-stability.md`. Do after TODO `b4d99a1` and `00ea6b3`.
