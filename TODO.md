@@ -12569,6 +12569,8 @@ b4d99a1. COMPLETED: Focus logging inside Desk (text-focus-stability investigatio
    user's dictation, tagging entries with the `recording_id`. Writes to the named-log store so agents
    can read the data with `desk_query_widget_log`. Related: TODO `b4d99a1`, `9e74c40`.
 
+   [planned: focus-logger-widget.md]
+
 9e74c40. Explain to an agent how to use the Focus Logger: a dedicated `tempui` doc (registered in
    `SPLIT_DOC_CONTENT`) plus changelog tag + entry, linked from `tempui-widget-logs.md`, covering how
    an agent asks for the widget to be placed so the user can start a session, the log's name and
