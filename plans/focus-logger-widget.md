@@ -1,4 +1,4 @@
-# Focus Logger widget (TODO 00ea6b3)
+# Focus Logger widget (TODO 00ea6b3) -- COMPLETED
 
 Part of the text-focus-stability investigation (`investigations/text-focus-stability.md`).
 Follows TODO `b4d99a1` (focus logging inside Desk, COMPLETED). Precedes TODO `9e74c40`

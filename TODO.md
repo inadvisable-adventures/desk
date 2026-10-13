@@ -12563,13 +12563,22 @@ b4d99a1. COMPLETED: Focus logging inside Desk (text-focus-stability investigatio
    COMPLETED 2026-10-13: `desk.focus_logger.FocusLogger` (log `desk-focus`), `current_context.get_focus_logger()`,
    `DESK_FOCUS_LOG=1`, `verify_focus_logger.py`; `design-docs/widget-ux.md` section, LEARNINGS entry.
 
-00ea6b3. Focus Logger widget: a `kind: "python"` widget that manages the focus logging of TODO
+00ea6b3. COMPLETED: Focus Logger widget: a `kind: "python"` widget that manages the focus logging of TODO
    `b4d99a1` -- start/stop it by hand, show the log live -- and also subscribes to the `recording` and
    `stopped_recording` desk events (TODO `9df5246`) so focus logging switches on and off with the
    user's dictation, tagging entries with the `recording_id`. Writes to the named-log store so agents
    can read the data with `desk_query_widget_log`. Related: TODO `b4d99a1`, `9e74c40`.
 
-   [planned: focus-logger-widget.md]
+   [planned: focus-logger-widget.md (COMPLETED)]
+
+   COMPLETED 2026-10-13: `widgets/focus_logger/widget.py`'s `FocusLoggerWidget` -- Start/Stop button
+   driving `current_context.get_focus_logger()`, a live view polling `WidgetLogStore.query(FOCUS_LOG_NAME, ...)`
+   every 500ms, and `bind_event_mediator` subscribing to `recording`/`stopped_recording` so a session
+   this widget itself auto-started from a recording ends with the matching `stopped_recording`, while a
+   manual session (already on by hand) survives a recording that starts/stops around it, only having its
+   `rec=` tag cleared. `tests/verify/verify_focus_logger_widget.py` (25 checks, headless, real
+   `FocusLogger`/`WidgetLogStore`/`EventMediator`); `design-docs/widget-ux.md` section. Full
+   `tests/verify/` suite re-run clean afterward.
 
 9e74c40. Explain to an agent how to use the Focus Logger: a dedicated `tempui` doc (registered in
    `SPLIT_DOC_CONTENT`) plus changelog tag + entry, linked from `tempui-widget-logs.md`, covering how

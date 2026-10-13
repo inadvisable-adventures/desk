@@ -856,6 +856,15 @@ names the caller of a programmatic `setFocus()`. Printable characters are never
 recorded. Enable at startup with `DESK_FOCUS_LOG=1`. Other shell code reports
 into it with the no-op-when-off `focus_logger.note(kind, **fields)`.
 
+The Focus Logger widget (TODO `00ea6b3`, `widgets/focus_logger/`) is the one UI
+for this: a Start/Stop button, a live view of new `desk-focus` entries (polled
+from the same `WidgetLogStore` `desk_query_widget_log` reads), and an automatic
+on/off bracket around the `recording`/`stopped_recording` desk events so the
+log lines up with a timecoded transcript -- a manual session survives a
+recording that starts/stops around it; a session the widget itself
+auto-started from a `recording` event ends with the matching
+`stopped_recording`. See `plans/focus-logger-widget.md`.
+
 ## Future Work
 
 - Minimize/collapse affordances in the titlebar (close is implemented —
