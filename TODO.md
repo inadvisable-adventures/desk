@@ -12617,3 +12617,21 @@ b4d99a1. COMPLETED: Focus logging inside Desk (text-focus-stability investigatio
    fine. Points at the surrounding tool/sandbox layer's own handling of `$(...)`, not at `bash` or this
    project -- nothing to patch here. `LEARNINGS.md`'s existing entry updated with the precise trigger
    and a minimal reproduction; `git commit -F <file>` confirmed as the right, permanent workaround.
+
+c33657f. Add a `desk_git_commit` MCP tool (follows from TODO `8e8db18`'s root-cause finding): takes the
+   commit message as a structured parameter and runs `git commit` via `subprocess.run([...], shell=False)`
+   -- an argv list, never a shell string -- so the message never passes through shell quoting at all,
+   structurally immune to the whole class of hazard `8e8db18` found (and to ones not yet hit). Narrowly
+   scoped to commit-message writing, not "a git MCP" -- status/diff/log/add already work fine through
+   Bash since they don't smuggle freeform multi-line text through shell quoting. Registered in
+   `src/desk/shell/desk_mcp_server.py` alongside the existing `desk_save`/`desk_list_todo_items`/etc.
+   tools. Needs a mandatory changelog tag (new agent-visible `mcp__desk__` tool) and a decision on where
+   agent-facing "prefer this over a Bash heredoc" guidance should live (`widgets/claude_desk/widget.py`'s
+   `CLAUDE_WIDGET_PROMPT` is the existing precedent for that kind of steering) -- see the plan for the
+   open design questions this leaves to the implementer, deliberately not pre-decided here. **Must be
+   implemented by a different agent/session than this project's own live one** -- the change touches
+   the exact in-process MCP server and session machinery backing that live session's own tool
+   connections, and Desk doesn't yet have a safe way for an agent to modify and reload the server it's
+   currently talking through.
+
+   [planned: desk-git-commit-mcp-tool.md]
