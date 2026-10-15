@@ -1,0 +1,33 @@
+# The raycaster family's formula DSL (one statement per line), declared as a
+# grammar instead of hand-written as a recursive-descent parser -- see
+# ../../grammar-ast-live-pane.md. Mirrors the real grammar implemented by
+# draw-with-desk/desk_widgets/_raycaster-shared/raycaster-dsl.ts's
+# FormulaSyntaxChecker/checkFormulaStatement (and that file's own comment:
+# "exactly mirrors main.py's own _FormulaParser"), copied into ./oracle.ts
+# verbatim as this pressure test's ground truth.
+#
+# Deliberately covers ONLY syntax, same as the hand-rolled version: which
+# names are *allowed* where (a mode-scoped allowlist, color literals, the
+# assignment target's own component rules, a loop variable's scope inside an
+# `each` statement) is semantic, not syntactic, and is checked by
+# ./semantic-check.ts as a separate tree-walk over the AST this grammar
+# produces -- not folded into the grammar itself.
+
+Statement       <- EachStatement / AssignStatement
+EachStatement   <- 'each' loopVar:Ident ':' 'color' '.' target:Ident '=' expr:Expr
+AssignStatement <- 'color' dot:('.' comp:Ident)? '=' expr:Expr
+
+Expr   <- head:Term tail:(op:AddOp term:Term)*
+Term   <- head:Primary tail:(op:MulOp term:Primary)*
+AddOp  <- '+' / '-'
+MulOp  <- '*' / '/'
+
+Primary <- Neg / Group / Vector / Number / Name
+Neg     <- '-' value:Primary
+Group   <- '(' value:Expr ')'
+Vector  <- '<' x:Expr ',' y:Expr ',' z:Expr '>'
+Number  <- value:Digits
+Name    <- id:Ident dot:('.' comp:Ident)?
+
+Ident  <- [A-Za-z_] [A-Za-z0-9_]*
+Digits <- [0-9]+ ('.' [0-9]+)?

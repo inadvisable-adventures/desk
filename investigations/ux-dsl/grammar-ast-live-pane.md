@@ -1,7 +1,10 @@
 # From line-patching to a grammar-defined, AST-driven live-code pane
 
-**Status:** open; direction decided 2026-10-15 (recorded below), pressure-test
-against the raycaster formula DSL starting now. Supersedes
+**Status:** open; direction decided 2026-10-15 (recorded below). The formula
+-DSL pressure test described at the end of this doc is done and passing
+(27/27, including real source-position checks) -- see
+`prototypes/formula-grammar/README.md` for the code and result, and "Pressure
+-test result" below for what it did and didn't prove. Supersedes
 `line-patch-primitive.md` (kept as a historical record of the narrower framing
 this grew out of) and resolves/unifies open questions 1 and 4 of
 `dsl-for-agent-widgets.md`.
@@ -140,10 +143,50 @@ formula grammar in the chosen grammar-definition notation, generate a parser
 from it, and confirm it accepts/rejects the same inputs
 `FormulaSyntaxChecker` does, with source positions attached to every node.
 
+## Pressure-test result, 2026-10-15
+
+Done -- `prototypes/formula-grammar/` (see its own `README.md` for the full
+write-up). The grammar was expressed in a standard PEG notation (`Rule <-
+expr`, ordered choice, sequence, `*`/`+`/`?` repetition, labeled captures,
+literals/character classes/grouping -- the well-known surface syntax PEG
+tooling generally uses, not a one-off invented for this), compiled by a small
+generic engine (`peg-engine.ts`) into an AST with real source-position spans,
+and checked against the real hand-rolled `FormulaSyntaxChecker` (copied
+verbatim as `oracle.ts`) across 25 valid/invalid formulas plus 2 direct
+source-position assertions -- 27/27 passing. Semantic rules (which names are
+allowed where) were implemented as a separate AST tree-walk
+(`semantic-check.ts`), deliberately decoupled from parsing -- unlike the real
+checker, which interleaves syntax and semantics in one recursive-descent pass.
+
+**A real bug surfaced and got fixed along the way, worth keeping rather than
+glossing over**: the grammar-*description* parser's own whitespace-skipping
+(skipping spaces/comments/newlines while reading the `.peg` text itself, not
+the engine's handling of formula text) turned out to need two different
+behaviors depending on the caller -- "find the next real token, wherever it
+is" may safely cross a newline into the next rule's own header, but "has the
+current rule's sequence ended" must not, or it silently treats the next
+rule's name as one more term of the rule just finished. This broke parsing
+the formula grammar itself on the first real attempt. See
+`peg-engine.ts`'s `peekAtRuleBoundary` for the fix and the full story. Noted
+here because it's a concrete, specific instance of exactly the kind of thing
+this investigation's "well-trodden ground" framing means -- parser-generation
+has known pitfalls like this one, which is exactly why leaning on established
+technique (rather than improvising) is expected to pay off as this continues.
+
+**What this proves**: the chosen direction (declarative grammar, generic
+engine, source positions as a hard requirement) works for a real,
+non-trivial grammar already in production use, not just a toy example.
+**What it doesn't yet prove**: anything about error recovery beyond
+whole-line accept/reject (not attempted), or anything about the actual live
+-pane/visualization rendering layer -- this test was deliberately scoped to
+"does the engine work at all," per the plan above, not to the full picture.
+
 ## Related
 
 `dsl-for-agent-widgets.md` (the overview doc this resolves open questions 1
 and 4 of), `widget-case-studies.md` (the `raycaster-formula` addendum this doc
 is built on), `line-patch-primitive.md` (the superseded narrower framing),
-`investigations/app_structure_dsl_design.md` (the sibling investigation about
-multi-widget app *structure* rather than one widget's *content*).
+`prototypes/formula-grammar/` (the pressure test itself and its own
+`README.md`), `investigations/app_structure_dsl_design.md` (the sibling
+investigation about multi-widget app *structure* rather than one widget's
+*content*).
