@@ -11237,6 +11237,15 @@ df8138a. COMPLETED: Deprecations by tombstone: plan the process and build the fi
    parked in `PARKINGLOT.md`); whether the stubs themselves are ever removed is
    still open.
 
+d5744c8. COMPLETED: Code editor improvements: (a) syntax-highlighting colors from the lexers (black/dark grey, blue)
+   are illegible on the dark background; pick a legible dark-mode palette. (b) Substring "find":
+   a search box right of "Save As", followed by next/previous buttons; Cmd/Ctrl+F focuses the box;
+   searching is live and immediately jumps to the next match at/after the caret's most recent position.
+
+   [planned: editor-find-and-dark-palette.md (COMPLETED)]
+
+   COMPLETED 2026-10-15: `legible_on_dark` lexer remap, find box/Next/Previous/Cmd+F in `widgets/editor/widget.py`, `verify_editor_find.py`; headless-verified, visual check skipped.
+
 d16c5eb. Audit every built-in widget (all of `widgets/*/`) so it persists only project-relative
    paths in its saved state, never absolute ones, so a `.desk` file (and a view template, see the
    `PARKINGLOT.md` item on `.desk` vs `.desk_temp/`) stays portable between checkouts and machines.
