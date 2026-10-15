@@ -1,8 +1,14 @@
 # Investigation: text caret jumps out of the box being typed in
 
-**Status:** open; focus logging is implemented in Desk (TODO `b4d99a1`, `desk.focus_logger`, log name `desk-focus`, enable with `DESK_FOCUS_LOG=1` until the widget exists), no data collected yet. TODOs `b4d99a1` (focus logging in Desk), `00ea6b3` (Focus Logger widget),
-`9e74c40` (agent guidance). Nothing has been reproduced or fixed yet; this records what has been
-established, what has not, and where to go next. Related, already-fixed: TODO `e69f209` (Tab handing
+**Status:** open; focus logging (TODO `b4d99a1`) and the Focus Logger widget (TODO `00ea6b3`) both
+exist and work end-to-end (see "Update" sections below), but two live sessions with the widget
+(one narrated/recorded, one targeted at hypothesis 5) produced no repro. **Going forward, the plan
+is to leave the Focus Logger widget placed but idle** (not logging continuously) **and switch it
+on if/when the bug actually recurs during ordinary use**, rather than keep chasing a deliberate
+repro -- see the second "Update" section below. TODOs `b4d99a1` (focus logging in Desk), `00ea6b3`
+(Focus Logger widget), `9e74c40` (agent guidance, still open). Nothing has been reproduced or fixed
+yet; this records what has been established, what has not, and where to go next. Related,
+already-fixed: TODO `e69f209` (Tab handing
 focus to an unrelated sibling widget); see `LEARNINGS.md`, "Pressing Tab in a
 `QGraphicsProxyWidget`-embedded widget can silently hand keyboard focus to an unrelated sibling".
 
@@ -60,12 +66,24 @@ Code reading only (no reproduction, no instrumentation yet):
 
 ## Questions for the user
 
-- Keys or mouse when it happens? Only typed letters, or Tab, arrows, Enter, clicking nearby?
-- Where does the caret land?
+- Keys or mouse when it happens? Only typed letters, or Tab, arrows, Enter, clicking nearby? --
+  **Answered 2026-10-13: just typing plain letters. No Tab, no mouse.** Weakens hypothesis 1
+  (Tab-escape reclaim) and hypothesis 3 (mouse hit-testing near frame edges) as the cause.
+- Where does the caret land? -- still open.
 - Which widgets (two Claude (Desk) prompts? Editor next to TODO?), and how close (touching,
-  overlapping, a few pixels apart)?
+  overlapping, a few pixels apart)? -- **Answered 2026-10-13: not restricted to one pair or even
+  one widget *kind* -- "possibly any widget with a text box"; confirmed with Claude (Desk) alone
+  and with Claude (Desk) next to an HTML widget. Distance "more than a few pixels, maybe as far as
+  five mouse-pointer widths" -- i.e. not touching or overlapping,** which rules out any
+  hit-testing-region explanation (hypothesis 3/4) at that range.
 - Does it happen with the neighbour present but never touched, or only after interacting with it?
-- Is the Claude (Desk) widget (which updates its own UI while streaming) always involved?
+  -- still open.
+- Is the Claude (Desk) widget (which updates its own UI while streaming) always involved? --
+  **Partially answered: confirmed involved in at least one case, but not described as required**
+  (also reported with Claude (Desk) + an HTML widget, and a general "any text box" suspicion).
+  Still consistent with hypothesis 5 if the real trigger is *some* widget's own background UI
+  update (not specifically Claude (Desk)'s) stealing focus while another widget is being typed
+  into.
 
 ## Plan: instrument, then let the data decide
 
@@ -108,3 +126,63 @@ of one widget produces *no* scene-level signal (so it is logged from `FocusIn`/`
 instead; LEARNINGS), and a `py=` call stack on each focus entry names the Python code that
 requested a change, or shows only input-handling frames when Qt itself did it. That makes
 hypothesis 5 (programmatic `setFocus`) directly testable from the first captured jump.
+
+## Update 2026-10-13: first live session, no repro
+
+**Files:** transcript `.desk_temp/timecoded-transcripts/rec-1791938204671-6c44.txt` (recording id
+`rec-1791938204671-6c44`, started `2026-10-13T17:36:44.671-07:00`); `desk-focus` log, same window
+through `2026-10-13T17:38:06.242-07:00` (62 entries, `rec=rec-1791938204671-6c44` throughout --
+the Focus Logger widget auto-started on the `recording` event and auto-stopped on
+`stopped_recording`, as designed). Two `scratch` widget instances: `8410bd91` (left/first-placed)
+and `f6fb06cc` (right/second-placed).
+
+**What happened, per the log:** the user placed one Scratch widget (`8410bd91`, via the spawn
+menu), clicked into it, and typed for a while (`typing`/`key` entries, no anomalies). They then
+placed a second Scratch (`f6fb06cc`) and dragged it next to the first until `gap=5.9` scene units
+apart (the nearest-neighbour distance logged on the surrounding `focus_item`/`mouse_press`
+entries) -- closer than their own "~5 cursor-widths" estimate of when the bug happens, i.e. this
+test covered *closer* than the reported trigger distance. They then typed and backspaced
+continuously in the left one (`8410bd91`) for about 27 seconds (17:37:34.884 to 17:38:01.903) --
+**zero `focus_item`/`focus_in`/`focus_settled` entries fired during that entire stretch.** Every
+focus change anywhere in the whole session has a `mouse_press` (or spawn-menu activation) at the
+same millisecond and a `py=` stack that bottoms out in ordinary event-loop/mouse-handling frames
+(`canvas.py:...:mousePressEvent`, `widget_spawn_menu.py:...`) -- no `tab_nav`/`tab_reclaim` (no
+Tab was pressed, consistent with the user's report), and no case of a focus change whose `py=`
+stack pointed at something *other* than the input event that caused it (i.e. no programmatic
+`setFocus()` from elsewhere fired during this session -- hypothesis 5 untested further than "it
+didn't happen this time," not ruled out).
+
+**Reading:** the bug did not reproduce. Plain typing alone, at a distance closer than previously
+reported, between two plain `QPlainTextEdit`-backed Scratch widgets, was not sufficient. Candidate
+reasons, not yet distinguished: the widget *kind* matters (neither Scratch widget updates its own
+UI independently of the user's typing, unlike Claude (Desk) streaming or some HTML widgets'
+background refreshes -- this session had nothing else actively updating anywhere on the canvas);
+longer exposure is needed; or some other widget needs to be mid-update (hypothesis 5) rather than
+merely present and close. Next attempt should pair a widget that updates its own UI on its own
+schedule (Claude (Desk) while streaming; any HTML widget that refreshes itself) with the one being
+typed into, rather than two otherwise-static widgets.
+
+## Update 2026-10-13: second session (targeted at hypothesis 5), still no repro
+
+Built two disposable `DefineWidget` HTML widgets specifically to test the "something else updates
+its own UI on its own schedule" shape of hypothesis 5, independent of a real narrated recording:
+source at `.desk_temp/widgets/KeypressPublisher/` and `.desk_temp/widgets/KeypressEchoer/` (not yet
+promoted -- still available for a future attempt without rebuilding). `KeypressPublisher` has a
+text box and publishes a `focus-probe.keypress` desk event on every keydown; `KeypressEchoer`
+subscribes and, ~2s after each event, appends the key to its *own* text box, so it keeps editing
+its own content on a timer that's deliberately decoupled from wherever the user is actually
+typing.
+
+The user tried several placements of these two plus this Claude (Desk) widget, including typing
+directly into this Claude (Desk) instance's own prompt box while the Keypress widgets echoed
+nearby. **No repro.** No `desk-focus` data from this round -- the Focus Logger widget stayed off
+(by design: the user's plan going forward is to leave it placed but idle, and switch it on
+only if the bug actually recurs, rather than logging continuously). The two Keypress widgets are
+left placed and un-promoted for whenever a future attempt wants them again.
+
+**Status:** still unreproduced after two sessions, including one aimed squarely at hypothesis 5.
+Nothing here rules hypothesis 5 out -- a desk-event round-trip plus `setTimeout` is not the same
+code path as whatever Claude (Desk) or a real HTML widget's own refresh logic does internally --
+but it's no longer the obvious next thing to try first. Worth reconsidering the hypothesis list
+itself (or widening capture, per "Possible paths after the first data" above) before the next
+attempt, rather than re-running the same shape of test a third time.
