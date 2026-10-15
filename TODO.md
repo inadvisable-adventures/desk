@@ -12652,3 +12652,14 @@ c33657f. COMPLETED: Add a `desk_git_commit` MCP tool (follows from TODO `8e8db18
    assertion in `verify_desk_mcp_server.py` bumped to 13. Implemented from a plain CLI session
    (no `mcp__desk__` connection), per the plan's different-session requirement. NOT yet exercised
    through a live Claude (Desk) session: the running one needs a restart to pick the tool up.
+
+333bebf. COMPLETED: Markdown widget arrows (`../FEEDBACK/FEEDBACK-DESK-markdown-widget-collapse-arrow-scaling-2026-10-15-1100.md`,
+   plus the related `...-section-toggle-arrow-size-2026-10-15-1130.md`): the sidebar TOC's native-drawn
+   branch arrows detach from their rows and oversize when the canvas is zoomed out, and the section
+   toggles' `setArrowType` arrows ignore heading level. Paint both ourselves, as Project Files did
+   (TODO b927389).
+
+   [planned: markdown-painted-arrows.md (COMPLETED)]
+
+   COMPLETED 2026-10-15: shared `desk.shell.painted_branches`, TOC + section toggle use it,
+   `verify_markdown_painted_arrows.py`; headless-verified only (live zoomed-out check pending).

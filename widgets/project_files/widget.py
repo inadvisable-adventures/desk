@@ -1,20 +1,20 @@
 from pathlib import Path
 
-from PyQt6.QtCore import QDir, QEvent, QModelIndex, QPointF, QRectF, QTimer, Qt
-from PyQt6.QtGui import QFileSystemModel, QPainter, QPolygonF, QStandardItem, QStandardItemModel
+from PyQt6.QtCore import QDir, QEvent, QModelIndex, QTimer, Qt
+from PyQt6.QtGui import QFileSystemModel, QStandardItem, QStandardItemModel
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
     QHBoxLayout,
     QLineEdit,
     QPushButton,
-    QTreeView,
     QVBoxLayout,
     QWidget,
 )
 
 from desk.file_type_registry import FILE_TYPE_REGISTRY_UPDATED_EVENT, entry_from_dict, find_view_handler
 from desk.shell import current_context
+from desk.shell.painted_branches import PaintedBranchTreeView
 from desk.shell.event_broker import EventSubscription
 
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", "build", "dist"}
@@ -70,51 +70,9 @@ def _build_search_model(root: Path, query: str) -> QStandardItemModel:
     return model
 
 
-class _FileTreeView(QTreeView):
-    """A plain QTreeView, except the expand/collapse branch indicator is
-    painted by us instead of the native platform style. Reported: the
-    native-drawn arrow visibly scales oddly and stops reliably
-    responding to clicks once this widget is embedded in the Workspace
-    Canvas's QGraphicsProxyWidget at a non-1.0 zoom -- a known category
-    of issue with native-style-drawn elements composited through an
-    offscreen widget buffer (see LEARNINGS.md's related note on
-    QGraphicsProxyWidget-embedded coordinates). Qt's own click-to
-    -toggle hit-testing is based purely on indentation geometry, not on
-    whatever the style actually paints, so drawing our own arrow
-    *within that same geometry* keeps the visible arrow and the real
-    clickable region from ever drifting apart, regardless of the exact
-    native-rendering root cause."""
-
-    def drawBranches(self, painter: QPainter, rect, index: QModelIndex) -> None:
-        if not index.model().hasChildren(index):
-            return
-        indent = self.indentation()
-        arrow_rect = QRectF(rect.right() - indent, rect.top(), indent, rect.height())
-        cx, cy = arrow_rect.center().x(), arrow_rect.center().y()
-        size = min(arrow_rect.width(), arrow_rect.height()) * 0.28
-
-        painter.save()
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setBrush(self.palette().color(self.foregroundRole()))
-        painter.setPen(Qt.PenStyle.NoPen)
-        if self.isExpanded(index):
-            polygon = QPolygonF(
-                [
-                    QPointF(cx - size, cy - size * 0.6),
-                    QPointF(cx + size, cy - size * 0.6),
-                    QPointF(cx, cy + size * 0.7),
-                ]
-            )
-        else:
-            polygon = QPolygonF(
-                [
-                    QPointF(cx - size * 0.6, cy - size),
-                    QPointF(cx - size * 0.6, cy + size),
-                    QPointF(cx + size * 0.7, cy),
-                ]
-            )
-        painter.drawPolygon(polygon)
-        painter.restore()
+class _FileTreeView(PaintedBranchTreeView):
+    """Branch indicator painted by us, not the native style (see
+    desk.shell.painted_branches and LEARNINGS.md)."""
 
 
 class ProjectFilesWidget(QWidget):

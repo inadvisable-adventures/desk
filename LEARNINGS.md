@@ -1347,3 +1347,7 @@ box in the same widget". Handy corollary: both signals are delivered *synchronou
 from inside `setFocus()`, so a Python slot's own call stack
 (`sys._getframe`) contains the Python code that requested the focus change; if it
 contains none, Qt itself (key/mouse handling) did it.
+
+## Native-style branch/section arrows recurred in the Markdown widget (follow-up to the `QTreeView` branch-arrow entry above)
+
+The same bug recurred in the Markdown widget's TOC (TODO `333bebf`): the symptom there was large arrows detached from their rows, far below the tree. Any new `QTreeView`/`QTreeWidget` in a widget should use `desk.shell.painted_branches`, and `QToolButton.setArrowType()` should be avoided in favor of a painted `QIcon` (its size ignores the font).
