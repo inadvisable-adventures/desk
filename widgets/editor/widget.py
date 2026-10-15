@@ -15,7 +15,15 @@ from PyQt6.Qsci import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFontDatabase, QKeySequence, QShortcut
-from PyQt6.QtWidgets import QFileDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from desk.file_watch import SingleFileWatcher
 from desk.persisted_path import resolve_persisted_path
@@ -34,6 +42,26 @@ CARET_COLOR = "#3daee9"  # this app's established accent blue
 LINE_NUMBER_COLOR = "#7a7f85"  # a muted, dimmer shade of EDITOR_FOREGROUND
 MARGIN_DIVIDER_COLOR = "#3a3d41"  # matches WidgetFrame's own titlebar chrome
 MARGIN_DIVIDER_WIDTH = 2
+# Syntax token colors from QScintilla's lexers are tuned for a white
+# background (black, dark grey, deep blue); on this dark editor they are
+# remapped (TODO d5744c8) to keep their hue but at least this lightness.
+MIN_TOKEN_LIGHTNESS = 0.68
+MAX_TOKEN_LIGHTNESS = 0.85
+MAX_LEXER_STYLE = 128
+FIND_NOT_FOUND_STYLE = "QLineEdit { background: #5a2a2a; }"
+
+
+def legible_on_dark(color: QColor) -> QColor:
+    """Same hue, lightness clamped into a range readable on
+    EDITOR_BACKGROUND. Near-grey colors (black/dark grey) become light
+    grey rather than picking up an arbitrary hue."""
+    hue, saturation, lightness, _alpha = color.getHslF()
+    lightness = min(max(lightness, MIN_TOKEN_LIGHTNESS), MAX_TOKEN_LIGHTNESS)
+    if hue < 0:  # achromatic
+        hue = 0.0
+    result = QColor()
+    result.setHslF(hue, min(saturation, 0.85), lightness)
+    return result
 
 EXTENSION_LEXERS = {
     ".py": QsciLexerPython,
@@ -144,6 +172,19 @@ class EditorWidget(QWidget):
         toolbar.addWidget(open_button)
         toolbar.addWidget(save_button)
         toolbar.addWidget(save_as_button)
+        self._find_box = QLineEdit()
+        self._find_box.setPlaceholderText("Find")
+        self._find_box.setClearButtonEnabled(True)
+        self._find_box.setMinimumWidth(80)
+        find_previous_button = QPushButton("Previous")
+        find_next_button = QPushButton("Next")
+        self._find_box.textChanged.connect(self._find_live)
+        self._find_box.returnPressed.connect(lambda: self._find_step(forward=True))
+        find_next_button.clicked.connect(lambda: self._find_step(forward=True))
+        find_previous_button.clicked.connect(lambda: self._find_step(forward=False))
+        toolbar.addWidget(self._find_box, stretch=1)
+        toolbar.addWidget(find_next_button)
+        toolbar.addWidget(find_previous_button)
         toolbar.addStretch()
         toolbar.addWidget(self._label)
 
@@ -152,6 +193,7 @@ class EditorWidget(QWidget):
         layout.addLayout(toolbar)
         layout.addWidget(self.editor, stretch=1)
 
+        QShortcut(QKeySequence.StandardKey.Find, self, activated=self._focus_find)
         QShortcut(QKeySequence.StandardKey.Open, self, activated=self._open_file)
         QShortcut(QKeySequence.StandardKey.Save, self, activated=lambda: self._save_file())
         QShortcut(QKeySequence.StandardKey.SaveAs, self, activated=lambda: self._save_file_as())
@@ -171,7 +213,44 @@ class EditorWidget(QWidget):
             return
         lexer = lexer_cls(self.editor)
         lexer.setFont(self.editor.font())
+        lexer.setDefaultPaper(QColor(EDITOR_BACKGROUND))
+        lexer.setDefaultColor(QColor(EDITOR_FOREGROUND))
+        for style in range(MAX_LEXER_STYLE):
+            if not lexer.description(style):
+                continue
+            lexer.setPaper(QColor(EDITOR_BACKGROUND), style)
+            lexer.setColor(legible_on_dark(lexer.color(style)), style)
         self.editor.setLexer(lexer)
+
+    # -- find (TODO d5744c8) ---------------------------------------------
+
+    def _focus_find(self) -> None:
+        self._find_box.setFocus()
+        self._find_box.selectAll()
+
+    def _find_live(self, _text: str) -> None:
+        """Re-search on every keystroke from the selection's start (the
+        caret when nothing is selected), so extending the query keeps
+        the current match rather than skipping past it."""
+        self._find(forward=True, from_selection_start=True)
+
+    def _find_step(self, forward: bool) -> None:
+        self._find(forward=forward, from_selection_start=not forward)
+
+    def _find(self, forward: bool, from_selection_start: bool) -> bool:
+        text = self._find_box.text()
+        if not text:
+            self._find_box.setStyleSheet("")
+            return False
+        editor = self.editor
+        if editor.hasSelectedText():
+            line_from, index_from, line_to, index_to = editor.getSelection()
+            line, index = (line_from, index_from) if from_selection_start else (line_to, index_to)
+        else:
+            line, index = editor.getCursorPosition()
+        found = editor.findFirst(text, False, False, False, True, forward, line, index)
+        self._find_box.setStyleSheet("" if found else FIND_NOT_FOUND_STYLE)
+        return found
 
     def _update_label(self) -> None:
         name = self._current_path.name if self._current_path else "(untitled)"
