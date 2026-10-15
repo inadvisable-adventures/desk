@@ -12585,3 +12585,16 @@ b4d99a1. COMPLETED: Focus logging inside Desk (text-focus-stability investigatio
    an agent asks for the widget to be placed so the user can start a session, the log's name and
    entry format, how to query it and correlate it with a timecoded transcript, and how to read the
    result against `investigations/text-focus-stability.md`. Do after TODO `b4d99a1` and `00ea6b3`.
+
+8e8db18. Investigate the root cause of the heredoc-apostrophe `git commit` failure: `git commit -m
+   "$(cat <<'EOF' ... EOF)"` intermittently fails in this shell with `unexpected EOF while looking for
+   matching` when the commit message body contains an apostrophe, even when the message otherwise
+   looks correctly quoted (`LEARNINGS.md`'s own entry, "Prefer `git commit -F <file>` over an inline
+   heredoc for commit messages in this environment", documents the symptom and the `-F <file>`
+   workaround, but not why it happens). Recurred again this session (a commit message containing
+   "world-timelines'" tripped it). Figure out whether this is a quoting/escaping interaction specific
+   to this sandboxed shell environment, a `bash`/`zsh` heredoc parsing quirk, or something else
+   reproducible in isolation -- and either fix the root cause so the heredoc form becomes safe to use
+   again, or confirm `-F <file>` should simply remain the permanent, documented workaround (in which
+   case this item's own investigation becomes the write-up of *why*, added to `LEARNINGS.md` alongside
+   the existing entry rather than replacing it).
