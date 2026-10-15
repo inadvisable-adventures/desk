@@ -12595,7 +12595,7 @@ b4d99a1. COMPLETED: Focus logging inside Desk (text-focus-stability investigatio
    entry format, how to query it and correlate it with a timecoded transcript, and how to read the
    result against `investigations/text-focus-stability.md`. Do after TODO `b4d99a1` and `00ea6b3`.
 
-8e8db18. Investigate the root cause of the heredoc-apostrophe `git commit` failure: `git commit -m
+8e8db18. COMPLETED: Investigate the root cause of the heredoc-apostrophe `git commit` failure: `git commit -m
    "$(cat <<'EOF' ... EOF)"` intermittently fails in this shell with `unexpected EOF while looking for
    matching` when the commit message body contains an apostrophe, even when the message otherwise
    looks correctly quoted (`LEARNINGS.md`'s own entry, "Prefer `git commit -F <file>` over an inline
@@ -12607,3 +12607,13 @@ b4d99a1. COMPLETED: Focus logging inside Desk (text-focus-stability investigatio
    again, or confirm `-F <file>` should simply remain the permanent, documented workaround (in which
    case this item's own investigation becomes the write-up of *why*, added to `LEARNINGS.md` alongside
    the existing entry rather than replacing it).
+
+   [planned: heredoc-apostrophe-root-cause.md (COMPLETED)]
+
+   COMPLETED 2026-10-15: root cause found, precisely reproducible with no `git` involved at all -- a
+   `$(...)` command substitution containing a heredoc whose body has an odd number of literal
+   apostrophe (`'`) characters fails every time; an even count, a bare heredoc with no `$(...)`, a
+   `$(...)` with an apostrophe but no heredoc, and backtick substitution with the same heredoc all work
+   fine. Points at the surrounding tool/sandbox layer's own handling of `$(...)`, not at `bash` or this
+   project -- nothing to patch here. `LEARNINGS.md`'s existing entry updated with the precise trigger
+   and a minimal reproduction; `git commit -F <file>` confirmed as the right, permanent workaround.

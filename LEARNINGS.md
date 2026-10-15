@@ -107,7 +107,16 @@ When synthesizing a `QNativeGestureEvent` for testing (e.g. to simulate a trackp
 
 ## Prefer `git commit -F <file>` over an inline heredoc for commit messages in this environment
 
-`git commit -m "$(cat <<'EOF' ... EOF)"` intermittently fails in this shell with `unexpected EOF while looking for matching` even for messages that look correctly quoted. Writing the message to a scratch file and using `git commit -F path/to/file` avoids the issue entirely and has been reliable throughout this project's history.
+`git commit -m "$(cat <<'EOF' ... EOF)"` intermittently fails in this shell with `unexpected EOF while looking for matching`. Root cause found (TODO `8e8db18`, `plans/heredoc-apostrophe-root-cause.md`), precisely reproducible with no `git` involved at all: a `$(...)` command substitution containing a heredoc whose body has an odd number of literal apostrophe (`'`) characters fails every time, regardless of delimiter quoting style; an even count, a bare heredoc with no `$(...)`, a `$(...)` with an apostrophe but no heredoc, and backtick substitution (`` ` ` ``) with the exact same heredoc all work fine. Minimal, git-free reproduction:
+
+```sh
+echo "$(cat <<EOF
+one apostrophe here: '
+EOF
+)"
+```
+
+This points at something in the surrounding tool/sandbox layer that specifically handles `$(...)` command substitutions and re-wraps the command text without escaping an embedded, unbalanced single quote (consistent with "even count is fine, odd fails" -- an odd count prematurely closes some outer single-quoted wrapping the even case coincidentally still balances) -- not a bug in `bash` itself or in this project, and nothing to patch from inside this repository. Writing the message to a scratch file and using `git commit -F path/to/file` avoids the whole pattern (not just the apostrophe) and remains the right, permanent workaround. A narrower fix for any other `$(...)`-plus-heredoc use case: keep the apostrophe count even, or use backtick substitution instead of `$(...)`, or just avoid nesting a heredoc inside `$(...)` at all.
 
 ## A `Qt.WindowType.Popup` widget can silently self-destruct during headless testing
 
