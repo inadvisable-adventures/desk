@@ -1,5 +1,15 @@
 # Expanding on open question 1: formalizing the line-patch primitive
 
+> **Superseded, 2026-10-15 — see `grammar-ast-live-pane.md`.** A follow-on
+> design conversation reframed this whole direction: the regex-based line-patch
+> primitive sketched below turned out to be a special case of a bigger and more
+> useful idea — a grammar-defined, AST-producing parser engine backing a live
+> -code pane, which also subsumes the richer hand-rolled parsers already found
+> in the raycaster DSL (not just `world-timelines`' flat lines) and unifies
+> with the separate interactive-Mermaid thread. Kept below as a historical
+> record of the narrower framing this started from — the evidence and
+> reasoning in it are still accurate, just no longer the active direction.
+
 Elaborates on `dsl-for-agent-widgets.md`'s open question 1 ("Formalize the
 line-patch primitive already proven in the wild"). That doc states the question
 in one paragraph; this one spells out what already exists, what's still

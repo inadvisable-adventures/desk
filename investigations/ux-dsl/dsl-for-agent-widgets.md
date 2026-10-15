@@ -1,9 +1,11 @@
 # Investigation: a targeted DSL (not just a control library) for agent-authored temporary widgets
 
-**Status:** open; hypothesis and supporting case studies recorded, nothing designed
-or built yet. No TODO item filed — this is pre-design research, the same stage
-`app_structure_dsl_design.md` was at before TODO `48e3b39` turned part of it into
-real code.
+**Status:** open; hypothesis and supporting case studies recorded. Open question 1
+below has since been resolved into a concrete direction — see "Update
+2026-10-15" and `grammar-ast-live-pane.md` — and a pressure-test against the
+raycaster formula DSL is starting now. No TODO item filed yet — this is
+pre-design research, the same stage `app_structure_dsl_design.md` was at before
+TODO `48e3b39` turned part of it into real code.
 
 ## The hypothesis
 
@@ -239,19 +241,62 @@ manipulable value, with the diagram's own text staying the single source of
 truth for anything else (a second rendered view, a `kind:"python"` widget, a
 sibling `kind:"html"` widget) to derive from.
 
+## Update 2026-10-15: from a line-patch primitive to a grammar/AST engine
+
+A design conversation about open question 1 below reframed it substantially —
+recorded in full in the new `grammar-ast-live-pane.md`, which now supersedes
+this section's original framing. Summary: `world-timelines`'s live DSL editor
+pane is, in purpose, a small version of what any live-code tool/IDE editor pane
+already does — continuously (re)parse the text to build a structured
+representation, and render/validate/suggest from that, rather than from
+scattered regex matches. Pulling on that thread surfaced that the raycaster
+family (`draw-with-desk`) already needed *real* grammar parsing twice beyond
+`wt.dsl`'s flat lines — a line-oriented keyword grammar for camera/scene text,
+and a genuine tokenizer + recursive-descent parser for the formula DSL,
+**hand-written independently in both TypeScript and Python** with nothing
+keeping the two in sync. That's three independently-reinvented parsers in one
+project family alone, and the richest of the three (the formula grammar) is
+exactly the kind of thing a shared grammar-to-parser engine would remove the
+need to duplicate.
+
+This also **unifies with open question 4 below**: an AST with source-position
+information per node is exactly the backbone the interactive-Mermaid thread
+needs too (click a rendered node → its source span; edit text → reparse →
+re-render) — both a live DSL-editor pane and a clickable diagram become
+renderers over the same underlying engine, rather than two separate efforts.
+
+**Decision made, with reasoning recorded here rather than just the outcome:**
+the grammar will be declared using a dedicated grammar-definition DSL, compiled
+into a generated parser — not hand-written parser combinators, even though
+combinators are the more pragmatic, lower-effort choice given `CLAUDE.md`'s
+"avoid dependencies, prefer bespoke solutions" (a combinator toolkit needs no
+new notation or compile step, and `FormulaSyntaxChecker` already shows that
+hand-writing a recursive-descent parser directly, without a generator, is
+perfectly viable at this grammar's scale). The generator path was chosen
+anyway, deliberately: this investigation is also in service of the project
+owner's own broader, separate interest in DSL design itself, and a declarative
+grammar-definition language is more directly in line with that broader goal
+than a pragmatic combinator library would be, even at some extra up-front cost
+for this one problem. Recorded explicitly so a future reader doesn't mistake
+this for the "obviously correct" engineering choice in isolation — it's a
+considered choice made for reasons beyond this investigation's own narrow
+scope.
+
+**Status of the new direction**: pressure-testing starts now against the
+raycaster formula DSL (the richest real grammar found in the case studies) —
+see `grammar-ast-live-pane.md` for the full write-up, the generator's required
+properties (source-position tracking, statement/line-level error recovery
+matching what all three hand-rolled parsers already settle on independently),
+and open design questions the generator itself still needs answered.
+
 ## Open questions / possible next steps
 
-Recorded for whoever picks this up next, not yet prioritized or planned:
+Recorded for whoever picks this up next, not yet prioritized or planned. Item 1
+is resolved into the new direction above; items 2-3 and 5 are still genuinely
+open; item 4 is now understood as part of item 1's resolution, not separate.
 
-1. **Formalize the line-patch primitive already proven in the wild.**
-   `world-timelines`' `setDslLine`/`setCategoryLine` (grammar-agnostic
-   find/replace/insert/delete-on-empty against a text blob) is real, working,
-   reusable prior art for "one declared field, bound to one line of DSL text" —
-   but every *per-field* regex/template is still hand-written at each call
-   site, and there's no schema a generic UI could walk to generate those call
-   sites automatically. What would it take to make a field declaration (name,
-   pattern, serialize, deserialize, default) generate its own bound control,
-   the way `app_dsl`'s state slots generate a setter?
+1. ~~Formalize the line-patch primitive already proven in the wild.~~
+   **Superseded, 2026-10-15** — see "Update" above and `grammar-ast-live-pane.md`.
 2. **Decide whether "vis-as-interface" needs new Bridge API surface, or just a
    library.** Everything found so far builds hit-testing/drag-state/coordinate
    conversion by hand per widget (`world-map`, `raycaster-view`, Domain
@@ -266,9 +311,11 @@ Recorded for whoever picks this up next, not yet prioritized or planned:
    the same value actually existed — something worth building into whatever
    comes out of this investigation's test plan, not discovered the hard way
    again.
-4. **The Mermaid-as-interface experiment itself** (see above) — scoped small:
-   one node, one bound value, one other view (even just a plain text readout)
-   staying in sync with it, before anything bigger is attempted.
+4. ~~The Mermaid-as-interface experiment itself~~ — **folded into item 1's
+   resolution, 2026-10-15**: both this and item 1 need the same grammar/AST
+   engine with source positions; see `grammar-ast-live-pane.md`. Once that
+   engine exists, "one node, one bound value, one other view staying in sync"
+   is still the right scoped-small shape for the Mermaid side specifically.
 5. If an interactive-Mermaid artifact the project owner remembers building
    does exist somewhere this sweep didn't reach, find and read it before
    designing anything from scratch — it would change several of the
@@ -281,4 +328,6 @@ one deliberately doesn't duplicate — that one is about multi-widget *app
 structure*; this one is about one widget's *content and interaction*),
 `.desk_temp/tempui-custom-widgets.md` ("Authoring from real source," the
 current baseline this investigation is asking whether to go beyond),
-`widget-case-studies.md` (this doc's own evidence base).
+`widget-case-studies.md` (this doc's own evidence base),
+`grammar-ast-live-pane.md` (the active direction as of 2026-10-15, superseding
+`line-patch-primitive.md`).

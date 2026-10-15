@@ -217,6 +217,23 @@ widget at all. DSL pattern: the most clearly "DSL-as-the-whole-interface" widget
 in the family — a real recursive-descent syntax checker backs the two textareas,
 with no structured/graphical alternative at all, by explicit design.
 
+**Addendum, confirmed by direct read 2026-10-15** (see
+`grammar-ast-live-pane.md` for why this matters): `FormulaSyntaxChecker`
+(`_raycaster-shared/raycaster-dsl.ts`, ~lines 555-680) is a genuine tokenizer
+(a sticky-regex lexer) feeding a real recursive-descent expression parser
+(`parseExpr`/`parseTerm`/`parsePrimary`, with operator precedence, parens, a
+`<a,b,c>` vector literal, dotted component access, and a mode-scoped
+allowed-variable check) — not just "a syntax checker" in the loose sense. Its
+own top-of-section comment states it "exactly mirrors `main.py`'s own
+`_FormulaParser`" — i.e. this grammar is hand-written **twice**, once in
+TypeScript and once in Python, with nothing but developer discipline keeping
+the two in sync. This is the richest of three independently hand-rolled
+grammars found in this one project alone (the others: `wt.dsl`'s flat lines in
+`world-timelines`, and this same file's own simpler line-oriented
+`parseCameraText`/`parseObjectsText`), and the strongest single piece of
+evidence that a shared grammar-to-parser engine would pay for itself beyond
+just the `world-timelines` line-patching case this doc originally focused on.
+
 ### `desk_widgets/raycaster-view/`
 
 The orchestrator: resolves a camera id's state (incl. which scene/formula it
