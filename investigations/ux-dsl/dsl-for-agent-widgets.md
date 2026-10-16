@@ -96,13 +96,23 @@ directly on this hypothesis, found before and during this investigation:
   `voice-brainstorm` widget. Scoped to lifecycle, not to UI or visualization —
   but exactly the kind of "generalize once a second real instance shows up"
   trajectory a content/visualization DSL would also need to earn.
-- **Interactive Mermaid: not yet built, but not starting from nothing either.**
+- **Interactive Mermaid: not yet built, but not starting from nothing
+  either — and there's a real cautionary lesson in this repo's own history.**
   `desk.mermaid` (this repo) is a real, bespoke, dependency-free Mermaid
-  flowchart/state-diagram parser + layout + `QGraphicsScene` renderer — but it
-  is **read-only**: diagrams render into a picture, nothing in the diagram is
-  clickable or draggable, and there's no path from "click a rendered node" back
-  to an edit of the source text. See "Interactive Mermaid" below for the fuller
-  search and what a next step might look like.
+  flowchart/state-diagram parser + layout + renderer — a fourth independent
+  hand-rolled-parser data point alongside the three already listed above, see
+  `markdown-and-mermaid-as-dsls.md`. Today it's **read-only** (static SVG via
+  a transform), but it didn't start that way: a `QGraphicsScene`-based
+  `MermaidDiagramWidget` once rendered a live, pannable diagram directly, and
+  was *deliberately retired* (TODO `a9e2ba7`) because "nothing in the current
+  UI actually depended on the scene being interactive (no click-to-navigate,
+  no node dragging)" — i.e. the interactivity that existed was never load
+  -bearing. See `markdown-and-mermaid-as-dsls.md` for the full story and why
+  this sharpens (not contradicts) UX principle 2: any future interactive
+  Mermaid effort needs its interactivity to be genuinely bound to editable
+  values, not just technically present, or it risks the same fate. See
+  "Interactive Mermaid" below for the fuller search and what a next step
+  might look like.
 
 ## What the case studies show
 
@@ -197,9 +207,14 @@ reachable from here (see `widget-case-studies.md`'s mermaid-search note for
 investigation). Found:
 
 - This repo's own `desk.mermaid` — real flowchart/state-diagram parsing +
-  layout + rendering, but strictly **read-only**, used only inside the
+  layout + rendering, strictly **read-only** today, used only inside the
   Markdown widget to show a diagram as a picture. No click/drag on any node,
-  no path back to editing the source.
+  no path back to editing the source. **It wasn't always read-only**: see
+  `markdown-and-mermaid-as-dsls.md` for the full history of
+  `MermaidDiagramWidget`, a real `QGraphicsScene`-based live diagram that
+  existed and was deliberately retired because its interactivity (pan/zoom
+  only) was never load-bearing — the clearest cautionary data point this
+  investigation has for what "interactive" needs to actually mean to survive.
 - `discussion-for-desk/design-docs/spec-dsls.md` — establishes Mermaid
   `stateDiagram`/`sequenceDiagram` as this project family's chosen notation for
   **documenting** client-operation lifecycles in design docs. Also static,
@@ -330,4 +345,7 @@ structure*; this one is about one widget's *content and interaction*),
 current baseline this investigation is asking whether to go beyond),
 `widget-case-studies.md` (this doc's own evidence base),
 `grammar-ast-live-pane.md` (the active direction as of 2026-10-15, superseding
-`line-patch-primitive.md`).
+`line-patch-primitive.md`), `markdown-and-mermaid-as-dsls.md` (Markdown and
+Mermaid as DSLs in this project's own code, including the retired
+`MermaidDiagramWidget` history), `hexsheet-dsl-case-studies.md` (DSLs found in
+the not-yet-Desk-integrated `hexsheet` project).
