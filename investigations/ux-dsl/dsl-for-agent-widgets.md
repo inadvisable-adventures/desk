@@ -335,6 +335,14 @@ open; item 4 is now understood as part of item 1's resolution, not separate.
    does exist somewhere this sweep didn't reach, find and read it before
    designing anything from scratch — it would change several of the
    conclusions above from "no prior art" to "here's what to learn from."
+6. **A low-risk, near-term prototype of UX principle 1 itself, needing no new
+   grammar at all**: a live raw-Markdown/rendered-preview dual pane for
+   Desk's own Markdown widget, re-rendering via `QTextDocument.setMarkdown()`
+   (already used today, just not called live) on every edit — the single
+   most common, best-understood real-world instance of "derive, don't
+   duplicate," and one Desk's own Markdown tooling doesn't have yet. See
+   `markdown-and-mermaid-as-dsls.md`'s synthesis. Worth doing before or
+   alongside the grammar/AST engine work, not gated on it.
 
 ## Related
 

@@ -1429,3 +1429,25 @@ This file captures thoughts and TODO items that arise during work on other thing
   case by case? How should the user's narration, the log and the agent's analysis be kept together
   (an investigation doc, a session directory)? What privacy rules apply to agent-readable logs
   (e.g. no typed characters)?
+
+- **A safe way for an agent to modify and reload Desk's own in-process MCP server**
+
+  Surfaced while planning TODO `c33657f` (`desk_git_commit`, `plans/desk-git-commit-mcp-tool.md`):
+  that change touches `src/desk/shell/desk_mcp_server.py`/`desk.claude_session.ClaudeSession` --
+  the exact in-process MCP server and session machinery backing *this* agent's own live tool
+  connections. There is currently no safe way for an agent running inside a live Claude (Desk)
+  session to modify that server and have it reload without risking its own session -- unlike a
+  `kind: "html"`/`kind: "python"` widget, which already has a real hot-reload story (edit, see
+  `[STALE]`, click to rebuild). The only workaround right now is "implement and verify it on a
+  separate checkout/worktree or via a different agent/session entirely," which works but means any
+  change to Desk's own MCP tool surface structurally can't be done by the live session that would
+  otherwise most naturally want to pick it up (e.g. an agent iterating on its own tool surface based
+  on friction it just hit).
+
+  Not scoped or designed at all -- just noting the gap exists, since it will keep recurring for any
+  future change to `desk_mcp_server.py`'s tool set, not just this one. Open questions: is this even
+  desirable (self-modifying your own live tool surface is a real safety question, not just an
+  engineering one -- see this file's own "Agent-synthesized input events" entry above for the kind of
+  careful scoping a capability like this would need), and if so, what would a safe reload story
+  actually look like (a new session replacing the old one cleanly? a restart-and-resume? something
+  narrower, like a dry-run/staged-apply step a human confirms before it takes effect)?
