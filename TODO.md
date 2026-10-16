@@ -12627,7 +12627,7 @@ b4d99a1. COMPLETED: Focus logging inside Desk (text-focus-stability investigatio
    project -- nothing to patch here. `LEARNINGS.md`'s existing entry updated with the precise trigger
    and a minimal reproduction; `git commit -F <file>` confirmed as the right, permanent workaround.
 
-c33657f. Add a `desk_git_commit` MCP tool (follows from TODO `8e8db18`'s root-cause finding): takes the
+c33657f. COMPLETED: Add a `desk_git_commit` MCP tool (follows from TODO `8e8db18`'s root-cause finding): takes the
    commit message as a structured parameter and runs `git commit` via `subprocess.run([...], shell=False)`
    -- an argv list, never a shell string -- so the message never passes through shell quoting at all,
    structurally immune to the whole class of hazard `8e8db18` found (and to ones not yet hit). Narrowly
@@ -12643,4 +12643,12 @@ c33657f. Add a `desk_git_commit` MCP tool (follows from TODO `8e8db18`'s root-ca
    connections, and Desk doesn't yet have a safe way for an agent to modify and reload the server it's
    currently talking through.
 
-   [planned: desk-git-commit-mcp-tool.md]
+   [planned: desk-git-commit-mcp-tool.md (COMPLETED)]
+
+   COMPLETED 2026-10-15: `run_git_commit` + `_git_commit` in `desk_mcp_server.py` (message on
+   `git commit -F -` stdin; `files` exact paths confined to the project dir, symlinks resolved; hooks
+   always run), changelog tag `desk_git_commit MCP tool for commit messages #570472`, a steering
+   sentence in `CLAUDE_WIDGET_PROMPT`, `tests/verify/verify_desk_git_commit.py`; the tool-count
+   assertion in `verify_desk_mcp_server.py` bumped to 13. Implemented from a plain CLI session
+   (no `mcp__desk__` connection), per the plan's different-session requirement. NOT yet exercised
+   through a live Claude (Desk) session: the running one needs a restart to pick the tool up.

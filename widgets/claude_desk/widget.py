@@ -73,7 +73,11 @@ CLAUDE_WIDGET_PROMPT = (
     "particular, when the user has asked you to work on TODO items, "
     "check desk_get_next_todo_item before assuming an earlier read of "
     "TODO.md is still current -- another session may have "
-    "reprioritized or completed items since."
+    "reprioritized or completed items since. When you commit, prefer "
+    "desk_git_commit (message as a parameter, optional exact file paths "
+    "to stage) over a Bash `git commit -m \"$(cat <<EOF ...)\"` heredoc: "
+    "the message never passes through shell quoting, so apostrophes and "
+    "other special characters cannot break it."
 )
 
 DEVELOPMENT_PROCESS_FILENAME = "development-process.md"

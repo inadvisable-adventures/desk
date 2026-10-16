@@ -156,7 +156,23 @@ already generally prefers):
 6. Confirm a clear, real error (not a crash) when: nothing is staged and no
    `files` given; the target directory isn't a git repository at all.
 
-## Status: not started
+## Status: COMPLETED (2026-10-15)
 
-Blocked on being implemented by a different agent/session than this
-project's own live one, per the note at the top of this plan.
+Decisions on the open design questions:
+
+- **Scope**: kept in `desk_mcp_server.py` rather than a separate registration;
+  the module docstring's scope statement now names `desk_git_commit` as the one
+  exception (no new capability vs. Bash, same approval hook, only the message's
+  transport differs).
+- **Guidance**: one sentence appended to `CLAUDE_WIDGET_PROMPT`, plus the
+  changelog entry. No dedicated `tempui-*.md` doc: a single tool whose full
+  contract fits in its description and the entry.
+- **Changelog tag**: `desk_git_commit MCP tool for commit messages #570472`.
+- **Transport**: `git commit -F -` with the message on stdin (not `-m`), so even
+  argv handling never sees it. A message that is empty/whitespace is refused.
+- **Path check**: `files` entries resolve (following symlinks) and must stay
+  inside the current Desk directory; absolute paths inside it are allowed.
+- **Verification note**: the original heredoc failure lives in the tool layer
+  around the shell, not in bash, so `verify_desk_git_commit.py` demonstrates the
+  general shell-string hazard (a naive `bash -c "git commit -m '...'"` of the
+  same message fails) rather than that exact trigger.

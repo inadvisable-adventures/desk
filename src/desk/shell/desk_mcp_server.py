@@ -33,7 +33,12 @@ resolution) for no reason.
 Deliberately read-only or side-effect-bounded to actions a user could
 already trigger by hand via existing UI (a titlebar button, the eye
 button) -- nothing here lets an agent do something it couldn't already
-do by clicking around, just without the file-drop ceremony. The
+do by clicking around, just without the file-drop ceremony. The one
+exception is `desk_git_commit` (TODO `c33657f`), which mirrors no GUI
+button: it grants no capability the Bash tool doesn't already have
+(same `can_use_tool` approval), it only changes how a commit message
+travels -- a structured parameter fed to git on stdin, never a shell
+string (see TODO `8e8db18` for the quoting hazard that avoids). The
 `TODO.md` tools are deliberately read-only (list/get-next, no
 mark-complete/reorder) -- see TODO `a762501`'s own `TODO.md` note on
 why a mutating tool would bypass this project's plan-then-verify
@@ -41,7 +46,9 @@ discipline."""
 
 import asyncio
 import json
+import subprocess
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from claude_agent_sdk import McpSdkServerConfig, create_sdk_mcp_server, tool
@@ -414,6 +421,85 @@ async def _run_pipeline(args: dict[str, Any]) -> dict[str, Any]:
     return _text_result(json.dumps(result))
 
 
+GIT_COMMIT_TIMEOUT_SECONDS = 300  # a pre-commit hook can legitimately be slow
+
+
+def run_git_commit(directory: Path, message: str, files: list[str] | None) -> tuple[bool, str]:
+    """TODO c33657f: the whole of `desk_git_commit`, synchronous and free
+    of any MCP/GUI machinery so it is directly testable against a real
+    repo. The message goes to `git commit -F -` on stdin and every
+    command is an argv list with `shell=False`, so no shell (and no
+    argv parsing of the message) ever sees it. Deliberately no
+    blanket-add, amend, or --no-verify: `files` is exact paths only,
+    each of which must resolve inside `directory`. Returns (ok, text);
+    on failure text is git's own combined output so the caller can react
+    (fix a hook failure and retry, etc.)."""
+    if not message.strip():
+        return False, "Commit message is empty."
+    root = directory.resolve()
+    to_add: list[str] = []
+    for name in files or []:
+        resolved = (root / name).resolve()
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            return False, f"Refusing to stage {name!r}: it resolves outside the project directory ({root})."
+        to_add.append(str(resolved))
+
+    def _git(argv: list[str], stdin: str | None = None) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["git", *argv],
+            cwd=root,
+            input=stdin,
+            capture_output=True,
+            text=True,
+            shell=False,
+            timeout=GIT_COMMIT_TIMEOUT_SECONDS,
+        )
+
+    def _output(proc: subprocess.CompletedProcess) -> str:
+        return "\n".join(part for part in (proc.stdout.strip(), proc.stderr.strip()) if part)
+
+    try:
+        if to_add:
+            added = _git(["add", "--", *to_add])
+            if added.returncode != 0:
+                return False, f"git add failed:\n{_output(added)}"
+        committed = _git(["commit", "-F", "-"], stdin=message)
+        if committed.returncode != 0:
+            return False, f"git commit failed (exit {committed.returncode}):\n{_output(committed)}"
+        head = _git(["rev-parse", "--short", "HEAD"])
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return False, f"git could not be run: {e}"
+    return True, f"commit {head.stdout.strip()}\n{_output(committed)}"
+
+
+@tool(
+    "desk_git_commit",
+    "Create a git commit in the current project, passing the commit message as a structured "
+    "parameter. Prefer this over a Bash `git commit -m \"$(cat <<EOF ...)\"` heredoc: the message "
+    "never goes through shell quoting, so apostrophes, backticks, `$(...)`, double quotes and "
+    "newlines all work verbatim with no escaping. `files` is an optional list of exact paths "
+    "(relative to the current project directory) to `git add` first; there is deliberately no "
+    "add-everything option. If omitted, commits whatever is already staged. No amend, no "
+    "--no-verify (hooks always run). Returns the short commit hash and git's output, or git's "
+    "real error output (nothing staged, a hook failing, not a repository, ...).",
+    # Hand-written JSON Schema: `files` must stay genuinely optional (see
+    # _run_installed_job_tool's note on the {name: type} shorthand).
+    {
+        "type": "object",
+        "properties": {"message": {"type": "string"}, "files": {"type": "array", "items": {"type": "string"}}},
+        "required": ["message"],
+    },
+)
+async def _git_commit(args: dict[str, Any]) -> dict[str, Any]:
+    directory = current_context.get_current_desk_directory()
+    if directory is None:
+        return _text_result("No current Desk directory known.", is_error=True)
+    ok, text = await asyncio.to_thread(run_git_commit, directory, args["message"], args.get("files"))
+    return _text_result(text, is_error=not ok)
+
+
 _TOOLS = [
     _reveal_widget,
     _screenshot_widget,
@@ -427,6 +513,7 @@ _TOOLS = [
     _install_job,
     _run_installed_job_tool,
     _run_pipeline,
+    _git_commit,
 ]
 
 

@@ -241,6 +241,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "visual debugging of widget geometry guidance #733899",
     "named widget logs + log query MCP tools #211800",
     "recording events + timecoded transcripts #920929",
+    "desk_git_commit MCP tool for commit messages #570472",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -2557,6 +2558,18 @@ _NEW_FEATURES: dict[str, str] = {
   Use the absolute times with `desk_query_widget_log` to see what a
   widget logged while a sentence was spoken. See
   `tempui-widget-logs.md`, "Recording events and timecoded transcripts".
+""",
+    "desk_git_commit MCP tool for commit messages #570472": """- New MCP tool `desk_git_commit(message, files?)` on the `desk` server:
+  creates a git commit with the message passed as a structured parameter
+  (fed to git on stdin, never through a shell), so apostrophes, backticks,
+  `$(...)`, double quotes and newlines need no escaping -- prefer it over a
+  Bash `git commit -m "$(cat <<EOF ...)"` heredoc, which can fail on an odd
+  number of apostrophes. `files` is an optional list of exact paths
+  (relative to the project directory, must stay inside it) to `git add`
+  first; with none, it commits what is already staged. There is deliberately
+  no add-everything option, no amend, and no `--no-verify`. A failure
+  (nothing staged, a hook failing, not a repository) comes back as git's
+  own output.
 """,
     "named widget logs + log query MCP tools #211800": """- New Bridge capability `log` (and doc `tempui-widget-logs.md`): a widget
   calls `desk.log.append(name, [{ s, t? }])` / `desk.log.line(name, s)` --
