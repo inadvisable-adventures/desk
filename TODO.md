@@ -6,6 +6,15 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+7bdeae5. COMPLETED: Snapshot web-view (QWebEngineView / HTML widget) frames during zoom gestures too: TODO 19052bc excluded them because grab() was unverified, but zooms over complex HTML widgets were painfully janky. A headless probe showed grab() of a loaded web view returns the rendered page; drop the exclusion.
+
+   [planned: zoom-gesture-snapshot.md (amended; no separate plan -- a one-condition removal)]
+
+   COMPLETED 2026-10-15: removed the `QWebEngineView` exclusion from
+   `WidgetFrame.begin_zoom_snapshot`; `verify_zoom_gesture_snapshot.py` now asserts web-view frames
+   snapshot; `widget-ux.md` and the plan updated. User-confirmed to work well on a real canvas.
+   Not benchmarked; snapshot is 1x so zoom-in looks soft until the gesture ends.
+
 19052bc. COMPLETED: Transient zoom-gesture snapshot (`../FEEDBACK/FEEDBACK-DESK-greek-widgets-during-zoom-performance-2026-10-09-1923.md`):
    every scale step of a wheel/pinch/slider zoom re-lays-out and repaints every placed widget's
    live content, though only the end state is read. While a continuous zoom is in flight each

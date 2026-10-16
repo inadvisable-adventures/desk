@@ -24,16 +24,16 @@ live content returns once, at the final scale, when the gesture ends.
   inner stack instead so the chrome isn't frozen and the two triggers cannot
   interfere (the feedback left this open).
 
-## Exclusions (the feedback's HUD exception, plus two of mine)
+## Exclusions (the feedback's HUD exception, plus one of mine)
 
 - HUD-pinned frames (`hud_pinned`): the HUD overlay renders live content.
 - Already-greeked frames: already the cheapest page.
 - **The keyboard-focused frame**: hiding its content drops focus and
   flickers the focused titlebar.
-- **Frames with a `QWebEngineView`**: `grab()` of a web view is not reliably
-  the real page; they keep paying live cost. Not verified either way
-  headless -- a follow-up could test a real web view's `grab()` and drop this
-  exclusion (they are the heaviest widgets).
+- ~~Frames with a `QWebEngineView`~~: originally excluded (grab() unverified);
+  the exclusion was dropped after zooms over complex HTML widgets proved
+  painfully janky. A headless probe showed `grab()` of a loaded web view
+  returns the rendered page. They are heavy, so they gain the most.
 
 ## Low-zoom regrow check (the feedback's warning)
 

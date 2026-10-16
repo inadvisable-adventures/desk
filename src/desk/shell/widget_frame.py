@@ -2,7 +2,6 @@ import uuid
 
 from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont, QFontMetrics, QPainter, QPixmap
-from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -964,15 +963,14 @@ class WidgetFrame(QWidget):
         pixmap of the content instead of re-laying-out and repainting the
         live widget on every intermediate scale step. Returns whether it
         did. Never for: an already-snapshotted frame, a greeked one (already
-        the cheapest page), a HUD-pinned one (the overlay renders its live
-        content and a stale one would be wrong), or one showing a web view
-        (its grab() is not reliably the real page, so it stays live)."""
+        the cheapest page), or a HUD-pinned one (the overlay renders its live
+        content and a stale one would be wrong). Web views ARE snapshotted:
+        they are the heaviest widgets and QWebEngineView.grab() returns the
+        rendered page."""
         if self.zoom_snapshotted or self._chrome_state == "greeked" or getattr(self, "hud_pinned", False):
             return False
         content = self.content
         if content.width() < 1 or content.height() < 1 or not content.isVisible():
-            return False
-        if isinstance(content, QWebEngineView) or content.findChildren(QWebEngineView):
             return False
         pixmap = content.grab()
         if pixmap.isNull():

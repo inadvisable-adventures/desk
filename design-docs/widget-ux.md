@@ -453,8 +453,9 @@ exactly one real repaint at the final scale. Discrete zooms (reset, fit,
 restoring a saved view) are one repaint anyway and never snapshot. Excluded:
 the keyboard-focused frame (hiding its content would drop focus and flicker
 its titlebar), an already-greeked frame, a HUD-pinned frame (`desk.shell.hud`
-renders its live content), and any frame showing a `QWebEngineView` (its
-`grab()` isn't reliably the real page). The snapshot page reports a 1x1 size
+renders its live content). Frames showing a `QWebEngineView` are snapshotted too:
+they are the heaviest widgets, and `grab()` of a loaded web view returns the
+rendered page. The snapshot page reports a 1x1 size
 hint so, like the greek page, it never raises the frame's minimum size.
 
 Both thresholds are computed from the same fixed on-screen constants the
