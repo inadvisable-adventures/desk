@@ -42,7 +42,13 @@ from pathlib import Path
 import claude_agent_sdk as sdk
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from desk.shell.desk_mcp_server import DESK_MCP_SERVER_NAME, RUN_INSTALLED_JOB_TOOL_NAME, build_desk_mcp_server
+from desk.shell.desk_mcp_server import (
+    DESK_MCP_SERVER_NAME,
+    RUN_INSTALLED_JOB_TOOL_NAME,
+    WAIT_FOR_EVENT_TOOL_NAME,
+    build_desk_mcp_server,
+    wait_for_event_hook,
+)
 
 # Re-exported (TODO f4a7872) so widgets/claude_desk/widget.py never needs
 # its own `import claude_agent_sdk` just to check whether a background
@@ -262,9 +268,7 @@ class ClaudeSession(QObject):
             # this module's docstring for why cwd/add_dirs/tools by
             # themselves were confirmed not to be a real boundary.
             tools=_SCOPED_TOOLS if scoped else None,
-            hooks={"PreToolUse": [sdk.HookMatcher(matcher=None, hooks=[self._check_path_scope])]}
-            if scoped
-            else None,
+            hooks=self._pre_tool_use_hooks(scoped),
             # TODO a762501: the in-process Desk MCP server -- a live,
             # queryable channel into Desk's own running shell. Tool
             # calls (mcp__desk__...) flow through can_use_tool above
@@ -589,6 +593,26 @@ class ClaudeSession(QObject):
     def _emit_task_event(self, turn_id: int, solicited: bool, task_id: str, patch: dict) -> None:
         self._emit_event("task_event", turn_id, solicited, {"task_id": task_id, "patch": patch})
         self.task_event.emit(task_id, patch)
+
+    def _pre_tool_use_hooks(self, scoped: bool) -> dict:
+        """The session's PreToolUse hooks. A scoped session gets the
+        path-scope check on every tool; any other session gets the guard
+        that keeps desk_wait_for_event (which can block indefinitely, TODO
+        30069f6) out of the main conversation -- a scoped session has no
+        Desk MCP server, so no such tool to guard."""
+        if scoped:
+            return {"PreToolUse": [sdk.HookMatcher(matcher=None, hooks=[self._check_path_scope])]}
+        return {
+            "PreToolUse": [
+                sdk.HookMatcher(
+                    matcher=f"mcp__{DESK_MCP_SERVER_NAME}__{WAIT_FOR_EVENT_TOOL_NAME}",
+                    hooks=[self._require_subagent_for_wait],
+                )
+            ]
+        }
+
+    async def _require_subagent_for_wait(self, input_data: dict, tool_use_id: str | None, context: object) -> dict:
+        return wait_for_event_hook(input_data)
 
     async def _check_path_scope(self, input_data: dict, tool_use_id: str | None, context: object) -> dict:
         """`PreToolUse` hook callback, only installed when `start()` was

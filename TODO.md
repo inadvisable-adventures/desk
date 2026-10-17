@@ -11273,7 +11273,7 @@ d5744c8. COMPLETED: Code editor improvements: (a) syntax-highlighting colors fro
    agent-facing docs must name `QComboBox`, so that file is now exempt). Not exercised live in Desk or
    over the HTTP `/events/poll` route (the mediator path is verified directly).
 
-30069f6. MCP tool that listens for an arbitrary desk event and returns it (name and payload) when it
+30069f6. COMPLETED: MCP tool that listens for an arbitrary desk event and returns it (name and payload) when it
    arrives, hosted by Claude (Desk) next to TODO `71d11da`'s tool. It is meant to be called from a
    background thread, so it may wait with no timeout (or, if one is required, a long one). Prefer
    enforcing the background-thread rule programmatically, possibly in the Claude (Desk) widget code
@@ -11282,6 +11282,16 @@ d5744c8. COMPLETED: Code editor improvements: (a) syntax-highlighting colors fro
    investigate what Claude (Desk) can actually tell about the calling context. Replaces the
    agent-side answers-file polling in `../FEEDBACK/FEEDBACK-DESK-agent-qa-file-polling-2026-10-13-1845.md`.
    Agent-visible, so docs plus changelog tag + entry. Related: TODO `71d11da`, `361b4f8`.
+
+   [planned: mcp-wait-for-desk-event.md (COMPLETED)]
+
+   COMPLETED 2026-10-17: `desk_wait_for_event(name, timeout_seconds?)` in `desk_mcp_server.py` (statuses
+   `event`/`timeout`/`ended`; capped dedicated thread pool; cancel and Desk switch clean up), a
+   `PreToolUse` hook in `ClaudeSession` that denies any call without an `agent_id` (i.e. outside a
+   sub-agent), "Waiting for an event" section in `tempui-agent-events.md`, tag `agent waits for a desk
+   event via MCP tool #196353` + entry, `verify_desk_wait_for_event_tool.py`. The guard cannot tell a
+   foreground sub-agent from a background one (the SDK has no such flag), so that case is documented,
+   not enforced. Not tried live: that the SDK really sets `agent_id` for an MCP call from a sub-agent.
 
 361b4f8. Add an explicit callout to the inter-widget communication documentation (the `desk.events`
    sections of `tempui-custom-widgets.md` and the overview in `desk-temporary-ui.md`, generated from

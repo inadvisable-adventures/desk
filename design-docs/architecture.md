@@ -1333,6 +1333,15 @@ sender id `agent` (so no subscribed widget is skipped by the never-echo rule).
 payload over 64 KiB is refused. Agent-facing doc: `tempui-agent-events.md`; see
 `plans/mcp-raise-desk-event.md`.
 
+The reverse direction is `desk_wait_for_event` (TODO `30069f6`): it subscribes a
+synthetic `agent-listener:<uuid>` instance to one name on the same mediator and
+blocks (polling in one-second slices on a dedicated, capped thread pool, so a
+cancel or a Desk switch is noticed promptly and no thread leaks) until an event
+arrives. Because it can wait indefinitely, `ClaudeSession` registers a
+`PreToolUse` hook for it that denies any call without an `agent_id` (the SDK
+sets it only inside a sub-agent); the SDK exposes no foreground/background
+flag, so a foreground sub-agent is not caught. See `plans/mcp-wait-for-desk-event.md`.
+
 **`introspect` (TODO `9767c1a`) is the first Bridge API capability
 gated by a live user confirmation, not just a manifest declaration** —
 see [Security Considerations](#security-considerations). Building it

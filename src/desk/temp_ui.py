@@ -244,6 +244,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "desk_git_commit MCP tool for commit messages #570472",
     "python widgets use qt_controls, not QComboBox #514695",
     "agent-raised desk events via MCP tool #028808",
+    "agent waits for a desk event via MCP tool #196353",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -355,8 +356,9 @@ capability and its `desk_list_widget_logs`/`desk_query_widget_log` MCP
 tools, for letting an agent query what a widget has been doing; also not
 a dropped-file keyword. And
 [tempui-agent-events.md](./tempui-agent-events.md) -- the
-`desk_raise_event` MCP tool, for an agent to signal a running widget
-directly over `desk.events` instead of through a polled file.
+`desk_raise_event` and `desk_wait_for_event` MCP tools, for an agent to
+signal a running widget, and hear back, directly over `desk.events`
+instead of through a polled file.
 
 ## Project widgets
 
@@ -890,14 +892,16 @@ desk_query_widget_log { "log_name": "clicker-<logId>",
 ```
 """
 
-_AGENT_EVENTS_DOC = """# Agent-raised desk events (tell a running widget something)
+_AGENT_EVENTS_DOC = """# Agent-raised desk events and waiting for them (agent <-> widget)
 
 See `desk-temporary-ui.md` (in this same directory) for this
 directory's own overview and its current set of tags. This is not a
-tempui-DSL file type: it is an MCP tool on the `desk` server that puts a
-named message onto the same `desk.events` channel widgets use to talk to
-each other, so an agent can signal a running widget directly instead of
-writing a file the widget has to poll.
+tempui-DSL file type: it is two MCP tools on the `desk` server that connect
+an agent to the same `desk.events` channel widgets use to talk to each
+other, so an agent and a running widget can signal each other directly
+instead of through a file one of them has to poll.
+`desk_raise_event` sends an event to widgets; `desk_wait_for_event` waits
+for one a widget sends.
 
 ## Raising an event
 
@@ -950,7 +954,54 @@ desk_raise_event { "name": "samothrace-map.question",
 ```
 
 The widget's answer travels the other way as an ordinary `desk.events`
-publish or a file; this tool is the agent-to-widget direction only.
+publish (`desk.events.publish("samothrace-map.answer", {...})`), which the
+agent receives with `desk_wait_for_event`, below.
+
+## Waiting for an event
+
+`desk_wait_for_event { "name": "<event name>", "timeout_seconds": <optional> }`
+
+Blocks until an event named `name` is published and returns JSON:
+
+- `{ "status": "event", "name", "payload", "sender", "timestamp" }` -- the
+  event. `sender` is the publishing widget instance's id; `payload` is
+  `null` for a bare signal.
+- `{ "status": "timeout", ... }` -- only if you passed `timeout_seconds`.
+  Omit it to wait with no timeout.
+- `{ "status": "ended", ... }` -- Desk was switched, which drops every
+  subscription; nothing more will arrive on this call.
+
+**Call it from a background sub-agent, never from the main conversation.**
+With no timeout it can wait for hours, and while it waits the agent that
+called it can do nothing else, so on the main conversation it would freeze
+the whole session. Desk enforces what it can: a call made outside any
+sub-agent is refused with an explanation. Desk cannot tell a *foreground*
+sub-agent from a *background* one, so a foreground sub-agent is not
+refused and would still block the main conversation: start it with the
+Agent tool's `run_in_background`. The usual shape is a background sub-agent
+whose whole job is a loop: wait, hand the result to whoever needs it (a file,
+or its final report), wait again.
+
+Things to know:
+
+- **Listening lasts only while the call is in flight.** An event published
+  between two calls (while the sub-agent is handling the previous one) is
+  missed, and so is one published before the first call. Call again
+  immediately after each return, and for anything that must not be lost let
+  the widget also write it to a file, with the event as the nudge (or
+  re-read that file after each return).
+- The tool also receives events the agent itself raised with
+  `desk_raise_event` (sender `agent`).
+- Names are not restricted: you may wait on a `desk.`-prefixed Desk event or
+  `recording`/`stopped_recording`.
+- At most 8 waits can be in flight at once; further calls are refused.
+- Cancelling the call, ending the session, or switching Desk stops the wait
+  within about a second and removes its subscription.
+- The harness running the agent may impose its own limit on how long one tool
+  call may last. If a wait returns with an error rather than a status, call
+  it again.
+- Like any other `desk` tool call, it asks the user for approval through
+  Claude (Desk)'s normal approval flow.
 """
 
 _PORTING_DOC = """# Porting an existing app into Desk
@@ -1030,7 +1081,8 @@ Desk Bridge API", for each call's exact shape.
 - `desk.events.*` (capability `events`): publish/subscribe on a shared
   channel keyed by widget *instance*; widgets never call each other
   directly. An agent can raise an event onto the same channel with the
-  `desk_raise_event` MCP tool (`tempui-agent-events.md`).
+  `desk_raise_event` MCP tool, and wait for one with `desk_wait_for_event`
+  from a background sub-agent (`tempui-agent-events.md`).
 - `desk.log.append/line` (capability `log`): fire-and-forget, time-stamped
   strings into a named log an agent can query by time range
   (`desk_query_widget_log`); the way to let an agent ask a widget what it
@@ -1594,7 +1646,8 @@ built for genuine cross-widget signaling:
   `.publish(name, payload)` / `.onMessage(callback)` (capability
   `events`) — send and receive named messages to/from other widgets.
   See "Sending and receiving named messages" below. An agent can also
-  raise one of these events itself with the `desk_raise_event` MCP tool
+  raise one of these events itself with the `desk_raise_event` MCP tool,
+  and wait for one with `desk_wait_for_event` from a background sub-agent
   (`tempui-agent-events.md`).
 - `desk.log.append(name, entries)` / `.line(name, s)` (capability `log`)
   -- fire-and-forget, time-stamped strings into a named log that an
@@ -2632,6 +2685,18 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "agent waits for a desk event via MCP tool #196353": """- New MCP tool `desk_wait_for_event(name, timeout_seconds?)` on the
+  `desk` server: blocks until a desk event with that name arrives and
+  returns `{ status: "event", name, payload, sender, timestamp }` (or
+  `"timeout"`, or `"ended"` if Desk was switched). With no timeout it
+  waits indefinitely, so it is for a *background sub-agent* only: a call
+  from the main conversation is refused by a hook (a foreground
+  sub-agent is not detectable and is not refused). It is the receiving
+  half of `desk_raise_event`: a widget publishes the user's answer with
+  `desk.events.publish`, and the waiting sub-agent gets it with no file to
+  poll. Listening lasts only while a call is in flight, so an event
+  published between two calls is missed. See `tempui-agent-events.md`.
+""",
     "agent-raised desk events via MCP tool #028808": """- New MCP tool `desk_raise_event(name, payload?)` on the `desk` server:
   publishes a named desk event, with an optional JSON payload, onto the
   same `desk.events` channel widgets use, so a widget subscribed to that
