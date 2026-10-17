@@ -54,7 +54,7 @@ from typing import Any
 from claude_agent_sdk import McpSdkServerConfig, create_sdk_mcp_server, tool
 
 from desk import pipeline_dsl
-from desk.widget_logs import format_time_iso, parse_time_ms
+from desk.widget_logs import RECORDING_EVENT, STOPPED_RECORDING_EVENT, format_time_iso, parse_time_ms
 from desk.shell import current_context
 from desk.todo_file import TodoItem, find_nearest_todo_file, parse_todo_file
 
@@ -66,6 +66,23 @@ DESK_MCP_SERVER_NAME = "desk"
 # as a literal there, so the two can never drift if this tool is ever
 # renamed.
 RUN_INSTALLED_JOB_TOOL_NAME = "desk_run_installed_job"
+
+# The sender id an agent-raised desk event is published under (TODO
+# 71d11da). Never a subscribed widget instance, so the mediator's
+# "sender never receives its own publish" rule skips nobody, and the Event
+# Log's sender column shows plainly where the event came from.
+AGENT_EVENT_SENDER_ID = "agent"
+
+# Names an agent may not raise: the `desk.` namespace is Desk's own
+# (`desk.state.changed`, ...), and the recording events are published by
+# Claude (Desk)'s record button -- forging either would make widgets act
+# on something Desk never did.
+RESERVED_EVENT_NAME_PREFIX = "desk."
+RESERVED_EVENT_NAMES = frozenset({RECORDING_EVENT, STOPPED_RECORDING_EVENT})
+MAX_EVENT_NAME_CHARS = 200
+# Hard backstop only: every subscriber's queue and the event log hold the
+# payload. The documented guidance is much lower (use a file past ~1 KiB).
+MAX_EVENT_PAYLOAD_BYTES = 64 * 1024
 
 _NOT_READY_MESSAGE = "Desk's GUI thread is not reachable yet -- try again shortly."
 
@@ -500,6 +517,57 @@ async def _git_commit(args: dict[str, Any]) -> dict[str, Any]:
     return _text_result(text, is_error=not ok)
 
 
+@tool(
+    "desk_raise_event",
+    "Raise a named desk event, with an optional JSON payload, on the same channel widgets use "
+    "(`desk.events`), so any widget instance subscribed to that name receives it immediately -- "
+    "no file to drop or poll. A payload may be omitted for a bare signal (\"I updated the "
+    "file\"), or carry the data a file would otherwise hold; keep it small (a message over about "
+    "1 KB should usually be a file, with the event just announcing it; hard limit 64 KiB). "
+    "Names starting with `desk.` and the names `recording`/`stopped_recording` are reserved for "
+    "Desk itself. Returns how many widget instances were subscribed to the name at the moment of "
+    "publishing (0 means nobody was listening; the event is still logged).",
+    {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "payload": {},
+        },
+        "required": ["name"],
+    },
+)
+async def _raise_event(args: dict[str, Any]) -> dict[str, Any]:
+    name = args.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return _text_result("name must be a non-empty string.", is_error=True)
+    if len(name) > MAX_EVENT_NAME_CHARS:
+        return _text_result(f"name is longer than {MAX_EVENT_NAME_CHARS} characters.", is_error=True)
+    if name.startswith(RESERVED_EVENT_NAME_PREFIX) or name in RESERVED_EVENT_NAMES:
+        return _text_result(
+            f"{name!r} is reserved for Desk's own events (the `desk.` prefix and "
+            f"{', '.join(sorted(RESERVED_EVENT_NAMES))}); pick another name.",
+            is_error=True,
+        )
+    payload = args.get("payload")
+    try:
+        encoded_size = len(json.dumps(payload).encode("utf-8"))
+    except (TypeError, ValueError) as e:
+        return _text_result(f"payload is not JSON-serializable: {e}", is_error=True)
+    if encoded_size > MAX_EVENT_PAYLOAD_BYTES:
+        return _text_result(
+            f"payload is {encoded_size} bytes of JSON, over the {MAX_EVENT_PAYLOAD_BYTES}-byte limit; "
+            "write it to a file and raise an event naming the file instead.",
+            is_error=True,
+        )
+    mediator = current_context.get_event_mediator()
+    if mediator is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    subscribers = sum(1 for names in mediator.list_subscriptions().values() if name in names)
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, mediator.publish, name, payload, AGENT_EVENT_SENDER_ID)
+    return _text_result(f"Raised {name!r}; {subscribers} widget instance(s) subscribed at publish time.")
+
+
 _TOOLS = [
     _reveal_widget,
     _screenshot_widget,
@@ -514,6 +582,7 @@ _TOOLS = [
     _run_installed_job_tool,
     _run_pipeline,
     _git_commit,
+    _raise_event,
 ]
 
 

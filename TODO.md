@@ -11255,13 +11255,23 @@ d5744c8. COMPLETED: Code editor improvements: (a) syntax-highlighting colors fro
 
    COMPLETED 2026-10-15: `legible_on_dark` lexer remap, find box/Next/Previous/Cmd+F in `widgets/editor/widget.py`, `verify_editor_find.py`; headless-verified, visual check skipped.
 
-71d11da. MCP tool for agents to raise an arbitrary desk event (name plus optional JSON payload) onto the
+71d11da. COMPLETED: MCP tool for agents to raise an arbitrary desk event (name plus optional JSON payload) onto the
    same `desk.events` channel widgets use, hosted by Claude (Desk) in `src/desk/shell/desk_mcp_server.py`
    alongside the other `desk_*` tools. Replaces the file-drop half of the agent-to-widget round trip in
    `../FEEDBACK/FEEDBACK-DESK-agent-qa-file-polling-2026-10-13-1845.md`: an agent signals a running
    widget directly instead of appending to a polled file. Deliberately generic (no Q&A-specific schema;
    see TODO `361b4f8` for the payload guidance). Agent-visible, so docs plus changelog tag + entry.
    Related: TODO `30069f6`, `361b4f8`.
+
+   [planned: mcp-raise-desk-event.md (COMPLETED)]
+
+   COMPLETED 2026-10-17: `desk_raise_event(name, payload?)` in `desk_mcp_server.py` (sender id `agent`;
+   `desk.` prefix and `recording`/`stopped_recording` refused; 64 KiB payload cap), new doc
+   `tempui-agent-events.md`, tag `agent-raised desk events via MCP tool #028808` + `_NEW_FEATURES`
+   entry, `verify_desk_raise_event_tool.py`. Also fixed two stale scripts: `verify_desk_mcp_server.py`
+   (tool count) and `verify_no_raw_qcombobox.py` (was already failing on HEAD: `temp_ui.py`'s
+   agent-facing docs must name `QComboBox`, so that file is now exempt). Not exercised live in Desk or
+   over the HTTP `/events/poll` route (the mediator path is verified directly).
 
 30069f6. MCP tool that listens for an arbitrary desk event and returns it (name and payload) when it
    arrives, hosted by Claude (Desk) next to TODO `71d11da`'s tool. It is meant to be called from a
