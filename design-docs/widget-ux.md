@@ -853,7 +853,14 @@ differently a turn later), focus moving between controls of one widget
 input just before (`key`, coalesced `typing n=...`, `mouse_press` with the
 frame stack under the cursor), the gap to the nearest neighbouring frame, z-order
 changes, Tab navigation/reclaim, and a compact Python call stack (`py=`) that
-names the caller of a programmatic `setFocus()`. Printable characters are never
+names the caller of a programmatic `setFocus()` (`native` when no Desk/widget
+Python code is involved: the Python frames beneath the event loop are stripped,
+TODO `48fd3e0`). `focus_item` and `focus_in` also carry `ev=` (the last few
+distinct events dispatched just before, `Type:Receiver:age_ms`, newest first --
+input, timers, queued calls, window activation, show/hide/resize) and `painted=`
+(frames that repainted within the last 100 ms, `id:age_ms`), to tell a change Qt
+made on its own from one an input event or a neighbour's repaint led to
+(`plans/focus-log-cause-attribution.md`). Printable characters are never
 recorded. Enable at startup with `DESK_FOCUS_LOG=1`. Other shell code reports
 into it with the no-op-when-off `focus_logger.note(kind, **fields)`.
 

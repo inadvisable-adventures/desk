@@ -23,6 +23,7 @@ import math
 import re
 import sys
 import time
+from collections import deque
 from typing import Any
 
 from PyQt6.QtCore import QEvent, QObject, QTimer, Qt
@@ -34,6 +35,9 @@ from desk.widget_logs import WidgetLogStore, now_ms
 FOCUS_LOG_NAME = "desk-focus"
 TYPING_FLUSH_MS = 500
 MAX_STACK_FRAMES = 6
+EVENT_RING = 24  # dispatched events remembered; the newest few distinct ones are logged as `ev=`
+EVENTS_LOGGED = 4
+PAINT_WINDOW_MS = 100  # a frame counts as `painted=` on a focus entry if it painted this recently
 
 _BARE_VALUE = re.compile(r'[^\s="]+')
 _FRAME_CLASS_NAME = "WidgetFrame"
@@ -42,7 +46,31 @@ _FRAME_CLASS_NAME = "WidgetFrame"
 # project widgets, scripts) can be the caller of a programmatic setFocus().
 _SKIP_PATH_PARTS = ("site-packages", "/lib/python", "<frozen")
 
+# Events that can *drive* the loop into changing focus; `ev=` lists only these (plus user-defined
+# event types), because everything else (palette/font changes, paint, hover, ...) fires constantly and
+# would bury them. Paint is tracked separately (`painted=`); focus events have their own entries.
+_DRIVER_EVENTS = frozenset(
+    getattr(QEvent.Type, name)
+    for name in (
+        "KeyPress", "KeyRelease", "ShortcutOverride", "Shortcut",
+        "MouseButtonPress", "MouseButtonRelease", "MouseButtonDblClick", "Wheel",
+        "TouchBegin", "TouchUpdate", "TouchEnd", "NativeGesture", "InputMethod",
+        "GraphicsSceneMousePress", "GraphicsSceneMouseRelease", "GraphicsSceneMouseDoubleClick",
+        "GraphicsSceneWheel", "Timer", "MetaCall", "DeferredDelete",
+        "WindowActivate", "WindowDeactivate", "ActivationChange", "ApplicationActivate",
+        "ApplicationDeactivate", "WindowStateChange", "WindowBlocked", "WindowUnblocked",
+        "Show", "Hide", "ShowToParent", "HideToParent", "Close", "EnabledChange", "ParentChange",
+        "ZOrderChange", "Resize", "Move",
+    )
+    if hasattr(QEvent.Type, name)
+)
+_USER_EVENT = int(QEvent.Type.User)
+
 _active: "FocusLogger | None" = None
+
+# (code object, line) of the Python frames beneath the Qt event loop, outermost first; see
+# `_capture_loop_base`. Empty until captured, in which case nothing is stripped.
+_loop_base: tuple[tuple[Any, int], ...] = ()
 
 
 def note(kind: str, **fields: Any) -> None:
@@ -90,6 +118,18 @@ def _frame_of_item(item: object) -> QWidget | None:
     return widget if _is_frame(widget) else None
 
 
+def _receiver_name(obj: object) -> str:
+    """Class of an event's receiver; a QTimer also names its parent, since the timer is just the
+    messenger and the owner is what a reader wants."""
+    try:
+        name = type(obj).__name__
+        if isinstance(obj, QTimer) and obj.parent() is not None:
+            name += f"^{type(obj.parent()).__name__}"
+        return name
+    except RuntimeError:
+        return "deleted"
+
+
 def _frame_id(frame: QWidget | None) -> str:
     return frame.instance_id if frame is not None else "none"
 
@@ -98,13 +138,29 @@ def _python_stack() -> str:
     """Non-library Python frames above the focus slot, innermost first. A
     programmatic setFocus() shows its caller here (the focus signals are
     delivered synchronously); `native` means Qt itself caused the change."""
+    frames = []
+    try:
+        frame = sys._getframe(2)
+    except ValueError:  # a focus change with no Python frame beneath the slot (e.g. at teardown)
+        frame = None
+    while frame is not None:
+        frames.append(frame)
+        frame = frame.f_back
+    # Outermost frames identical to the ones beneath the event loop are not a caller of anything.
+    base = _loop_base
+    keep = len(frames)
+    while keep and len(frames) - keep < len(base):
+        outer = frames[keep - 1]
+        if (outer.f_code, outer.f_lineno) != base[len(frames) - keep]:
+            break
+        keep -= 1
     parts: list[str] = []
-    frame = sys._getframe(2)
-    while frame is not None and len(parts) < MAX_STACK_FRAMES:
+    for frame in frames[:keep]:
         path = frame.f_code.co_filename
         if not any(skip in path for skip in _SKIP_PATH_PARTS) and path.rsplit("/", 1)[-1] != "focus_logger.py":
             parts.append(f"{path.rsplit('/', 1)[-1]}:{frame.f_lineno}:{frame.f_code.co_name}")
-        frame = frame.f_back
+            if len(parts) == MAX_STACK_FRAMES:
+                break
     return "<".join(parts) if parts else "native"
 
 
@@ -150,6 +206,8 @@ class FocusLogger(QObject):
         self._tag: str | None = None
         self._last_input_monotonic: float | None = None
         self._last_focus_widget = "none"
+        self._events: deque = deque(maxlen=EVENT_RING)  # (monotonic, QEvent.Type, receiver)
+        self._painted: dict[str, float] = {}  # frame id (or "canvas") -> monotonic of its last paint
         self._typing_count = 0
         self._typing_first_ms = 0
         self._typing_timer = QTimer(self)
@@ -179,6 +237,9 @@ class FocusLogger(QObject):
         self._enabled = True
         self._tag = tag
         _active = self
+        self._events.clear()
+        self._painted.clear()
+        QTimer.singleShot(0, self._capture_loop_base)
         focus_frame = _frame_of_item(self._view.scene().focusItem())
         self._last_focus_widget = describe_widget(focus_frame.focusWidget() if focus_frame is not None else None)
         QApplication.instance().installEventFilter(self)
@@ -189,7 +250,7 @@ class FocusLogger(QObject):
         self.record("session_start")
 
     def disable(self) -> None:
-        global _active
+        global _active, _loop_base
         if not self._enabled:
             return
         self.record("session_stop")
@@ -197,6 +258,9 @@ class FocusLogger(QObject):
         self._enabled = False
         if _active is self:
             _active = None
+            _loop_base = ()
+        self._events.clear()
+        self._painted.clear()
         QApplication.instance().removeEventFilter(self)
         app = QGuiApplication.instance()
         for signal, slot in (
@@ -230,6 +294,19 @@ class FocusLogger(QObject):
             count, first = self._typing_count, self._typing_first_ms
             self._typing_count = 0
             self._append("typing", {"n": count}, first)
+
+    def _capture_loop_base(self) -> None:
+        """Runs from the event loop, so its callers are exactly the Python frames beneath Qt
+        dispatch (`main`, `<module>`): the part of every later `py=` stack that is not a caller."""
+        global _loop_base
+        if not self._enabled:
+            return
+        base = []
+        frame = sys._getframe(1)
+        while frame is not None:
+            base.append((frame.f_code, frame.f_lineno))
+            frame = frame.f_back
+        _loop_base = tuple(reversed(base))
 
     def _since_input_ms(self) -> int | None:
         if self._last_input_monotonic is None:
@@ -272,6 +349,30 @@ class FocusLogger(QObject):
         hits.sort(reverse=True)
         return ">".join(instance_id for _z, instance_id in hits) or "none"
 
+    def _cause_fields(self) -> dict[str, Any]:
+        """`ev` (the newest few distinct non-noise events dispatched before now, as
+        `Type:Receiver:age_ms`) and `painted` (frames repainted within PAINT_WINDOW_MS, as
+        `id:age_ms`): what the loop was doing just before a focus change, to tell a change Qt
+        made on its own from one an input event or a neighbour's repaint led to."""
+        now = time.monotonic()
+        fields: dict[str, Any] = {}
+        seen: list[str] = []
+        for t, kind, obj in reversed(self._events):
+            label = f"{getattr(kind, 'name', kind)}:{_receiver_name(obj)}"
+            if seen and seen[-1].startswith(label + ":"):
+                continue  # the same event propagating through several receivers
+            seen.append(f"{label}:{int((now - t) * 1000)}")
+            if len(seen) == EVENTS_LOGGED:
+                break
+        if seen:
+            fields["ev"] = "<".join(seen)
+        recent = sorted(
+            (now - t, frame_id) for frame_id, t in self._painted.items() if (now - t) * 1000 <= PAINT_WINDOW_MS
+        )
+        if recent:
+            fields["painted"] = ",".join(f"{frame_id}:{int(age * 1000)}" for age, frame_id in recent)
+        return fields
+
     # --- Qt hooks --------------------------------------------------------
 
     def _on_focus_item_changed(self, new_item, old_item, reason) -> None:
@@ -285,6 +386,7 @@ class FocusLogger(QObject):
             since_input=self._since_input_ms(),
             py=_python_stack(),
             **self._neighbour_fields(new_frame),
+            **self._cause_fields(),
         )
         reported = new_item
         QTimer.singleShot(0, lambda: self._check_settled(reported))
@@ -313,6 +415,11 @@ class FocusLogger(QObject):
 
     def _dispatch(self, obj, event) -> None:
         kind = event.type()
+        if kind == QEvent.Type.Paint:
+            self._on_paint(obj)
+            return
+        if kind in _DRIVER_EVENTS or int(kind) >= _USER_EVENT:
+            self._events.append((time.monotonic(), kind, obj))
         if kind in (QEvent.Type.FocusIn, QEvent.Type.FocusOut):
             self._on_widget_focus(obj, event, kind == QEvent.Type.FocusIn)
         elif obj is self._view:
@@ -323,6 +430,15 @@ class FocusLogger(QObject):
                 self.record("ime")
         elif obj is self._view.viewport() and kind == QEvent.Type.MouseButtonPress:
             self._on_mouse_press(event)
+
+    def _on_paint(self, obj) -> None:
+        if not isinstance(obj, QWidget):
+            return
+        frame = _frame_of_widget(obj)
+        if frame is not None:
+            self._painted[_frame_id(frame)] = time.monotonic()
+        elif obj is self._view or obj is self._view.viewport():
+            self._painted["canvas"] = time.monotonic()
 
     def _on_widget_focus(self, obj, event, gained: bool) -> None:
         if not isinstance(obj, QWidget):
@@ -339,6 +455,7 @@ class FocusLogger(QObject):
         if gained:
             fields["from"] = self._last_focus_widget
             fields["py"] = _python_stack()
+            fields.update(self._cause_fields())
         else:
             self._last_focus_widget = described  # the "from" of the next focus_in
         self.record("focus_in" if gained else "focus_out", **fields)

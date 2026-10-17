@@ -1348,6 +1348,23 @@ from inside `setFocus()`, so a Python slot's own call stack
 (`sys._getframe`) contains the Python code that requested the focus change; if it
 contains none, Qt itself (key/mouse handling) did it.
 
+## A focus slot's Python stack always contains the event-loop entry, so "no Python frame" never shows up
+
+TODO `48fd3e0`: the focus logger's `py=` was meant to read `native` when Qt itself changed
+focus (see the entry above), but in the real app it never did. Every Python slot Qt calls from
+the event loop has `main` and `<module>` beneath it (`app.exec()` is called from there), so
+the collected stack was never empty: a change Qt made on its own and one made inside Qt's C++
+handling of an input event both read `py=app.py:62:main<__main__.py:6:<module>`. That made the
+first real capture of the "caret jumps" bug (`investigations/text-focus-stability.md`) ambiguous.
+Stripping hard-coded names (`main`, `<module>`) would also hide a genuine direct call. What works
+is capturing, from a `QTimer.singleShot(0, ...)` slot, the `(code, line)` of the Python frames
+beneath that slot and dropping a matching outermost run from later stacks. The *line* must match
+as well as the code: the entry frames always sit on one `exec()` line, whereas a test (or
+startup code) driving the loop from several `processEvents()` lines needs a single call site
+for the stripping to apply, and a direct `setFocus()` from the same function at another line
+must not be stripped. Related: `sys._getframe(2)` raises `ValueError` when a slot runs with no
+Python frame beneath it (teardown); guard it.
+
 ## Native-style branch/section arrows recurred in the Markdown widget (follow-up to the `QTreeView` branch-arrow entry above)
 
 The same bug recurred in the Markdown widget's TOC (TODO `333bebf`): the symptom there was large arrows detached from their rows, far below the tree. Any new `QTreeView`/`QTreeWidget` in a widget should use `desk.shell.qt_controls.painted_branches`, and `QToolButton.setArrowType()` should be avoided in favor of a painted `QIcon` (its size ignores the font).
