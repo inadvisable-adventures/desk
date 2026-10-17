@@ -1482,3 +1482,18 @@ This file captures thoughts and TODO items that arise during work on other thing
 
   From `../FEEDBACK/FEEDBACK-DESK-painted-combo-popup-coordinate-origin-bug-2026-10-16-1730.md`. `src/desk/shell/*.py` isn't hot-reloadable, so each combo fix attempt cost a full Desk restart and the user's
   participation. A narrow path for stateless modules like `painted_combo.py` would cut most of that cost.
+
+- **Executive Function Helper Mode**
+
+  A mode that helps the user stay on track and capture stray thoughts without losing them or derailing the current work.
+  Candidate features:
+
+  1. **Per-turn goal prompting.** Add extra prompting to each user turn (except turns that are answering a question from
+     the agent) stating the current goal. If the turn seems to be veering off-track, the agent offers to put that train of
+     thought into a parking lot item.
+  2. **Dump scratch to Claude.** A button on the scratch widget that dumps the scratch contents into a new Claude (Desk)
+     widget.
+  3. **Clone the current agent.** Investigate how practical it is to duplicate the current context, so the current agent
+     can be quickly cloned with all of its context. Then neither the user nor the agent has to wait for a parking lot item
+     to be written; the clone can write it (or run with the tangent) while the original carries on.
+  4. **Parking lot MCPs.** MCP tools for parking lot item CRUD (create, read, update, delete).
