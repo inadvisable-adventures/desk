@@ -12652,3 +12652,20 @@ c33657f. COMPLETED: Add a `desk_git_commit` MCP tool (follows from TODO `8e8db18
    assertion in `verify_desk_mcp_server.py` bumped to 13. Implemented from a plain CLI session
    (no `mcp__desk__` connection), per the plan's different-session requirement. NOT yet exercised
    through a live Claude (Desk) session: the running one needs a restart to pick the tool up.
+
+48fd3e0. COMPLETED: Focus log cause attribution (text-focus-stability third session, from
+   `../FEEDBACK/FEEDBACK-DESK-text-focus-stability-repro-data-2026-10-16-1709.md`): the first real
+   repro showed scene focus reassigned with no mouse press and a `py=` stack that is only the
+   event-loop entry (`app.py:62:main<__main__.py:6:<module>`), so `native` never appears and Qt-internal
+   changes can't be told from Qt's C++ handling of an input event. Strip the Python frames beneath the
+   event loop from `py=` so `native` means no Desk/widget Python code was involved, and add `ev=` (the
+   last few non-noise events dispatched before the change, with receiver class and age) and `painted=`
+   (frames repainted in the last 100 ms) to `focus_item` and `focus_in`, to test the "a neighbour's
+   background repaint triggers the flip" hypothesis directly.
+
+   [planned: focus-log-cause-attribution.md (COMPLETED)]
+
+   COMPLETED 2026-10-16: `py=` strips the Python frames beneath the event loop (captured by `(code, line)`
+   from a `singleShot(0)` slot), `ev=`/`painted=` added to `focus_item` and `focus_in`, a latent
+   `_getframe` ValueError guarded; `tests/verify/verify_focus_logger_cause.py`. Headless only; not run
+   against the real bug yet -- the next capture on the affected setup is the real test.

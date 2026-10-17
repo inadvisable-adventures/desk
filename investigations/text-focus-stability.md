@@ -1,14 +1,18 @@
 # Investigation: text caret jumps out of the box being typed in
 
 **Status:** open; focus logging (TODO `b4d99a1`) and the Focus Logger widget (TODO `00ea6b3`) both
-exist and work end-to-end (see "Update" sections below), but two live sessions with the widget
-(one narrated/recorded, one targeted at hypothesis 5) produced no repro. **Going forward, the plan
-is to leave the Focus Logger widget placed but idle** (not logging continuously) **and switch it
-on if/when the bug actually recurs during ordinary use**, rather than keep chasing a deliberate
-repro -- see the second "Update" section below. TODOs `b4d99a1` (focus logging in Desk), `00ea6b3`
-(Focus Logger widget), `9e74c40` (agent guidance, still open). Nothing has been reproduced or fixed
-yet; this records what has been established, what has not, and where to go next. Related,
-already-fixed: TODO `e69f209` (Tab handing
+exist and work end-to-end (see "Update" sections below). Two live sessions with the widget (one
+narrated/recorded, one targeted at hypothesis 5) produced no repro, and the plan became: leave the
+Focus Logger widget placed but idle and switch it on if the bug recurred during ordinary use. **It
+did, on 2026-10-16, in another project (`ae_samothrace`), and was captured** -- see the third
+"Update" section at the end: scene focus is being reassigned by something inside Qt itself (no Desk
+Python frame on the stack, tagged `MouseFocusReason` with no mouse press), apparently when a frame
+has a close neighbour whose widget updates on its own schedule. The cause is not yet isolated;
+TODO `48fd3e0` adds the instrumentation (distinguish Qt-internal from input-driven, record the
+events and repaints just before each focus change) to settle it. TODOs `b4d99a1` (focus logging in
+Desk), `00ea6b3` (Focus Logger widget), `9e74c40` (agent guidance, still open), `48fd3e0` (cause
+attribution). Nothing has been fixed yet; this records what has been established, what has not,
+and where to go next. Related, already-fixed: TODO `e69f209` (Tab handing
 focus to an unrelated sibling widget); see `LEARNINGS.md`, "Pressing Tab in a
 `QGraphicsProxyWidget`-embedded widget can silently hand keyboard focus to an unrelated sibling".
 
@@ -186,3 +190,83 @@ code path as whatever Claude (Desk) or a real HTML widget's own refresh logic do
 but it's no longer the obvious next thing to try first. Worth reconsidering the hypothesis list
 itself (or widening capture, per "Possible paths after the first data" above) before the next
 attempt, rather than re-running the same shape of test a third time.
+
+## Update 2026-10-16: third session, first real repro
+
+Reported from `ae_samothrace` (a different project; its Focus Logger widget had been left
+placed-but-idle per the plan above, and the user switched it on after noticing the bug recur during
+ordinary use -- not a deliberate repro attempt). The write-up and the full raw log are preserved in
+`../FEEDBACK/implemented/FEEDBACK-DESK-text-focus-stability-repro-data-2026-10-16-1709.md`
+(outside this repo), because the `desk-focus` store is in-memory and ring-bounded and belongs to
+that project's running Desk process. **Files:** `desk-focus` log, `2026-10-16T15:23:34.137-07:00`
+through `15:27:25.153-07:00` (181 entries, no `rec` tag -- not a narrated session; no timecoded
+transcript, the user reported the symptom retroactively and an agent pulled the log with
+`desk_query_widget_log`).
+
+**Configuration, unlike either prior attempt:** the neighbours update their own UI on their own
+schedule. The focused widget was a `claude_desk` instance (`bf796696`); its nearest neighbour for
+most of the window was `SamothraceMap` (`34a5236c`, with its own recording/replay machinery),
+`gap` between 0.0 and 96.1 scene units across the session, `overlap=1` at the closest. The two
+earlier sessions used two static Scratch widgets, or a synthetic keypress-echo pair decoupled from
+any real widget's own internal update path.
+
+**What happened, per the log:** while `bf796696` held real, user-driven focus (15:23:35 to 15:24:48),
+scene focus repeatedly and spontaneously flipped to `34a5236c` and back, tagged
+`reason=MouseFocusReason`, with **no `mouse_press` entry anywhere nearby** and `since_input` from
+93ms up to 14548ms at the moment of the flip. Every one of these flips has a `py=` stack that
+bottoms out at `app.py:62:main<__main__.py:6:<module>`, never `canvas.py:...:mousePressEvent`,
+which does appear on every click-driven focus change in the same log (e.g. `15:23:35.628`,
+`15:23:49.559`). So these flips were not driven by Desk's own mouse handling; something inside Qt's
+event processing reassigned scene focus and labelled it a mouse focus change.
+
+The clearest instance was mid-keystroke:
+
+```
+15:23:57.189  typing n=1
+15:23:57.312  focus_out frame=bf796696 widget=_PromptInput reason=MouseFocusReason
+15:23:57.313  focus_in  frame=34a5236c widget=QWidget reason=MouseFocusReason from=_PromptInput py=app.py:62:main<__main__.py:6:<module>
+15:23:57.321  focus_item old=bf796696 new=34a5236c reason=MouseFocusReason widget=QWidget since_input=131 py=app.py:62:main<__main__.py:6:<module> gap=0.0 nbr=8c61c442... overlap=1
+15:23:57.324  typing n=2
+```
+
+123ms after a real keystroke focus left the box being typed in, and the next keystroke landed with
+focus already elsewhere. That is the original report ("the text caret sometimes jumps out of the
+current text box that it is typing in") with no Tab, click or other hypothesis 1/3/4 trigger,
+matching the user's 2026-10-13 answer ("just typing plain letters, no Tab, no mouse").
+
+The same shape recurred later between two other frames (`625702b6` and the Focus Logger widget's own
+frame `b14110bd`, `15:26:13.845` to `15:26:16.585`, `gap` 72 to 101, `overlap=0`), so it is not
+specific to `SamothraceMap` or `claude_desk`, and not limited to overlapping frames.
+
+**Reading:** strengthens hypothesis 5, refined. It is not "a widget calls `setFocus()` on itself or
+a sibling" -- the `py=` stacks hold no Desk or widget frame at all, so it isn't our code calling
+`setFocus`. It is "Qt's own focus machinery reassigns the scene's focus item on its own, under
+conditions this session satisfied and the two static-widget sessions didn't". The irregular gaps
+between flips argue against a simple timer and toward something state- or geometry-dependent: frame
+proximity (`gap`/`overlap` is logged on every flip) combined with some widget's own background
+repaint (both `claude_desk` and `SamothraceMap` update independently of input) is the leading
+candidate, but not proven. Nothing in the current instrumentation shows *which* widget's update
+preceded a given flip, only that one happened nearby in time.
+
+Two things the data does not settle:
+
+- **`py=app.py:62:main<...` is ambiguous.** It is the event-loop entry (`main` calling `exec()`), so
+  it is what a change with no Python frame involved looks like, but it is also what a change made by
+  Qt's C++ handling of an input event looks like. `native` (the value meant to mean "no Python
+  frame") never appears in practice because those two frames are always on the stack.
+- **Whether the proximity pattern is causal.** Flips mostly occur with `gap=0.0 overlap=1` against
+  `34a5236c`, but the 15:25:46 and 15:26:13 flips happened at gaps of 101.3 and 72.2 with
+  `overlap=0`.
+
+**Caveats:** the log was read well after the fact, from a project other than this one; no timecoded
+transcript backs it.
+
+**Next step (TODO `48fd3e0`, done 2026-10-16):** `py=` now says `native` when nothing but the
+event-loop entry is on the stack, and `focus_item`/`focus_in` carry `ev=` (the events dispatched just
+before, with receiver class and age) and `painted=` (frames repainted in the last 100 ms). On the
+next recurrence, read the flip entries for: `py=native` (Qt alone, no Desk code) vs a Desk frame;
+`ev=` naming a `Timer` and whose (a neighbour's own animation timer would point at hypothesis 5's
+repaint half); and `painted=` naming the new focus target's frame or a neighbour. A single capture
+only shows what preceded a flip, not how often the same thing happens without one -- compare against
+the ordinary entries in a longer capture before calling it causal. See
+`plans/focus-log-cause-attribution.md`.
