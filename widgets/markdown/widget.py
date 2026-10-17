@@ -3,8 +3,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QUrl, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import QPointF, QSize, Qt, QUrl, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPixmap, QPolygonF
 from PyQt6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -16,7 +16,6 @@ from PyQt6.QtWidgets import (
     QSplitter,
     QTextBrowser,
     QToolButton,
-    QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
@@ -26,6 +25,7 @@ from desk.file_watch import SingleFileWatcher
 from desk.mermaid import MermaidParseError, detect_diagram_kind, parse as parse_mermaid
 from desk.persisted_path import resolve_persisted_path
 from desk.shell import current_context
+from desk.shell.painted_branches import PaintedBranchTreeWidget
 from desk.svg_view import SvgView
 from desk_services.transforms import TransformError
 
@@ -287,6 +287,27 @@ def _build_block_widget(block: _RawBlock, base_dir: Path) -> QWidget:
     return _AutoHeightTextBrowser(block.content, base_dir)
 
 
+def _arrow_icon(px: int, expanded: bool, color: QColor) -> QIcon:
+    """A down (expanded) or right (collapsed) triangle filling most of a
+    `px`-square, painted at 2x for crispness."""
+    scale = 2
+    pixmap = QPixmap(px * scale, px * scale)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.setBrush(color)
+    painter.setPen(Qt.PenStyle.NoPen)
+    c, r = px * scale / 2, px * scale * 0.28
+    if expanded:
+        points = [QPointF(c - r, c - r * 0.6), QPointF(c + r, c - r * 0.6), QPointF(c, c + r * 0.7)]
+    else:
+        points = [QPointF(c - r * 0.6, c - r), QPointF(c - r * 0.6, c + r), QPointF(c + r * 0.7, c)]
+    painter.drawPolygon(QPolygonF(points))
+    painter.end()
+    pixmap.setDevicePixelRatio(scale)
+    return QIcon(pixmap)
+
+
 class _SectionWidget(QWidget):
     """A foldable section: a disclosure header (heading text, sized/
     weighted by level) plus a body holding this section's own blocks
@@ -304,7 +325,6 @@ class _SectionWidget(QWidget):
 
         self.toggle = QToolButton()
         self.toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.toggle.setArrowType(Qt.ArrowType.DownArrow)
         self.toggle.setCheckable(True)
         self.toggle.setChecked(True)
         self.toggle.setAutoRaise(True)
@@ -313,6 +333,12 @@ class _SectionWidget(QWidget):
         font.setPointSize(max(9, 16 - section.level * 2))
         font.setBold(section.level <= 2)
         self.toggle.setFont(font)
+        # The arrow is a painted icon sized from this level's font, not
+        # setArrowType()'s native-style arrow, whose size ignores the
+        # font and which desyncs under canvas zoom (TODO 333bebf).
+        self._arrow_px = QFontMetrics(font).height()
+        self.toggle.setIconSize(QSize(self._arrow_px, self._arrow_px))
+        self._update_arrow(True)
         self.toggle.clicked.connect(self._on_toggle)
         outer.addWidget(self.toggle)
 
@@ -331,7 +357,10 @@ class _SectionWidget(QWidget):
 
     def _on_toggle(self, checked: bool) -> None:
         self.body.setVisible(checked)
-        self.toggle.setArrowType(Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow)
+        self._update_arrow(checked)
+
+    def _update_arrow(self, expanded: bool) -> None:
+        self.toggle.setIcon(_arrow_icon(self._arrow_px, expanded, self.toggle.palette().buttonText().color()))
 
     def set_expanded(self, expanded: bool) -> None:
         self.toggle.setChecked(expanded)
@@ -374,7 +403,7 @@ class MarkdownWidget(QWidget):
         toolbar.addStretch()
         toolbar.addWidget(self._label)
 
-        self._toc = QTreeWidget()
+        self._toc = PaintedBranchTreeWidget()
         self._toc.setHeaderHidden(True)
         self._toc.itemClicked.connect(self._on_toc_clicked)
 

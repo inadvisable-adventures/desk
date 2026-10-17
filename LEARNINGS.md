@@ -1364,3 +1364,7 @@ startup code) driving the loop from several `processEvents()` lines needs a sing
 for the stripping to apply, and a direct `setFocus()` from the same function at another line
 must not be stripped. Related: `sys._getframe(2)` raises `ValueError` when a slot runs with no
 Python frame beneath it (teardown); guard it.
+
+## Native-style branch/section arrows recurred in the Markdown widget (follow-up to the `QTreeView` branch-arrow entry above)
+
+The same bug recurred in the Markdown widget's TOC (TODO `333bebf`): the symptom there was large arrows detached from their rows, far below the tree. Any new `QTreeView`/`QTreeWidget` in a widget should use `desk.shell.painted_branches`, and `QToolButton.setArrowType()` should be avoided in favor of a painted `QIcon` (its size ignores the font).
