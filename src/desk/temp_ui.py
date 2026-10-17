@@ -245,6 +245,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "python widgets use qt_controls, not QComboBox #514695",
     "agent-raised desk events via MCP tool #028808",
     "agent waits for a desk event via MCP tool #196353",
+    "events: bare signal or payload, file past 1 KB #504112",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -915,8 +916,9 @@ for one a widget sends.
   another widget published.
 - `payload` may be left out for a bare signal (a message that means "I
   updated the file"), or carry the data you would otherwise have written
-  to a file. Keep it small: a message over about 1 KB should usually be a
-  file, with the event only announcing it (for example
+  to a file (see "A signal, or the data itself" in
+  `tempui-custom-widgets.md`). Keep it small: a message over about 1 KB
+  should usually be a file, with the event only announcing it (for example
   `{ "path": ".desk_temp/foo.json" }`). The hard limit is 64 KiB of JSON;
   a bigger payload is refused, not truncated.
 - `name` is any non-empty string up to 200 characters. Pick a specific
@@ -1082,7 +1084,10 @@ Desk Bridge API", for each call's exact shape.
   channel keyed by widget *instance*; widgets never call each other
   directly. An agent can raise an event onto the same channel with the
   `desk_raise_event` MCP tool, and wait for one with `desk_wait_for_event`
-  from a background sub-agent (`tempui-agent-events.md`).
+  from a background sub-agent (`tempui-agent-events.md`). An event can be
+  a bare signal ("I updated the file") or carry the data in its payload
+  instead of a file; past about 1 KB, use a file. See "A signal, or the
+  data itself" in `tempui-custom-widgets.md`.
 - `desk.log.append/line` (capability `log`): fire-and-forget, time-stamped
   strings into a named log an agent can query by time range
   (`desk_query_widget_log`); the way to let an agent ask a widget what it
@@ -1813,6 +1818,33 @@ through this JS API — they get it via a direct Python import instead
 (`desk.shell.event_broker.EventSubscription`), the same "REST for html
 widgets, direct Python for python widgets" split every other Bridge API
 capability already follows.
+
+### A signal, or the data itself
+
+An event does not have to carry anything, and it does not have to be
+backed by a file. Two ends of one spectrum, both fine:
+
+- **A bare signal.** `desk.events.publish("report.updated")` with no
+  payload means just "I updated the file": every subscriber re-reads the
+  file it already knows about. The file holds the data; the event is the
+  nudge that saves everyone from polling it.
+- **The data itself.** `desk.events.publish("report.row_added", { id: 7,
+  text: "..." })` skips the file altogether: put in the payload what you
+  would previously have written to a file and read back. Nothing to
+  write, poll, parse or clean up.
+
+Past about **1 KB**, prefer a file, with the event announcing it (no
+payload, or just `{ path }`). Every subscriber gets its own copy of the
+payload, every published event is written in full to
+`MEDIATED-EVENT-LOG.tsv`, and (for an agent raising one) anything over
+64 KiB is refused outright. Also, events are **not kept for latecomers**:
+a widget receives only what is published after it subscribes, so anything
+a widget must still find after it is opened or reopened belongs in a file
+(or the shared state store, below), with the event as the nudge.
+
+An agent uses the same channel (the `desk_raise_event` and
+`desk_wait_for_event` MCP tools, see `tempui-agent-events.md`), so it
+follows the same rule of thumb.
 
 ## Shared, project-scoped state
 
@@ -2685,6 +2717,14 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "events: bare signal or payload, file past 1 KB #504112": """- `tempui-custom-widgets.md` has a new subsection, "A signal, or the
+  data itself", under "Sending and receiving named messages": a desk
+  event can carry no payload at all (a message meaning "I updated the
+  file") or can carry in its payload what you would otherwise have
+  written to a file, so no file is needed; past about 1 KB, use a file
+  and let the event announce it. It also notes that events are not kept
+  for widgets that subscribe later. Guidance only; no API changed.
+""",
     "agent waits for a desk event via MCP tool #196353": """- New MCP tool `desk_wait_for_event(name, timeout_seconds?)` on the
   `desk` server: blocks until a desk event with that name arrives and
   returns `{ status: "event", name, payload, sender, timestamp }` (or

@@ -11293,7 +11293,7 @@ d5744c8. COMPLETED: Code editor improvements: (a) syntax-highlighting colors fro
    foreground sub-agent from a background one (the SDK has no such flag), so that case is documented,
    not enforced. Not tried live: that the SDK really sets `agent_id` for an MCP call from a sub-agent.
 
-361b4f8. Add an explicit callout to the inter-widget communication documentation (the `desk.events`
+361b4f8. COMPLETED: Add an explicit callout to the inter-widget communication documentation (the `desk.events`
    sections of `tempui-custom-widgets.md` and the overview in `desk-temporary-ui.md`, generated from
    `src/desk/temp_ui.py`) explaining that events can be simple with no payload, like a message meaning
    "I updated the file", or can be complex and skip files altogether, carrying in the payload what
@@ -11301,6 +11301,13 @@ d5744c8. COMPLETED: Code editor improvements: (a) syntax-highlighting colors fro
    probably just be a file, with the event announcing it. Mention the agent-side MCP tools from TODO
    `71d11da` and `30069f6` once they exist. Wording change to tempui guidance, so mint a changelog
    tag + entry. From `../FEEDBACK/FEEDBACK-DESK-agent-qa-file-polling-2026-10-13-1845.md`.
+
+   [planned: events-payload-or-file-callout.md (COMPLETED)]
+
+   COMPLETED 2026-10-17: "A signal, or the data itself" subsection in `tempui-custom-widgets.md` (bare
+   signal, data-instead-of-file, ~1 KB file advice, late-subscriber caveat), pointers from the porting
+   doc's inter-widget bullet and `tempui-agent-events.md`, tag `events: bare signal or payload, file
+   past 1 KB #504112` + entry, `verify_events_payload_or_file_callout.py`.
 
 d16c5eb. Audit every built-in widget (all of `widgets/*/`) so it persists only project-relative
    paths in its saved state, never absolute ones, so a `.desk` file (and a view template, see the
