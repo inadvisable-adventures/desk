@@ -71,6 +71,16 @@ bin/python3 tests/verify/<script>.py`) and printing its own `PASS`/
   keyword parameters gets a `Protocol` like `CenteredWidgetOpener`
   instead of a bare `Callable`.
 
+### Investigate UI bugs on a branch
+
+When investigating a UI bug, always start by creating a branch for the
+investigation, before making any changes. Diagnostic logging, false
+starts and several rounds of live-restart fixes then stay on the branch as
+the record, and the eventual fix lands on `main` as a clean change (a
+TODO item with a plan) instead of the investigation's history. See TODO
+`5303de6` and `investigations/combo-box-misplacement` for the example
+that prompted this.
+
 ### Keep the tempui changelog docs current
 
 Whenever a change made to Desk itself is a breaking change or a new

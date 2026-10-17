@@ -82,9 +82,9 @@ class _ClickableLabel(QLabel):
 class _DeskListPopup(QWidget):
     """A stable, fully-visible-immediately list of MRU desks plus a
     trailing "browse" entry -- shown on a name-label click, replacing the
-    old `QComboBox` (which needed a hover to reveal, then a further click
-    to open its own native popup, and could be lost by moving the mouse
-    off it before finishing). Uses the same `Qt.WindowType.Popup` pattern
+    old native combo-box dropdown (which needed a hover to reveal, then a
+    further click to open its own native popup, and could be lost by moving
+    the mouse off it before finishing). Uses the same `Qt.WindowType.Popup` pattern
     as `WidgetSpawnMenu` (click-away/Escape dismissal), just without a
     filter box -- MRU lists are short."""
 

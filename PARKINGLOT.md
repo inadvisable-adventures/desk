@@ -1451,3 +1451,34 @@ This file captures thoughts and TODO items that arise during work on other thing
   careful scoping a capability like this would need), and if so, what would a safe reload story
   actually look like (a new session replacing the old one cleanly? a restart-and-resume? something
   narrower, like a dry-run/staged-apply step a human confirms before it takes effect)?
+
+- **Runtime warning when a project `kind: "python"` widget builds a raw `QComboBox`**
+
+  From `../FEEDBACK/FEEDBACK-DESK-painted-combo-crash-and-enforcement-gap-2026-10-16-1836.md` (suggestion 3, second layer). A static check (TODO `21e6e04`) can't reach `desk_widgets/<name>/widget.py` in other
+  repos; the feedback proposed a loud, visible warning (like the `[ERROR]`/`[STALE]` titlebar badges) naming
+  `PaintedComboBox` and the conventions doc when such a widget constructs one. Patching `QComboBox` at load time to detect it
+  was judged too risky. Not scoped.
+
+  **User comment:** this might make a case for the ux DSL -- if widgets declare dropdowns through Desk's own UI description
+  rather than raw Qt, the right control is used by construction and there is nothing to detect.
+
+- **Real (non-offscreen) GUI verify script for embedded popup placement**
+
+  From `../FEEDBACK/FEEDBACK-DESK-painted-combo-popup-coordinate-origin-bug-2026-10-16-1730.md`. `QT_QPA_PLATFORM=offscreen` misled the combo investigation twice. A script run from an agent's own shell in the
+  real logged-in macOS session -- `QTest.mouseClick` plus `QScreen.grabWindow` -- would reproduce and verify popup placement
+  with no Desk restarts or user involvement.
+
+- **Rule: UI-positioning fixes under `QGraphicsProxyWidget` aren't resolved until checked on real screen pixels or live**
+
+  From `../FEEDBACK/FEEDBACK-DESK-painted-combo-popup-coordinate-origin-bug-2026-10-16-1730.md`. A passing headless test or an object's own geometry getter agreeing with the requested value is not enough
+  evidence; both were wrong in the combo investigation. Candidate `development-process.md` rule, not yet adopted.
+
+- **Real-compositor screenshot MCP tool (or `real=True` on the existing ones)**
+
+  From `../FEEDBACK/FEEDBACK-DESK-painted-combo-popup-coordinate-origin-bug-2026-10-16-1730.md`. `desk_screenshot_widget`/`desk_screenshot_desk` use `QWidget.grab()`, which is blind to separate top-level
+  windows (popups, tooltips, dialogs). An in-process `QScreen.grabWindow(0)` capture was what finally broke the combo case open.
+
+- **Hot reload for isolated, stateless shell modules**
+
+  From `../FEEDBACK/FEEDBACK-DESK-painted-combo-popup-coordinate-origin-bug-2026-10-16-1730.md`. `src/desk/shell/*.py` isn't hot-reloadable, so each combo fix attempt cost a full Desk restart and the user's
+  participation. A narrow path for stateless modules like `painted_combo.py` would cut most of that cost.

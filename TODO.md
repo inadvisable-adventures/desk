@@ -12663,3 +12663,29 @@ c33657f. COMPLETED: Add a `desk_git_commit` MCP tool (follows from TODO `8e8db18
 
    COMPLETED 2026-10-15: shared `desk.shell.painted_branches`, TOC + section toggle use it,
    `verify_markdown_painted_arrows.py`; headless-verified only (live zoomed-out check pending).
+
+5303de6. Land a clean `PaintedComboBox` on `main` (from `../FEEDBACK/FEEDBACK-DESK-painted-combo-popup-coordinate-origin-bug-2026-10-16-1730.md` and `../FEEDBACK/FEEDBACK-DESK-painted-combo-crash-and-enforcement-gap-2026-10-16-1836.md`; the investigation lives on branch
+   `investigations/combo-box-misplacement`, kept intact as the record -- do not replay its history). Create
+   `src/desk/shell/qt_controls/` with an `__init__.py` docstring (or README) stating the house rule: every control
+   here exists because the matching native Qt widget renders or positions itself wrong embedded in the Workspace
+   Canvas's `QGraphicsProxyWidget` at a non-1.0 zoom, so check here before writing a raw Qt control. Move
+   `painted_branches.py` there (update importers) and add `painted_combo.py`, ported from the branch's end state
+   minus the guesses: keep the `parent=None` popup (never parent a `Qt.Popup` to the alien `WidgetFrame`), the
+   `desk.shell.qt_utils.deferred` selection emit (not a closing-then-`QTimer` lambda), and close-on-pan/zoom; drop
+   `_settle_initial_position` (a workaround for an offscreen-only artifact; it never fixed the live bug). Switch the
+   Claude (Desk) combos to it, bring over the verify tests for the crash and popup origin, and write up the
+   `LEARNINGS.md` entries concisely. `zoom_control.py` is a different kind of thing and does not move. Verify live in a
+   real Desk, not just headless.
+
+a1f2bc7. Convert the remaining raw `QComboBox` uses to `PaintedComboBox`: `widgets/state_manager/widget.py` (two combos) and
+   `widgets/side_by_side/widget.py` (one), adding whichever `QComboBox` methods those need. Do after TODO `5303de6`.
+
+21e6e04. Add `tests/verify/verify_no_raw_qcombobox.py`, modeled on `verify_deprecated_docs_isolation.py`: statically scan
+   `src/desk/` and `widgets/` and fail on any `QComboBox` outside `qt_controls/`. `desk_picker.py` only mentions it in a
+   `_DeskListPopup` docstring, so reword that comment (same meaning, no literal `QComboBox` token) rather than allowlist it.
+   Do after TODO `a1f2bc7`.
+
+d4c0d68. Write `python-widget-conventions.md` at the project root (use `PaintedComboBox`/`qt_controls` for anything embedded in
+   the canvas, with the why), reference it from `CLAUDE.md` the way `browser-frontend.md` is, and cross-link it from
+   `tempui-custom-widgets.md`'s project-widgets section so agents in other projects see it. Per `development-process.md`,
+   mint a tempui tag and changelog entry in the same commit. Do after TODO `5303de6`.
