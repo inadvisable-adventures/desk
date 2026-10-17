@@ -12728,3 +12728,12 @@ d4c0d68. COMPLETED: Write `python-widget-conventions.md` at the project root (us
    COMPLETED 2026-10-16: `python-widget-conventions.md`, `CLAUDE.md` reference, rule stated self-contained in the
    top-level tempui doc's "Project widgets" section and the porting doc, tag `python widgets use qt_controls, not
    QComboBox #514695` + `_NEW_FEATURES` entry, `verify_python_widget_conventions_doc.py`.
+
+ba11954. COMPLETED: Recreate the HTML System Clock widget from
+   `../FEEDBACK/FEEDBACK-DESK-system-clock-widget-source-2026-10-16-2122.md` as a built-in `kind: "python"`
+   widget, keeping its styling (green monospace `HH:MM:SS` on charcoal, muted long date, IANA zone line).
+
+   [planned: system-clock-widget.md (COMPLETED)]
+
+   COMPLETED 2026-10-16: `widgets/system_clock/`, `tests/verify/verify_system_clock_widget.py`. Headless
+   and offscreen-screenshot verified; user confirmed it looks good in the live app.
