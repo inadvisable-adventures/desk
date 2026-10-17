@@ -15,7 +15,6 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -36,6 +35,7 @@ from PyQt6.QtWidgets import (
 from desk.schema_registry import SCHEMA_CHANGED_EVENT
 from desk.shell import current_context
 from desk.shell.event_broker import EventSubscription
+from desk.shell.qt_controls import PaintedComboBox
 
 KEY_ROLE = Qt.ItemDataRole.UserRole
 TREE_HEADERS = ("Key", "Schema", "Source", "Status")
@@ -71,7 +71,7 @@ class _NewKeyDialog(QDialog):
         self.type_expr_field.setPlaceholderText("optional -- e.g. string | number")
         layout.addRow("Schema type expression:", self.type_expr_field)
 
-        self.location_field = QComboBox()
+        self.location_field = PaintedComboBox()
         self.location_field.addItem("Ephemeral (.desk_temp/schemas/)", "ephemeral")
         self.location_field.addItem("Git-tracked (./desk-schemas/)", "git_tracked")
         layout.addRow("Schema location:", self.location_field)
@@ -121,7 +121,7 @@ class StateManagerWidget(QWidget):
         self._schema_status_label = QLabel()
         self._schema_status_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         self._schema_type_field = QLineEdit()
-        self._schema_location_field = QComboBox()
+        self._schema_location_field = PaintedComboBox()
         self._schema_location_field.addItem("Ephemeral (.desk_temp/schemas/)", "ephemeral")
         self._schema_location_field.addItem("Git-tracked (./desk-schemas/)", "git_tracked")
         self._schema_save_button = QPushButton("Save Schema")

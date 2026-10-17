@@ -61,6 +61,19 @@ check("api", combo.currentIndex() == 2 and combo.currentText() == "Gamma" and se
 check("itemText", combo.itemText(0) == "Alpha" and combo.itemText(9) == "")
 check("renders", not combo.grab().toImage().isNull())
 
+# -- user data (TODO a1f2bc7) and disabled painting --------------------------
+dc = PaintedComboBox()
+dc.addItem("Ephemeral", "ephemeral")
+dc.addItem("Git", "git_tracked")
+dc.addItem("NoData")
+check("currentData of first item", dc.currentData() == "ephemeral")
+dc.setCurrentIndex(1)
+check("currentData follows selection", dc.currentData() == "git_tracked" and dc.itemData(0) == "ephemeral")
+dc.setCurrentIndex(2)
+check("item without data -> None", dc.currentData() is None and dc.itemData(9) is None)
+dc.setEnabled(False)
+check("disabled combo renders", not dc.grab().toImage().isNull())
+
 # -- embedded in a real WidgetFrame, sibling widgets, at several zooms --------
 content = QWidget()
 row = QHBoxLayout(content)

@@ -29,7 +29,7 @@ LEARNINGS.md, "QComboBox in a zoomed QGraphicsProxyWidget"):
 from __future__ import annotations
 
 from PyQt6.QtCore import QPoint, QPointF, QRectF, QSize, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QFontMetrics, QKeyEvent, QPainter, QPolygonF
+from PyQt6.QtGui import QFontMetrics, QKeyEvent, QPainter, QPalette, QPolygonF
 from PyQt6.QtWidgets import QAbstractItemView, QGraphicsView, QListWidget, QSizePolicy, QVBoxLayout, QWidget
 
 from desk.shell.qt_utils import deferred
@@ -81,6 +81,7 @@ class PaintedComboBox(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._items: list[str] = []
+        self._data: list[object] = []
         self._current = -1
         self._popup: _ComboPopup | None = None
         # The control's on-screen rect when the open popup was placed;
@@ -92,8 +93,9 @@ class PaintedComboBox(QWidget):
 
     # -- QComboBox subset ---------------------------------------------
 
-    def addItem(self, text: str) -> None:
+    def addItem(self, text: str, userData: object = None) -> None:
         self._items.append(text)
+        self._data.append(userData)
         if self._current < 0:
             self._current = 0
         self.updateGeometry()
@@ -107,6 +109,12 @@ class PaintedComboBox(QWidget):
 
     def itemText(self, index: int) -> str:
         return self._items[index] if 0 <= index < len(self._items) else ""
+
+    def itemData(self, index: int) -> object:
+        return self._data[index] if 0 <= index < len(self._data) else None
+
+    def currentData(self) -> object:
+        return self.itemData(self._current)
 
     def currentText(self) -> str:
         return self.itemText(self._current)
@@ -132,18 +140,20 @@ class PaintedComboBox(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         pal = self.palette()
+        group = QPalette.ColorGroup.Active if self.isEnabled() else QPalette.ColorGroup.Disabled
+        text_color = pal.color(group, QPalette.ColorRole.Text)
         frame = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         painter.setBrush(pal.base())
         painter.setPen(pal.highlight().color() if self.hasFocus() else pal.mid().color())
         painter.drawRoundedRect(frame, 3, 3)
         text_rect = QRectF(_PAD_X, 0, self.width() - 2 * _PAD_X - _ARROW_W, self.height())
-        painter.setPen(pal.text().color())
+        painter.setPen(text_color)
         elided = QFontMetrics(self.font()).elidedText(
             self.currentText(), Qt.TextElideMode.ElideRight, int(text_rect.width())
         )
         painter.drawText(text_rect, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), elided)
         cx, cy, r = self.width() - _ARROW_W / 2 - 2, self.height() / 2, 4.0
-        painter.setBrush(pal.text())
+        painter.setBrush(text_color)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawPolygon(
             QPolygonF([QPointF(cx - r, cy - r * 0.5), QPointF(cx + r, cy - r * 0.5), QPointF(cx, cy + r * 0.6)])

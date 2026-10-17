@@ -15,7 +15,6 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QComboBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -26,6 +25,7 @@ from PyQt6.QtWidgets import (
 
 from desk.shell import current_context
 from desk.shell.python_widget import PythonWidgetHost
+from desk.shell.qt_controls import PaintedComboBox
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,7 @@ class SideBySideWidget(QWidget):
         layout = QVBoxLayout(widget)
         label = QLabel(f"Slot {slot_index + 1} — choose a widget")
         label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
-        combo = QComboBox()
+        combo = PaintedComboBox()
         for entry in _catalog_entries():
             combo.addItem(entry["name"], entry["id"])
         choose_button = QPushButton("Choose")

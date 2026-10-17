@@ -12684,13 +12684,22 @@ c33657f. COMPLETED: Add a `desk_git_commit` MCP tool (follows from TODO `8e8db18
    script (popup delta 0px at three zooms); that harness could not reproduce the original offset bug. Confirmed live in Desk by
    the user (2026-10-16): works without the `_settle_initial_position` code.
 
-a1f2bc7. Convert the remaining raw `QComboBox` uses to `PaintedComboBox`: `widgets/state_manager/widget.py` (two combos) and
+a1f2bc7. COMPLETED: Convert the remaining raw `QComboBox` uses to `PaintedComboBox`: `widgets/state_manager/widget.py` (two combos) and
    `widgets/side_by_side/widget.py` (one), adding whichever `QComboBox` methods those need. Do after TODO `5303de6`.
 
-21e6e04. Add `tests/verify/verify_no_raw_qcombobox.py`, modeled on `verify_deprecated_docs_isolation.py`: statically scan
+   [planned: convert-remaining-qcomboboxes.md (COMPLETED)]
+
+   COMPLETED 2026-10-16: `state_manager` and `side_by_side` use `PaintedComboBox` (gained `addItem` user data,
+   `itemData`/`currentData`, disabled painting); headless-verified only.
+
+21e6e04. COMPLETED: Add `tests/verify/verify_no_raw_qcombobox.py`, modeled on `verify_deprecated_docs_isolation.py`: statically scan
    `src/desk/` and `widgets/` and fail on any `QComboBox` outside `qt_controls/`. `desk_picker.py` only mentions it in a
    `_DeskListPopup` docstring, so reword that comment (same meaning, no literal `QComboBox` token) rather than allowlist it.
    Do after TODO `a1f2bc7`.
+
+   [planned: no-raw-qcombobox-check.md (COMPLETED)]
+
+   COMPLETED 2026-10-16: `verify_no_raw_qcombobox.py`; confirmed failing on the pre-conversion code.
 
 d4c0d68. Write `python-widget-conventions.md` at the project root (use `PaintedComboBox`/`qt_controls` for anything embedded in
    the canvas, with the why), reference it from `CLAUDE.md` the way `browser-frontend.md` is, and cross-link it from
