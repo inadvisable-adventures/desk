@@ -12737,3 +12737,30 @@ ba11954. COMPLETED: Recreate the HTML System Clock widget from
 
    COMPLETED 2026-10-16: `widgets/system_clock/`, `tests/verify/verify_system_clock_widget.py`. Headless
    and offscreen-screenshot verified; user confirmed it looks good in the live app.
+
+71d11da. MCP tool for agents to raise an arbitrary desk event (name plus optional JSON payload) onto the
+   same `desk.events` channel widgets use, hosted by Claude (Desk) in `src/desk/shell/desk_mcp_server.py`
+   alongside the other `desk_*` tools. Replaces the file-drop half of the agent-to-widget round trip in
+   `../FEEDBACK/FEEDBACK-DESK-agent-qa-file-polling-2026-10-13-1845.md`: an agent signals a running
+   widget directly instead of appending to a polled file. Deliberately generic (no Q&A-specific schema;
+   see TODO `361b4f8` for the payload guidance). Agent-visible, so docs plus changelog tag + entry.
+   Related: TODO `30069f6`, `361b4f8`.
+
+30069f6. MCP tool that listens for an arbitrary desk event and returns it (name and payload) when it
+   arrives, hosted by Claude (Desk) next to TODO `71d11da`'s tool. It is meant to be called from a
+   background thread, so it may wait with no timeout (or, if one is required, a long one). Prefer
+   enforcing the background-thread rule programmatically, possibly in the Claude (Desk) widget code
+   (for example, refusing or flagging a call made from the foreground conversation); if the only
+   workable enforcement turns out to be the tool description, do that and say so in the plan. First
+   investigate what Claude (Desk) can actually tell about the calling context. Replaces the
+   agent-side answers-file polling in `../FEEDBACK/FEEDBACK-DESK-agent-qa-file-polling-2026-10-13-1845.md`.
+   Agent-visible, so docs plus changelog tag + entry. Related: TODO `71d11da`, `361b4f8`.
+
+361b4f8. Add an explicit callout to the inter-widget communication documentation (the `desk.events`
+   sections of `tempui-custom-widgets.md` and the overview in `desk-temporary-ui.md`, generated from
+   `src/desk/temp_ui.py`) explaining that events can be simple with no payload, like a message meaning
+   "I updated the file", or can be complex and skip files altogether, carrying in the payload what
+   would previously have been written to a file. Recommend that any message bigger than about 1k should
+   probably just be a file, with the event announcing it. Mention the agent-side MCP tools from TODO
+   `71d11da` and `30069f6` once they exist. Wording change to tempui guidance, so mint a changelog
+   tag + entry. From `../FEEDBACK/FEEDBACK-DESK-agent-qa-file-polling-2026-10-13-1845.md`.
