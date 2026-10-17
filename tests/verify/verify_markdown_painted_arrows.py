@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 app = QApplication(sys.argv)
 
-from desk.shell.painted_branches import PaintedBranchTreeWidget  # noqa: E402
+from desk.shell.qt_controls.painted_branches import PaintedBranchTreeWidget  # noqa: E402
 import importlib.util  # noqa: E402
 
 spec = importlib.util.spec_from_file_location("md_widget", "widgets/markdown/widget.py")

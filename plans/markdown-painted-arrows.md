@@ -8,7 +8,7 @@ The Markdown widget's TOC tree branch arrows are native-style painted and detach
 zoom (same class as TODO b927389). Its section toggle arrows (`setArrowType`) ignore heading level.
 
 ## Affected files
-`src/desk/shell/painted_branches.py` (new, extracted from Project Files), `widgets/project_files/widget.py`,
+`src/desk/shell/qt_controls/painted_branches.py` (new, extracted from Project Files), `widgets/project_files/widget.py`,
 `widgets/markdown/widget.py`, `LEARNINGS.md`, `tests/verify/verify_markdown_painted_arrows.py`.
 
 ## Approach

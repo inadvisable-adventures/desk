@@ -4,7 +4,6 @@ from pathlib import Path
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QTextCursor
 from PyQt6.QtWidgets import (
-    QComboBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -28,6 +27,7 @@ from desk.claude_session import (
 )
 from desk.connectivity_probe import ConnectivityProbe
 from desk.shell import current_context
+from desk.shell.qt_controls.painted_combo import PaintedComboBox
 from desk.speech import TranscriptionResult
 from desk.temp_ui import DOC_FILENAME, TEMP_UI_DIRNAME
 from desk.timecoded_transcript import transcript_relative_path, with_transcript_note, write_transcript
@@ -343,12 +343,12 @@ class ClaudeDeskWidget(QWidget):
         self._staleness_timer.timeout.connect(self._tick_staleness)
         self._staleness_timer.start()
 
-        self._model_combo = QComboBox()
+        self._model_combo = PaintedComboBox()
         for label, _value in MODEL_CHOICES:
             self._model_combo.addItem(label)
         self._model_combo.setCurrentIndex(DEFAULT_MODEL_INDEX)
 
-        self._permission_mode_combo = QComboBox()
+        self._permission_mode_combo = PaintedComboBox()
         for label, _value in PERMISSION_MODE_CHOICES:
             self._permission_mode_combo.addItem(label)
         self._permission_mode_combo.setCurrentIndex(DEFAULT_PERMISSION_MODE_INDEX)

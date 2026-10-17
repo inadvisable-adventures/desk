@@ -12661,10 +12661,10 @@ c33657f. COMPLETED: Add a `desk_git_commit` MCP tool (follows from TODO `8e8db18
 
    [planned: markdown-painted-arrows.md (COMPLETED)]
 
-   COMPLETED 2026-10-15: shared `desk.shell.painted_branches`, TOC + section toggle use it,
+   COMPLETED 2026-10-15: shared `desk.shell.qt_controls.painted_branches`, TOC + section toggle use it,
    `verify_markdown_painted_arrows.py`; headless-verified only (live zoomed-out check pending).
 
-5303de6. Land a clean `PaintedComboBox` on `main` (from `../FEEDBACK/FEEDBACK-DESK-painted-combo-popup-coordinate-origin-bug-2026-10-16-1730.md` and `../FEEDBACK/FEEDBACK-DESK-painted-combo-crash-and-enforcement-gap-2026-10-16-1836.md`; the investigation lives on branch
+5303de6. COMPLETED (pending live confirmation): Land a clean `PaintedComboBox` on `main` (from `../FEEDBACK/FEEDBACK-DESK-painted-combo-popup-coordinate-origin-bug-2026-10-16-1730.md` and `../FEEDBACK/FEEDBACK-DESK-painted-combo-crash-and-enforcement-gap-2026-10-16-1836.md`; the investigation lives on branch
    `investigations/combo-box-misplacement`, kept intact as the record -- do not replay its history). Create
    `src/desk/shell/qt_controls/` with an `__init__.py` docstring (or README) stating the house rule: every control
    here exists because the matching native Qt widget renders or positions itself wrong embedded in the Workspace
@@ -12676,6 +12676,13 @@ c33657f. COMPLETED: Add a `desk_git_commit` MCP tool (follows from TODO `8e8db18
    Claude (Desk) combos to it, bring over the verify tests for the crash and popup origin, and write up the
    `LEARNINGS.md` entries concisely. `zoom_control.py` is a different kind of thing and does not move. Verify live in a
    real Desk, not just headless.
+
+   [planned: qt-controls-painted-combo.md (COMPLETED)]
+
+   COMPLETED 2026-10-16: `desk.shell.qt_controls` (`PaintedComboBox`, `painted_branches` moved in), Claude (Desk)
+   combos switched, `verify_painted_combo.py`. Checked headlessly and with a one-off real-cocoa screen-capture
+   script (popup delta 0px at three zooms); that harness could not reproduce the original offset bug, so the
+   live check in Desk is still wanted.
 
 a1f2bc7. Convert the remaining raw `QComboBox` uses to `PaintedComboBox`: `widgets/state_manager/widget.py` (two combos) and
    `widgets/side_by_side/widget.py` (one), adding whichever `QComboBox` methods those need. Do after TODO `5303de6`.

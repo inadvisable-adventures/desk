@@ -1350,4 +1350,15 @@ contains none, Qt itself (key/mouse handling) did it.
 
 ## Native-style branch/section arrows recurred in the Markdown widget (follow-up to the `QTreeView` branch-arrow entry above)
 
-The same bug recurred in the Markdown widget's TOC (TODO `333bebf`): the symptom there was large arrows detached from their rows, far below the tree. Any new `QTreeView`/`QTreeWidget` in a widget should use `desk.shell.painted_branches`, and `QToolButton.setArrowType()` should be avoided in favor of a painted `QIcon` (its size ignores the font).
+The same bug recurred in the Markdown widget's TOC (TODO `333bebf`): the symptom there was large arrows detached from their rows, far below the tree. Any new `QTreeView`/`QTreeWidget` in a widget should use `desk.shell.qt_controls.painted_branches`, and `QToolButton.setArrowType()` should be avoided in favor of a painted `QIcon` (its size ignores the font).
+
+## `QComboBox` in a zoomed `QGraphicsProxyWidget`: native painting desyncs, the popup is placed with untransformed `mapToGlobal`, and parenting it to the embedded frame shifts it again
+
+Reported on Claude (Desk)'s dropdowns (TODOs `0f2c458`, `7bc07a8`, `ff0628a`, `5303de6`). The collapsed control is native-style painted and the list is a separate top-level window, so under canvas zoom the control scales wrongly and the list lands detached from it. Use `desk.shell.qt_controls.PaintedComboBox`, which paints itself and places the popup from the control's real on-screen rect (proxy -> scene -> view). Three traps it encodes:
+
+- **Never parent the `Qt.Popup` to the embedded `WidgetFrame`.** `Qt.Popup` is documented as always globally positioned, but with that "alien" parent macOS placed it a roughly constant offset away (about 212pt right, 15-25pt down in the live app). Qt's own geometry getters echoed the requested position and hid it; only real screen pixels (`QScreen.grabWindow(0)`, `QCursor.pos()`) showed it. A constant offset that doesn't scale with zoom means a coordinate-origin bug, not arithmetic. `parent=None` fixes it.
+- **Don't emit from a closed `WA_DeleteOnClose` popup through a `QTimer` closure.** Same crash as `_DeskListPopup` (see the entry on that above): emit synchronously after `close()`, defer on the long-lived container's connection with `desk.shell.qt_utils.deferred`.
+- **A pan/zoom while the popup is open strands it** (it's an OS window that never moves), and the control ignores the wheel so this is easy to trigger; the control closes the popup when its on-screen rect drifts.
+
+The offscreen QPA platform misled the investigation twice: it showed a "settling" effect (showing the popup changed the control's computed rect) that never happens on real macOS, and it can't show OS window placement at all. `desk_screenshot_widget`/`desk_screenshot_desk` use `QWidget.grab()`, which can't see a separate top-level popup either. Verify placement in a real (cocoa) process with a screen capture, or live. The full chronology is on branch `investigations/combo-box-misplacement`.
+

@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
 
 from desk.file_type_registry import FILE_TYPE_REGISTRY_UPDATED_EVENT, entry_from_dict, find_view_handler
 from desk.shell import current_context
-from desk.shell.painted_branches import PaintedBranchTreeView
+from desk.shell.qt_controls.painted_branches import PaintedBranchTreeView
 from desk.shell.event_broker import EventSubscription
 
 SKIP_DIRS = {".git", "__pycache__", "node_modules", ".venv", "venv", "build", "dist"}
@@ -72,7 +72,7 @@ def _build_search_model(root: Path, query: str) -> QStandardItemModel:
 
 class _FileTreeView(PaintedBranchTreeView):
     """Branch indicator painted by us, not the native style (see
-    desk.shell.painted_branches and LEARNINGS.md)."""
+    desk.shell.qt_controls.painted_branches and LEARNINGS.md)."""
 
 
 class ProjectFilesWidget(QWidget):

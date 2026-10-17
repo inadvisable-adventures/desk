@@ -25,7 +25,7 @@ from desk.file_watch import SingleFileWatcher
 from desk.mermaid import MermaidParseError, detect_diagram_kind, parse as parse_mermaid
 from desk.persisted_path import resolve_persisted_path
 from desk.shell import current_context
-from desk.shell.painted_branches import PaintedBranchTreeWidget
+from desk.shell.qt_controls.painted_branches import PaintedBranchTreeWidget
 from desk.svg_view import SvgView
 from desk_services.transforms import TransformError
 
