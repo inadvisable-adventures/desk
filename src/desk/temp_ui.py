@@ -242,6 +242,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "named widget logs + log query MCP tools #211800",
     "recording events + timecoded transcripts #920929",
     "desk_git_commit MCP tool for commit messages #570472",
+    "python widgets use qt_controls, not QComboBox #514695",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -377,6 +378,18 @@ level as any other `kind: "python"` widget: this widget's code has
 full, unsandboxed, direct access to Desk's own running process** --
 the same trust Installed Jobs' `main.py` already gets, not a
 capability-scoped surface like a `kind: "html"` widget's Bridge API.
+
+**Don't use native Qt controls that misbehave under canvas zoom.** Widget
+content is embedded in the zoomable canvas, where a native `QComboBox`
+scales oddly and opens its dropdown list detached from the control, and a
+`QTreeView`/`QTreeWidget`'s native expand/collapse arrows detach from their
+rows (same for `QToolButton.setArrowType`). Desk ships replacements in
+`desk.shell.qt_controls` -- import and use them instead:
+`from desk.shell.qt_controls import PaintedComboBox` (`addItem(text,
+userData)`, `currentIndex()`, `currentData()`, `itemText()`,
+`currentIndexChanged`) and `PaintedBranchTreeView`/`PaintedBranchTreeWidget`.
+If a Qt popup window (a `Qt.Popup`) is ever needed from widget content,
+construct it with `parent=None`.
 
 ## Desk's own log
 
@@ -937,7 +950,9 @@ Desk Bridge API", for each call's exact shape.
   (see `tempui-custom-widgets.md`; promotable into the project), or a
   real `kind: "python"` widget package in the project's own
   `desk_widgets/<name>/` directory (same `widget.json`/`entry` shape as
-  Desk's built-ins; full in-process access, so only for trusted code).
+  Desk's built-ins; full in-process access, so only for trusted code; use
+  the `qt_controls` package's `PaintedComboBox` rather than `QComboBox` --
+  see "Project widgets" in the top-level doc).
 - Open an existing file in a viewer: `OpenMarkdown`, `OpenImage`, and
   the generic `OpenWithWidget` tempui keywords.
 - Ask the user something through the canvas: `Question` and
@@ -2547,6 +2562,16 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "python widgets use qt_controls, not QComboBox #514695": """- A `kind: "python"` widget embedded in the canvas must not use a
+  native `QComboBox` (or a raw `QTreeView`/`QTreeWidget`'s branch arrows,
+  or `QToolButton.setArrowType`): they paint with the platform style and
+  open popups from untransformed screen coordinates, so under canvas zoom
+  they scale oddly and a dropdown's list lands detached from its control.
+  Use `from desk.shell.qt_controls import PaintedComboBox` (supports
+  `addItem(text, userData)`, `currentIndex`, `currentData`, `itemText`,
+  `currentIndexChanged`) and `PaintedBranchTreeView`/`PaintedBranchTreeWidget`
+  instead. See "Project widgets" in this directory's own top-level doc.
+""",
     "recording events + timecoded transcripts #920929": """- Claude (Desk)'s record button now publishes the desk events
   `recording` (`{ recording_id, started_at_ms }`) and `stopped_recording`
   (`{ recording_id, started_at_ms, stopped_at_ms }`), which widgets can

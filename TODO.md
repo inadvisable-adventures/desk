@@ -12701,7 +12701,13 @@ a1f2bc7. COMPLETED: Convert the remaining raw `QComboBox` uses to `PaintedComboB
 
    COMPLETED 2026-10-16: `verify_no_raw_qcombobox.py`; confirmed failing on the pre-conversion code.
 
-d4c0d68. Write `python-widget-conventions.md` at the project root (use `PaintedComboBox`/`qt_controls` for anything embedded in
+d4c0d68. COMPLETED: Write `python-widget-conventions.md` at the project root (use `PaintedComboBox`/`qt_controls` for anything embedded in
    the canvas, with the why), reference it from `CLAUDE.md` the way `browser-frontend.md` is, and cross-link it from
    `tempui-custom-widgets.md`'s project-widgets section so agents in other projects see it. Per `development-process.md`,
    mint a tempui tag and changelog entry in the same commit. Do after TODO `5303de6`.
+
+   [planned: python-widget-conventions-doc.md (COMPLETED)]
+
+   COMPLETED 2026-10-16: `python-widget-conventions.md`, `CLAUDE.md` reference, rule stated self-contained in the
+   top-level tempui doc's "Project widgets" section and the porting doc, tag `python widgets use qt_controls, not
+   QComboBox #514695` + `_NEW_FEATURES` entry, `verify_python_widget_conventions_doc.py`.
