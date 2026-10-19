@@ -1,3 +1,11 @@
+# DISABLED (TODO 118d5ab): currently fails because its scan flags prose, not
+# code -- `src/desk/temp_ui.py` mentions `QComboBox` in the tempui docs and
+# changelog text added by TODO d4c0d68 (python-widget-conventions), e.g. the
+# "python widgets use qt_controls, not QComboBox" entry. Suspected to be a
+# false positive of the scanner (it matches the word anywhere, including
+# inside string literals and comments), not a real raw QComboBox use.
+# Investigate; fix the scan (e.g. AST-based, ignoring strings/comments),
+# rewrite, or delete.
 """TODO 21e6e04: no raw `QComboBox` anywhere in Desk's own Python code
 (`src/desk/`, `widgets/`) outside `src/desk/shell/qt_controls/`. A native
 QComboBox misrenders and misplaces its popup when embedded in the

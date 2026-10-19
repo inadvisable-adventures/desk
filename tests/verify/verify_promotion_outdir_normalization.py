@@ -193,6 +193,7 @@ _FakeWindow._relocate_promoted_widget_source = DeskWindow._relocate_promoted_wid
 # reports/handles shared tsconfig dependencies through these.
 _FakeWindow._promote_custom_widget = DeskWindow._promote_custom_widget
 _FakeWindow._finish_promotion = DeskWindow._finish_promotion
+_FakeWindow._offer_gitignore_entry = DeskWindow._offer_gitignore_entry
 _FakeWindow._display_path = DeskWindow._display_path
 _FakeWindow._report_dependency_relocation = DeskWindow._report_dependency_relocation
 _FakeWindow._find_promotable_peer = DeskWindow._find_promotable_peer

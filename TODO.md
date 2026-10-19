@@ -12757,3 +12757,10 @@ d4c0d68. COMPLETED: Write `python-widget-conventions.md` at the project root (us
    COMPLETED 2026-10-16: `python-widget-conventions.md`, `CLAUDE.md` reference, rule stated self-contained in the
    top-level tempui doc's "Project widgets" section and the porting doc, tag `python widgets use qt_controls, not
    QComboBox #514695` + `_NEW_FEATURES` entry, `verify_python_widget_conventions_doc.py`.
+
+118d5ab. Investigate the disabled `tests/verify/disabled_verify_no_raw_qcombobox.py`: it fails because
+   its scan flags `QComboBox` mentioned in prose (tempui docs/changelog strings in
+   `src/desk/temp_ui.py`, TODO d4c0d68), a suspected false positive rather than a real raw use.
+   Fix the scan (e.g. AST-based), rewrite, or delete; then re-enable.
+
+   [planned: investigate-disabled-no-raw-qcombobox.md]
