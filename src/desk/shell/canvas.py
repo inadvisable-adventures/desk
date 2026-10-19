@@ -182,6 +182,7 @@ class WorkspaceView(QGraphicsView):
         self._position_desk_picker()
 
         self.temp_ui_notifications = TempUiNotificationStack(self.viewport())
+        self.temp_ui_notifications.resized.connect(self._position_temp_ui_notifications)
         self._position_temp_ui_notifications()
 
         # TODO 9ae13c0: viewport-fixed overlays for widget regions pinned in HUD mode.
@@ -523,6 +524,16 @@ class WorkspaceView(QGraphicsView):
         `banner_style` (TODO 97bd090) is a plain passthrough -- see that
         method's own docstring for the currently-supported values."""
         self.temp_ui_notifications.notify(path, text, on_clicked, banner_style=banner_style)
+        self._position_temp_ui_notifications()
+
+    def notify_temp_ui_prompt(
+        self, key, text: str, detail: str, accept_label: str, on_accepted, banner_style: str = "default"
+    ) -> None:
+        """TODO 0593797: see TempUiNotificationStack.notify_prompt --
+        same immediate reposition as notify_temp_ui."""
+        self.temp_ui_notifications.notify_prompt(
+            key, text, detail, accept_label, on_accepted, banner_style=banner_style
+        )
         self._position_temp_ui_notifications()
 
     def _position_zoom_control(self) -> None:

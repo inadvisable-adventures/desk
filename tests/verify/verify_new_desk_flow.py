@@ -193,6 +193,9 @@ class _FakeSchemaFileWatcher:
 
 
 class _FakeWindow:
+    # TODO 0593797: gitignore questions are non-blocking notifications now.
+    view = type("V", (), {"notify_temp_ui_prompt": lambda v, *a, **k: None})()
+
     def __init__(self, directory):
         self.current_desk = type("D", (), {"directory": directory, "path": directory / "x.desk", "name": "x"})()
         self._widgets = {}
@@ -225,6 +228,7 @@ class _FakeWindow:
 
 _FakeWindow._provision_temp_ui = DeskWindow._provision_temp_ui
 _FakeWindow._provision_schema_files = DeskWindow._provision_schema_files
+_FakeWindow._offer_gitignore_entry = DeskWindow._offer_gitignore_entry
 _FakeWindow._ensure_questions_watcher = lambda self: self.calls.append(("ensure_questions_watcher",))
 
 

@@ -178,6 +178,7 @@ _FakeWindow._relocate_promoted_widget_source = DeskWindow._relocate_promoted_wid
 # reports/handles shared tsconfig dependencies through these.
 _FakeWindow._promote_custom_widget = DeskWindow._promote_custom_widget
 _FakeWindow._finish_promotion = DeskWindow._finish_promotion
+_FakeWindow._offer_gitignore_entry = DeskWindow._offer_gitignore_entry
 _FakeWindow._display_path = DeskWindow._display_path
 _FakeWindow._report_dependency_relocation = DeskWindow._report_dependency_relocation
 _FakeWindow._find_promotable_peer = DeskWindow._find_promotable_peer
@@ -431,14 +432,15 @@ def test_promotion_ensures_desk_widgets_build_gitignore_entry():
 
         _promote(win, "KanbanBoard", tempui_path)
 
+        check(
+            "promotion offers the .gitignore entry as a non-blocking notification, not a modal",
+            len(win.view.temp_ui_notifications._banners) == 1 and not any(t == "Custom Widgets" for t, _ in win.confirmed_messages),
+        )
+        win.view.temp_ui_notifications._banners[Path("gitignore:desk_widgets")].accept_button.click()
         gitignore_text = (directory / ".gitignore").read_text() if (directory / ".gitignore").is_file() else ""
         check(
-            "promotion adds the desk_widgets/**/.build/ entry to the project's real .gitignore",
+            "accepting adds the desk_widgets/**/.build/ entry to the project's real .gitignore",
             DESK_WIDGETS_BUILD_GITIGNORE_ENTRY in gitignore_text,
-        )
-        check(
-            "promotion asked about it under a distinct ('Custom Widgets') title",
-            any(title == "Custom Widgets" for title, _ in win.confirmed_messages),
         )
 
 

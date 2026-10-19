@@ -151,6 +151,11 @@ class _FakeWindow:
         self._schema_file_watcher = type("W", (), {"provision": lambda self, *a, **k: None})()
         self._questions_watcher_calls = 0
         self.confirmed_titles = []
+        self.prompts = []
+        # TODO 0593797: gitignore questions are non-blocking notifications now.
+        self.view = type(
+            "V", (), {"notify_temp_ui_prompt": lambda v, key, text, detail, label, on_accept: self.prompts.append((key, text, on_accept))}
+        )()
 
     def _confirm_fn(self, title, message):
         self.confirmed_titles.append(title)
@@ -166,6 +171,7 @@ class _FakeWindow:
 
 _FakeWindow._provision_temp_ui = DeskWindow._provision_temp_ui
 _FakeWindow._provision_schema_files = DeskWindow._provision_schema_files
+_FakeWindow._offer_gitignore_entry = DeskWindow._offer_gitignore_entry
 
 
 def test_provision_temp_ui_ensures_desk_widgets_gitignore_entry():
@@ -175,12 +181,15 @@ def test_provision_temp_ui_ensures_desk_widgets_gitignore_entry():
         (directory / PROMOTED_WIDGET_SRC_DIRNAME).mkdir()
         win = _FakeWindow(directory)
         win._provision_temp_ui()
+        check("_provision_temp_ui offers a notification instead of a modal", "Custom Widgets" not in win.confirmed_titles)
+        check("_provision_temp_ui offers exactly one prompt", len(win.prompts) == 1)
+        check("nothing written until the user accepts", not (directory / ".gitignore").exists())
+        win.prompts[0][2]()
         text = (directory / ".gitignore").read_text()
         check(
-            "_provision_temp_ui (startup/Desk-switch) also ensures the desk_widgets/**/.build/ entry",
+            "accepting the notification ensures the desk_widgets/**/.build/ entry",
             DESK_WIDGETS_BUILD_GITIGNORE_ENTRY in text,
         )
-        check("_provision_temp_ui asked about it under a distinct title", "Custom Widgets" in win.confirmed_titles)
 
 
 def test_provision_temp_ui_noop_without_desk_widgets():

@@ -1,4 +1,4 @@
-# Non-blocking .gitignore prompts as Desk notifications (TODO `0593797`)
+# Non-blocking .gitignore prompts as Desk notifications (TODO `0593797`) (COMPLETED)
 
 ## Summary
 

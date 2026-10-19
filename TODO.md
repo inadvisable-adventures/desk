@@ -11263,7 +11263,12 @@ d5744c8. COMPLETED: Code editor improvements: (a) syntax-highlighting colors fro
    `desk_install_job` ran the blocking dialog inside `GuiBridge.call`'s 5s window, so it timed out
    ("GuiBridge: GUI thread did not respond in time") while the dialog sat open.
 
-   [planned: gitignore-notifications.md]
+   [planned: gitignore-notifications.md (COMPLETED)]
+
+   COMPLETED 2026-10-19: `DeskWindow._offer_gitignore_entry` + `TempUiNotificationStack.notify_prompt`
+   (Yes / More info / ✕, wider banner); `ensure_*`/`*_pending` helpers in `temp_ui.py`;
+   `verify_gitignore_notification.py`. Headless-verified only. The `.desk_temp` provisioning prompts
+   in `TempUiManager.provision` remain modal (startup consent flows, not on a bridged call).
 
 c4ef727. New `desk_ask_desk_expert` MCP tool: takes one string, places a new Claude (Desk) widget
    whose prompt is the usual in-Desk prompt plus access to Desk's own source checkout and docs, so

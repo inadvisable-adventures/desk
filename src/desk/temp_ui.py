@@ -4672,6 +4672,39 @@ def ensure_gitignore_entry(git_root: Path, ask: Callable[[], bool]) -> None:
 DESK_WIDGETS_BUILD_GITIGNORE_ENTRY = f"{PROMOTED_WIDGET_SRC_DIRNAME}/**/{SOURCE_BUILD_CACHE_DIRNAME}/"
 
 
+def _conditional_gitignore_entry_pending(directory: Path, parent_dirname: str, entry: str) -> bool:
+    """Shared by the two conditional ensure_*_gitignore_entry functions
+    below: True if `directory/parent_dirname` exists, `directory` is in
+    a git repo, and that repo's `.gitignore` lacks `entry`."""
+    if not (directory / parent_dirname).is_dir():
+        return False
+    git_root = find_git_root(directory)
+    if git_root is None:
+        return False
+    gitignore_path = git_root / ".gitignore"
+    existing = gitignore_path.read_text() if gitignore_path.is_file() else ""
+    return entry.rstrip("/") not in _present_gitignore_entries(existing)
+
+
+def _ensure_conditional_gitignore_entry(
+    directory: Path, parent_dirname: str, entry: str, ask: Callable[[], bool]
+) -> None:
+    if not _conditional_gitignore_entry_pending(directory, parent_dirname, entry):
+        return
+    if not ask():
+        return
+    # Re-check before writing (TODO 4716585): `ask()` may have pumped a
+    # nested event loop for an arbitrary time.
+    if not _conditional_gitignore_entry_pending(directory, parent_dirname, entry):
+        return
+    git_root = find_git_root(directory)
+    assert git_root is not None
+    gitignore_path = git_root / ".gitignore"
+    existing = gitignore_path.read_text() if gitignore_path.is_file() else ""
+    prefix = existing if existing.endswith("\n") or not existing else existing + "\n"
+    gitignore_path.write_text(f"{prefix}\n{GITIGNORE_COMMENT}\n{entry}\n")
+
+
 def ensure_desk_widgets_gitignore_entry(directory: Path, ask: Callable[[], bool]) -> None:
     """Adds DESK_WIDGETS_BUILD_GITIGNORE_ENTRY to `directory`'s git
     root's `.gitignore` (creating the file if it doesn't exist) if it's
@@ -4695,22 +4728,18 @@ def ensure_desk_widgets_gitignore_entry(directory: Path, ask: Callable[[], bool]
     (TODO 4716585): `ask()` can pump a modal dialog's own nested event
     loop for an arbitrary amount of time, during which something else
     could already have added the entry."""
-    if not (directory / PROMOTED_WIDGET_SRC_DIRNAME).is_dir():
-        return
-    git_root = find_git_root(directory)
-    if git_root is None:
-        return
-    gitignore_path = git_root / ".gitignore"
-    existing = gitignore_path.read_text() if gitignore_path.is_file() else ""
-    if DESK_WIDGETS_BUILD_GITIGNORE_ENTRY.rstrip("/") in _present_gitignore_entries(existing):
-        return
-    if not ask():
-        return
-    existing = gitignore_path.read_text() if gitignore_path.is_file() else ""
-    if DESK_WIDGETS_BUILD_GITIGNORE_ENTRY.rstrip("/") in _present_gitignore_entries(existing):
-        return
-    prefix = existing if existing.endswith("\n") or not existing else existing + "\n"
-    gitignore_path.write_text(f"{prefix}\n{GITIGNORE_COMMENT}\n{DESK_WIDGETS_BUILD_GITIGNORE_ENTRY}\n")
+    _ensure_conditional_gitignore_entry(
+        directory, PROMOTED_WIDGET_SRC_DIRNAME, DESK_WIDGETS_BUILD_GITIGNORE_ENTRY, ask
+    )
+
+
+def desk_widgets_gitignore_pending(directory: Path) -> bool:
+    """True if ensure_desk_widgets_gitignore_entry would currently ask
+    (TODO 0593797: lets the shell offer the edit as a non-blocking
+    notification instead of a modal question)."""
+    return _conditional_gitignore_entry_pending(
+        directory, PROMOTED_WIDGET_SRC_DIRNAME, DESK_WIDGETS_BUILD_GITIGNORE_ENTRY
+    )
 
 
 # TODO 94a2fa2: the pattern covering a rust-kind Installed Job's own
@@ -4732,19 +4761,13 @@ def ensure_installed_jobs_gitignore_entry(directory: Path, ask: Callable[[], boo
     (DeskWindow._provision_temp_ui, and right after DeskWindow
     .install_job succeeds) as that function -- see TODO 94a2fa2,
     plans/installed-jobs-rust-gpu.md."""
-    if not (directory / INSTALLED_JOBS_DIRNAME).is_dir():
-        return
-    git_root = find_git_root(directory)
-    if git_root is None:
-        return
-    gitignore_path = git_root / ".gitignore"
-    existing = gitignore_path.read_text() if gitignore_path.is_file() else ""
-    if INSTALLED_JOBS_RUST_TARGET_GITIGNORE_ENTRY.rstrip("/") in _present_gitignore_entries(existing):
-        return
-    if not ask():
-        return
-    existing = gitignore_path.read_text() if gitignore_path.is_file() else ""
-    if INSTALLED_JOBS_RUST_TARGET_GITIGNORE_ENTRY.rstrip("/") in _present_gitignore_entries(existing):
-        return
-    prefix = existing if existing.endswith("\n") or not existing else existing + "\n"
-    gitignore_path.write_text(f"{prefix}\n{GITIGNORE_COMMENT}\n{INSTALLED_JOBS_RUST_TARGET_GITIGNORE_ENTRY}\n")
+    _ensure_conditional_gitignore_entry(
+        directory, INSTALLED_JOBS_DIRNAME, INSTALLED_JOBS_RUST_TARGET_GITIGNORE_ENTRY, ask
+    )
+
+
+def installed_jobs_gitignore_pending(directory: Path) -> bool:
+    """See desk_widgets_gitignore_pending (TODO 0593797)."""
+    return _conditional_gitignore_entry_pending(
+        directory, INSTALLED_JOBS_DIRNAME, INSTALLED_JOBS_RUST_TARGET_GITIGNORE_ENTRY
+    )

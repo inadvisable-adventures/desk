@@ -110,8 +110,10 @@ from desk.temp_ui import (
     SOURCE_BUILD_CACHE_DIRNAME,
     TEMP_UI_DIRNAME,
     detect_temp_ui_kind,
+    desk_widgets_gitignore_pending,
     ensure_desk_widgets_gitignore_entry,
     ensure_installed_jobs_gitignore_entry,
+    installed_jobs_gitignore_pending,
     is_temp_ui_filename,
     parse_define_widget,
     parse_desk_proc,
@@ -2624,12 +2626,7 @@ class DeskWindow(QMainWindow):
         )
         # TODO 94a2fa2: only ever prompts once desk-installed-jobs/
         # actually exists, which is always true by this point.
-        ensure_installed_jobs_gitignore_entry(
-            self.current_desk.directory,
-            self._confirm_fn(
-                "Installed Jobs", f"Add “{INSTALLED_JOBS_RUST_TARGET_GITIGNORE_ENTRY}” to .gitignore?"
-            ),
-        )
+        self._offer_gitignore_entry("installed_jobs", self.current_desk.directory)
         return True, f"Installed {name!r} (kind {kind}, version {version_hash})."
 
     def uninstall_job(self, name: str) -> bool:
@@ -3093,20 +3090,12 @@ class DeskWindow(QMainWindow):
         # only ever prompts at all once desk_widgets/ actually exists
         # (see ensure_desk_widgets_gitignore_entry's own docstring),
         # which a brand-new `new_desk` flow never has yet anyway.
-        ensure_desk_widgets_gitignore_entry(
-            directory,
-            self._confirm_fn("Custom Widgets", f"Add “{DESK_WIDGETS_BUILD_GITIGNORE_ENTRY}” to .gitignore?"),
-        )
+        self._offer_gitignore_entry("desk_widgets", directory)
         # TODO 94a2fa2: same reasoning as the desk_widgets/ check just
         # above, for a rust-kind Installed Job's own cargo target/
         # build output -- covers a project that already had
         # desk-installed-jobs/ before this check existed.
-        ensure_installed_jobs_gitignore_entry(
-            directory,
-            self._confirm_fn(
-                "Installed Jobs", f"Add “{INSTALLED_JOBS_RUST_TARGET_GITIGNORE_ENTRY}” to .gitignore?"
-            ),
-        )
+        self._offer_gitignore_entry("installed_jobs", directory)
 
     def _provision_schema_files(self, directory: Path, temp_dir: Path | None) -> None:
         """Re-derives every top-level desk.state.* schema file's own
@@ -3459,6 +3448,40 @@ class DeskWindow(QMainWindow):
         )
         if content is not None:
             self._bind_temp_ui_content(content, path, self.current_desk.directory)
+
+    def _offer_gitignore_entry(self, kind: str, directory: Path) -> None:
+        """TODO 0593797: if the `.gitignore` entry for `kind`
+        ("desk_widgets" or "installed_jobs") is missing, offers it as a
+        non-blocking "Update .gitignore?" notification (Yes / More info
+        / ✕) instead of a modal QMessageBox -- the modal blocked the
+        GUI thread, which made `desk_install_job` time out inside
+        GuiBridge.call's 5s window. Never writes anything unless the
+        user presses Yes. One banner per kind, so repeats replace
+        rather than stack."""
+        if kind == "desk_widgets":
+            pending, entry = desk_widgets_gitignore_pending, DESK_WIDGETS_BUILD_GITIGNORE_ENTRY
+            ensure, reason = ensure_desk_widgets_gitignore_entry, (
+                "rebuilt-on-demand caches of promoted custom widgets"
+            )
+        else:
+            pending, entry = installed_jobs_gitignore_pending, INSTALLED_JOBS_RUST_TARGET_GITIGNORE_ENTRY
+            ensure, reason = ensure_installed_jobs_gitignore_entry, (
+                "cargo build output of rust-kind Installed Jobs"
+            )
+        if not pending(directory):
+            return
+        detail = (
+            f"Desk would add “{entry}” (with a short comment) to the .gitignore at this project's "
+            f"git root. It matches {reason}, which are generated and shouldn't be committed. "
+            "Nothing changes unless you press Yes; ✕ leaves .gitignore alone."
+        )
+        self.view.notify_temp_ui_prompt(
+            Path(f"gitignore:{kind}"),
+            f"Update .gitignore? Add “{entry}”",
+            detail,
+            "Yes",
+            lambda: ensure(directory, lambda: True),
+        )
 
     def _confirm_fn(self, title: str, message: str) -> Confirm:
         def confirm() -> bool:
@@ -4150,10 +4173,7 @@ class DeskWindow(QMainWindow):
         # first come to exist -- ensure its rebuilt-on-demand .build/
         # caches are gitignored right away, not just from the next
         # startup onward.
-        ensure_desk_widgets_gitignore_entry(
-            self.current_desk.directory,
-            self._confirm_fn("Custom Widgets", f"Add “{DESK_WIDGETS_BUILD_GITIGNORE_ENTRY}” to .gitignore?"),
-        )
+        self._offer_gitignore_entry("desk_widgets", self.current_desk.directory)
         # TODO 13f4ad5: only switch to the never-bakes-html_b64,
         # rebuilt-on-demand behavior if the recorded source directory
         # actually exists on disk (whether relocation just moved it

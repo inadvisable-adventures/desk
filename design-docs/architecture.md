@@ -1538,7 +1538,13 @@ as every other Bridge GUI-thread call) ever blocks.
   needs an actual return value. `GuiBridge.call(fn)` blocks only the
   calling (background) thread — offloaded to an executor so it doesn't
   stall the asyncio event loop other requests are being served on — until
-  the GUI thread has run `fn` and produced a result.
+  the GUI thread has run `fn` and produced a result. Because `call` has a
+  short timeout (5s), `fn` must never block on the user: a modal dialog
+  inside it makes the *caller* time out while the dialog stays open
+  (`desk_install_job` did exactly this with its `.gitignore` question,
+  TODO 0593797). Questions that can arise on that path are offered as
+  non-blocking notification prompts instead
+  (`DeskWindow._offer_gitignore_entry`, `TempUiNotificationStack.notify_prompt`).
 - **Coarse, resource-level Bridge capabilities (`"workspace"`, `"fs"`,
   `"widgets"`), not one per method.** Matches the level of detail
   `WidgetInfo.capabilities` (a flat `list[str]`) already implies; splitting

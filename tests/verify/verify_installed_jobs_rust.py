@@ -193,6 +193,8 @@ class _FakeWindowForRun:
         self.current_desk = Desk(path=directory / "default.desk", installed_jobs=installed_jobs)
         self._schema_registry = type("S", (), {"get": lambda self, k: None})()
         self.confirmed_titles = []
+        # TODO 0593797: gitignore questions are non-blocking notifications now.
+        self.view = type("V", (), {"notify_temp_ui_prompt": lambda v, *a, **k: None})()
 
     def _confirm_fn(self, title, message):
         self.confirmed_titles.append(title)
@@ -205,6 +207,7 @@ class _FakeWindowForRun:
     get_installed_job_for_run = DeskWindow.get_installed_job_for_run
     run_installed_job = DeskWindow.run_installed_job
     install_job = DeskWindow.install_job
+    _offer_gitignore_entry = DeskWindow._offer_gitignore_entry
     get_installed_jobs_dicts = DeskWindow.get_installed_jobs_dicts
     get_state = DeskWindow.get_state
     _resolve_job_needs = DeskWindow._resolve_job_needs
