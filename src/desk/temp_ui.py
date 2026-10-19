@@ -244,6 +244,9 @@ CURRENT_TAGS: tuple[str, ...] = (
     "desk_git_commit MCP tool for commit messages #570472",
     "python widgets use qt_controls, not QComboBox #514695",
     "desk_ask_desk_expert MCP asks a Desk expert agent #748083",
+    "agent-raised desk events via MCP tool #028808",
+    "agent waits for a desk event via MCP tool #196353",
+    "events: bare signal or payload, file past 1 KB #504112",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -349,15 +352,19 @@ to run repeatedly: install it once from real source at
 it as many times as you like via an MCP tool call with no further
 prompt. Not a dropped-tempui-file DSL keyword like the ones above --
 installation happens via an MCP tool call against a directory you
-already wrote, never via a file dropped in this directory. And
-[tempui-widget-logs.md](./tempui-widget-logs.md) -- the `log` Bridge
+already wrote, never via a file dropped in this directory.
+And [tempui-widget-logs.md](./tempui-widget-logs.md) -- the `log` Bridge
 capability and its `desk_list_widget_logs`/`desk_query_widget_log` MCP
 tools, for letting an agent query what a widget has been doing; also not
-a dropped-file keyword. And
-[tempui-ask-desk-expert.md](./tempui-ask-desk-expert.md) -- the
+a dropped-file keyword.
+And [tempui-ask-desk-expert.md](./tempui-ask-desk-expert.md) -- the
 `desk_ask_desk_expert` MCP tool, which hands a question about Desk
 itself to a fresh agent that can read Desk's source and docs; also not
 a dropped-file keyword.
+And [tempui-agent-events.md](./tempui-agent-events.md) -- the
+`desk_raise_event` and `desk_wait_for_event` MCP tools, for an agent to
+signal a running widget, and hear back, directly over `desk.events`
+instead of through a polled file.
 
 ## Project widgets
 
@@ -929,6 +936,119 @@ desk_query_widget_log { "log_name": "clicker-<logId>",
 ```
 """
 
+_AGENT_EVENTS_DOC = """# Agent-raised desk events and waiting for them (agent <-> widget)
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its current set of tags. This is not a
+tempui-DSL file type: it is two MCP tools on the `desk` server that connect
+an agent to the same `desk.events` channel widgets use to talk to each
+other, so an agent and a running widget can signal each other directly
+instead of through a file one of them has to poll.
+`desk_raise_event` sends an event to widgets; `desk_wait_for_event` waits
+for one a widget sends.
+
+## Raising an event
+
+`desk_raise_event { "name": "<event name>", "payload": <any JSON, optional> }`
+
+- Every widget instance subscribed to `name` receives it at once: an
+  `html` widget through `desk.events.onMessage(callback)` (declare the
+  `events` capability and call `desk.events.subscribe([name])` first), a
+  `python` widget through `desk.shell.event_broker.EventSubscription`.
+  The widget's callback sees `(name, payload)`, exactly as for an event
+  another widget published.
+- `payload` may be left out for a bare signal (a message that means "I
+  updated the file"), or carry the data you would otherwise have written
+  to a file (see "A signal, or the data itself" in
+  `tempui-custom-widgets.md`). Keep it small: a message over about 1 KB
+  should usually be a file, with the event only announcing it (for example
+  `{ "path": ".desk_temp/foo.json" }`). The hard limit is 64 KiB of JSON;
+  a bigger payload is refused, not truncated.
+- `name` is any non-empty string up to 200 characters. Pick a specific
+  one, since every widget that subscribes to a name receives it
+  (`"samothrace-map.question"`, not `"question"`). Names starting with
+  `desk.` and the names `recording` and `stopped_recording` are Desk's
+  own and are refused.
+- The result says how many widget instances were subscribed to `name` at
+  the moment of publishing. `0` means nobody was listening (the widget
+  is not placed, has not subscribed yet, or subscribes to another name);
+  the event is not queued for later and is not delivered to a widget
+  that subscribes afterward. The count is a snapshot, not a delivery
+  guarantee.
+- The event is also recorded in the Event Log (`MEDIATED-EVENT-LOG.tsv`),
+  with the sender shown as `agent`.
+- Like any other `desk` tool call, it asks the user for approval through
+  Claude (Desk)'s normal approval flow.
+
+## Worked example
+
+A widget subscribes once, then reacts:
+
+```
+await desk.events.subscribe(["samothrace-map.question"]);
+desk.events.onMessage((name, payload) => {
+  if (name === "samothrace-map.question") showQuestion(payload);
+});
+```
+
+and the agent asks it a question:
+
+```
+desk_raise_event { "name": "samothrace-map.question",
+                   "payload": { "id": "q1", "prompt": "Is this connection correct?" } }
+```
+
+The widget's answer travels the other way as an ordinary `desk.events`
+publish (`desk.events.publish("samothrace-map.answer", {...})`), which the
+agent receives with `desk_wait_for_event`, below.
+
+## Waiting for an event
+
+`desk_wait_for_event { "name": "<event name>", "timeout_seconds": <optional> }`
+
+Blocks until an event named `name` is published and returns JSON:
+
+- `{ "status": "event", "name", "payload", "sender", "timestamp" }` -- the
+  event. `sender` is the publishing widget instance's id; `payload` is
+  `null` for a bare signal.
+- `{ "status": "timeout", ... }` -- only if you passed `timeout_seconds`.
+  Omit it to wait with no timeout.
+- `{ "status": "ended", ... }` -- Desk was switched, which drops every
+  subscription; nothing more will arrive on this call.
+
+**Call it from a background sub-agent, never from the main conversation.**
+With no timeout it can wait for hours, and while it waits the agent that
+called it can do nothing else, so on the main conversation it would freeze
+the whole session. Desk enforces what it can: a call made outside any
+sub-agent is refused with an explanation. Desk cannot tell a *foreground*
+sub-agent from a *background* one, so a foreground sub-agent is not
+refused and would still block the main conversation: start it with the
+Agent tool's `run_in_background`. The usual shape is a background sub-agent
+whose whole job is a loop: wait, hand the result to whoever needs it (a file,
+or its final report), wait again.
+
+Things to know:
+
+- **Listening lasts only while the call is in flight.** An event published
+  between two calls (while the sub-agent is handling the previous one) is
+  missed, and so is one published before the first call. Call again
+  immediately after each return, and for anything that must not be lost let
+  the widget also write it to a file, with the event as the nudge (or
+  re-read that file after each return).
+- The tool also receives events the agent itself raised with
+  `desk_raise_event` (sender `agent`).
+- Names are not restricted: you may wait on a `desk.`-prefixed Desk event or
+  `recording`/`stopped_recording`.
+- At most 8 waits can be in flight at once; further calls are refused.
+- Cancelling the call, ending the session, or switching Desk stops the wait
+  within about a second and removes its subscription.
+- The harness running the agent may impose its own limit on how long one tool
+  call may last. If a wait returns with an error rather than a status, call
+  it again.
+- Like any other `desk` tool call, it asks the user for approval through
+  Claude (Desk)'s normal approval flow.
+"""
+
 _PORTING_DOC = """# Porting an existing app into Desk
 
 See `desk-temporary-ui.md` (in this same directory) for this directory's
@@ -1005,7 +1125,12 @@ Desk Bridge API", for each call's exact shape.
 **Making pieces talk to each other**
 - `desk.events.*` (capability `events`): publish/subscribe on a shared
   channel keyed by widget *instance*; widgets never call each other
-  directly.
+  directly. An agent can raise an event onto the same channel with the
+  `desk_raise_event` MCP tool, and wait for one with `desk_wait_for_event`
+  from a background sub-agent (`tempui-agent-events.md`). An event can be
+  a bare signal ("I updated the file") or carry the data in its payload
+  instead of a file; past about 1 KB, use a file. See "A signal, or the
+  data itself" in `tempui-custom-widgets.md`.
 - `desk.log.append/line` (capability `log`): fire-and-forget, time-stamped
   strings into a named log an agent can query by time range
   (`desk_query_widget_log`); the way to let an agent ask a widget what it
@@ -1570,7 +1695,10 @@ built for genuine cross-widget signaling:
 - `desk.events.subscribe(names)` / `.unsubscribe(names)` /
   `.publish(name, payload)` / `.onMessage(callback)` (capability
   `events`) — send and receive named messages to/from other widgets.
-  See "Sending and receiving named messages" below.
+  See "Sending and receiving named messages" below. An agent can also
+  raise one of these events itself with the `desk_raise_event` MCP tool,
+  and wait for one with `desk_wait_for_event` from a background sub-agent
+  (`tempui-agent-events.md`).
 - `desk.log.append(name, entries)` / `.line(name, s)` (capability `log`)
   -- fire-and-forget, time-stamped strings into a named log that an
   agent reads back by time range with the `desk_query_widget_log` MCP
@@ -1735,6 +1863,33 @@ through this JS API — they get it via a direct Python import instead
 (`desk.shell.event_broker.EventSubscription`), the same "REST for html
 widgets, direct Python for python widgets" split every other Bridge API
 capability already follows.
+
+### A signal, or the data itself
+
+An event does not have to carry anything, and it does not have to be
+backed by a file. Two ends of one spectrum, both fine:
+
+- **A bare signal.** `desk.events.publish("report.updated")` with no
+  payload means just "I updated the file": every subscriber re-reads the
+  file it already knows about. The file holds the data; the event is the
+  nudge that saves everyone from polling it.
+- **The data itself.** `desk.events.publish("report.row_added", { id: 7,
+  text: "..." })` skips the file altogether: put in the payload what you
+  would previously have written to a file and read back. Nothing to
+  write, poll, parse or clean up.
+
+Past about **1 KB**, prefer a file, with the event announcing it (no
+payload, or just `{ path }`). Every subscriber gets its own copy of the
+payload, every published event is written in full to
+`MEDIATED-EVENT-LOG.tsv`, and (for an agent raising one) anything over
+64 KiB is refused outright. Also, events are **not kept for latecomers**:
+a widget receives only what is published after it subscribes, so anything
+a widget must still find after it is opened or reopened belongs in a file
+(or the shared state store, below), with the event as the nudge.
+
+An agent uses the same channel (the `desk_raise_event` and
+`desk_wait_for_event` MCP tools, see `tempui-agent-events.md`), so it
+follows the same rule of thumb.
 
 ## Shared, project-scoped state
 
@@ -2615,6 +2770,36 @@ _NEW_FEATURES: dict[str, str] = {
   at once and nothing is sent back to you -- the answer appears in that
   widget for the user to read. Ask only when Desk's own behavior is the
   problem, not your project's. See `tempui-ask-desk-expert.md`.
+""",
+    "events: bare signal or payload, file past 1 KB #504112": """- `tempui-custom-widgets.md` has a new subsection, "A signal, or the
+  data itself", under "Sending and receiving named messages": a desk
+  event can carry no payload at all (a message meaning "I updated the
+  file") or can carry in its payload what you would otherwise have
+  written to a file, so no file is needed; past about 1 KB, use a file
+  and let the event announce it. It also notes that events are not kept
+  for widgets that subscribe later. Guidance only; no API changed.
+""",
+    "agent waits for a desk event via MCP tool #196353": """- New MCP tool `desk_wait_for_event(name, timeout_seconds?)` on the
+  `desk` server: blocks until a desk event with that name arrives and
+  returns `{ status: "event", name, payload, sender, timestamp }` (or
+  `"timeout"`, or `"ended"` if Desk was switched). With no timeout it
+  waits indefinitely, so it is for a *background sub-agent* only: a call
+  from the main conversation is refused by a hook (a foreground
+  sub-agent is not detectable and is not refused). It is the receiving
+  half of `desk_raise_event`: a widget publishes the user's answer with
+  `desk.events.publish`, and the waiting sub-agent gets it with no file to
+  poll. Listening lasts only while a call is in flight, so an event
+  published between two calls is missed. See `tempui-agent-events.md`.
+""",
+    "agent-raised desk events via MCP tool #028808": """- New MCP tool `desk_raise_event(name, payload?)` on the `desk` server:
+  publishes a named desk event, with an optional JSON payload, onto the
+  same `desk.events` channel widgets use, so a widget subscribed to that
+  name receives it immediately -- no file for the widget to poll. The
+  payload may be omitted (a bare signal) or carry what a file would have
+  held; over about 1 KB, prefer a file and announce it with the event
+  (hard limit 64 KiB). Names starting with `desk.` and `recording`/
+  `stopped_recording` are reserved. The result reports how many widget
+  instances were subscribed at publish time. See `tempui-agent-events.md`.
 """,
     "python widgets use qt_controls, not QComboBox #514695": """- A `kind: "python"` widget embedded in the canvas must not use a
   native `QComboBox` (or a raw `QTreeView`/`QTreeWidget`'s branch arrows,
@@ -3871,6 +4056,7 @@ INSTALLED_JOBS_DOC_FILENAME = "tempui-installed-jobs.md"
 HMSVC_DOC_FILENAME = "tempui-hmsvc.md"
 WIDGET_LOGS_DOC_FILENAME = "tempui-widget-logs.md"
 ASK_DESK_EXPERT_DOC_FILENAME = "tempui-ask-desk-expert.md"
+AGENT_EVENTS_DOC_FILENAME = "tempui-agent-events.md"
 BREAKING_CHANGES_DOC_FILENAME = "tempui-breaking-changes.md"
 NEW_FEATURES_DOC_FILENAME = "tempui-new-features.md"
 BUILD_WIDGET_SCRIPT_FILENAME = "build_widget.py"
@@ -3900,6 +4086,7 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     HMSVC_DOC_FILENAME: _HMSVC_DOC,
     WIDGET_LOGS_DOC_FILENAME: _WIDGET_LOGS_DOC,
     ASK_DESK_EXPERT_DOC_FILENAME: _ASK_DESK_EXPERT_DOC,
+    AGENT_EVENTS_DOC_FILENAME: _AGENT_EVENTS_DOC,
     BREAKING_CHANGES_DOC_FILENAME: _BREAKING_CHANGES_DOC,
     NEW_FEATURES_DOC_FILENAME: _NEW_FEATURES_DOC,
     BUILD_WIDGET_SCRIPT_FILENAME: _BUILD_WIDGET_SCRIPT,

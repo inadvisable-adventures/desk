@@ -47,6 +47,10 @@ discipline."""
 import asyncio
 import json
 import subprocess
+import threading
+import time
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -54,7 +58,8 @@ from typing import Any
 from claude_agent_sdk import McpSdkServerConfig, create_sdk_mcp_server, tool
 
 from desk import pipeline_dsl
-from desk.widget_logs import format_time_iso, parse_time_ms
+from desk.event_mediator import MediatedEvent
+from desk.widget_logs import RECORDING_EVENT, STOPPED_RECORDING_EVENT, format_time_iso, parse_time_ms
 from desk.shell import current_context
 from desk.todo_file import TodoItem, find_nearest_todo_file, parse_todo_file
 
@@ -66,6 +71,41 @@ DESK_MCP_SERVER_NAME = "desk"
 # as a literal there, so the two can never drift if this tool is ever
 # renamed.
 RUN_INSTALLED_JOB_TOOL_NAME = "desk_run_installed_job"
+
+# The sender id an agent-raised desk event is published under (TODO
+# 71d11da). Never a subscribed widget instance, so the mediator's
+# "sender never receives its own publish" rule skips nobody, and the Event
+# Log's sender column shows plainly where the event came from.
+AGENT_EVENT_SENDER_ID = "agent"
+
+# Names an agent may not raise: the `desk.` namespace is Desk's own
+# (`desk.state.changed`, ...), and the recording events are published by
+# Claude (Desk)'s record button -- forging either would make widgets act
+# on something Desk never did.
+RESERVED_EVENT_NAME_PREFIX = "desk."
+RESERVED_EVENT_NAMES = frozenset({RECORDING_EVENT, STOPPED_RECORDING_EVENT})
+MAX_EVENT_NAME_CHARS = 200
+# Hard backstop only: every subscriber's queue and the event log hold the
+# payload. The documented guidance is much lower (use a file past ~1 KiB).
+MAX_EVENT_PAYLOAD_BYTES = 64 * 1024
+
+# TODO 30069f6: desk_wait_for_event blocks for as long as it takes an event
+# to arrive, so it is meant for a background sub-agent. Referenced by
+# desk.claude_session.ClaudeSession's PreToolUse hook to build the
+# fully-qualified "mcp__desk__desk_wait_for_event" matcher (same no-drift
+# reasoning as RUN_INSTALLED_JOB_TOOL_NAME above).
+WAIT_FOR_EVENT_TOOL_NAME = "desk_wait_for_event"
+EVENT_LISTENER_ID_PREFIX = "agent-listener:"
+# EventMediator.poll() clamps to 30 s, and a blocked thread cannot be
+# interrupted, so the wait polls in slices this long and checks a cancel flag
+# in between: the longest a cancelled/ended wait lingers.
+EVENT_WAIT_SLICE_SECONDS = 1.0
+# A dedicated pool, so listeners can never starve the default executor that
+# GUI-thread hops (_call_on_gui_thread) share.
+MAX_CONCURRENT_EVENT_LISTENERS = 8
+_listener_pool = ThreadPoolExecutor(max_workers=MAX_CONCURRENT_EVENT_LISTENERS, thread_name_prefix="desk-event-wait")
+_active_listeners = 0
+_active_listeners_lock = threading.Lock()
 
 _NOT_READY_MESSAGE = "Desk's GUI thread is not reachable yet -- try again shortly."
 
@@ -525,6 +565,173 @@ async def _ask_desk_expert(args: dict[str, Any]) -> dict[str, Any]:
         "nothing is returned to you."
     )
 
+@tool(
+    "desk_raise_event",
+    "Raise a named desk event, with an optional JSON payload, on the same channel widgets use "
+    "(`desk.events`), so any widget instance subscribed to that name receives it immediately -- "
+    "no file to drop or poll. A payload may be omitted for a bare signal (\"I updated the "
+    "file\"), or carry the data a file would otherwise hold; keep it small (a message over about "
+    "1 KB should usually be a file, with the event just announcing it; hard limit 64 KiB). "
+    "Names starting with `desk.` and the names `recording`/`stopped_recording` are reserved for "
+    "Desk itself. Returns how many widget instances were subscribed to the name at the moment of "
+    "publishing (0 means nobody was listening; the event is still logged).",
+    {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "payload": {},
+        },
+        "required": ["name"],
+    },
+)
+async def _raise_event(args: dict[str, Any]) -> dict[str, Any]:
+    name = args.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return _text_result("name must be a non-empty string.", is_error=True)
+    if len(name) > MAX_EVENT_NAME_CHARS:
+        return _text_result(f"name is longer than {MAX_EVENT_NAME_CHARS} characters.", is_error=True)
+    if name.startswith(RESERVED_EVENT_NAME_PREFIX) or name in RESERVED_EVENT_NAMES:
+        return _text_result(
+            f"{name!r} is reserved for Desk's own events (the `desk.` prefix and "
+            f"{', '.join(sorted(RESERVED_EVENT_NAMES))}); pick another name.",
+            is_error=True,
+        )
+    payload = args.get("payload")
+    try:
+        encoded_size = len(json.dumps(payload).encode("utf-8"))
+    except (TypeError, ValueError) as e:
+        return _text_result(f"payload is not JSON-serializable: {e}", is_error=True)
+    if encoded_size > MAX_EVENT_PAYLOAD_BYTES:
+        return _text_result(
+            f"payload is {encoded_size} bytes of JSON, over the {MAX_EVENT_PAYLOAD_BYTES}-byte limit; "
+            "write it to a file and raise an event naming the file instead.",
+            is_error=True,
+        )
+    mediator = current_context.get_event_mediator()
+    if mediator is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    subscribers = sum(1 for names in mediator.list_subscriptions().values() if name in names)
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, mediator.publish, name, payload, AGENT_EVENT_SENDER_ID)
+    return _text_result(f"Raised {name!r}; {subscribers} widget instance(s) subscribed at publish time.")
+
+
+def wait_for_event_hook(input_data: dict[str, Any]) -> dict[str, Any]:
+    """The decision half of `ClaudeSession`'s PreToolUse hook for
+    desk_wait_for_event (TODO 30069f6), kept here and pure so it can be
+    checked without a live session: deny a call that is not made from inside
+    a sub-agent. The hook input carries `agent_id` only when the call comes
+    from a Task-spawned sub-agent (absent on the main conversation), and a
+    PreToolUse hook fires whatever the permission mode, unlike
+    `can_use_tool`. The SDK gives no foreground/background flag, so a
+    *foreground* sub-agent still passes -- the tool description and
+    tempui-agent-events.md say to use a background one."""
+    if input_data.get("agent_id"):
+        return {}
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": (
+                f"{WAIT_FOR_EVENT_TOOL_NAME} can wait indefinitely, so calling it from the main "
+                "conversation would freeze it. Spawn a background sub-agent (Agent tool with "
+                "run_in_background) and call it from there."
+            ),
+        }
+    }
+
+
+def _event_wait_result(status: str, **fields: Any) -> dict[str, Any]:
+    return _text_result(json.dumps({"status": status, **fields}))
+
+
+def _wait_for_mediated_event(
+    mediator: Any, listener_id: str, cancel: threading.Event, timeout_seconds: float | None
+) -> tuple[str, MediatedEvent | None]:
+    """Blocking half of desk_wait_for_event, run on `_listener_pool`:
+    ("event", e), ("timeout", None), ("ended", None) (the subscription
+    vanished -- Desk switched and `clear_all()` dropped it) or
+    ("cancelled", None)."""
+    deadline = None if timeout_seconds is None else time.monotonic() + timeout_seconds
+    while not cancel.is_set():
+        if listener_id not in mediator.list_subscriptions():
+            return "ended", None
+        slice_seconds = EVENT_WAIT_SLICE_SECONDS
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return "timeout", None
+            slice_seconds = min(slice_seconds, remaining)
+        event = mediator.poll(listener_id, slice_seconds)
+        if event is not None:
+            return "event", event
+    return "cancelled", None
+
+
+@tool(
+    "desk_wait_for_event",
+    "Block until a named desk event arrives and return it (status, name, payload, sender, "
+    "timestamp) -- e.g. the answer a widget publishes after you asked it something with "
+    "desk_raise_event. It can wait with NO timeout, so call it ONLY from a background sub-agent "
+    "(Agent tool with run_in_background), never from the main conversation, which would freeze "
+    "it; a call from the main conversation is refused. Optional timeout_seconds ends the wait "
+    "early with status \"timeout\". Status \"ended\" means Desk was switched and the listening "
+    "stopped. Listening lasts only while the call is in flight, so an event published between "
+    "two calls is missed: call again right after handling each result, and keep anything that "
+    "must not be lost in a file.",
+    {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "timeout_seconds": {"type": "number"},
+        },
+        "required": ["name"],
+    },
+)
+async def _wait_for_event(args: dict[str, Any]) -> dict[str, Any]:
+    global _active_listeners
+    name = args.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return _text_result("name must be a non-empty string.", is_error=True)
+    timeout_seconds = args.get("timeout_seconds")
+    if timeout_seconds is not None and (
+        isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or timeout_seconds <= 0
+    ):
+        return _text_result("timeout_seconds must be a positive number, or omitted to wait indefinitely.", is_error=True)
+    mediator = current_context.get_event_mediator()
+    if mediator is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    with _active_listeners_lock:
+        if _active_listeners >= MAX_CONCURRENT_EVENT_LISTENERS:
+            return _text_result(
+                f"{_active_listeners} desk_wait_for_event calls are already waiting (limit "
+                f"{MAX_CONCURRENT_EVENT_LISTENERS}); wait for one to finish.",
+                is_error=True,
+            )
+        _active_listeners += 1
+    listener_id = EVENT_LISTENER_ID_PREFIX + uuid.uuid4().hex
+    cancel = threading.Event()
+    mediator.subscribe(listener_id, name)
+    loop = asyncio.get_event_loop()
+    try:
+        status, event = await loop.run_in_executor(
+            _listener_pool, _wait_for_mediated_event, mediator, listener_id, cancel, timeout_seconds
+        )
+    except asyncio.CancelledError:
+        cancel.set()
+        raise
+    finally:
+        cancel.set()
+        mediator.unsubscribe_all(listener_id)
+        with _active_listeners_lock:
+            _active_listeners -= 1
+    if status == "event" and event is not None:
+        return _event_wait_result(
+            "event", name=event.name, payload=event.payload, sender=event.sender_instance_id, timestamp=event.timestamp
+        )
+    if status == "timeout":
+        return _event_wait_result("timeout", name=name, timeout_seconds=timeout_seconds)
+    return _event_wait_result("ended", name=name)
 
 _TOOLS = [
     _reveal_widget,
@@ -541,6 +748,8 @@ _TOOLS = [
     _run_pipeline,
     _git_commit,
     _ask_desk_expert,
+    _raise_event,
+    _wait_for_event,
 ]
 
 

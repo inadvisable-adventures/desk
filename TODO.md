@@ -11284,6 +11284,60 @@ c4ef727. New `desk_ask_desk_expert` MCP tool: takes one string, places a new Cla
    `tempui-ask-desk-expert.md` + changelog tag, `verify_ask_desk_expert.py`. Headless-verified only;
    not run against a live Desk session.
 
+71d11da. COMPLETED: MCP tool for agents to raise an arbitrary desk event (name plus optional JSON payload) onto the
+   same `desk.events` channel widgets use, hosted by Claude (Desk) in `src/desk/shell/desk_mcp_server.py`
+   alongside the other `desk_*` tools. Replaces the file-drop half of the agent-to-widget round trip in
+   `../FEEDBACK/FEEDBACK-DESK-agent-qa-file-polling-2026-10-13-1845.md`: an agent signals a running
+   widget directly instead of appending to a polled file. Deliberately generic (no Q&A-specific schema;
+   see TODO `361b4f8` for the payload guidance). Agent-visible, so docs plus changelog tag + entry.
+   Related: TODO `30069f6`, `361b4f8`.
+
+   [planned: mcp-raise-desk-event.md (COMPLETED)]
+
+   COMPLETED 2026-10-17: `desk_raise_event(name, payload?)` in `desk_mcp_server.py` (sender id `agent`;
+   `desk.` prefix and `recording`/`stopped_recording` refused; 64 KiB payload cap), new doc
+   `tempui-agent-events.md`, tag `agent-raised desk events via MCP tool #028808` + `_NEW_FEATURES`
+   entry, `verify_desk_raise_event_tool.py`. Also fixed two stale scripts: `verify_desk_mcp_server.py`
+   (tool count) and `verify_no_raw_qcombobox.py` (was already failing on HEAD: `temp_ui.py`'s
+   agent-facing docs must name `QComboBox`, so that file is now exempt). Not exercised live in Desk or
+   over the HTTP `/events/poll` route (the mediator path is verified directly).
+
+30069f6. COMPLETED: MCP tool that listens for an arbitrary desk event and returns it (name and payload) when it
+   arrives, hosted by Claude (Desk) next to TODO `71d11da`'s tool. It is meant to be called from a
+   background thread, so it may wait with no timeout (or, if one is required, a long one). Prefer
+   enforcing the background-thread rule programmatically, possibly in the Claude (Desk) widget code
+   (for example, refusing or flagging a call made from the foreground conversation); if the only
+   workable enforcement turns out to be the tool description, do that and say so in the plan. First
+   investigate what Claude (Desk) can actually tell about the calling context. Replaces the
+   agent-side answers-file polling in `../FEEDBACK/FEEDBACK-DESK-agent-qa-file-polling-2026-10-13-1845.md`.
+   Agent-visible, so docs plus changelog tag + entry. Related: TODO `71d11da`, `361b4f8`.
+
+   [planned: mcp-wait-for-desk-event.md (COMPLETED)]
+
+   COMPLETED 2026-10-17: `desk_wait_for_event(name, timeout_seconds?)` in `desk_mcp_server.py` (statuses
+   `event`/`timeout`/`ended`; capped dedicated thread pool; cancel and Desk switch clean up), a
+   `PreToolUse` hook in `ClaudeSession` that denies any call without an `agent_id` (i.e. outside a
+   sub-agent), "Waiting for an event" section in `tempui-agent-events.md`, tag `agent waits for a desk
+   event via MCP tool #196353` + entry, `verify_desk_wait_for_event_tool.py`. The guard cannot tell a
+   foreground sub-agent from a background one (the SDK has no such flag), so that case is documented,
+   not enforced. Not tried live: that the SDK really sets `agent_id` for an MCP call from a sub-agent.
+
+361b4f8. COMPLETED: Add an explicit callout to the inter-widget communication documentation (the `desk.events`
+   sections of `tempui-custom-widgets.md` and the overview in `desk-temporary-ui.md`, generated from
+   `src/desk/temp_ui.py`) explaining that events can be simple with no payload, like a message meaning
+   "I updated the file", or can be complex and skip files altogether, carrying in the payload what
+   would previously have been written to a file. Recommend that any message bigger than about 1k should
+   probably just be a file, with the event announcing it. Mention the agent-side MCP tools from TODO
+   `71d11da` and `30069f6` once they exist. Wording change to tempui guidance, so mint a changelog
+   tag + entry. From `../FEEDBACK/FEEDBACK-DESK-agent-qa-file-polling-2026-10-13-1845.md`.
+
+   [planned: events-payload-or-file-callout.md (COMPLETED)]
+
+   COMPLETED 2026-10-17: "A signal, or the data itself" subsection in `tempui-custom-widgets.md` (bare
+   signal, data-instead-of-file, ~1 KB file advice, late-subscriber caveat), pointers from the porting
+   doc's inter-widget bullet and `tempui-agent-events.md`, tag `events: bare signal or payload, file
+   past 1 KB #504112` + entry, `verify_events_payload_or_file_callout.py`.
+
 d16c5eb. Audit every built-in widget (all of `widgets/*/`) so it persists only project-relative
    paths in its saved state, never absolute ones, so a `.desk` file (and a view template, see the
    `PARKINGLOT.md` item on `.desk` vs `.desk_temp/`) stays portable between checkouts and machines.
@@ -12764,3 +12818,30 @@ d4c0d68. COMPLETED: Write `python-widget-conventions.md` at the project root (us
    Fix the scan (e.g. AST-based), rewrite, or delete; then re-enable.
 
    [planned: investigate-disabled-no-raw-qcombobox.md]
+
+ba11954. COMPLETED: Recreate the HTML System Clock widget from
+   `../FEEDBACK/FEEDBACK-DESK-system-clock-widget-source-2026-10-16-2122.md` as a built-in `kind: "python"`
+   widget, keeping its styling (green monospace `HH:MM:SS` on charcoal, muted long date, IANA zone line).
+
+   [planned: system-clock-widget.md (COMPLETED)]
+
+   COMPLETED 2026-10-16: `widgets/system_clock/`, `tests/verify/verify_system_clock_widget.py`. Headless
+   and offscreen-screenshot verified; user confirmed it looks good in the live app.
+
+2016312. "Send scratch to agent" button on the Scratch widget (`widgets/scratch/widget.py`): a button that
+   opens a new Claude (Desk) widget just to the right of the Scratch, the way the `[CHAT]` titlebar button
+   does (`DeskWindow._on_chat_button_clicked` / `_place_widget_chat_about`, TODO `93364f9`: fresh independent
+   session, positioned beside the source frame), except that the session is NOT seeded with widget-chat
+   instructions. Its first user turn is Desk's normal starting prompt (`CLAUDE_WIDGET_PROMPT` plus the
+   development-process instruction, as `ClaudeDeskWidget.start_session` builds it) followed by the complete,
+   verbatim text of the Scratch. Placement: next to the file buttons, with a bit more spacing than they have
+   between themselves. Needs checking first: today's Scratch widget has only a title row and a text body (no
+   Open/Save/Save As buttons; those live in the editor/markdown/sheet/svg_editor widgets), so decide where the
+   button goes (likely a new button row, or the title row) and whether it should follow the file buttons if
+   Scratch gains them. Also decide: `_write_claude_instructions_file` passes a "read this file" pointer, not the
+   text itself, so this item needs the text in the first turn directly (check `_MAX_BUFFER_SIZE` and
+   `verify_claude_session_oversized_message.py` for how big a Scratch can be before the message is refused, and
+   what to do then); an empty Scratch should do nothing or say so. Label text must not be user-selectable
+   (CLAUDE.md). `kind: "python"` widget, so follow `python-widget-conventions.md`; the widget needs a way to ask
+   the shell to do the placement (a `current_context` hook, with its shape kept in sync per
+   `development-process.md`). Not agent-visible, so no tempui changelog entry unless the Scratch docs change.
