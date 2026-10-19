@@ -12791,3 +12791,21 @@ ba11954. COMPLETED: Recreate the HTML System Clock widget from
 
    COMPLETED 2026-10-16: `widgets/system_clock/`, `tests/verify/verify_system_clock_widget.py`. Headless
    and offscreen-screenshot verified; user confirmed it looks good in the live app.
+
+2016312. "Send scratch to agent" button on the Scratch widget (`widgets/scratch/widget.py`): a button that
+   opens a new Claude (Desk) widget just to the right of the Scratch, the way the `[CHAT]` titlebar button
+   does (`DeskWindow._on_chat_button_clicked` / `_place_widget_chat_about`, TODO `93364f9`: fresh independent
+   session, positioned beside the source frame), except that the session is NOT seeded with widget-chat
+   instructions. Its first user turn is Desk's normal starting prompt (`CLAUDE_WIDGET_PROMPT` plus the
+   development-process instruction, as `ClaudeDeskWidget.start_session` builds it) followed by the complete,
+   verbatim text of the Scratch. Placement: next to the file buttons, with a bit more spacing than they have
+   between themselves. Needs checking first: today's Scratch widget has only a title row and a text body (no
+   Open/Save/Save As buttons; those live in the editor/markdown/sheet/svg_editor widgets), so decide where the
+   button goes (likely a new button row, or the title row) and whether it should follow the file buttons if
+   Scratch gains them. Also decide: `_write_claude_instructions_file` passes a "read this file" pointer, not the
+   text itself, so this item needs the text in the first turn directly (check `_MAX_BUFFER_SIZE` and
+   `verify_claude_session_oversized_message.py` for how big a Scratch can be before the message is refused, and
+   what to do then); an empty Scratch should do nothing or say so. Label text must not be user-selectable
+   (CLAUDE.md). `kind: "python"` widget, so follow `python-widget-conventions.md`; the widget needs a way to ask
+   the shell to do the placement (a `current_context` hook, with its shape kept in sync per
+   `development-process.md`). Not agent-visible, so no tempui changelog entry unless the Scratch docs change.
