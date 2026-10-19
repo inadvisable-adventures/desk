@@ -11255,6 +11255,25 @@ d5744c8. COMPLETED: Code editor improvements: (a) syntax-highlighting colors fro
 
    COMPLETED 2026-10-15: `legible_on_dark` lexer remap, find box/Next/Previous/Cmd+F in `widgets/editor/widget.py`, `verify_editor_find.py`; headless-verified, visual check skipped.
 
+0593797. Replace the blocking `.gitignore` QMessageBox prompts (the `desk_widgets/` build-cache and
+   `desk-installed-jobs/` rust-target ones) with a new kind of Desk notification, "Update
+   .gitignore?", with buttons Yes, More info and the existing ✕ dismiss, so the user can follow up
+   at their own pace. The banner may be larger than other notifications so it stays interactible.
+   Fixes `../FEEDBACK/FEEDBACK-DESK-install-job-guibridge-timeout-during-concurrent-session-2026-10-19-1108.md`:
+   `desk_install_job` ran the blocking dialog inside `GuiBridge.call`'s 5s window, so it timed out
+   ("GuiBridge: GUI thread did not respond in time") while the dialog sat open.
+
+   [planned: gitignore-notifications.md]
+
+c4ef727. New `desk_ask_desk_expert` MCP tool: takes one string, places a new Claude (Desk) widget
+   whose prompt is the usual in-Desk prompt plus access to Desk's own source checkout and docs, so
+   it can answer questions about Desk and the current session (encouraged to write diagnostic python
+   widgets). The string is included in the prompt, tagged as a question from another agent in the
+   same Desk session; the usual "don't do anything yet" wording is omitted in favor of "answer the
+   other agent's question". Fire-and-forget: the answer lands in the new widget for the user.
+
+   [planned: ask-desk-expert-mcp.md]
+
 d16c5eb. Audit every built-in widget (all of `widgets/*/`) so it persists only project-relative
    paths in its saved state, never absolute ones, so a `.desk` file (and a view template, see the
    `PARKINGLOT.md` item on `.desk` vs `.desk_temp/`) stays portable between checkouts and machines.
