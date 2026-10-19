@@ -11277,7 +11277,12 @@ c4ef727. New `desk_ask_desk_expert` MCP tool: takes one string, places a new Cla
    same Desk session; the usual "don't do anything yet" wording is omitted in favor of "answer the
    other agent's question". Fire-and-forget: the answer lands in the new widget for the user.
 
-   [planned: ask-desk-expert-mcp.md]
+   [planned: ask-desk-expert-mcp.md (COMPLETED)]
+
+   COMPLETED 2026-10-19: `desk_ask_desk_expert` tool, `DeskWindow.ask_desk_expert`, `claude_desk`
+   `start_session(answer_question=True)` (prompt split into intro / orientation-only / tools),
+   `tempui-ask-desk-expert.md` + changelog tag, `verify_ask_desk_expert.py`. Headless-verified only;
+   not run against a live Desk session.
 
 d16c5eb. Audit every built-in widget (all of `widgets/*/`) so it persists only project-relative
    paths in its saved state, never absolute ones, so a `.desk` file (and a view template, see the

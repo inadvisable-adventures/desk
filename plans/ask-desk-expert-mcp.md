@@ -1,4 +1,4 @@
-# `desk_ask_desk_expert` MCP tool (TODO `c4ef727`)
+# `desk_ask_desk_expert` MCP tool (TODO `c4ef727`) (COMPLETED)
 
 ## Summary
 

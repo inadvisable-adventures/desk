@@ -500,6 +500,32 @@ async def _git_commit(args: dict[str, Any]) -> dict[str, Any]:
     return _text_result(text, is_error=not ok)
 
 
+@tool(
+    "desk_ask_desk_expert",
+    "Ask a question about Desk itself or the current Desk session. Places a new Claude (Desk) widget "
+    "whose agent can read Desk's own source and docs (and write diagnostic python widgets) and is told "
+    "to answer your question. Fire-and-forget: returns the new widget's instance_id at once; nothing "
+    "comes back to you -- the answer appears in that widget for the user. Put everything the expert "
+    "needs in the one string; it does not see this conversation. See tempui-ask-desk-expert.md.",
+    {"question": str},
+)
+async def _ask_desk_expert(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    question = str(args.get("question", "")).strip()
+    if not question:
+        return _text_result("question must be a non-empty string.", is_error=True)
+    try:
+        instance_id = await _call_on_gui_thread(lambda: window.ask_desk_expert(question))
+    except (RuntimeError, ValueError) as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(
+        f"Placed a Desk expert widget (instance_id {instance_id}). It will answer in its own window; "
+        "nothing is returned to you."
+    )
+
+
 _TOOLS = [
     _reveal_widget,
     _screenshot_widget,
@@ -514,6 +540,7 @@ _TOOLS = [
     _run_installed_job_tool,
     _run_pipeline,
     _git_commit,
+    _ask_desk_expert,
 ]
 
 

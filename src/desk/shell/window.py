@@ -738,6 +738,7 @@ class DeskWindow(QMainWindow):
         restore: bool = False,
         claude_extra_instructions: str = "",
         local_storage_data: dict | None = None,
+        claude_answer_question: bool = False,
     ) -> WidgetFrame | None:
         if widget_id in (CLAUDE_WIDGET_ID, CLAUDE_DESK_WIDGET_ID) and instance_id is None:
             # A claude/claude_desk widget's instance_id doubles as its
@@ -811,7 +812,10 @@ class DeskWindow(QMainWindow):
                 # idempotent second application for this widget kind.
                 self._bind_widget_local_storage(frame, local_storage_data)
             self._bind_claude_desk_widget(
-                frame, resume=restore, extra_instructions=claude_extra_instructions
+                frame,
+                resume=restore,
+                extra_instructions=claude_extra_instructions,
+                answer_question=claude_answer_question,
             )
         if widget_id == SCRATCH_WIDGET_ID:
             self._bind_scratch_backing_file(frame)
@@ -984,7 +988,7 @@ class DeskWindow(QMainWindow):
             )
 
     def _bind_claude_desk_widget(
-        self, frame: WidgetFrame, resume: bool, extra_instructions: str = ""
+        self, frame: WidgetFrame, resume: bool, extra_instructions: str = "", answer_question: bool = False
     ) -> None:
         """TODO a596dbf: the same start_session(instance_id, resume,
         extra_instructions) shape as _bind_claude_widget above, so this
@@ -999,7 +1003,72 @@ class DeskWindow(QMainWindow):
             return
         content = frame.content.current
         if content is not None and hasattr(content, "start_session"):
-            content.start_session(frame.instance_id, resume=resume, extra_instructions=extra_instructions)
+            if answer_question:
+                content.start_session(
+                    frame.instance_id, resume=resume, extra_instructions=extra_instructions, answer_question=True
+                )
+            else:
+                content.start_session(frame.instance_id, resume=resume, extra_instructions=extra_instructions)
+
+    def ask_desk_expert(self, question: str) -> str:
+        """TODO c4ef727, the `desk_ask_desk_expert` MCP tool: places a
+        fresh claude_desk widget whose session answers `question`
+        (posed by another agent in this same Desk session) about Desk
+        and the live session. Fire-and-forget -- returns the new
+        widget's instance_id, nothing is routed back to the asker.
+        Raises ValueError if the claude_desk widget kind isn't
+        registered."""
+        widget = self._widgets.get(CLAUDE_DESK_WIDGET_ID)
+        if widget is None:
+            raise ValueError("The Claude (Desk) widget isn't available in this Desk.")
+        extra_instructions = self._write_claude_instructions_file(
+            self._build_desk_expert_instructions(question), prefix="expert"
+        )
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        frame = self._place_widget(
+            CLAUDE_DESK_WIDGET_ID,
+            widget,
+            (center.x(), center.y()),
+            widget.default_size,
+            claude_extra_instructions=extra_instructions,
+            claude_answer_question=True,
+        )
+        if frame is None:
+            raise ValueError("Could not place the Claude (Desk) widget.")
+        return frame.instance_id
+
+    def _build_desk_expert_instructions(self, question: str) -> str:
+        """The instructions file body for ask_desk_expert (TODO
+        c4ef727). The source/docs locations are resolved concretely
+        here (the checkout this running Desk was loaded from) rather
+        than left for the session to hunt for."""
+        source_root = Path(__file__).resolve().parents[3]
+        project = current_context.get_current_desk_directory()
+        return (
+            "Another agent, running in this same session of Desk, has asked you the "
+            "following question about Desk and/or the current Desk session. Your job is to "
+            "answer it. Put your answer in this widget's own window (the user will read it "
+            "here and decide what to do with it); the asking agent will not see it.\n\n"
+            "## The question (from another agent)\n\n"
+            f"{question}\n\n"
+            "## Where to look\n"
+            f"- Desk's own source checkout, the code this Desk is running from: `{source_root}` "
+            "(Python under `src/desk/`, built-in widgets under `widgets/`).\n"
+            f"- Its docs, which you may read freely: `{source_root}/design-docs/`, "
+            f"`{source_root}/plans/`, `{source_root}/LEARNINGS.md`, "
+            f"`{source_root}/development-process.md`, `{source_root}/TODO.md`, and the other "
+            "top-level `*.md` files.\n"
+            + (f"- The project this Desk session is working in: `{project}`.\n" if project else "")
+            + "- The live session: the `desk` MCP tools (`desk_list_widget_instances`, "
+            "`desk_screenshot_desk`, `desk_list_widget_logs`/`desk_query_widget_log`, ...) show "
+            "what is actually on the canvas right now.\n\n"
+            "## Method\n"
+            "Read the relevant source and docs rather than guessing. If reading is not enough "
+            "to learn how the live session behaves, write a small diagnostic `kind: \"python\"` "
+            "widget (see the tempui docs) to find out, and say what it showed. Do not modify "
+            "Desk's source checkout; this is a question, not a task to change code. If you "
+            "cannot determine the answer, say what you checked and what remains unknown."
+        )
 
     def _place_discuss_claude_widget(
         self,

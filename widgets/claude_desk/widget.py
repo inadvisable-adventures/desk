@@ -51,18 +51,28 @@ from desk.voice_capture import MicRecorder
 # the original PTY-based widget spawns a real `claude` CLI subprocess
 # directly, with no equivalent wiring, so its own prompt copy should
 # NOT claim this capability exists.
-CLAUDE_WIDGET_PROMPT = (
+# Split into three pieces (TODO c4ef727) so desk_ask_desk_expert's
+# session can omit the middle one -- the "orientation only, don't start
+# working" caveat -- while sharing everything else verbatim. The
+# concatenation is the unchanged CLAUDE_WIDGET_PROMPT.
+_PROMPT_INTRO = (
     "You are running inside of Desk. Please read this document to "
     "understand the implications of that: {doc_path} -- it links to "
     "further tempui-*.md files (in that same directory) with more "
     "detail on specific capabilities; only open one of those if you "
     "actually need that particular capability (e.g. only read "
     "tempui-lightning-round.md if you are about to run a lightning "
-    "round), not unconditionally. Reading these documents is "
+    "round), not unconditionally. "
+)
+_PROMPT_ORIENTATION_ONLY = (
+    "Reading these documents is "
     "orientation only: it is not itself a task, and it does not mean "
     "you should start working (for example by picking up a TODO.md "
     "item or calling desk_get_next_todo_item) unless the message from "
-    "the user separately asks for it. You also have direct MCP tools "
+    "the user separately asks for it. "
+)
+_PROMPT_TOOLS = (
+    "You also have direct MCP tools "
     "(mcp__desk__...) for interacting with Desk's own live shell -- "
     "desk_reveal_widget, desk_screenshot_widget, desk_screenshot_desk, "
     "desk_list_widget_instances, desk_save, desk_list_todo_items, and "
@@ -79,6 +89,7 @@ CLAUDE_WIDGET_PROMPT = (
     "the message never passes through shell quoting, so apostrophes and "
     "other special characters cannot break it."
 )
+CLAUDE_WIDGET_PROMPT = _PROMPT_INTRO + _PROMPT_ORIENTATION_ONLY + _PROMPT_TOOLS
 
 DEVELOPMENT_PROCESS_FILENAME = "development-process.md"
 
@@ -149,13 +160,17 @@ def _doc_path() -> str:
     return f"{TEMP_UI_DIRNAME}/{DOC_FILENAME}"
 
 
-def _development_process_instruction() -> str:
+def _development_process_instruction(answering_question: bool = False) -> str:
     directory = current_context.get_current_desk_directory()
     if directory is None:
         return ""
     path = directory / DEVELOPMENT_PROCESS_FILENAME
     if not path.is_file():
         return ""
+    if answering_question:
+        # TODO c4ef727: no "don't start working" caveat -- this session's
+        # job is to answer a question, so this is just a pointer.
+        return f" This project also has its own {DEVELOPMENT_PROCESS_FILENAME} at {path}, which you may read if it helps answer the question."
     return f" This project also has its own {DEVELOPMENT_PROCESS_FILENAME} at {path} -- please read that too, as orientation only: reading it is not itself a task, and it does not mean you should start working on a TODO item unless the message from the user separately asks for it."
 
 
@@ -487,7 +502,13 @@ class ClaudeDeskWidget(QWidget):
 
         self._set_busy(False)
 
-    def start_session(self, session_id: str, resume: bool, extra_instructions: str = "") -> None:
+    def start_session(
+        self, session_id: str, resume: bool, extra_instructions: str = "", answer_question: bool = False
+    ) -> None:
+        """`answer_question` (TODO c4ef727, desk_ask_desk_expert): this
+        session exists to answer a question carried in
+        `extra_instructions`, so the usual "orientation only, don't
+        start working yet" wording is left out of its initial prompt."""
         self._session_id = session_id
         model = MODEL_CHOICES[self._model_combo.currentIndex()][1]
         permission_mode = PERMISSION_MODE_CHOICES[self._permission_mode_combo.currentIndex()][1]
@@ -495,9 +516,10 @@ class ClaudeDeskWidget(QWidget):
         if resume:
             initial_prompt = ""
         else:
+            base_prompt = _PROMPT_INTRO + (_PROMPT_TOOLS if answer_question else _PROMPT_ORIENTATION_ONLY + _PROMPT_TOOLS)
             initial_prompt = (
-                CLAUDE_WIDGET_PROMPT.format(doc_path=_doc_path())
-                + _development_process_instruction()
+                base_prompt.format(doc_path=_doc_path())
+                + _development_process_instruction(answer_question)
                 + extra_instructions
             )
         self._status_label.setText("Connecting...")

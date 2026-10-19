@@ -243,6 +243,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "recording events + timecoded transcripts #920929",
     "desk_git_commit MCP tool for commit messages #570472",
     "python widgets use qt_controls, not QComboBox #514695",
+    "desk_ask_desk_expert MCP asks a Desk expert agent #748083",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -352,6 +353,10 @@ already wrote, never via a file dropped in this directory. And
 [tempui-widget-logs.md](./tempui-widget-logs.md) -- the `log` Bridge
 capability and its `desk_list_widget_logs`/`desk_query_widget_log` MCP
 tools, for letting an agent query what a widget has been doing; also not
+a dropped-file keyword. And
+[tempui-ask-desk-expert.md](./tempui-ask-desk-expert.md) -- the
+`desk_ask_desk_expert` MCP tool, which hands a question about Desk
+itself to a fresh agent that can read Desk's source and docs; also not
 a dropped-file keyword.
 
 ## Project widgets
@@ -705,6 +710,44 @@ created and opened immediately (no notification needed for your own
 just-performed drop).
 """
 
+_ASK_DESK_EXPERT_DOC = """# Asking a Desk expert (desk_ask_desk_expert)
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its current set of tags. This is not a
+tempui-DSL file type: it is one MCP tool on the `desk` server.
+
+`desk_ask_desk_expert(question)` takes a single string. Desk places a
+new Claude (Desk) widget on the canvas and starts an agent in it whose
+prompt contains:
+
+- the usual "you are running inside of Desk" orientation and tool list;
+- the location of Desk's own source checkout (the code this very Desk
+  is running from) and its design, planning and learnings docs, which
+  it may read;
+- your `question`, tagged as a question from another agent running in
+  the same Desk session;
+- encouragement to write small diagnostic `kind: "python"` widgets when
+  reading is not enough to learn how the live session behaves.
+
+It is told to answer your question, not to wait for the user.
+
+## What to expect
+
+- **Fire-and-forget.** The call returns the new widget's `instance_id`
+  immediately. Nothing is returned to you later: the answer lands in the
+  new widget's own window, and the user decides what to do with it.
+  Do not wait on it or poll for it.
+- It runs as an ordinary Claude (Desk) session: the user may see
+  permission prompts in that widget for reads outside the project.
+- Put everything the expert needs in the one string (what you tried,
+  exact error text, instance ids, file paths) -- it does not see your
+  conversation.
+- Use it for questions about Desk itself (how a feature behaves, why
+  something timed out, what the live session is doing). For problems in
+  your own project, work them yourself; to report a Desk defect, write a
+  FEEDBACK file as `desk-temporary-ui.md` describes.
+"""
+
 _WIDGET_LOGS_DOC = """# Widget logs (let an agent ask a widget what happened)
 
 See `desk-temporary-ui.md` (in this same directory) for this
@@ -998,7 +1041,9 @@ Desk Bridge API", for each call's exact shape.
 - `desk.introspect.*` plus the screenshot/reveal/list MCP tools
   (`desk_screenshot_widget`, `desk_reveal_widget`,
   `desk_list_widget_instances`) to inspect what is on the canvas; a
-  `DeskProc` tempui file for one-off access to the live shell.
+  `DeskProc` tempui file for one-off access to the live shell;
+  `desk_ask_desk_expert` to hand a question about Desk itself to an
+  agent that can read Desk's source (`tempui-ask-desk-expert.md`).
 - Layout helpers built in: Open Widgets (a live table of everything
   placed, with stale markers), Minimap (navigate, tile, organize) and
   Recently Removed (revive a removed widget with its state).
@@ -2562,6 +2607,15 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "desk_ask_desk_expert MCP asks a Desk expert agent #748083": """- New MCP tool `desk_ask_desk_expert(question)` on the `desk` server:
+  places a new Claude (Desk) widget whose agent knows Desk's own source
+  checkout and docs and is told to answer your question *about Desk and
+  this running session* (it may write diagnostic `kind: "python"` widgets
+  to find out). Fire-and-forget: it returns the new widget's instance_id
+  at once and nothing is sent back to you -- the answer appears in that
+  widget for the user to read. Ask only when Desk's own behavior is the
+  problem, not your project's. See `tempui-ask-desk-expert.md`.
+""",
     "python widgets use qt_controls, not QComboBox #514695": """- A `kind: "python"` widget embedded in the canvas must not use a
   native `QComboBox` (or a raw `QTreeView`/`QTreeWidget`'s branch arrows,
   or `QToolButton.setArrowType`): they paint with the platform style and
@@ -3816,6 +3870,7 @@ DESK_PROC_DOC_FILENAME = "tempui-desk-proc.md"
 INSTALLED_JOBS_DOC_FILENAME = "tempui-installed-jobs.md"
 HMSVC_DOC_FILENAME = "tempui-hmsvc.md"
 WIDGET_LOGS_DOC_FILENAME = "tempui-widget-logs.md"
+ASK_DESK_EXPERT_DOC_FILENAME = "tempui-ask-desk-expert.md"
 BREAKING_CHANGES_DOC_FILENAME = "tempui-breaking-changes.md"
 NEW_FEATURES_DOC_FILENAME = "tempui-new-features.md"
 BUILD_WIDGET_SCRIPT_FILENAME = "build_widget.py"
@@ -3844,6 +3899,7 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     INSTALLED_JOBS_DOC_FILENAME: _INSTALLED_JOBS_DOC,
     HMSVC_DOC_FILENAME: _HMSVC_DOC,
     WIDGET_LOGS_DOC_FILENAME: _WIDGET_LOGS_DOC,
+    ASK_DESK_EXPERT_DOC_FILENAME: _ASK_DESK_EXPERT_DOC,
     BREAKING_CHANGES_DOC_FILENAME: _BREAKING_CHANGES_DOC,
     NEW_FEATURES_DOC_FILENAME: _NEW_FEATURES_DOC,
     BUILD_WIDGET_SCRIPT_FILENAME: _BUILD_WIDGET_SCRIPT,
