@@ -21,6 +21,7 @@ from desk.shell.widget_frame import (
     WidgetFrame,
     _BringToFrontButton,
     _ChatButton,
+    _ReloadButton,
     _CloseButton,
     _ErrorIndicatorButton,
     _EyeButton,
@@ -75,6 +76,7 @@ _BUTTON_KINDS = {
     "stale",
     "error",
     "chat",
+    "reload",
     "eye",
     "greeked",
 }
@@ -110,6 +112,7 @@ class WorkspaceView(QGraphicsView):
     widget_stale_clicked = pyqtSignal(WidgetFrame)  # TODO 3e2c4f2
     widget_error_clicked = pyqtSignal(WidgetFrame)  # TODO d4d6c71
     chat_button_clicked = pyqtSignal(WidgetFrame)  # TODO 93364f9
+    widget_reload_clicked = pyqtSignal(WidgetFrame)  # TODO fd2c1ba
     # TODO 53779f4: a widget was added/removed/cleared, or one's [STALE] flipped.
     frames_changed = pyqtSignal()
     popup_closed = pyqtSignal(WidgetFrame)  # TODO 359684f: a popup's close (X) button
@@ -664,6 +667,8 @@ class WorkspaceView(QGraphicsView):
                     self.widget_stale_clicked.emit(frame)
                 elif kind == "error":
                     self.widget_error_clicked.emit(frame)
+                elif kind == "reload":
+                    self.widget_reload_clicked.emit(frame)
                 elif kind == "chat":
                     self.chat_button_clicked.emit(frame)
                 elif kind in ("eye", "greeked"):
@@ -797,6 +802,7 @@ class WorkspaceView(QGraphicsView):
                 _StaleIndicatorButton,
                 _ErrorIndicatorButton,
                 _ChatButton,
+                _ReloadButton,
                 _EyeButton,
                 _TitleBar,
                 _ResizeHandle,
@@ -820,6 +826,8 @@ class WorkspaceView(QGraphicsView):
             return frame, "stale"
         if isinstance(child, _ErrorIndicatorButton):
             return frame, "error"
+        if isinstance(child, _ReloadButton):
+            return frame, "reload"
         if isinstance(child, _ChatButton):
             return frame, "chat"
         if isinstance(child, _EyeButton):

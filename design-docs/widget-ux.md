@@ -730,6 +730,16 @@ says a widget owns this position. The embedded widget's own scrollbars
 (a separate object) are untouched by this. See
 `plans/wheel-event-accept-no-fallthrough.md`.
 
+## `[RELOAD]` titlebar button (TODO `fd2c1ba`)
+
+A placed web (`ChromiumWidget`) instance shows `[RELOAD]` in the titlebar
+slot `[STALE]` uses: clicking it calls `frame.content.reload()` for that one
+instance (no rebuild, no content-hash check, no confirmation). When the
+instance is stale, `[STALE]` replaces it -- the two are never shown together.
+Python widgets have no page, so they get neither a reload button nor a
+reload action. Visibility follows `[STALE]`'s (hidden on popups and in the
+`title_only` chrome state; still shown while locked).
+
 ## Desk-Internal Popups
 
 A widget-triggered confirm/warning dialog (e.g. Event Log's "Clear the

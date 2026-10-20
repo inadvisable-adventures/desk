@@ -263,6 +263,35 @@ class _ErrorIndicatorButton(QWidget):
         self._label.setStyleSheet(f"color: #ff5c5c; font-weight: bold; font-size: {font_pt}pt;")
 
 
+class _ReloadButton(QWidget):
+    """TODO fd2c1ba: shown on a placed web (`ChromiumWidget`) instance
+    whenever it is NOT stale -- `[STALE]` takes this slot when it is, so
+    the two never appear together. Clicking it (handled centrally by
+    WorkspaceView) re-navigates that one instance's page -- see
+    DeskWindow._on_widget_reload_clicked. Same shape as _ChatButton."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip("Reload this widget's page.")
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(TEMPUI_BUTTON_MARGIN, 0, TEMPUI_BUTTON_MARGIN, 0)
+        self._label = QLabel("[RELOAD]")
+        self._label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        layout.addWidget(self._label)
+
+        self.apply_scale(1.0)
+
+    def apply_scale(self, view_scale: float) -> None:
+        """See _TitleBar.apply_scale: keeps this button a constant
+        on-screen size regardless of the WorkspaceView's current zoom."""
+        view_scale = view_scale or 1.0
+        self.setFixedHeight(max(1, round(TITLEBAR_HEIGHT / view_scale)))
+        font_pt = max(1, round(TITLEBAR_FONT_PT / view_scale))
+        self._label.setStyleSheet(f"color: #e8e8e8; font-size: {font_pt}pt;")
+
+
 class _ChatButton(QWidget):
     """TODO 93364f9: shown on every placed widget instance, always
     (unlike _TempuiPromoteButton/_StaleIndicatorButton/_ErrorIndicatorButton,
@@ -306,6 +335,7 @@ def _button_target_width(button: QWidget) -> int:
     text_by_type = {
         _TempuiPromoteButton: "[TEMPUI]",
         _StaleIndicatorButton: "[STALE]",
+        _ReloadButton: "[RELOAD]",
         _ErrorIndicatorButton: "[ERROR]",
         _ChatButton: "[CHAT]",
     }
@@ -330,6 +360,7 @@ class _TitleBar(QWidget):
         self._subtitle: str | None = None
         self._external = False
         self._stale = False
+        self._reloadable = False
         self._has_error = False
         self._locked = False
         self._tempui_promotable = False
@@ -353,6 +384,8 @@ class _TitleBar(QWidget):
         layout.addWidget(self.tempui_promote_button)
         self.stale_button = _StaleIndicatorButton()
         layout.addWidget(self.stale_button)
+        self.reload_button = _ReloadButton()
+        layout.addWidget(self.reload_button)
         self.error_button = _ErrorIndicatorButton()
         layout.addWidget(self.error_button)
         self.chat_button = _ChatButton()
@@ -404,6 +437,12 @@ class _TitleBar(QWidget):
         titlebar button -- see DeskWindow._on_widget_stale_clicked for
         what it actually does."""
         self._stale = is_stale
+        self._refresh_button_visibility()
+
+    def set_reloadable(self, reloadable: bool) -> None:
+        """TODO fd2c1ba: whether this instance has a page to re-navigate
+        (a ChromiumWidget); shows `[RELOAD]` while not stale."""
+        self._reloadable = reloadable
         self._refresh_button_visibility()
 
     def is_stale(self) -> bool:
@@ -468,6 +507,7 @@ class _TitleBar(QWidget):
         if self._is_popup:
             self.tempui_promote_button.setVisible(False)
             self.stale_button.setVisible(False)
+            self.reload_button.setVisible(False)
             self.error_button.setVisible(False)
             self.chat_button.setVisible(False)
             self.lock_button.setVisible(False)
@@ -480,6 +520,7 @@ class _TitleBar(QWidget):
         show = not self._buttons_hidden
         self.tempui_promote_button.setVisible(show and self._tempui_promotable)
         self.stale_button.setVisible(show and self._stale)
+        self.reload_button.setVisible(show and self._reloadable and not self._stale)
         self.error_button.setVisible(show and self._has_error)
         self.chat_button.setVisible(show and not self._locked)
         self.lock_button.setVisible(show and not self._locked)
@@ -512,6 +553,8 @@ class _TitleBar(QWidget):
             buttons.append(self.tempui_promote_button)
         if self._stale:
             buttons.append(self.stale_button)
+        elif self._reloadable:
+            buttons.append(self.reload_button)
         if self._has_error:
             buttons.append(self.error_button)
         if self._locked:
@@ -567,6 +610,7 @@ class _TitleBar(QWidget):
         self._label.setStyleSheet(f"color: #e8e8e8; font-size: {font_pt}pt;")
         self.tempui_promote_button.apply_scale(view_scale)
         self.stale_button.apply_scale(view_scale)
+        self.reload_button.apply_scale(view_scale)
         self.error_button.apply_scale(view_scale)
         self.chat_button.apply_scale(view_scale)
         self.lock_button.apply_scale(view_scale)
@@ -721,6 +765,8 @@ class WidgetFrame(QWidget):
         normal_layout.setSpacing(0)
 
         self._titlebar = _TitleBar(title, is_popup=is_popup)
+        # TODO fd2c1ba: only a web widget has a page to reload.
+        self._titlebar.set_reloadable(callable(getattr(content, "reload", None)))
         normal_layout.addWidget(self._titlebar)
 
         body = QHBoxLayout()

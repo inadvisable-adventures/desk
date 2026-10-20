@@ -12845,3 +12845,22 @@ ba11954. COMPLETED: Recreate the HTML System Clock widget from
    (CLAUDE.md). `kind: "python"` widget, so follow `python-widget-conventions.md`; the widget needs a way to ask
    the shell to do the placement (a `current_context` hook, with its shape kept in sync per
    `development-process.md`). Not agent-visible, so no tempui changelog entry unless the Scratch docs change.
+
+fd2c1ba. COMPLETED: Generic `[RELOAD]` titlebar button (`../FEEDBACK/FEEDBACK-DESK-widget-frame-reload-button-replaced-by-stale-2026-10-20-1506.md`):
+   a new `_ReloadButton` in `src/desk/shell/widget_frame.py` (same shape as `_ChatButton`: non-selectable `[RELOAD]`
+   label, tooltip, wired into `_TitleBar`'s visibility, full-width and `_button_target_width` bookkeeping, and
+   `apply_scale`), placed in the slot `[STALE]` occupies. Shown on a placed `ChromiumWidget` (`kind: "html"`)
+   instance (the only kind with a page to re-navigate; `PythonWidgetHost` has no `reload`) whenever `[STALE]` could show
+   (not popup, not title_only; locked is fine) AND the instance is not stale;
+   when the `[STALE]` bit is set, `[STALE]` replaces it (never both). Clicking it (hit-tested centrally in
+   `canvas.py`: `_BUTTON_KINDS`, `_hit_test_chrome`, new `widget_reload_clicked` signal, dispatched in
+   `mouseReleaseEvent`) calls `frame.content.reload()` directly via a new `DeskWindow._on_widget_reload_clicked`:
+   a plain re-navigation of that one instance, with no rebuild, no content-hash check and no confirmation dialog
+   (`ChromiumWidget.reload` already clears the `[ERROR]` indicator). The titlebar button is user-facing chrome an
+   agent cannot click, so add a short mention to the tempui docs (new-features entry with a fresh tag) pointing
+   users at `[RELOAD]`. Update `design-docs/widget-ux.md`; add `tests/verify/verify_widget_reload_button.py`.
+
+   [planned: widget-reload-button.md (COMPLETED)]
+
+   COMPLETED 2026-10-20: `_ReloadButton` + canvas/window wiring, tag `[RELOAD] titlebar button on web widgets #696254`,
+   `design-docs/widget-ux.md`, `verify_widget_reload_button.py`. Headless-verified only; live browser not launched.

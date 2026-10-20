@@ -247,6 +247,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "agent-raised desk events via MCP tool #028808",
     "agent waits for a desk event via MCP tool #196353",
     "events: bare signal or payload, file past 1 KB #504112",
+    "[RELOAD] titlebar button on web widgets #696254",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -2762,6 +2763,16 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "[RELOAD] titlebar button on web widgets #696254": """- Every placed `kind: "html"` widget now has a `[RELOAD]` titlebar
+  button that re-navigates just that instance's page (no rebuild, no
+  confirmation). It occupies the slot the `[STALE]` badge uses: when an
+  instance is stale `[STALE]` shows instead (that one rebuilds and
+  reloads). You still cannot click either yourself -- but when a user
+  needs a page re-run for a reason unrelated to a code change (a
+  `desk.hmsvc` service that was not up yet, a changed `desk.state`
+  value), point them at `[RELOAD]` instead of hand-building retry
+  machinery into the widget.
+""",
     "desk_ask_desk_expert MCP asks a Desk expert agent #748083": """- New MCP tool `desk_ask_desk_expert(question)` on the `desk` server:
   places a new Claude (Desk) widget whose agent knows Desk's own source
   checkout and docs and is told to answer your question *about Desk and
