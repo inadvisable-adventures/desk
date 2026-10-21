@@ -12864,3 +12864,30 @@ fd2c1ba. COMPLETED: Generic `[RELOAD]` titlebar button (`../FEEDBACK/FEEDBACK-DE
 
    COMPLETED 2026-10-20: `_ReloadButton` + canvas/window wiring, tag `[RELOAD] titlebar button on web widgets #696254`,
    `design-docs/widget-ux.md`, `verify_widget_reload_button.py`. Headless-verified only; live browser not launched.
+
+e814eaf. Cross-project task handoff MCP tools (item 1 of `../FEEDBACK/FEEDBACK-DESK-no-mcp-for-cross-agent-tasks-and-feedback-2026-10-21-0859.md`),
+   on a pluggable record store. First, a small bespoke `RecordStore` interface (no new dependency) in a new module
+   under `src/desk/`: `create(collection, record) -> id`, `get`, `list(collection, filter)`, `update(collection, id,
+   patch)`, `move`/status transition, with records as plain JSON-able dicts (id, status, timestamps, free text body)
+   so a document database could implement the same interface later. Ship one implementation now, `FilesystemRecordStore`
+   (one markdown file per record, YAML-style frontmatter for the structured fields, status expressed as the
+   `new/`/`in-progress/`/`complete/` subdirectory so it stays compatible with the existing `ae-sam-requests/` convention,
+   atomic claim via `os.rename`); the MCP tool code must only talk to the interface. Then `desk` MCP tools in
+   `src/desk/shell/desk_mcp_server.py`: `desk_create_handoff_request` (target project/directory, title, why, what,
+   constraints), `desk_list_handoff_requests` (optional project and status filters), `desk_claim_handoff_request` (fails
+   if already claimed), `desk_complete_handoff_request` (structured outcome + free-text note). Where the store lives for a
+   target project is a path argument resolved relative to the current project (never absolute in saved state). An agent-visible feature:
+   mint a tempui tag, changelog entry and a dedicated `.desk_temp` doc registered in `SPLIT_DOC_CONTENT`, linked from the
+   changelog entry and the higher-level docs. Needs a plan, `design-docs/` update and `tests/verify/` script (including a
+   second in-memory `RecordStore` implementation in the test, to prove the tools are store-agnostic).
+
+540e886. Feedback management MCP tools (item 2 of `../FEEDBACK/FEEDBACK-DESK-no-mcp-for-cross-agent-tasks-and-feedback-2026-10-21-0859.md`),
+   built on the `RecordStore` interface from TODO `e814eaf` (do that first), with a `FilesystemRecordStore` rooted at
+   `../FEEDBACK/` for now: records are the existing `FEEDBACK-DESK-<slug>-<date>-<time>.md` files, status is the existing
+   top-level / `parkinglot/` / `implemented/` / `external/` placement, so existing files and the human workflow keep working
+   unchanged. `desk` MCP tools: `desk_create_feedback` (title, body; the tool derives slug, project name and timestamp
+   filename, so the caller needs to know no convention), `desk_list_feedback` (status and keyword filters, so near-duplicates
+   can be checked before filing), `desk_get_feedback` (content plus current triage state). Read/create only: triage moves
+   stay with Desk's maintainers (consistent with the process rule never to edit or delete a FEEDBACK file directly). The
+   tools talk only to the interface so a document-database store can replace the filesystem one. Agent-visible: tempui tag,
+   changelog entry and dedicated doc as for `e814eaf`; plan, design doc and `tests/verify/` script (with an in-memory store).
