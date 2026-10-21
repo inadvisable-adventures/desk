@@ -194,14 +194,30 @@ def decode_record(text: str, fallback_id: str, status: str) -> Record:
     )
 
 
+class MarkdownFrontmatterCodec:
+    """The default file format (see encode_record/decode_record)."""
+
+    def encode(self, record: Record) -> str:
+        return encode_record(record)
+
+    def decode(self, text: str, record_id: str, status: str) -> Record:
+        return decode_record(text, record_id, status)
+
+
 class FilesystemRecordStore:
     """One markdown file per record under `root`; the record's status is
     the subdirectory it sits in (`status_dirs` maps status -> subdirectory
     name, "" meaning `root` itself). A status change is an `os.rename`
     between those directories, which is what makes a claim atomic: of two
-    simultaneous claimants only one rename finds the source file."""
+    simultaneous claimants only one rename finds the source file.
 
-    def __init__(self, root: Path, status_dirs: Mapping[str, str]) -> None:
+    `codec` (encode(record) -> text, decode(text, id, status) -> Record)
+    and `id_factory` (title, is_taken -> id) let a caller keep records in
+    an existing file format and naming scheme."""
+
+    def __init__(self, root: Path, status_dirs: Mapping[str, str], codec=None, id_factory=None) -> None:
+        self.codec = codec or MarkdownFrontmatterCodec()
+        self.id_factory = id_factory or _new_id
         self.root = Path(root)
         self.status_dirs = dict(status_dirs)
         self.statuses = tuple(status_dirs)
@@ -220,11 +236,11 @@ class FilesystemRecordStore:
         return None
 
     def _read(self, status: str, path: Path) -> Record:
-        return decode_record(path.read_text(encoding="utf-8"), path.stem, status)
+        return self.codec.decode(path.read_text(encoding="utf-8"), path.stem, status)
 
     def _write(self, path: Path, record: Record) -> None:
         tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(encode_record(record), encoding="utf-8")
+        tmp.write_text(self.codec.encode(record), encoding="utf-8")
         os.replace(tmp, path)
 
     def create(self, title, fields, body, status):
@@ -232,12 +248,12 @@ class FilesystemRecordStore:
         self._dir(status).mkdir(parents=True, exist_ok=True)
         stamp = now_iso()
         while True:
-            record_id = _new_id(title, lambda c: self._locate(c) is not None)
+            record_id = self.id_factory(title, lambda c: self._locate(c) is not None)
             record = Record(record_id, status, title, dict(fields), body, stamp, stamp)
             try:
                 # "x": never overwrite an existing record, even on a race.
                 with open(self._path(status, record_id), "x", encoding="utf-8") as f:
-                    f.write(encode_record(record))
+                    f.write(self.codec.encode(record))
                 return record
             except FileExistsError:
                 continue

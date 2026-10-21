@@ -249,6 +249,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "events: bare signal or payload, file past 1 KB #504112",
     "[RELOAD] titlebar button on web widgets #696254",
     "handoff request MCP tools #070658",
+    "feedback item MCP tools #156881",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -750,6 +751,29 @@ reaches a sibling project). Absolute paths are refused. The requester and
 the agent doing the work must pass the same directory. Under it, each
 request is a markdown file in a `new/`, `in-progress/` or `complete/`
 subdirectory, with its structured fields as frontmatter.
+"""
+
+_FEEDBACK_ITEMS_DOC = """# Feedback items (desk_*_feedback)
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its current set of tags. This is not a
+tempui-DSL file type: it is three MCP tools on the `desk` server, for
+reporting friction with Desk itself (not with your own project).
+
+- `desk_list_feedback(status?, keyword?, directory?)` lists items, newest
+  first, each with its triage `status`: `open` (not yet acted on),
+  `parkinglot`, `implemented` or `external`. **Search with a keyword
+  before filing**, so you do not write a near-duplicate.
+- `desk_get_feedback(id, directory?)` returns one item's full text and
+  status.
+- `desk_create_feedback(title, body, directory?)` files a new `open` item.
+  Desk derives the filename (`FEEDBACK-DESK-<slug>-<date>-<time>.md`) and
+  heading; `body` is markdown: what happened, why it matters, a suggested
+  fix. Only the problem and fix belong there, not secrets.
+
+Triage is done by Desk's maintainers; you can create and read, not move
+or edit. `directory` is relative to the current project (default
+`../FEEDBACK`); absolute paths are refused.
 """
 
 _ASK_DESK_EXPERT_DOC = """# Asking a Desk expert (desk_ask_desk_expert)
@@ -2797,6 +2821,13 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "feedback item MCP tools #156881": """- New MCP tools on the `desk` server for Desk feedback:
+  `desk_create_feedback`, `desk_list_feedback` and `desk_get_feedback`.
+  Filing no longer needs the `../FEEDBACK/` filename convention, and a
+  keyword list shows whether something is already filed (and its triage
+  state: open, parkinglot, implemented, external). See
+  `tempui-feedback-items.md`.
+""",
     "handoff request MCP tools #070658": """- New MCP tools on the `desk` server for handing a task to another
   agent or project without editing it yourself: `desk_create_handoff_request`,
   `desk_list_handoff_requests`, `desk_claim_handoff_request` and
@@ -4110,6 +4141,7 @@ WIDGET_LOGS_DOC_FILENAME = "tempui-widget-logs.md"
 ASK_DESK_EXPERT_DOC_FILENAME = "tempui-ask-desk-expert.md"
 AGENT_EVENTS_DOC_FILENAME = "tempui-agent-events.md"
 HANDOFF_REQUESTS_DOC_FILENAME = "tempui-handoff-requests.md"
+FEEDBACK_ITEMS_DOC_FILENAME = "tempui-feedback-items.md"
 BREAKING_CHANGES_DOC_FILENAME = "tempui-breaking-changes.md"
 NEW_FEATURES_DOC_FILENAME = "tempui-new-features.md"
 BUILD_WIDGET_SCRIPT_FILENAME = "build_widget.py"
@@ -4141,6 +4173,7 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     ASK_DESK_EXPERT_DOC_FILENAME: _ASK_DESK_EXPERT_DOC,
     AGENT_EVENTS_DOC_FILENAME: _AGENT_EVENTS_DOC,
     HANDOFF_REQUESTS_DOC_FILENAME: _HANDOFF_REQUESTS_DOC,
+    FEEDBACK_ITEMS_DOC_FILENAME: _FEEDBACK_ITEMS_DOC,
     BREAKING_CHANGES_DOC_FILENAME: _BREAKING_CHANGES_DOC,
     NEW_FEATURES_DOC_FILENAME: _NEW_FEATURES_DOC,
     BUILD_WIDGET_SCRIPT_FILENAME: _BUILD_WIDGET_SCRIPT,

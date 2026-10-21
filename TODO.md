@@ -12887,7 +12887,7 @@ e814eaf. COMPLETED: Cross-project task handoff MCP tools (item 1 of `../FEEDBACK
    tag `handoff request MCP tools #070658` + `tempui-handoff-requests.md`, `design-docs/architecture.md` section,
    `verify_handoff_requests.py` (filesystem + in-memory stores, concurrent claim). Headless-verified only.
 
-540e886. Feedback management MCP tools (item 2 of `../FEEDBACK/FEEDBACK-DESK-no-mcp-for-cross-agent-tasks-and-feedback-2026-10-21-0859.md`),
+540e886. COMPLETED: Feedback management MCP tools (item 2 of `../FEEDBACK/FEEDBACK-DESK-no-mcp-for-cross-agent-tasks-and-feedback-2026-10-21-0859.md`),
    built on the `RecordStore` interface from TODO `e814eaf` (do that first), with a `FilesystemRecordStore` rooted at
    `../FEEDBACK/` for now: records are the existing `FEEDBACK-DESK-<slug>-<date>-<time>.md` files, status is the existing
    top-level / `parkinglot/` / `implemented/` / `external/` placement, so existing files and the human workflow keep working
@@ -12897,3 +12897,9 @@ e814eaf. COMPLETED: Cross-project task handoff MCP tools (item 1 of `../FEEDBACK
    stay with Desk's maintainers (consistent with the process rule never to edit or delete a FEEDBACK file directly). The
    tools talk only to the interface so a document-database store can replace the filesystem one. Agent-visible: tempui tag,
    changelog entry and dedicated doc as for `e814eaf`; plan, design doc and `tests/verify/` script (with an in-memory store).
+
+   [planned: feedback-items.md (COMPLETED)]
+
+   COMPLETED 2026-10-21: `src/desk/feedback_items.py` (codec/id factory on `FilesystemRecordStore`), three `desk_*_feedback` tools,
+   tag `feedback item MCP tools #156881` + `tempui-feedback-items.md`, `verify_feedback_items.py`. Headless-verified only.
+   The source FEEDBACK file stays put until the parked item 3 (PARKINGLOT) is resolved.

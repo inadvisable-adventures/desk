@@ -1641,3 +1641,11 @@ are thin wrappers that pick a store through `_handoff_store_factory`. The
 requests directory is a path relative to the current project (`..` reaches
 a sibling project; absolute paths are refused). TODO `540e886` (feedback
 management) reuses the same protocol.
+
+Feedback items (TODO `540e886`) are a second user of the protocol:
+`desk.feedback_items` configures a `FilesystemRecordStore` with the
+existing `../FEEDBACK/` conventions (plain markdown files named
+`FEEDBACK-DESK-<slug>-<date>-<time>.md`; status by placement: top level =
+`open`, else `parkinglot/`, `implemented/`, `external/`) via the store's
+pluggable codec and id factory. Only create/list/get are exposed; triage
+moves stay with Desk's maintainers.

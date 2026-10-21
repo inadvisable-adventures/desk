@@ -57,7 +57,7 @@ from typing import Any
 
 from claude_agent_sdk import McpSdkServerConfig, create_sdk_mcp_server, tool
 
-from desk import handoff_requests, pipeline_dsl
+from desk import feedback_items, handoff_requests, pipeline_dsl
 from desk.event_mediator import MediatedEvent
 from desk.widget_logs import RECORDING_EVENT, STOPPED_RECORDING_EVENT, format_time_iso, parse_time_ms
 from desk.record_store import RecordConflict, RecordNotFound, RecordStore
@@ -740,21 +740,24 @@ async def _wait_for_event(args: dict[str, Any]) -> dict[str, Any]:
 _handoff_store_factory: Callable[[Path], RecordStore] = handoff_requests.filesystem_store
 
 
-def _resolve_handoff_store(args: dict[str, Any]) -> RecordStore | str:
+def _resolve_store(
+    args: dict[str, Any], default_directory: str, factory: Callable[[Path], RecordStore]
+) -> RecordStore | str:
     """The store for `args["directory"]` (relative to the current Desk's
     directory; `..` allowed to reach a sibling project, absolute paths
     refused), or an error message."""
     base = current_context.get_current_desk_directory()
     if base is None:
         return "No current Desk directory known."
-    raw = str(args.get("directory") or handoff_requests.DEFAULT_DIRECTORY)
+    raw = str(args.get("directory") or default_directory)
     if Path(raw).is_absolute():
         return "directory must be a path relative to the current project, not an absolute one."
-    return _handoff_store_factory(base / raw)
+    return factory(base / raw)
 
 
-def _handoff_call(args: dict[str, Any], fn: Callable[[RecordStore], Any]) -> dict[str, Any]:
-    store = _resolve_handoff_store(args)
+def _store_call(
+    store: RecordStore | str, fn: Callable[[RecordStore], Any]
+) -> dict[str, Any]:
     if isinstance(store, str):
         return _text_result(store, is_error=True)
     try:
@@ -762,6 +765,10 @@ def _handoff_call(args: dict[str, Any], fn: Callable[[RecordStore], Any]) -> dic
     except (RecordConflict, RecordNotFound, ValueError, OSError) as e:
         return _text_result(f"{type(e).__name__}: {e}", is_error=True)
     return _text_result(json.dumps(result))
+
+
+def _handoff_call(args: dict[str, Any], fn: Callable[[RecordStore], Any]) -> dict[str, Any]:
+    return _store_call(_resolve_store(args, handoff_requests.DEFAULT_DIRECTORY, _handoff_store_factory), fn)
 
 
 _HANDOFF_DIRECTORY_PROPERTY = {
@@ -876,6 +883,92 @@ async def _complete_handoff_request(args: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+# TODO 540e886: feedback-item tools, over the same RecordStore protocol.
+_feedback_store_factory: Callable[[Path], RecordStore] = feedback_items.filesystem_store
+
+
+def _feedback_call(args: dict[str, Any], fn: Callable[[RecordStore], Any]) -> dict[str, Any]:
+    return _store_call(_resolve_store(args, feedback_items.DEFAULT_DIRECTORY, _feedback_store_factory), fn)
+
+
+_FEEDBACK_DIRECTORY_PROPERTY = {
+    "type": "string",
+    "description": "Feedback directory, relative to the current project (default '../FEEDBACK'). Never absolute.",
+}
+
+
+@tool(
+    "desk_create_feedback",
+    "File feedback about Desk itself (friction, a bug, a missing capability) without needing to know the "
+    "file naming convention. List first (desk_list_feedback) to check it has not already been filed. "
+    "Returns the new item (status 'open'). Triage (parkinglot/implemented) is done by Desk's maintainers. "
+    "See tempui-feedback-items.md.",
+    {
+        "type": "object",
+        "properties": {
+            "directory": _FEEDBACK_DIRECTORY_PROPERTY,
+            "title": {"type": "string"},
+            "body": {"type": "string", "description": "Markdown: what happened, why it matters, a suggested fix."},
+        },
+        "required": ["title", "body"],
+    },
+)
+async def _create_feedback(args: dict[str, Any]) -> dict[str, Any]:
+    title, body = str(args.get("title", "")).strip(), str(args.get("body", "")).strip()
+    if not title or not body:
+        return _text_result("title and body must be non-empty strings.", is_error=True)
+    return _feedback_call(args, lambda store: feedback_items.create_feedback(store, title, body).to_dict())
+
+
+@tool(
+    "desk_list_feedback",
+    "List feedback items (newest first) with their triage state ('open', 'parkinglot', 'implemented', "
+    "'external'), optionally filtered by status or a keyword (case-insensitive, over title and text). "
+    "Use a keyword to check for a near-duplicate before filing. Bodies are omitted; use "
+    "desk_get_feedback for one. Read-only.",
+    {
+        "type": "object",
+        "properties": {
+            "directory": _FEEDBACK_DIRECTORY_PROPERTY,
+            "status": {"type": "string", "enum": list(feedback_items.STATUSES)},
+            "keyword": {"type": "string"},
+        },
+    },
+)
+async def _list_feedback(args: dict[str, Any]) -> dict[str, Any]:
+    status = args.get("status") or None
+    if status is not None and status not in feedback_items.STATUSES:
+        return _text_result(f"status must be one of {', '.join(feedback_items.STATUSES)}.", is_error=True)
+    keyword = args.get("keyword") or None
+
+    def summarize(store: RecordStore) -> list[dict]:
+        return [
+            {k: v for k, v in r.to_dict().items() if k not in ("body", "fields")}
+            for r in store.list(status, keyword)
+        ]
+
+    return _feedback_call(args, summarize)
+
+
+@tool(
+    "desk_get_feedback",
+    "One feedback item by id (as listed by desk_list_feedback): full text and current triage state. Read-only.",
+    {
+        "type": "object",
+        "properties": {"directory": _FEEDBACK_DIRECTORY_PROPERTY, "id": {"type": "string"}},
+        "required": ["id"],
+    },
+)
+async def _get_feedback(args: dict[str, Any]) -> dict[str, Any]:
+    def get(store: RecordStore) -> dict:
+        record = store.get(str(args.get("id", "")))
+        if record is None:
+            raise RecordNotFound(str(args.get("id", "")))
+        return record.to_dict()
+
+    return _feedback_call(args, get)
+
+
 _TOOLS = [
     _reveal_widget,
     _screenshot_widget,
@@ -897,6 +990,9 @@ _TOOLS = [
     _list_handoff_requests,
     _claim_handoff_request,
     _complete_handoff_request,
+    _create_feedback,
+    _list_feedback,
+    _get_feedback,
 ]
 
 
