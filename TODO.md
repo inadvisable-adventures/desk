@@ -12865,7 +12865,7 @@ fd2c1ba. COMPLETED: Generic `[RELOAD]` titlebar button (`../FEEDBACK/FEEDBACK-DE
    COMPLETED 2026-10-20: `_ReloadButton` + canvas/window wiring, tag `[RELOAD] titlebar button on web widgets #696254`,
    `design-docs/widget-ux.md`, `verify_widget_reload_button.py`. Headless-verified only; live browser not launched.
 
-e814eaf. Cross-project task handoff MCP tools (item 1 of `../FEEDBACK/FEEDBACK-DESK-no-mcp-for-cross-agent-tasks-and-feedback-2026-10-21-0859.md`),
+e814eaf. COMPLETED: Cross-project task handoff MCP tools (item 1 of `../FEEDBACK/FEEDBACK-DESK-no-mcp-for-cross-agent-tasks-and-feedback-2026-10-21-0859.md`),
    on a pluggable record store. First, a small bespoke `RecordStore` interface (no new dependency) in a new module
    under `src/desk/`: `create(collection, record) -> id`, `get`, `list(collection, filter)`, `update(collection, id,
    patch)`, `move`/status transition, with records as plain JSON-able dicts (id, status, timestamps, free text body)
@@ -12880,6 +12880,12 @@ e814eaf. Cross-project task handoff MCP tools (item 1 of `../FEEDBACK/FEEDBACK-D
    mint a tempui tag, changelog entry and a dedicated `.desk_temp` doc registered in `SPLIT_DOC_CONTENT`, linked from the
    changelog entry and the higher-level docs. Needs a plan, `design-docs/` update and `tests/verify/` script (including a
    second in-memory `RecordStore` implementation in the test, to prove the tools are store-agnostic).
+
+   [planned: handoff-requests.md (COMPLETED)]
+
+   COMPLETED 2026-10-21: `src/desk/record_store.py`, `src/desk/handoff_requests.py`, four `desk_*_handoff_request` tools,
+   tag `handoff request MCP tools #070658` + `tempui-handoff-requests.md`, `design-docs/architecture.md` section,
+   `verify_handoff_requests.py` (filesystem + in-memory stores, concurrent claim). Headless-verified only.
 
 540e886. Feedback management MCP tools (item 2 of `../FEEDBACK/FEEDBACK-DESK-no-mcp-for-cross-agent-tasks-and-feedback-2026-10-21-0859.md`),
    built on the `RecordStore` interface from TODO `e814eaf` (do that first), with a `FilesystemRecordStore` rooted at

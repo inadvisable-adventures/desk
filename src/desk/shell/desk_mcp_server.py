@@ -57,9 +57,10 @@ from typing import Any
 
 from claude_agent_sdk import McpSdkServerConfig, create_sdk_mcp_server, tool
 
-from desk import pipeline_dsl
+from desk import handoff_requests, pipeline_dsl
 from desk.event_mediator import MediatedEvent
 from desk.widget_logs import RECORDING_EVENT, STOPPED_RECORDING_EVENT, format_time_iso, parse_time_ms
+from desk.record_store import RecordConflict, RecordNotFound, RecordStore
 from desk.shell import current_context
 from desk.todo_file import TodoItem, find_nearest_todo_file, parse_todo_file
 
@@ -733,6 +734,148 @@ async def _wait_for_event(args: dict[str, Any]) -> dict[str, Any]:
         return _event_wait_result("timeout", name=name, timeout_seconds=timeout_seconds)
     return _event_wait_result("ended", name=name)
 
+# TODO e814eaf: handoff-request tools. They only ever see a RecordStore;
+# `_handoff_store_factory` is the one place that picks the filesystem
+# implementation (swap it for a document-database store, or a fake in a test).
+_handoff_store_factory: Callable[[Path], RecordStore] = handoff_requests.filesystem_store
+
+
+def _resolve_handoff_store(args: dict[str, Any]) -> RecordStore | str:
+    """The store for `args["directory"]` (relative to the current Desk's
+    directory; `..` allowed to reach a sibling project, absolute paths
+    refused), or an error message."""
+    base = current_context.get_current_desk_directory()
+    if base is None:
+        return "No current Desk directory known."
+    raw = str(args.get("directory") or handoff_requests.DEFAULT_DIRECTORY)
+    if Path(raw).is_absolute():
+        return "directory must be a path relative to the current project, not an absolute one."
+    return _handoff_store_factory(base / raw)
+
+
+def _handoff_call(args: dict[str, Any], fn: Callable[[RecordStore], Any]) -> dict[str, Any]:
+    store = _resolve_handoff_store(args)
+    if isinstance(store, str):
+        return _text_result(store, is_error=True)
+    try:
+        result = fn(store)
+    except (RecordConflict, RecordNotFound, ValueError, OSError) as e:
+        return _text_result(f"{type(e).__name__}: {e}", is_error=True)
+    return _text_result(json.dumps(result))
+
+
+_HANDOFF_DIRECTORY_PROPERTY = {
+    "type": "string",
+    "description": "Requests directory, relative to the current project (default 'handoff-requests'; "
+    "'../other-project/handoff-requests' reaches a sibling). Never absolute.",
+}
+
+
+@tool(
+    "desk_create_handoff_request",
+    "File a task handoff request for whichever agent next works on another project (or this one), "
+    "instead of editing that project yourself. Returns the new request (status 'new'). See "
+    "tempui-handoff-requests.md.",
+    {
+        "type": "object",
+        "properties": {
+            "directory": _HANDOFF_DIRECTORY_PROPERTY,
+            "title": {"type": "string"},
+            "what": {"type": "string", "description": "The change being asked for."},
+            "why": {"type": "string"},
+            "constraints": {"type": "string"},
+            "target_project": {"type": "string"},
+            "requested_by": {"type": "string"},
+        },
+        "required": ["title", "what"],
+    },
+)
+async def _create_handoff_request(args: dict[str, Any]) -> dict[str, Any]:
+    title, what = str(args.get("title", "")).strip(), str(args.get("what", "")).strip()
+    if not title or not what:
+        return _text_result("title and what must be non-empty strings.", is_error=True)
+    return _handoff_call(
+        args,
+        lambda store: handoff_requests.create_request(
+            store,
+            title,
+            what,
+            str(args.get("why", "")),
+            str(args.get("constraints", "")),
+            str(args.get("target_project", "")),
+            str(args.get("requested_by", "")),
+        ).to_dict(),
+    )
+
+
+@tool(
+    "desk_list_handoff_requests",
+    "List handoff requests (newest first), optionally only one status ('new', 'in-progress', "
+    "'complete') or those matching a keyword. Read-only.",
+    {
+        "type": "object",
+        "properties": {
+            "directory": _HANDOFF_DIRECTORY_PROPERTY,
+            "status": {"type": "string", "enum": list(handoff_requests.STATUSES)},
+            "keyword": {"type": "string"},
+        },
+    },
+)
+async def _list_handoff_requests(args: dict[str, Any]) -> dict[str, Any]:
+    status = args.get("status") or None
+    if status is not None and status not in handoff_requests.STATUSES:
+        return _text_result(f"status must be one of {', '.join(handoff_requests.STATUSES)}.", is_error=True)
+    keyword = args.get("keyword") or None
+    return _handoff_call(args, lambda store: [r.to_dict() for r in store.list(status, keyword)])
+
+
+@tool(
+    "desk_claim_handoff_request",
+    "Claim a 'new' handoff request before touching anything (moves it to 'in-progress'). Fails if "
+    "someone else already claimed it -- then pick another.",
+    {
+        "type": "object",
+        "properties": {
+            "directory": _HANDOFF_DIRECTORY_PROPERTY,
+            "id": {"type": "string"},
+            "claimed_by": {"type": "string"},
+        },
+        "required": ["id"],
+    },
+)
+async def _claim_handoff_request(args: dict[str, Any]) -> dict[str, Any]:
+    return _handoff_call(
+        args,
+        lambda store: handoff_requests.claim_request(
+            store, str(args.get("id", "")), str(args.get("claimed_by", ""))
+        ).to_dict(),
+    )
+
+
+@tool(
+    "desk_complete_handoff_request",
+    "Close an 'in-progress' handoff request with a structured outcome ('done', 'partial', "
+    "'declined', 'not-applicable') and a note saying what actually happened.",
+    {
+        "type": "object",
+        "properties": {
+            "directory": _HANDOFF_DIRECTORY_PROPERTY,
+            "id": {"type": "string"},
+            "outcome": {"type": "string", "enum": list(handoff_requests.OUTCOMES)},
+            "note": {"type": "string"},
+        },
+        "required": ["id", "outcome"],
+    },
+)
+async def _complete_handoff_request(args: dict[str, Any]) -> dict[str, Any]:
+    return _handoff_call(
+        args,
+        lambda store: handoff_requests.complete_request(
+            store, str(args.get("id", "")), str(args.get("outcome", "")), str(args.get("note", ""))
+        ).to_dict(),
+    )
+
+
 _TOOLS = [
     _reveal_widget,
     _screenshot_widget,
@@ -750,6 +893,10 @@ _TOOLS = [
     _ask_desk_expert,
     _raise_event,
     _wait_for_event,
+    _create_handoff_request,
+    _list_handoff_requests,
+    _claim_handoff_request,
+    _complete_handoff_request,
 ]
 
 
