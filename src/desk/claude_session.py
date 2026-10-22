@@ -449,6 +449,14 @@ class ClaudeSession(QObject):
             self._emit_event("protocol_violation", None, False, {"message": text})
             self.session_error.emit(text)
             return
+        elif not isinstance(message, (sdk.AssistantMessage, sdk.StreamEvent)):
+            # TODO 0dcbbc5: bookkeeping with no turn outstanding (background
+            # -task, hook, system messages) is not model output and need not
+            # be followed by a ResultMessage, so it must not open a turn --
+            # an unsolicited turn nothing closes reads as "no response for
+            # Ns" forever while idle (and mis-tags the next real turn).
+            self._handle_message(message, None, False)
+            return
         else:
             self._turn_counter += 1
             self._unsolicited_turn_id = turn_id = self._turn_counter
@@ -463,7 +471,7 @@ class ClaudeSession(QObject):
             else:
                 self._unsolicited_turn_id = None
 
-    def _handle_message(self, message: object, turn_id: int, solicited: bool) -> None:
+    def _handle_message(self, message: object, turn_id: int | None, solicited: bool) -> None:
         if isinstance(message, sdk.AssistantMessage):
             if message.usage is not None and message.parent_tool_use_id is None:
                 self._emit_event("token_usage", turn_id, solicited, dict(message.usage))
@@ -590,7 +598,7 @@ class ClaudeSession(QObject):
                 patch["status"] = message.status
             self._emit_task_event(turn_id, solicited, message.task_id, patch)
 
-    def _emit_task_event(self, turn_id: int, solicited: bool, task_id: str, patch: dict) -> None:
+    def _emit_task_event(self, turn_id: int | None, solicited: bool, task_id: str, patch: dict) -> None:
         self._emit_event("task_event", turn_id, solicited, {"task_id": task_id, "patch": patch})
         self.task_event.emit(task_id, patch)
 

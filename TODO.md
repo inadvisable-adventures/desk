@@ -12903,3 +12903,19 @@ e814eaf. COMPLETED: Cross-project task handoff MCP tools (item 1 of `../FEEDBACK
    COMPLETED 2026-10-21: `src/desk/feedback_items.py` (codec/id factory on `FilesystemRecordStore`), three `desk_*_feedback` tools,
    tag `feedback item MCP tools #156881` + `tempui-feedback-items.md`, `verify_feedback_items.py`. Headless-verified only.
    The source FEEDBACK file stays put until the parked item 3 (PARKINGLOT) is resolved.
+
+0dcbbc5. COMPLETED: Bug: the Claude (Desk) widget sometimes shows its "no response for Ns" counter while idle, with no work in flight.
+   Suspected cause (`ClaudeSession._dispatch`, `src/desk/claude_session.py`): any stream message arriving with no turn
+   outstanding opens an *unsolicited turn* (`unsolicited_turn_started`), which `StalenessTracker` treats as outstanding
+   until a `ResultMessage` closes it. Bookkeeping messages that need not be followed by a result (background-task
+   `Task*` messages, `HookEventMessage`, other `SystemMessage`s) therefore leave an unsolicited turn open forever, and the
+   counter runs while idle. Fix: only a message that is real model output (`AssistantMessage`, `StreamEvent`) opens an
+   unsolicited turn; other turn-less messages are tagged with no turn (`turn_id` None, unsolicited) and open nothing.
+   Add a regression test in `verify_claude_desk_staleness.py` driving `_dispatch` with a `TaskNotificationMessage` while
+   idle and asserting the tracker stays non-outstanding; note in the plan that the cause is inferred from the code and
+   was not reproduced live.
+
+   [planned: claude-desk-idle-stale-counter.md (COMPLETED)]
+
+   COMPLETED 2026-10-21: `_dispatch` opens an unsolicited turn only for `AssistantMessage`/`StreamEvent`; regression test
+   in `verify_claude_desk_staleness.py` (fails without the fix). Cause inferred from code, not reproduced live.
