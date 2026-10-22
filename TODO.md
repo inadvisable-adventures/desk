@@ -12812,12 +12812,16 @@ d4c0d68. COMPLETED: Write `python-widget-conventions.md` at the project root (us
    top-level tempui doc's "Project widgets" section and the porting doc, tag `python widgets use qt_controls, not
    QComboBox #514695` + `_NEW_FEATURES` entry, `verify_python_widget_conventions_doc.py`.
 
-118d5ab. Investigate the disabled `tests/verify/disabled_verify_no_raw_qcombobox.py`: it fails because
+118d5ab. COMPLETED: Investigate the disabled `tests/verify/disabled_verify_no_raw_qcombobox.py`: it fails because
    its scan flags `QComboBox` mentioned in prose (tempui docs/changelog strings in
    `src/desk/temp_ui.py`, TODO d4c0d68), a suspected false positive rather than a real raw use.
    Fix the scan (e.g. AST-based), rewrite, or delete; then re-enable.
 
-   [planned: investigate-disabled-no-raw-qcombobox.md]
+   [planned: investigate-disabled-no-raw-qcombobox.md (COMPLETED)]
+
+   COMPLETED 2026-10-21: the prose failure was already stale (a `temp_ui.py` allow-list had been added);
+   replaced the substring scan with an AST-based one (no allow-list needed), re-enabled as
+   `verify_no_raw_qcombobox.py`, with planted-use/prose assertions.
 
 ba11954. COMPLETED: Recreate the HTML System Clock widget from
    `../FEEDBACK/FEEDBACK-DESK-system-clock-widget-source-2026-10-16-2122.md` as a built-in `kind: "python"`

@@ -1,4 +1,4 @@
-# Investigate disabled `verify_no_raw_qcombobox` (TODO `118d5ab`)
+# (COMPLETED) Investigate disabled `verify_no_raw_qcombobox` (TODO `118d5ab`)
 
 ## Summary
 
@@ -18,3 +18,11 @@ real widget code. Suspected scanner false positive.
 ## Affected files
 
 - `tests/verify/disabled_verify_no_raw_qcombobox.py`
+
+## Outcome (2026-10-21)
+
+The script already passed when run: it had since gained a `temp_ui.py` allow-list, so the original
+prose failure was stale. That whole-file exemption would still hide a real use in `temp_ui.py`, so the
+scan is now AST-based (names, attributes, imports; comments and strings ignored) with no allow-list
+beyond `qt_controls/`, plus in-script assertions that it catches planted uses and ignores prose.
+Renamed back to `verify_no_raw_qcombobox.py`; the DISABLED note is gone.
