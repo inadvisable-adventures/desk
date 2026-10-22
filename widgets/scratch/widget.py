@@ -8,12 +8,19 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPlainTextEdit,
+    QPushButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from desk.shell import current_context
+
 DEFAULT_LABEL = "untitled"
+# TODO 2016312: the largest Scratch "Send to agent" will put in a first turn
+# (~100k tokens); beyond it the model's context, not Desk, is the limit.
+MAX_SCRATCH_SEND_CHARS = 400_000
+BUTTON_ROW_SPACING = 12  # wider than the 4px title-row margins, between button groups
 SAVE_DEBOUNCE_MS = 300
 
 
@@ -105,10 +112,22 @@ class ScratchWidget(QWidget):
         self._title_row = _TitleRow()
         self._body = QPlainTextEdit()
 
+        # TODO 2016312: a row of action buttons under the title. Any file
+        # buttons (Open/Save/Save As) would go first, in their own group.
+        self._send_button = QPushButton("Send to agent")
+        self._send_button.setToolTip("Open a new Claude (Desk) widget with this Scratch's text as its first message")
+        self._send_button.clicked.connect(self.send_to_agent)
+        button_row = QHBoxLayout()
+        button_row.setContentsMargins(4, 0, 4, 4)
+        button_row.setSpacing(BUTTON_ROW_SPACING)
+        button_row.addWidget(self._send_button)
+        button_row.addStretch(1)
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(self._title_row)
+        layout.addLayout(button_row)
         layout.addWidget(self._body, stretch=1)
 
         # TODO a7618c8: set by set_backing_file for a Scratch that isn't
@@ -120,6 +139,31 @@ class ScratchWidget(QWidget):
         self._save_timer.timeout.connect(self.flush_pending_save)
         self._body.textChanged.connect(self._schedule_save)
         self._title_row.label_changed.connect(self._schedule_save)
+
+    def _show_message(self, message: str) -> None:
+        opener = current_context.get_popup_opener()
+        if opener is not None:
+            opener("Send to agent", message, ["OK"], "OK")
+
+    def send_to_agent(self) -> None:
+        """TODO 2016312: opens a new Claude (Desk) widget beside this one
+        with the complete Scratch text as its first message."""
+        text = self._body.toPlainText()
+        if not text.strip():
+            self._show_message("The Scratch is empty -- nothing to send.")
+            return
+        if len(text) > MAX_SCRATCH_SEND_CHARS:
+            self._show_message(
+                f"The Scratch is {len(text):,} characters; the most that can be sent is {MAX_SCRATCH_SEND_CHARS:,}."
+            )
+            return
+        sender = current_context.get_scratch_agent_sender()
+        if sender is None:
+            self._show_message("Sending to an agent isn't available here.")
+            return
+        error = sender(self, self.label_text, text)
+        if error is not None:
+            self._show_message(error)
 
     def set_backing_file(self, path: Path) -> None:
         """TODO a7618c8: persist this Scratch's label and text in `path`

@@ -557,6 +557,7 @@ class DeskWindow(QMainWindow):
         current_context.set_main_window(self)
         current_context.set_widget_path_resolver(self.view.describe_widget_at_global_pos)
         current_context.set_discuss_starter(self.start_discussion)
+        current_context.set_scratch_agent_sender(self.send_text_to_agent)
         current_context.set_event_mediator(self._event_mediator)
         current_context.set_widget_log_store(self._widget_logs)
         current_context.set_focus_logger(self._focus_logger)
@@ -1009,6 +1010,44 @@ class DeskWindow(QMainWindow):
                 )
             else:
                 content.start_session(frame.instance_id, resume=resume, extra_instructions=extra_instructions)
+
+    def send_text_to_agent(self, source: QWidget, label: str, text: str) -> str | None:
+        """TODO 2016312, the Scratch widget's "Send to agent" button:
+        places a fresh claude_desk widget just right of `source`'s frame
+        (as _place_widget_chat_about does) whose first turn is the usual
+        starting prompt followed by `text` verbatim. Unlike the `[CHAT]`
+        button no widget-chat instructions are written, and the text goes
+        in the turn itself rather than behind a "read this file" pointer.
+        Returns an error message, or None on success."""
+        widget = self._widgets.get(CLAUDE_DESK_WIDGET_ID)
+        if widget is None:
+            return "The Claude (Desk) widget isn't available in this Desk."
+        source_frame = next(
+            (
+                f
+                for f in self.view._frames
+                if isinstance(f.content, PythonWidgetHost) and f.content.current is source
+            ),
+            None,
+        )
+        proxy = source_frame.graphicsProxyWidget() if source_frame is not None else None
+        if proxy is not None:
+            rect = proxy.sceneBoundingRect()
+            pos = (rect.right() + 24, rect.top())
+        else:
+            center = self.view.mapToScene(self.view.viewport().rect().center())
+            pos = (center.x(), center.y())
+        frame = self._place_widget(
+            CLAUDE_DESK_WIDGET_ID,
+            widget,
+            pos,
+            widget.default_size,
+            claude_extra_instructions=(
+                f"\n\nThe user's message (the complete text of their Scratch widget "
+                f"\"{label}\", verbatim):\n\n{text}"
+            ),
+        )
+        return None if frame is not None else "Could not place the Claude (Desk) widget."
 
     def ask_desk_expert(self, question: str) -> str:
         """TODO c4ef727, the `desk_ask_desk_expert` MCP tool: places a

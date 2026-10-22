@@ -12832,7 +12832,7 @@ ba11954. COMPLETED: Recreate the HTML System Clock widget from
    COMPLETED 2026-10-16: `widgets/system_clock/`, `tests/verify/verify_system_clock_widget.py`. Headless
    and offscreen-screenshot verified; user confirmed it looks good in the live app.
 
-2016312. "Send scratch to agent" button on the Scratch widget (`widgets/scratch/widget.py`): a button that
+2016312. COMPLETED: "Send scratch to agent" button on the Scratch widget (`widgets/scratch/widget.py`): a button that
    opens a new Claude (Desk) widget just to the right of the Scratch, the way the `[CHAT]` titlebar button
    does (`DeskWindow._on_chat_button_clicked` / `_place_widget_chat_about`, TODO `93364f9`: fresh independent
    session, positioned beside the source frame), except that the session is NOT seeded with widget-chat
@@ -12849,3 +12849,9 @@ ba11954. COMPLETED: Recreate the HTML System Clock widget from
    (CLAUDE.md). `kind: "python"` widget, so follow `python-widget-conventions.md`; the widget needs a way to ask
    the shell to do the placement (a `current_context` hook, with its shape kept in sync per
    `development-process.md`). Not agent-visible, so no tempui changelog entry unless the Scratch docs change.
+
+   [planned: send-scratch-to-agent.md (COMPLETED)]
+
+   COMPLETED 2026-10-21: `Send to agent` button row on `ScratchWidget`, `current_context.set_scratch_agent_sender`,
+   `DeskWindow.send_text_to_agent`, `tests/verify/verify_scratch_send_to_agent.py`. Headless-verified only; not
+   yet looked at in the live app. Text is capped at 400,000 characters (popup beyond that).

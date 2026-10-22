@@ -194,6 +194,7 @@ _widget_height_adjuster: Callable[[str, int], None] | None = None
 _widget_overview_provider: Callable[[], list[dict]] | None = None
 _stale_widgets_reloader: Callable[[], int] | None = None
 _background_task_log_opener: Callable[[str, str, str, list[dict]], str | None] | None = None
+_scratch_agent_sender: Callable[[QWidget, str, str], str | None] | None = None
 
 
 def set_current_desk_directory(directory: Path) -> None:
@@ -218,6 +219,20 @@ def path_is_external(path: Path) -> bool:
         return False
     except (ValueError, OSError):
         return True
+
+
+def set_scratch_agent_sender(sender: Callable[[QWidget, str, str], str | None]) -> None:
+    """TODO 2016312: `sender(source_widget, label, text) -> error_or_None`.
+    Places a fresh Claude (Desk) widget just right of `source_widget`'s
+    frame whose first turn is Desk's normal starting prompt followed by
+    `text` verbatim (`label` names the source in that turn). Returns an
+    error message to show the user, or `None` on success."""
+    global _scratch_agent_sender
+    _scratch_agent_sender = sender
+
+
+def get_scratch_agent_sender() -> Callable[[QWidget, str, str], str | None] | None:
+    return _scratch_agent_sender
 
 
 def set_widget_opener(opener: Callable[[str], QWidget | None]) -> None:
