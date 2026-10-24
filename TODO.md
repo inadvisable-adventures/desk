@@ -12929,3 +12929,21 @@ e814eaf. COMPLETED: Cross-project task handoff MCP tools (item 1 of `../FEEDBACK
 
    COMPLETED 2026-10-21: `_dispatch` opens an unsolicited turn only for `AssistantMessage`/`StreamEvent`; regression test
    in `verify_claude_desk_staleness.py` (fails without the fix). Cause inferred from code, not reproduced live.
+
+e5b5567. `compute_version_hash` (`src/desk/installed_jobs.py`) skips a job's own self-managed venv, while still
+   covering the dependency versions
+   (`../FEEDBACK/FEEDBACK-DESK-install-job-guibridge-timeout-unhashed-venv-2026-10-19-1250.md`, suggestions 1 and 2;
+   the timeout change in that file is deliberately NOT part of this item). Today the hash reads every byte of every
+   file under the job directory, so a job with a large self-managed venv (`map-text-extractor`: ~27,000 files, ~1 GB)
+   takes ~5 s to hash and trips `GuiBridge.call`'s 5 s timeout on `desk_install_job` and `desk_run_installed_job`.
+   (1) Skip a top-level `.venv/` directory of the job, mirroring the existing rust `target/` carve-out (only the job's
+   own top-level one, not any nested directory that happens to share the name; check whether the hmsvc venv convention
+   documented in `tempui-installed-jobs.md` names a different directory and cover that too). (2) The package versions
+   actually installed still count toward the version: `requirements.txt` (and any freeze-style lockfile the job keeps
+   outside the venv) is hashed as usual, so bumping a dependency still produces a new version and a fresh approval; if a
+   job has a venv but no file pinning its versions, say so in the docs rather than silently dropping the venv from the
+   hash. Existing approved jobs get a new hash once (a one-time re-approval), which the change must call out in
+   `tempui-installed-jobs.md` and its changelog entry (agent-visible: mint a tag and add an entry). Update
+   `compute_version_hash`'s docstring and LEARNINGS.md (hashing a generated venv is what made the install time out), and add a
+   `tests/verify/` script: a venv-bearing job hashes identically before and after venv contents change, differs when
+   `requirements.txt` changes, and a nested `.venv` elsewhere in the tree is still hashed.
