@@ -12930,7 +12930,7 @@ e814eaf. COMPLETED: Cross-project task handoff MCP tools (item 1 of `../FEEDBACK
    COMPLETED 2026-10-21: `_dispatch` opens an unsolicited turn only for `AssistantMessage`/`StreamEvent`; regression test
    in `verify_claude_desk_staleness.py` (fails without the fix). Cause inferred from code, not reproduced live.
 
-e5b5567. `compute_version_hash` (`src/desk/installed_jobs.py`) skips a job's own self-managed venv, while still
+e5b5567. COMPLETED: `compute_version_hash` (`src/desk/installed_jobs.py`) skips a job's own self-managed venv, while still
    covering the dependency versions
    (`../FEEDBACK/FEEDBACK-DESK-install-job-guibridge-timeout-unhashed-venv-2026-10-19-1250.md`, suggestions 1 and 2;
    the timeout change in that file is deliberately NOT part of this item). Today the hash reads every byte of every
@@ -12947,3 +12947,9 @@ e5b5567. `compute_version_hash` (`src/desk/installed_jobs.py`) skips a job's own
    `compute_version_hash`'s docstring and LEARNINGS.md (hashing a generated venv is what made the install time out), and add a
    `tests/verify/` script: a venv-bearing job hashes identically before and after venv contents change, differs when
    `requirements.txt` changes, and a nested `.venv` elsewhere in the tree is still hashed.
+
+   [planned: installed-job-venv-hash.md (COMPLETED)]
+
+   COMPLETED 2026-10-23: `SELF_MANAGED_VENV_DIRNAME` skip in `compute_version_hash`, `tempui-installed-jobs.md` "Self-managed venvs" section,
+   tag `installed job version hash skips .venv #284781` + changelog entry (notes the one-time re-approval), LEARNINGS entry,
+   `verify_installed_job_venv_hash.py`. Headless-verified. The hmsvc `venv` setting is a user-chosen path for a service, unrelated to a job's hash.

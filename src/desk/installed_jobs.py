@@ -125,6 +125,10 @@ def detect_kind(job_dir: Path) -> str | None:
     return None
 
 
+# TODO e5b5567: see compute_version_hash.
+SELF_MANAGED_VENV_DIRNAME = ".venv"
+
+
 def compute_version_hash(job_dir: Path) -> str:
     """A reasonable-sized (12 hex chars), deterministic hash of every
     regular file under job_dir -- a direct multi-file extension of the
@@ -151,11 +155,25 @@ def compute_version_hash(job_dir: Path) -> str:
     real content (pinned dependency versions), so this is a deliberate,
     narrow exception, not a blanket "ignore lock files" rule -- see
     LEARNINGS.md. Both exclusions are harmless for a python-kind job,
-    which has no reason to ever have either of its own."""
+    which has no reason to ever have either of its own.
+
+    TODO e5b5567: also skips the job's own top-level `.venv/` -- the
+    self-managed venv a python-kind job may build for itself (opencv/
+    easyocr/torch can make it ~27,000 files, ~1 GB). Reading all of it
+    took ~5 s, which tripped `GuiBridge.call`'s 5 s timeout on
+    `desk_install_job`/`desk_run_installed_job` every time. Only the
+    root-level `.venv` counts (a nested directory with that name inside
+    the job's own source is still hashed). The venv's installed
+    *contents* are generated; the versions that determine them live in
+    files outside it (`requirements.txt`, a lockfile), which are still
+    hashed like any other file, so bumping a dependency still changes
+    the version and still needs re-approval."""
     digest = hashlib.md5()
     for path in sorted(p for p in job_dir.rglob("*") if p.is_file()):
         relative = path.relative_to(job_dir)
         if "target" in relative.parts[:-1] or relative == Path("Cargo.lock"):
+            continue
+        if relative.parts[0] == SELF_MANAGED_VENV_DIRNAME:
             continue
         digest.update(relative.as_posix().encode("utf-8"))
         digest.update(b"\0")

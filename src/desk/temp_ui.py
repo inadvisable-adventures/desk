@@ -250,6 +250,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "[RELOAD] titlebar button on web widgets #696254",
     "handoff request MCP tools #070658",
     "feedback item MCP tools #156881",
+    "installed job version hash skips .venv #284781",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -2574,6 +2575,19 @@ approval prompt you'll see for this job.** For a `rust`-kind job, this
 does **not** build it yet (a first build can be slow -- see below); it
 only validates and registers.
 
+## Self-managed venvs
+
+A python job may build its own venv (conventionally at
+`desk-installed-jobs/<name>/.venv/`, created by `main.py` itself). The
+version hash **skips that top-level `.venv/` directory**: its installed
+contents are generated, can be huge, and would make installing and
+running slow. Pin your dependency versions in `requirements.txt` (or a
+lockfile) **outside** `.venv/` -- those files are hashed, so changing a
+version still gives the job a new version and a fresh approval. A venv
+with nothing pinning its versions means a dependency change can happen
+without re-approval; pin them. Only the job's own top-level `.venv/` is
+skipped, not a directory of that name elsewhere in the job's source.
+
 ## Running
 
 Call the `desk_run_installed_job` MCP tool with `name` and, optionally,
@@ -2821,6 +2835,15 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "installed job version hash skips .venv #284781": """- An Installed Job's version hash no longer reads the job's own
+  top-level `.venv/` directory. A job with a large self-managed venv used
+  to take seconds to hash and time out `desk_install_job` /
+  `desk_run_installed_job`. Dependency versions still count: keep them
+  pinned in `requirements.txt` (or a lockfile) outside `.venv/`. **Every
+  python-kind job that has a `.venv/` gets a new version hash once, so
+  call `desk_install_job` again before its next run.** See
+  `tempui-installed-jobs.md`, "Self-managed venvs".
+""",
     "feedback item MCP tools #156881": """- New MCP tools on the `desk` server for Desk feedback:
   `desk_create_feedback`, `desk_list_feedback` and `desk_get_feedback`.
   Filing no longer needs the `../FEEDBACK/` filename convention, and a
