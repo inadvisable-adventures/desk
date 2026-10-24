@@ -370,6 +370,7 @@ class DeskWindow(QMainWindow):
         self.view.widget_stale_clicked.connect(self._on_widget_stale_clicked)
         self.view.widget_error_clicked.connect(self._on_widget_error_clicked)
         self.view.chat_button_clicked.connect(self._on_chat_button_clicked)
+        self.view.widget_reload_clicked.connect(self._on_widget_reload_clicked)
         if widgets_dir is not None:
             broker.widget_changed.connect(self._on_widget_changed_refresh_catalog)
 
@@ -1211,6 +1212,12 @@ class DeskWindow(QMainWindow):
         624ff3a) doesn't need to pass an unused positional -- see
         _place_discuss_claude_widget for how the two are used."""
         self._place_discuss_claude_widget(source_label, item_text, parking_lot_line)
+
+    def _on_widget_reload_clicked(self, frame: WidgetFrame) -> None:
+        """The `[RELOAD]` titlebar button's handler (TODO fd2c1ba): a plain
+        re-navigation of this one instance's page -- no rebuild, no
+        content-hash check, no confirmation."""
+        frame.content.reload()
 
     def _on_chat_button_clicked(self, frame: WidgetFrame) -> None:
         """The `[CHAT]` titlebar button's handler (TODO 93364f9):

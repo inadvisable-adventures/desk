@@ -1497,3 +1497,11 @@ This file captures thoughts and TODO items that arise during work on other thing
      can be quickly cloned with all of its context. Then neither the user nor the agent has to wait for a parking lot item
      to be written; the clone can write it (or run with the tangent) while the original carries on.
   4. **Parking lot MCPs.** MCP tools for parking lot item CRUD (create, read, update, delete).
+
+- **Cross-session / cross-project "work in flight" visibility** (`../FEEDBACK/FEEDBACK-DESK-no-mcp-for-cross-agent-tasks-and-feedback-2026-10-21-0859.md`, item 3)
+
+  An MCP query for "what work is currently in flight" scoped to this project or to a project declared related to it, so a
+  collision (another agent session committing to a sibling project that touches the same files) surfaces proactively rather
+  than via an incidental `git status`. Open design questions: how a "related project" is declared (formalizing something like
+  a per-project notes convention), what counts as "in flight" (claimed handoff requests, uncommitted changes, recent commits),
+  and how it composes with the handoff store from TODO `e814eaf`. Not ready to act on.

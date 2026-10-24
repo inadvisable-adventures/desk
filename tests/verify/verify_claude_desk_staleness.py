@@ -164,6 +164,31 @@ def test_session_forwards_task_type():
     check("task_type is in the patch", seen[0][1]["task_type"] == "local_agent")
 
 
+# -- TODO 0dcbbc5: bookkeeping while idle must not open a turn ------------------
+
+
+def test_idle_bookkeeping_does_not_start_counter():
+    session = ClaudeSession()
+    events = []
+    session.session_event.connect(events.append)
+    tracker = StalenessTracker()
+    note = sdk.TaskNotificationMessage(
+        subtype="task_notification", data={}, task_id="t1", status="completed", output_file="", summary="s", uuid="u", session_id="s"
+    )
+    session._dispatch(note)
+    for e in events:
+        tracker.feed(e, 0.0)
+    check("task notification while idle opens no unsolicited turn", session._unsolicited_turn_id is None)
+    check("no unsolicited_turn_started event", all(e["kind"] != "unsolicited_turn_started" for e in events))
+    check("tracker not outstanding, no counter", not tracker.outstanding(1000.0) and tracker.describe(1000.0, None) == "")
+
+    events.clear()
+    session._dispatch(
+        sdk.AssistantMessage(content=[sdk.TextBlock(text="hi")], model="m", parent_tool_use_id=None)
+    )
+    check("real assistant output while idle still opens an unsolicited turn", session._unsolicited_turn_id is not None)
+
+
 # -- probe -------------------------------------------------------------------------
 
 
@@ -268,6 +293,7 @@ test_delegated_task_keeps_things_outstanding_and_grace_follows()
 test_plain_shell_tasks_are_ignored()
 test_grace_not_started_while_another_agent_still_runs()
 test_session_forwards_task_type()
+test_idle_bookkeeping_does_not_start_counter()
 test_probe_reports_and_stops()
 test_probe_checker_exception_means_unreachable()
 test_tcp_reachable_uses_a_bare_connect()

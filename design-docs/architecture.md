@@ -1620,3 +1620,32 @@ blocking a TODO item.
 - Preserving a `python` widget's internal state across a hot-reload rebuild
   (currently every rebuild is a full fresh `QWidget`, with no state
   carried over).
+
+## Record store and handoff requests (TODO `e814eaf`)
+
+`desk.record_store` defines a small `RecordStore` protocol (create / get /
+list / atomic `transition` between a closed set of statuses) over plain
+records: id, status, title, flat string `fields`, free-text body,
+timestamps. Callers never see how records are kept. Two implementations:
+`FilesystemRecordStore` (one markdown file per record with JSON-valued
+frontmatter; the status is the subdirectory, and a transition is an
+`os.rename`, so of two simultaneous claimants exactly one wins) and
+`InMemoryRecordStore` (tests; also what keeps the protocol honest). A
+document database would be a third implementation; nothing above the
+protocol changes. A hand-written file with no frontmatter still decodes
+(title from its first `# ` heading, id from its filename).
+
+`desk.handoff_requests` is the new -> in-progress -> complete lifecycle on
+top, and the four `desk_*_handoff_request` tools in `desk_mcp_server.py`
+are thin wrappers that pick a store through `_handoff_store_factory`. The
+requests directory is a path relative to the current project (`..` reaches
+a sibling project; absolute paths are refused). TODO `540e886` (feedback
+management) reuses the same protocol.
+
+Feedback items (TODO `540e886`) are a second user of the protocol:
+`desk.feedback_items` configures a `FilesystemRecordStore` with the
+existing `../FEEDBACK/` conventions (plain markdown files named
+`FEEDBACK-DESK-<slug>-<date>-<time>.md`; status by placement: top level =
+`open`, else `parkinglot/`, `implemented/`, `external/`) via the store's
+pluggable codec and id factory. Only create/list/get are exposed; triage
+moves stay with Desk's maintainers.

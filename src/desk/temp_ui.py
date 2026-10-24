@@ -247,6 +247,9 @@ CURRENT_TAGS: tuple[str, ...] = (
     "agent-raised desk events via MCP tool #028808",
     "agent waits for a desk event via MCP tool #196353",
     "events: bare signal or payload, file past 1 KB #504112",
+    "[RELOAD] titlebar button on web widgets #696254",
+    "handoff request MCP tools #070658",
+    "feedback item MCP tools #156881",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -715,6 +718,62 @@ same mechanism automatically: the dropped image is copied into this
 directory first, then an `OpenImage` file pointing at the copy is
 created and opened immediately (no notification needed for your own
 just-performed drop).
+"""
+
+_HANDOFF_REQUESTS_DOC = """# Handoff requests (desk_*_handoff_request)
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its current set of tags. This is not a
+tempui-DSL file type: it is four MCP tools on the `desk` server, for
+asking an agent working in another project (or a later session of this
+one) to make a change, instead of editing that project yourself.
+
+A request has the lifecycle `new` -> `in-progress` -> `complete`.
+
+- `desk_create_handoff_request(title, what, why?, constraints?,
+  target_project?, requested_by?, directory?)` files a `new` request and
+  returns it (including its `id`).
+- `desk_list_handoff_requests(status?, keyword?, directory?)` lists
+  requests, newest first. List with a keyword before filing, to avoid a
+  near-duplicate.
+- `desk_claim_handoff_request(id, claimed_by?, directory?)` moves a `new`
+  request to `in-progress`. **Claim before touching anything.** It fails
+  if someone else already claimed it; pick another.
+- `desk_complete_handoff_request(id, outcome, note?, directory?)` closes
+  an `in-progress` request. `outcome` is `done`, `partial`, `declined` or
+  `not-applicable`; put what actually happened in `note` (for example,
+  that part of the request rested on a false premise and was not
+  implemented).
+
+`directory` is where the requests live, **relative to the current
+project** (default `handoff-requests`; `../other-project/handoff-requests`
+reaches a sibling project). Absolute paths are refused. The requester and
+the agent doing the work must pass the same directory. Under it, each
+request is a markdown file in a `new/`, `in-progress/` or `complete/`
+subdirectory, with its structured fields as frontmatter.
+"""
+
+_FEEDBACK_ITEMS_DOC = """# Feedback items (desk_*_feedback)
+
+See `desk-temporary-ui.md` (in this same directory) for this
+directory's own overview and its current set of tags. This is not a
+tempui-DSL file type: it is three MCP tools on the `desk` server, for
+reporting friction with Desk itself (not with your own project).
+
+- `desk_list_feedback(status?, keyword?, directory?)` lists items, newest
+  first, each with its triage `status`: `open` (not yet acted on),
+  `parkinglot`, `implemented` or `external`. **Search with a keyword
+  before filing**, so you do not write a near-duplicate.
+- `desk_get_feedback(id, directory?)` returns one item's full text and
+  status.
+- `desk_create_feedback(title, body, directory?)` files a new `open` item.
+  Desk derives the filename (`FEEDBACK-DESK-<slug>-<date>-<time>.md`) and
+  heading; `body` is markdown: what happened, why it matters, a suggested
+  fix. Only the problem and fix belong there, not secrets.
+
+Triage is done by Desk's maintainers; you can create and read, not move
+or edit. `directory` is relative to the current project (default
+`../FEEDBACK`); absolute paths are refused.
 """
 
 _ASK_DESK_EXPERT_DOC = """# Asking a Desk expert (desk_ask_desk_expert)
@@ -2762,6 +2821,30 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "feedback item MCP tools #156881": """- New MCP tools on the `desk` server for Desk feedback:
+  `desk_create_feedback`, `desk_list_feedback` and `desk_get_feedback`.
+  Filing no longer needs the `../FEEDBACK/` filename convention, and a
+  keyword list shows whether something is already filed (and its triage
+  state: open, parkinglot, implemented, external). See
+  `tempui-feedback-items.md`.
+""",
+    "handoff request MCP tools #070658": """- New MCP tools on the `desk` server for handing a task to another
+  agent or project without editing it yourself: `desk_create_handoff_request`,
+  `desk_list_handoff_requests`, `desk_claim_handoff_request` and
+  `desk_complete_handoff_request`. Requests move new -> in-progress ->
+  complete and are stored as one markdown file each, so there is no
+  directory-and-`mv` convention to invent. See `tempui-handoff-requests.md`.
+""",
+    "[RELOAD] titlebar button on web widgets #696254": """- Every placed `kind: "html"` widget now has a `[RELOAD]` titlebar
+  button that re-navigates just that instance's page (no rebuild, no
+  confirmation). It occupies the slot the `[STALE]` badge uses: when an
+  instance is stale `[STALE]` shows instead (that one rebuilds and
+  reloads). You still cannot click either yourself -- but when a user
+  needs a page re-run for a reason unrelated to a code change (a
+  `desk.hmsvc` service that was not up yet, a changed `desk.state`
+  value), point them at `[RELOAD]` instead of hand-building retry
+  machinery into the widget.
+""",
     "desk_ask_desk_expert MCP asks a Desk expert agent #748083": """- New MCP tool `desk_ask_desk_expert(question)` on the `desk` server:
   places a new Claude (Desk) widget whose agent knows Desk's own source
   checkout and docs and is told to answer your question *about Desk and
@@ -4057,6 +4140,8 @@ HMSVC_DOC_FILENAME = "tempui-hmsvc.md"
 WIDGET_LOGS_DOC_FILENAME = "tempui-widget-logs.md"
 ASK_DESK_EXPERT_DOC_FILENAME = "tempui-ask-desk-expert.md"
 AGENT_EVENTS_DOC_FILENAME = "tempui-agent-events.md"
+HANDOFF_REQUESTS_DOC_FILENAME = "tempui-handoff-requests.md"
+FEEDBACK_ITEMS_DOC_FILENAME = "tempui-feedback-items.md"
 BREAKING_CHANGES_DOC_FILENAME = "tempui-breaking-changes.md"
 NEW_FEATURES_DOC_FILENAME = "tempui-new-features.md"
 BUILD_WIDGET_SCRIPT_FILENAME = "build_widget.py"
@@ -4087,6 +4172,8 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     WIDGET_LOGS_DOC_FILENAME: _WIDGET_LOGS_DOC,
     ASK_DESK_EXPERT_DOC_FILENAME: _ASK_DESK_EXPERT_DOC,
     AGENT_EVENTS_DOC_FILENAME: _AGENT_EVENTS_DOC,
+    HANDOFF_REQUESTS_DOC_FILENAME: _HANDOFF_REQUESTS_DOC,
+    FEEDBACK_ITEMS_DOC_FILENAME: _FEEDBACK_ITEMS_DOC,
     BREAKING_CHANGES_DOC_FILENAME: _BREAKING_CHANGES_DOC,
     NEW_FEATURES_DOC_FILENAME: _NEW_FEATURES_DOC,
     BUILD_WIDGET_SCRIPT_FILENAME: _BUILD_WIDGET_SCRIPT,

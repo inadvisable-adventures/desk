@@ -12855,3 +12855,77 @@ ba11954. COMPLETED: Recreate the HTML System Clock widget from
    COMPLETED 2026-10-21: `Send to agent` button row on `ScratchWidget`, `current_context.set_scratch_agent_sender`,
    `DeskWindow.send_text_to_agent`, `tests/verify/verify_scratch_send_to_agent.py`. Headless-verified only; not
    yet looked at in the live app. Text is capped at 400,000 characters (popup beyond that).
+
+fd2c1ba. COMPLETED: Generic `[RELOAD]` titlebar button (`../FEEDBACK/FEEDBACK-DESK-widget-frame-reload-button-replaced-by-stale-2026-10-20-1506.md`):
+   a new `_ReloadButton` in `src/desk/shell/widget_frame.py` (same shape as `_ChatButton`: non-selectable `[RELOAD]`
+   label, tooltip, wired into `_TitleBar`'s visibility, full-width and `_button_target_width` bookkeeping, and
+   `apply_scale`), placed in the slot `[STALE]` occupies. Shown on a placed `ChromiumWidget` (`kind: "html"`)
+   instance (the only kind with a page to re-navigate; `PythonWidgetHost` has no `reload`) whenever `[STALE]` could show
+   (not popup, not title_only; locked is fine) AND the instance is not stale;
+   when the `[STALE]` bit is set, `[STALE]` replaces it (never both). Clicking it (hit-tested centrally in
+   `canvas.py`: `_BUTTON_KINDS`, `_hit_test_chrome`, new `widget_reload_clicked` signal, dispatched in
+   `mouseReleaseEvent`) calls `frame.content.reload()` directly via a new `DeskWindow._on_widget_reload_clicked`:
+   a plain re-navigation of that one instance, with no rebuild, no content-hash check and no confirmation dialog
+   (`ChromiumWidget.reload` already clears the `[ERROR]` indicator). The titlebar button is user-facing chrome an
+   agent cannot click, so add a short mention to the tempui docs (new-features entry with a fresh tag) pointing
+   users at `[RELOAD]`. Update `design-docs/widget-ux.md`; add `tests/verify/verify_widget_reload_button.py`.
+
+   [planned: widget-reload-button.md (COMPLETED)]
+
+   COMPLETED 2026-10-20: `_ReloadButton` + canvas/window wiring, tag `[RELOAD] titlebar button on web widgets #696254`,
+   `design-docs/widget-ux.md`, `verify_widget_reload_button.py`. Headless-verified only; live browser not launched.
+
+e814eaf. COMPLETED: Cross-project task handoff MCP tools (item 1 of `../FEEDBACK/FEEDBACK-DESK-no-mcp-for-cross-agent-tasks-and-feedback-2026-10-21-0859.md`),
+   on a pluggable record store. First, a small bespoke `RecordStore` interface (no new dependency) in a new module
+   under `src/desk/`: `create(collection, record) -> id`, `get`, `list(collection, filter)`, `update(collection, id,
+   patch)`, `move`/status transition, with records as plain JSON-able dicts (id, status, timestamps, free text body)
+   so a document database could implement the same interface later. Ship one implementation now, `FilesystemRecordStore`
+   (one markdown file per record, YAML-style frontmatter for the structured fields, status expressed as the
+   `new/`/`in-progress/`/`complete/` subdirectory so it stays compatible with the existing `ae-sam-requests/` convention,
+   atomic claim via `os.rename`); the MCP tool code must only talk to the interface. Then `desk` MCP tools in
+   `src/desk/shell/desk_mcp_server.py`: `desk_create_handoff_request` (target project/directory, title, why, what,
+   constraints), `desk_list_handoff_requests` (optional project and status filters), `desk_claim_handoff_request` (fails
+   if already claimed), `desk_complete_handoff_request` (structured outcome + free-text note). Where the store lives for a
+   target project is a path argument resolved relative to the current project (never absolute in saved state). An agent-visible feature:
+   mint a tempui tag, changelog entry and a dedicated `.desk_temp` doc registered in `SPLIT_DOC_CONTENT`, linked from the
+   changelog entry and the higher-level docs. Needs a plan, `design-docs/` update and `tests/verify/` script (including a
+   second in-memory `RecordStore` implementation in the test, to prove the tools are store-agnostic).
+
+   [planned: handoff-requests.md (COMPLETED)]
+
+   COMPLETED 2026-10-21: `src/desk/record_store.py`, `src/desk/handoff_requests.py`, four `desk_*_handoff_request` tools,
+   tag `handoff request MCP tools #070658` + `tempui-handoff-requests.md`, `design-docs/architecture.md` section,
+   `verify_handoff_requests.py` (filesystem + in-memory stores, concurrent claim). Headless-verified only.
+
+540e886. COMPLETED: Feedback management MCP tools (item 2 of `../FEEDBACK/FEEDBACK-DESK-no-mcp-for-cross-agent-tasks-and-feedback-2026-10-21-0859.md`),
+   built on the `RecordStore` interface from TODO `e814eaf` (do that first), with a `FilesystemRecordStore` rooted at
+   `../FEEDBACK/` for now: records are the existing `FEEDBACK-DESK-<slug>-<date>-<time>.md` files, status is the existing
+   top-level / `parkinglot/` / `implemented/` / `external/` placement, so existing files and the human workflow keep working
+   unchanged. `desk` MCP tools: `desk_create_feedback` (title, body; the tool derives slug, project name and timestamp
+   filename, so the caller needs to know no convention), `desk_list_feedback` (status and keyword filters, so near-duplicates
+   can be checked before filing), `desk_get_feedback` (content plus current triage state). Read/create only: triage moves
+   stay with Desk's maintainers (consistent with the process rule never to edit or delete a FEEDBACK file directly). The
+   tools talk only to the interface so a document-database store can replace the filesystem one. Agent-visible: tempui tag,
+   changelog entry and dedicated doc as for `e814eaf`; plan, design doc and `tests/verify/` script (with an in-memory store).
+
+   [planned: feedback-items.md (COMPLETED)]
+
+   COMPLETED 2026-10-21: `src/desk/feedback_items.py` (codec/id factory on `FilesystemRecordStore`), three `desk_*_feedback` tools,
+   tag `feedback item MCP tools #156881` + `tempui-feedback-items.md`, `verify_feedback_items.py`. Headless-verified only.
+   The source FEEDBACK file stays put until the parked item 3 (PARKINGLOT) is resolved.
+
+0dcbbc5. COMPLETED: Bug: the Claude (Desk) widget sometimes shows its "no response for Ns" counter while idle, with no work in flight.
+   Suspected cause (`ClaudeSession._dispatch`, `src/desk/claude_session.py`): any stream message arriving with no turn
+   outstanding opens an *unsolicited turn* (`unsolicited_turn_started`), which `StalenessTracker` treats as outstanding
+   until a `ResultMessage` closes it. Bookkeeping messages that need not be followed by a result (background-task
+   `Task*` messages, `HookEventMessage`, other `SystemMessage`s) therefore leave an unsolicited turn open forever, and the
+   counter runs while idle. Fix: only a message that is real model output (`AssistantMessage`, `StreamEvent`) opens an
+   unsolicited turn; other turn-less messages are tagged with no turn (`turn_id` None, unsolicited) and open nothing.
+   Add a regression test in `verify_claude_desk_staleness.py` driving `_dispatch` with a `TaskNotificationMessage` while
+   idle and asserting the tracker stays non-outstanding; note in the plan that the cause is inferred from the code and
+   was not reproduced live.
+
+   [planned: claude-desk-idle-stale-counter.md (COMPLETED)]
+
+   COMPLETED 2026-10-21: `_dispatch` opens an unsolicited turn only for `AssistantMessage`/`StreamEvent`; regression test
+   in `verify_claude_desk_staleness.py` (fails without the fix). Cause inferred from code, not reproduced live.
