@@ -52,7 +52,7 @@ class HmsvcManagerWidget(QWidget):
         super().__init__(parent)
         self._services: list[dict] = []
         self._selected: str | None = None
-        self._collapsed: set[str] = set()
+        self._expanded: set[str] = set()  # entries default to collapsed
         self._subscription: EventSubscription | None = None
 
         self._status_label = QLabel()
@@ -107,7 +107,7 @@ class HmsvcManagerWidget(QWidget):
 
     def _populate_list(self) -> None:
         self._list.clear()
-        self._collapsed &= {s["name"] for s in self._services}
+        self._expanded &= {s["name"] for s in self._services}
         running = sum(1 for s in self._services if s["status"] == STATUS_RUNNING)
         if not self._services:
             self._status_label.setText(f"No services. Add one at {HMSVC_DIRNAME}/<name>/{SERVICE_ENTRY_FILENAME}.")
@@ -127,7 +127,7 @@ class HmsvcManagerWidget(QWidget):
         layout.setContentsMargins(6, 4, 6, 4)
         layout.setSpacing(8)
 
-        collapsed = service["name"] in self._collapsed
+        collapsed = service["name"] not in self._expanded
         color = STATUS_COLORS.get(service["status"], "#666")
         details = [f"<b>{service['name']}</b> <span style='color:{color}'>{service['status']}</span>"]
         if collapsed:
@@ -159,7 +159,7 @@ class HmsvcManagerWidget(QWidget):
         return self._add_row_buttons(layout, row, service)
 
     def _add_row_buttons(self, layout: QHBoxLayout, row: QWidget, service: dict) -> QWidget:
-        collapsed = service["name"] in self._collapsed
+        collapsed = service["name"] not in self._expanded
         active = service["status"] in (STATUS_RUNNING, STATUS_STARTING)
         name = service["name"]
         for text, handler, enabled in (
@@ -182,7 +182,7 @@ class HmsvcManagerWidget(QWidget):
         return row
 
     def _toggle_collapsed(self, name: str) -> None:
-        self._collapsed ^= {name}
+        self._expanded ^= {name}
         self._populate_list()
 
     # -- actions -------------------------------------------------------
