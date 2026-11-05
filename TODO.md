@@ -12953,3 +12953,10 @@ e5b5567. COMPLETED: `compute_version_hash` (`src/desk/installed_jobs.py`) skips 
    COMPLETED 2026-10-23: `SELF_MANAGED_VENV_DIRNAME` skip in `compute_version_hash`, `tempui-installed-jobs.md` "Self-managed venvs" section,
    tag `installed job version hash skips .venv #284781` + changelog entry (notes the one-time re-approval), LEARNINGS entry,
    `verify_installed_job_venv_hash.py`. Headless-verified. The hmsvc `venv` setting is a user-chosen path for a service, unrelated to a job's hash.
+
+5c79c86. COMPLETED: Redesign the entries on the microservices widget to be individually collapsable into single-row showing the status, name, and buttons, as well as an uncollapse button.
+
+   [planned: hmsvc-manager-collapsible-entries.md (COMPLETED)]
+
+   COMPLETED 2026-11-05: per-entry `Collapse`/`Expand` button in `widgets/hmsvc_manager/widget.py`; collapsed rows keep name, status
+   and the action buttons. Session-only state (not saved in the `.desk` file). `verify_hmsvc_manager_collapse.py`, headless-verified only.
