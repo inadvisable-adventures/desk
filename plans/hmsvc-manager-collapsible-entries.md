@@ -10,7 +10,7 @@ button. Expanded entries look as they do today (details, URLs, description) plus
 - `tests/verify/verify_hmsvc_manager_collapse.py` (new)
 
 ## Approach
-1. Keep `self._collapsed: set[str]` (service names). Session-only, not saved in the `.desk` file;
+1. Keep `self._expanded: set[str]` (service names; entries are collapsed by default, per user preference). Session-only, not saved in the `.desk` file;
    it survives list repopulation (status events rebuild every row).
 2. `_build_row` takes the collapsed flag. Collapsed: a label with `<b>name</b> status` only, then
    the buttons, then the toggle. Expanded: today's rich label, buttons, toggle.

@@ -12958,5 +12958,5 @@ e5b5567. COMPLETED: `compute_version_hash` (`src/desk/installed_jobs.py`) skips 
 
    [planned: hmsvc-manager-collapsible-entries.md (COMPLETED)]
 
-   COMPLETED 2026-11-05: per-entry `Collapse`/`Expand` button in `widgets/hmsvc_manager/widget.py`; collapsed rows keep name, status
+   COMPLETED 2026-11-05: per-entry `Collapse`/`Expand` button (collapsed by default) in `widgets/hmsvc_manager/widget.py`; collapsed rows keep name, status
    and the action buttons. Session-only state (not saved in the `.desk` file). `verify_hmsvc_manager_collapse.py`, headless-verified only.
