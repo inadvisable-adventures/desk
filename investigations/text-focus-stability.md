@@ -270,3 +270,121 @@ repaint half); and `painted=` naming the new focus target's frame or a neighbour
 only shows what preceded a flip, not how often the same thing happens without one -- compare against
 the ordinary entries in a longer capture before calling it causal. See
 `plans/focus-log-cause-attribution.md`.
+
+## Update 2026-11-05: fourth session, first clean `ev=`/`painted=` capture, implicates `TouchUpdate`
+
+Reported from `inadvisable-archive` (a different project again; same plan as before -- the Focus
+Logger widget had been left placed but idle, and was switched on ad hoc, not as a deliberate repro
+attempt). **Files:** `desk-focus` log, `2026-11-05T14:25:26.706-08:00` through
+`14:26:18.215-08:00` (47 entries, no `rec` tag -- not narrated; pulled retroactively via
+`desk_query_widget_log` after the user noticed focus "jumping all over the place" while using a
+`claude_desk` instance). Widgets involved: the focused `claude_desk` instance (`6c33c55e...`), the
+Focus Logger widget's own frame (`a91a11c1`), and an open `markdown` widget showing the project's
+README (`294a0203`).
+
+**What happened, per the log:** while the user repeatedly clicked into `6c33c55e...`'s prompt box
+and typed, scene focus spontaneously flipped to `a91a11c1` -- the Focus Logger's *own* frame --
+three times in the first 12 seconds (`since_input` 718ms, 1572ms, 1216ms after the preceding
+keystroke), each tagged `reason=MouseFocusReason`, `py=native`, no intervening `mouse_press`. A
+fourth flip happened 5.6s after the user finally sent a message (Return), immediately (within
+20ms) *before* a genuine click landed on `a91a11c1` to press its Stop button -- so Qt handed it
+focus right before the user's own deliberate click got there, the same symptom riding along with a
+real subsequent click rather than standing fully alone. All four flips logged `gap=0.0 overlap=1`
+against `nbr=294a0203`.
+
+This is the first capture where TODO `48fd3e0`'s `ev=`/`painted=` attribution actually had content
+on a repro, rather than the ambiguous `app.py:62:main<...` stack from 2026-10-16. Two of the three
+mid-typing flips show a clean chain immediately before the change:
+
+```
+14:25:30.254  focus_item old=6c33c55e... new=a91a11c1 reason=MouseFocusReason widget=none
+              since_input=718 py=native gap=0.0 nbr=294a0203 overlap=1
+              ev=TouchUpdate:QGraphicsScene:6<TouchUpdate:QWidget:6<TouchUpdate:QWindow:6<Timer:QObject:17
+              painted=a91a11c1:31,294a0203:32,canvas:33
+14:25:34.178  focus_item old=6c33c55e... new=a91a11c1 ... since_input=1572 py=native gap=0.0
+              nbr=294a0203 overlap=1
+              ev=TouchUpdate:QGraphicsScene:7<TouchUpdate:QWidget:7<TouchUpdate:QWindow:7<Timer:QTimer^FocusLoggerWidget:9
+```
+
+**Reading:** two new things this capture adds beyond 2026-10-16's write-up:
+
+- **`TouchUpdate` (trackpad gesture) events, not a bare `Timer`, are the newest thing dispatched
+  immediately before the flip** (ages 6-9ms) in every case where `ev=` has content. The 2026-10-16
+  session never got a populated `ev=` to compare against. Worth testing deliberately: does the bug
+  still occur with the trackpad untouched (mouse-only input), or is a touch/gesture event actually
+  part of the trigger rather than incidental?
+- **The frame gaining the spurious focus is itself the self-updating widget**, not merely near one.
+  `a91a11c1` is the Focus Logger -- it polls and repaints its own `QPlainTextEdit` every 500ms (see
+  `widgets/focus_logger/widget.py`'s `_poll`/`_timer`), and one flip's `ev=` names that exact timer
+  (`Timer:QTimer^FocusLoggerWidget:9`), trailing right behind the `TouchUpdate` chain. 2026-10-16's
+  leading candidate was "proximity to a neighbour that updates on its own schedule"; this session is
+  consistent with a narrower version -- the frame that ends up gaining focus is the one with its own
+  background timer, independent of whether a neighbour also updates itself. `nbr=294a0203` (the
+  README markdown widget) was the nearest *other* frame each time, but nothing shows it updating
+  itself independently the way `SamothraceMap` did in the prior session, so it's likely just along
+  for the ride geometrically rather than a second active cause here.
+
+**Caveats:** not narrated, no timecoded transcript; the `Timer:QTimer^FocusLoggerWidget` correlation
+is one data point (one of three flips), and a `Timer:QTimer^EventSubscription:123` trails the third
+flip instead (123ms old -- likely just whatever was in the 24-entry event ring, not necessarily
+causal). The `TouchUpdate` chain is the more consistent signal across flips.
+
+**Next step:** replay this shape with the trackpad/touchpad disabled (mouse-only) to see if
+`TouchUpdate` is necessary, not just present; and with the Focus Logger widget's own poll timer
+paused (comment out `self._timer.start()`) while otherwise identical, to test whether a widget with
+*no* self-repaint ever becomes a flip target even while sitting at `gap=0.0 overlap=1` next to
+something else.
+
+**Full raw log** (all 47 entries, `desk_query_widget_log("desk-focus")`, unlike 2026-10-16 kept
+inline here rather than in a separate `FEEDBACK/` file since the store is in-memory and
+ring-bounded and this project has no such file to put it in):
+
+```
+2026-11-05T14:25:26.706-08:00	session_start
+2026-11-05T14:25:28.388-08:00	mouse_press button=LeftButton frame=6c33c55e-2b0c-40b2-a626-83d25217290a chrome=content stack=6c33c55e-2b0c-40b2-a626-83d25217290a gap=41.2 nbr=a91a11c1 overlap=0
+2026-11-05T14:25:28.389-08:00	focus_in frame=6c33c55e-2b0c-40b2-a626-83d25217290a widget=_PromptInput reason=MouseFocusReason from=none py=canvas.py:616:mousePressEvent ev=GraphicsSceneMousePress:QGraphicsScene:0<MouseButtonPress:QWidget:1<MouseButtonPress:QWindow:1<TouchUpdate:QWindow:1 painted=87596cef:8,canvas:13,a91a11c1:16,6c33c55e-2b0c-40b2-a626-83d25217290a:17
+2026-11-05T14:25:28.416-08:00	focus_item old=a91a11c1 new=6c33c55e-2b0c-40b2-a626-83d25217290a reason=MouseFocusReason widget=_PromptInput since_input=27 py=canvas.py:616:mousePressEvent gap=41.2 nbr=a91a11c1 overlap=0 ev=GraphicsSceneMousePress:QGraphicsScene:27<MouseButtonPress:QWidget:27<MouseButtonPress:QWindow:27<TouchUpdate:QWindow:28 painted=87596cef:35,canvas:40,a91a11c1:43,6c33c55e-2b0c-40b2-a626-83d25217290a:43
+2026-11-05T14:25:29.535-08:00	mouse_press button=LeftButton frame=6c33c55e-2b0c-40b2-a626-83d25217290a chrome=content stack=6c33c55e-2b0c-40b2-a626-83d25217290a gap=41.2 nbr=a91a11c1 overlap=0
+2026-11-05T14:25:30.248-08:00	focus_out frame=6c33c55e-2b0c-40b2-a626-83d25217290a widget=_PromptInput reason=MouseFocusReason
+2026-11-05T14:25:30.254-08:00	focus_item old=6c33c55e-2b0c-40b2-a626-83d25217290a new=a91a11c1 reason=MouseFocusReason widget=none since_input=718 py=native gap=0.0 nbr=294a0203 overlap=1 ev=TouchUpdate:QGraphicsScene:6<TouchUpdate:QWidget:6<TouchUpdate:QWindow:6<Timer:QObject:17 painted=a91a11c1:31,294a0203:32,canvas:33
+2026-11-05T14:25:32.606-08:00	mouse_press button=LeftButton frame=6c33c55e-2b0c-40b2-a626-83d25217290a chrome=content stack=6c33c55e-2b0c-40b2-a626-83d25217290a gap=41.2 nbr=a91a11c1 overlap=0
+2026-11-05T14:25:32.607-08:00	focus_in frame=6c33c55e-2b0c-40b2-a626-83d25217290a widget=_PromptInput reason=MouseFocusReason from=_PromptInput py=canvas.py:616:mousePressEvent ev=GraphicsSceneMousePress:QGraphicsScene:0<MouseButtonPress:QWidget:1<MouseButtonPress:QWindow:1<Timer:QTimer^EventSubscription:38
+2026-11-05T14:25:32.614-08:00	focus_item old=a91a11c1 new=6c33c55e-2b0c-40b2-a626-83d25217290a reason=MouseFocusReason widget=_PromptInput since_input=8 py=canvas.py:616:mousePressEvent gap=41.2 nbr=a91a11c1 overlap=0 ev=GraphicsSceneMousePress:QGraphicsScene:7<MouseButtonPress:QWidget:8<MouseButtonPress:QWindow:8<Timer:QTimer^EventSubscription:45
+2026-11-05T14:25:34.171-08:00	focus_out frame=6c33c55e-2b0c-40b2-a626-83d25217290a widget=_PromptInput reason=MouseFocusReason
+2026-11-05T14:25:34.178-08:00	focus_item old=6c33c55e-2b0c-40b2-a626-83d25217290a new=a91a11c1 reason=MouseFocusReason widget=none since_input=1572 py=native gap=0.0 nbr=294a0203 overlap=1 ev=TouchUpdate:QGraphicsScene:7<TouchUpdate:QWidget:7<TouchUpdate:QWindow:7<Timer:QTimer^FocusLoggerWidget:9
+2026-11-05T14:25:38.375-08:00	mouse_press button=LeftButton frame=6c33c55e-2b0c-40b2-a626-83d25217290a chrome=content stack=6c33c55e-2b0c-40b2-a626-83d25217290a gap=41.2 nbr=a91a11c1 overlap=0
+2026-11-05T14:25:38.376-08:00	focus_in frame=6c33c55e-2b0c-40b2-a626-83d25217290a widget=_PromptInput reason=MouseFocusReason from=_PromptInput py=canvas.py:616:mousePressEvent ev=GraphicsSceneMousePress:QGraphicsScene:0<MouseButtonPress:QWidget:0<MouseButtonPress:QWindow:0<MetaCall:QGraphicsScene:11 painted=87596cef:6,canvas:11
+2026-11-05T14:25:38.379-08:00	focus_item old=a91a11c1 new=6c33c55e-2b0c-40b2-a626-83d25217290a reason=MouseFocusReason widget=_PromptInput since_input=4 py=canvas.py:616:mousePressEvent gap=41.2 nbr=a91a11c1 overlap=0 ev=GraphicsSceneMousePress:QGraphicsScene:3<MouseButtonPress:QWidget:4<MouseButtonPress:QWindow:4<MetaCall:QGraphicsScene:15 painted=87596cef:10,canvas:14
+2026-11-05T14:25:39.583-08:00	focus_out frame=6c33c55e-2b0c-40b2-a626-83d25217290a widget=_PromptInput reason=MouseFocusReason
+2026-11-05T14:25:39.592-08:00	focus_item old=6c33c55e-2b0c-40b2-a626-83d25217290a new=a91a11c1 reason=MouseFocusReason widget=none since_input=1216 py=native gap=0.0 nbr=294a0203 overlap=1 ev=TouchUpdate:QGraphicsScene:9<TouchUpdate:QWidget:9<TouchUpdate:QWindow:9<Timer:QTimer^EventSubscription:123
+2026-11-05T14:25:40.927-08:00	mouse_press button=LeftButton frame=none chrome=canvas stack=none
+2026-11-05T14:25:40.929-08:00	focus_item old=a91a11c1 new=none reason=MouseFocusReason widget=none since_input=2 py=canvas.py:620:mousePressEvent ev=GraphicsSceneMousePress:QGraphicsScene:1<MouseButtonPress:QWidget:2<MouseButtonPress:QWindow:2<MetaCall:QGraphicsScene:66 painted=87596cef:60,canvas:65
+2026-11-05T14:25:43.549-08:00	mouse_press button=LeftButton frame=6c33c55e-2b0c-40b2-a626-83d25217290a chrome=content stack=6c33c55e-2b0c-40b2-a626-83d25217290a gap=41.2 nbr=a91a11c1 overlap=0
+2026-11-05T14:25:43.550-08:00	focus_in frame=6c33c55e-2b0c-40b2-a626-83d25217290a widget=_PromptInput reason=MouseFocusReason from=_PromptInput py=canvas.py:616:mousePressEvent ev=GraphicsSceneMousePress:QGraphicsScene:0<MouseButtonPress:QWidget:2<MouseButtonPress:QWindow:2<Timer:QTimer^EventSubscription:31
+2026-11-05T14:25:43.556-08:00	focus_item old=none new=6c33c55e-2b0c-40b2-a626-83d25217290a reason=MouseFocusReason widget=_PromptInput since_input=7 py=canvas.py:616:mousePressEvent gap=41.2 nbr=a91a11c1 overlap=0 ev=GraphicsSceneMousePress:QGraphicsScene:5<MouseButtonPress:QWidget:7<MouseButtonPress:QWindow:7<Timer:QTimer^EventSubscription:37
+2026-11-05T14:25:48.221-08:00	typing n=3
+2026-11-05T14:25:49.784-08:00	typing n=1
+2026-11-05T14:25:50.832-08:00	typing n=2
+2026-11-05T14:25:57.949-08:00	key key=Key_Backspace mods=none
+2026-11-05T14:25:58.123-08:00	key key=Key_Backspace mods=none
+2026-11-05T14:25:58.296-08:00	key key=Key_Backspace mods=none
+2026-11-05T14:25:58.463-08:00	key key=Key_Backspace mods=none
+2026-11-05T14:25:58.669-08:00	key key=Key_Backspace mods=none
+2026-11-05T14:26:00.338-08:00	key key=Key_Backspace mods=none
+2026-11-05T14:26:01.546-08:00	key key=Key_Backspace mods=none
+2026-11-05T14:26:01.693-08:00	typing n=12
+2026-11-05T14:26:04.949-08:00	key key=Key_Shift mods=Shift
+2026-11-05T14:26:05.041-08:00	typing n=4
+2026-11-05T14:26:06.535-08:00	typing n=1
+2026-11-05T14:26:06.634-08:00	key key=Key_Shift mods=Shift
+2026-11-05T14:26:06.755-08:00	typing n=12
+2026-11-05T14:26:09.117-08:00	key key=Key_Right mods=none
+2026-11-05T14:26:10.621-08:00	key key=Key_Right mods=none
+2026-11-05T14:26:11.020-08:00	key key=Key_Right mods=none
+2026-11-05T14:26:11.829-08:00	typing n=1
+2026-11-05T14:26:12.592-08:00	key key=Key_Return mods=none
+2026-11-05T14:26:18.191-08:00	focus_out frame=6c33c55e-2b0c-40b2-a626-83d25217290a widget=_PromptInput reason=MouseFocusReason
+2026-11-05T14:26:18.194-08:00	focus_item old=6c33c55e-2b0c-40b2-a626-83d25217290a new=a91a11c1 reason=MouseFocusReason widget=none since_input=5602 py=native gap=0.0 nbr=294a0203 overlap=1 painted=6c33c55e-2b0c-40b2-a626-83d25217290a:3,canvas:5
+2026-11-05T14:26:18.214-08:00	mouse_press button=LeftButton frame=a91a11c1 chrome=content stack=a91a11c1 gap=0.0 nbr=294a0203 overlap=1
+2026-11-05T14:26:18.215-08:00	session_stop
+```
