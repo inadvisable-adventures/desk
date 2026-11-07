@@ -111,6 +111,7 @@ _FakeWindow._bind_temp_ui_widget = DeskWindow._bind_temp_ui_widget
 _FakeWindow._bind_crash_log_widget = DeskWindow._bind_crash_log_widget
 _FakeWindow._bind_widget_local_storage = DeskWindow._bind_widget_local_storage
 _FakeWindow._capture_desk_state = DeskWindow._capture_desk_state
+_FakeWindow._capture_docked = lambda self: []  # TODO 6413e58
 _FakeWindow._get_widget_local_storage = DeskWindow._get_widget_local_storage
 
 

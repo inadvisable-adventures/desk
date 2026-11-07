@@ -77,6 +77,7 @@ class _FakeWindow:
 
 
 _FakeWindow._capture_desk_state = DeskWindow._capture_desk_state
+_FakeWindow._capture_docked = lambda self: []  # TODO 6413e58
 _FakeWindow._flush_scratch_backing_files = DeskWindow._flush_scratch_backing_files
 
 

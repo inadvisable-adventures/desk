@@ -20,13 +20,20 @@ reordered or its description edited.
    entry, `DeskWindow` area methods, five MCP tools, `verify_desk_areas.py`. Headless-verified only; the item's own
    right-click menu and a live visual check were not exercised. Also re-ordered `_NEW_FEATURES` (out of order after a merge).
 
-6413e58. Docked sidebar region in the main window that can host a widget (from the desk-areas feedback, which asks for
+6413e58. COMPLETED: Docked sidebar region in the main window that can host a widget (from the desk-areas feedback, which asks for
    "a side-bar docked widget that lists the areas"; chosen with the user as a real docked sidebar rather than a normal
-   canvas widget). Nothing like it exists yet: `DeskWindow` is a `QMainWindow` whose central widget is the canvas, so a
-   `QDockWidget` region is the natural base. Needs: which widget kinds can dock (python only first?), how a widget is
-   docked/undocked, whether the dock state persists in the `.desk` file, show/hide, and the embedded-control rules in
-   `python-widget-conventions.md` (a docked widget is outside the zoomable canvas, so the QComboBox caveat should not apply
-   there -- verify). Plan before implementing. Blocks TODO `747806b`.
+   canvas widget). A right-hand `QDockWidget` region hosting `kind: "python"` widgets outside the zoomable canvas; a docked
+   widget is the bare `PythonWidgetHost` (no canvas frame), with a title bar offering "move to canvas" and "remove". Human
+   entry: a collapsed "Dock in sidebar" group in the canvas right-click menu. Agent entry: `desk_dock_widget`,
+   `desk_undock_widget`, `desk_list_docked_widgets`. Persisted in the `.desk` file. Blocks TODO `747806b`.
+
+   [planned: docked-sidebar.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: `Desk.docked`/`DockedWidgetState`, `DeskWindow.dock_widget_by_id`/`undock_widget`/
+   `close_docked_widget`/`list_docked_widgets` (+ capture/load/clear), spawn-menu group, three MCP tools,
+   `tempui-docked-widgets.md` + changelog tag, `verify_docked_sidebar.py`. Headless-verified only. Limits, by design:
+   python widgets only; fixed to the right edge; no titlebar markers; a docked widget is not in `desk_list_widget_instances`
+   or screenshot-able; an already-placed widget cannot be moved into the dock (only freshly docked).
 
 747806b. The Areas list widget, docked in the sidebar from TODO `6413e58`: lists the desk's areas (live, via
    `desk.areas.changed`); clicking one views it; also rename/delete/add. Reads through `DeskWindow.list_areas` and acts

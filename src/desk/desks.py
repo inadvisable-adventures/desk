@@ -96,6 +96,18 @@ class AreaState:
 
 
 @dataclass
+class DockedWidgetState:
+    """A widget living in the main window's docked sidebar rather than on
+    the canvas (TODO 6413e58). `state` is its widget-local storage, as for
+    a placed widget; `width` the dock's last width in pixels (0 = default)."""
+
+    widget_id: str
+    instance_id: str = field(default_factory=_new_instance_id)
+    state: dict = field(default_factory=dict)
+    width: int = 0
+
+
+@dataclass
 class RemovedWidget:
     """A tombstone for a removed widget instance (TODO 454d718): enough to
     place a brand-new instance seeded with the old one's widget-local
@@ -152,6 +164,8 @@ class Desk:
     # DeskWindow as areas are created/moved/renamed/deleted, so
     # _capture_desk_state carries it over like the fields above.
     areas: list[AreaState] = field(default_factory=list)
+    # TODO 6413e58: widgets docked in the sidebar, in top-to-bottom order.
+    docked: list[DockedWidgetState] = field(default_factory=list)
 
     @property
     def name(self) -> str:
@@ -229,6 +243,7 @@ def load_desk(path: Path) -> Desk:
         installed_jobs=installed_jobs,
         recently_removed=[RemovedWidget(**r) for r in data.get("recently_removed", [])],
         areas=[AreaState(**a) for a in data.get("areas", [])],
+        docked=[DockedWidgetState(**d) for d in data.get("docked", [])],
     )
 
 
@@ -312,6 +327,7 @@ def desk_state_dict(desk: Desk, stale_by_instance_id: dict[str, bool] | None = N
         "installed_jobs": [_installed_job_dict(j) for j in desk.installed_jobs],
         "recently_removed": [asdict(r) for r in desk.recently_removed],
         "areas": [asdict(a) for a in desk.areas],
+        "docked": [asdict(d) for d in desk.docked],
     }
 
 

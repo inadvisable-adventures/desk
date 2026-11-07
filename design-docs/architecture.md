@@ -911,6 +911,16 @@ Desk Bridge API.
     `desk_*_area` MCP tools and the canvas chrome both call. Every change
     publishes `desk.areas.changed`. A docked sidebar listing areas is TODO
     `6413e58`/`747806b`. See `plans/desk-areas-core.md`.
+36. **Docked sidebar** (`DeskWindow.dock_widget_by_id` et al., `Desk.docked`, TODO
+    `6413e58`) — a right-hand `QDockWidget` region for `kind: "python"` widgets
+    outside the zoomable canvas. A docked widget is the bare `PythonWidgetHost`
+    in a dock (frame chrome is drawn and hit-tested by the canvas, so a
+    `WidgetFrame` cannot live outside it): event mediator and widget-local
+    storage are bound as for a placed widget, but there are no titlebar markers
+    and it is not in `desk_list_widget_instances`; `desk_state_dict` carries it
+    as `docked`. Entry points are the canvas right-click menu's collapsed "Dock
+    in sidebar" group and the `desk_dock_widget`/`desk_undock_widget`/
+    `desk_list_docked_widgets` MCP tools. See `plans/docked-sidebar.md`.
 
 
 ## Isolation and trust tiers

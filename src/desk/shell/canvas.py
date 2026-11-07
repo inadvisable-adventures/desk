@@ -34,7 +34,7 @@ from desk.shell.widget_frame import (
     _TitleBar,
     _UnlockButton,
 )
-from desk.shell.widget_spawn_menu import WidgetSpawnMenu
+from desk.shell.widget_spawn_menu import DOCK_ID_PREFIX, WidgetSpawnMenu
 from desk.shell.zoom_control import ZoomControl
 from desk.widgets import WidgetInfo
 
@@ -124,6 +124,7 @@ class WorkspaceView(QGraphicsView):
     empty_canvas_double_clicked = pyqtSignal(QPointF)  # TODO 496d685: scene pos of the double-click
     # TODO 0460b4c (desk areas): the right-click menu's "Desk Area" entry, with the scene pos of the click.
     area_add_requested = pyqtSignal(QPointF)
+    widget_dock_requested = pyqtSignal(str)  # TODO 6413e58: widget_id chosen from "Dock in sidebar"
     area_geometry_changed = pyqtSignal(str, float, float, float, float)  # a user move/resize finished
     area_rename_requested = pyqtSignal(str)
     area_delete_requested = pyqtSignal(str)
@@ -331,22 +332,31 @@ class WorkspaceView(QGraphicsView):
             capabilities=[],
             default_size=None,
         )
-        menu = WidgetSpawnMenu(spawnable_catalog, self)
+        dockable = frozenset(
+            widget_id
+            for widget_id, info in spawnable_catalog.items()
+            if info.kind == "python" and widget_id != AREA_MENU_ID
+        )
+        menu = WidgetSpawnMenu(spawnable_catalog, self, dockable)
         # Deferred (TODO 8c9436b): WidgetSpawnMenu, like _DeskListPopup,
         # is a WA_DeleteOnClose QAbstractItemView (QTreeWidget)-based
         # popup that closes itself right before emitting -- the same
         # vulnerable shape, even though neither handler shows a modal
         # dialog today. See qt_utils.deferred and LEARNINGS.md.
         menu.widget_chosen.connect(
-            deferred(
-                lambda widget_id: self.area_add_requested.emit(scene_pos)
-                if widget_id == AREA_MENU_ID
-                else self.widget_add_requested.emit(widget_id, scene_pos)
-            )
+            deferred(lambda widget_id: self._on_spawn_menu_choice(widget_id, scene_pos))
         )
         menu.paste_requested.connect(deferred(lambda: self.paste_requested.emit(scene_pos)))
         menu.move(event.globalPos())
         menu.show()
+
+    def _on_spawn_menu_choice(self, widget_id: str, scene_pos: QPointF) -> None:
+        if widget_id.startswith(DOCK_ID_PREFIX):
+            self.widget_dock_requested.emit(widget_id[len(DOCK_ID_PREFIX):])
+        elif widget_id == AREA_MENU_ID:
+            self.area_add_requested.emit(scene_pos)
+        else:
+            self.widget_add_requested.emit(widget_id, scene_pos)
 
     @staticmethod
     def _local_file_urls(mime_data) -> list:

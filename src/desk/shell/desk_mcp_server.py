@@ -326,6 +326,67 @@ async def _view_area(args: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool(
+    "desk_dock_widget",
+    "Dock a new instance of a kind:\"python\" widget in the main window's right-hand sidebar -- a "
+    "region outside the zoomable canvas that stays put while the canvas pans and zooms. Returns the "
+    "new instance_id. Optional state (a JSON object) seeds the widget's own local storage, as for "
+    "desk_place_widget. A docked widget is not listed by desk_list_widget_instances and cannot be "
+    "screenshotted with desk_screenshot_widget; use desk_list_docked_widgets to see what is docked. "
+    "See tempui-docked-widgets.md.",
+    {
+        "type": "object",
+        "properties": {"widget_id": {"type": "string"}, "state": {"type": "object"}},
+        "required": ["widget_id"],
+    },
+)
+async def _dock_widget(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    widget_id = args.get("widget_id")
+    if not isinstance(widget_id, str) or not widget_id.strip():
+        return _text_result("widget_id must be a non-empty string.", is_error=True)
+    try:
+        instance_id = await _call_on_gui_thread(lambda: window.dock_widget_by_id(widget_id.strip(), args.get("state")))
+    except (RuntimeError, ValueError) as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(instance_id)
+
+
+@tool(
+    "desk_undock_widget",
+    "Move a docked widget (see desk_dock_widget) onto the canvas, centered in the current view, "
+    "keeping its state and instance_id. Returns the instance_id.",
+    {"instance_id": str},
+)
+async def _undock_widget(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        instance_id = await _call_on_gui_thread(lambda: window.undock_widget(args["instance_id"]))
+    except (RuntimeError, ValueError) as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(instance_id)
+
+
+@tool(
+    "desk_list_docked_widgets",
+    "List the widgets docked in the sidebar (instance_id, widget_id, name), top to bottom. Read-only.",
+    {},
+)
+async def _list_docked_widgets(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        docked = await _call_on_gui_thread(lambda: window.list_docked_widgets())
+    except RuntimeError as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(json.dumps(docked))
+
+
+@tool(
     "desk_screenshot_widget",
     "Save a real PNG screenshot of a specific placed widget instance's own frame (titlebar and "
     "content, exactly as it looks on the canvas) to path. A relative path resolves against the "
@@ -1144,6 +1205,9 @@ _TOOLS = [
     _update_area,
     _delete_area,
     _view_area,
+    _dock_widget,
+    _undock_widget,
+    _list_docked_widgets,
     _screenshot_widget,
     _screenshot_desk,
     _list_widget_instances,

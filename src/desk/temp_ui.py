@@ -255,6 +255,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "mermaid classDef/class node styling #200895",
     "mermaid subgraph containment boxes #200896",
     "desk areas: background regions + MCP tools #377360",
+    "docked sidebar widgets + MCP tools #797468",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -365,6 +366,10 @@ And [tempui-widget-logs.md](./tempui-widget-logs.md) -- the `log` Bridge
 capability and its `desk_list_widget_logs`/`desk_query_widget_log` MCP
 tools, for letting an agent query what a widget has been doing; also not
 a dropped-file keyword.
+And [tempui-docked-widgets.md](./tempui-docked-widgets.md) -- the docked
+sidebar: `desk_dock_widget`/`desk_undock_widget`/`desk_list_docked_widgets`
+MCP tools for putting a `kind: "python"` widget in a panel outside the
+zoomable canvas; also not a dropped-file keyword.
 And [tempui-areas.md](./tempui-areas.md) -- desk areas: named, click-through
 background rectangles on the canvas you can create, rename, move, delete
 and jump to with the `desk_*_area` MCP tools; also not a dropped-file
@@ -808,6 +813,41 @@ reporting friction with Desk itself (not with your own project).
 Triage is done by Desk's maintainers; you can create and read, not move
 or edit. `directory` is relative to the current project (default
 `../FEEDBACK`); absolute paths are refused.
+"""
+
+_DOCKED_WIDGETS_DOC = """# Docked sidebar (desk_dock_widget)
+
+See `desk-temporary-ui.md` (in this same directory) for this directory's
+own overview and its current set of tags. This is not a tempui-DSL file
+type: it is three MCP tools on the `desk` server.
+
+The main window has a **docked sidebar** down its right edge, outside the
+zoomable Workspace Canvas: a docked widget stays put and at a fixed size
+while the canvas pans and zooms behind it. It is for small, always-visible
+panels (a list of the desk's areas, say), not for general work.
+
+- Only `kind: "python"` widgets can be docked for now; an html /
+  `DefineWidget` widget is refused with an error.
+- A human docks one from the canvas right-click menu: expand "Dock in
+  sidebar" and pick the widget. Each docked widget's title bar has a
+  "move to canvas" button and a "remove" button.
+- A docked widget has **no canvas frame**, so it has no titlebar markers
+  (`[ERROR]`, `[STALE]`, ...), is **not** listed by
+  `desk_list_widget_instances`, and cannot be screenshotted with
+  `desk_screenshot_widget`. Use `desk_list_docked_widgets` to see what is
+  docked; `desk.workspace.getState()` carries the same list as `docked`.
+- It keeps its widget-local storage (`get_widget_local_storage` /
+  `set_widget_local_storage`) and is saved in the `.desk` file.
+
+## MCP tools
+
+- `desk_dock_widget(widget_id, state?)` -- docks a new instance; the optional
+  `state` object seeds its widget-local storage, exactly as for
+  `desk_place_widget`. Returns the new `instance_id`.
+- `desk_undock_widget(instance_id)` -- moves it onto the canvas, centered in
+  the current view, keeping its state and `instance_id`.
+- `desk_list_docked_widgets()` -- `[{instance_id, widget_id, name}]`, top to
+  bottom.
 """
 
 _AREAS_DOC = """# Desk areas (desk_*_area MCP tools)
@@ -2922,6 +2962,18 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "docked sidebar widgets + MCP tools #797468": """- A **docked sidebar** on the right of the main window, outside the
+  zoomable canvas, that hosts `kind: "python"` widgets. A human docks one
+  from the canvas right-click menu's collapsed "Dock in sidebar" group; each
+  docked widget has a title bar with "move to canvas" and "remove" buttons.
+  New MCP tools: `desk_dock_widget(widget_id, state?)`,
+  `desk_undock_widget(instance_id)` and `desk_list_docked_widgets()`. A
+  docked widget keeps its widget-local storage and is saved in the `.desk`
+  file, but it has no canvas frame: it is not listed by
+  `desk_list_widget_instances` or screenshot-able with
+  `desk_screenshot_widget`, and appears as `docked` in
+  `desk.workspace.getState()`. See `tempui-docked-widgets.md`.
+""",
     "desk areas: background regions + MCP tools #377360": """- Desk **areas**: named rectangles drawn on the canvas background,
   behind every widget, that mark out a region and can be jumped to. A
   human adds one from the canvas right-click menu ("Desk Area"), drags its
@@ -4290,6 +4342,7 @@ HMSVC_DOC_FILENAME = "tempui-hmsvc.md"
 WIDGET_LOGS_DOC_FILENAME = "tempui-widget-logs.md"
 ASK_DESK_EXPERT_DOC_FILENAME = "tempui-ask-desk-expert.md"
 AREAS_DOC_FILENAME = "tempui-areas.md"
+DOCKED_WIDGETS_DOC_FILENAME = "tempui-docked-widgets.md"
 AGENT_EVENTS_DOC_FILENAME = "tempui-agent-events.md"
 HANDOFF_REQUESTS_DOC_FILENAME = "tempui-handoff-requests.md"
 FEEDBACK_ITEMS_DOC_FILENAME = "tempui-feedback-items.md"
@@ -4323,6 +4376,7 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     WIDGET_LOGS_DOC_FILENAME: _WIDGET_LOGS_DOC,
     ASK_DESK_EXPERT_DOC_FILENAME: _ASK_DESK_EXPERT_DOC,
     AREAS_DOC_FILENAME: _AREAS_DOC,
+    DOCKED_WIDGETS_DOC_FILENAME: _DOCKED_WIDGETS_DOC,
     AGENT_EVENTS_DOC_FILENAME: _AGENT_EVENTS_DOC,
     HANDOFF_REQUESTS_DOC_FILENAME: _HANDOFF_REQUESTS_DOC,
     FEEDBACK_ITEMS_DOC_FILENAME: _FEEDBACK_ITEMS_DOC,

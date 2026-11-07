@@ -13,7 +13,18 @@ from pathlib import Path
 
 from PyQt6.QtCore import QObject, QPointF, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QGuiApplication, QPixmap
-from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QWidget
+from PyQt6.QtWidgets import (
+    QApplication,
+    QDockWidget,
+    QFileDialog,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QToolButton,
+    QWidget,
+)
 
 from desk.custom_widgets import LikelySourceCandidate, build_from_source, find_likely_source_candidates, materialize, read_source_manifest
 from desk.desks import (
@@ -21,6 +32,7 @@ from desk.desks import (
     DESK_SUFFIX,
     AreaState,
     Desk,
+    DockedWidgetState,
     RemovedWidget,
     StateEntry,
     StateHistoryEntry,
@@ -319,6 +331,23 @@ class _DeprecationRelay(QObject):
     reported = pyqtSignal(object)
 
 
+def _set_python_local_storage(host: "PythonWidgetHost", data: dict) -> None:
+    """Restores a python widget's widget-local storage (TODO fb76057); a no-op
+    for one that does not implement `set_widget_local_storage`. Module-level so
+    both a placed frame and a docked widget (TODO 6413e58) share it."""
+    content = host.current
+    if content is None or not hasattr(content, "set_widget_local_storage"):
+        return
+    content.set_widget_local_storage(data)
+
+
+def _get_python_local_storage(host: "PythonWidgetHost") -> dict:
+    content = host.current
+    if content is None or not hasattr(content, "get_widget_local_storage"):
+        return {}
+    return content.get_widget_local_storage()
+
+
 class DeskWindow(QMainWindow):
     """Owns the single currently-open Desk for this window (only one
     window exists for now, and it can only have one Desk open at a time —
@@ -348,6 +377,8 @@ class DeskWindow(QMainWindow):
 
         self.view = WorkspaceView()
         self.setCentralWidget(self.view)
+        # TODO 6413e58: widgets living in the docked sidebar, by instance id.
+        self._docked: dict[str, QDockWidget] = {}
 
         self._popups_service = get_popups_service()
         self._popups_service.attach_view(self.view)
@@ -363,6 +394,7 @@ class DeskWindow(QMainWindow):
         self.view.set_widget_catalog(widgets)
         self.view.widget_add_requested.connect(self._on_widget_add_requested)
         self.view.area_add_requested.connect(self._on_area_add_requested)
+        self.view.widget_dock_requested.connect(self._on_widget_dock_requested)
         self.view.area_geometry_changed.connect(self._on_area_geometry_changed)
         self.view.area_rename_requested.connect(self._on_area_rename_requested)
         self.view.area_delete_requested.connect(self._on_area_delete_requested)
@@ -550,6 +582,7 @@ class DeskWindow(QMainWindow):
         self._refresh_builtin_schemas()
         self._load_desk_widgets(self.current_desk)
         self._load_desk_areas(self.current_desk)
+        self._load_desk_docked(self.current_desk)
         self.view.set_view_state(
             self.current_desk.pan_x, self.current_desk.pan_y, self.current_desk.scale
         )
@@ -1888,12 +1921,11 @@ class DeskWindow(QMainWindow):
         `getLocalStorage()` from its own startup code always sees the
         restored data, never a race against an empty default."""
         if isinstance(frame.content, PythonWidgetHost):
-            content = frame.content.current
-            if content is None or not hasattr(content, "set_widget_local_storage"):
-                return
-            content.set_widget_local_storage(data)
+            _set_python_local_storage(frame.content, data)
         elif isinstance(frame.content, ChromiumWidget):
             self._html_widget_local_storage[frame.instance_id] = data
+
+
 
     def _get_widget_local_storage(self, frame: WidgetFrame) -> dict:
         """The counterpart read side, called by `_capture_desk_state`
@@ -1911,10 +1943,7 @@ class DeskWindow(QMainWindow):
         to ask a browser page "what's your current state" the way a
         Python method call can)."""
         if isinstance(frame.content, PythonWidgetHost):
-            content = frame.content.current
-            if content is None or not hasattr(content, "get_widget_local_storage"):
-                return {}
-            return content.get_widget_local_storage()
+            return _get_python_local_storage(frame.content)
         if isinstance(frame.content, ChromiumWidget):
             return self._html_widget_local_storage.get(frame.instance_id, {})
         return {}
@@ -2654,6 +2683,7 @@ class DeskWindow(QMainWindow):
             pan_x=pan_x,
             pan_y=pan_y,
             scale=scale,
+            docked=self._capture_docked(),
         )
 
     def get_state_dict(self) -> dict:
@@ -3007,6 +3037,7 @@ class DeskWindow(QMainWindow):
             return
         self.save_current_desk()
         self.view.clear_widgets()
+        self._clear_docked()
         # TODO 929e730: every widget instance's Bridge credential belonged to
         # a frame clear_widgets() just destroyed (hmsvc credentials are
         # managed by their own start/stop).
@@ -3083,6 +3114,7 @@ class DeskWindow(QMainWindow):
         self._refresh_builtin_schemas()
         self._load_desk_widgets(new_desk)
         self._load_desk_areas(new_desk)
+        self._load_desk_docked(new_desk)
         self.view.set_view_state(new_desk.pan_x, new_desk.pan_y, new_desk.scale)
         self._sync_tempui_doc()
         add_to_mru(path)
@@ -4815,6 +4847,146 @@ class DeskWindow(QMainWindow):
 
     def _on_area_delete_requested(self, area_id: str) -> None:
         self.delete_area(area_id)
+
+    # -- Docked sidebar (TODO 6413e58) -------------------------------------
+
+    def _docked_title_bar(self, name: str, instance_id: str) -> QWidget:
+        bar = QWidget()
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(6, 2, 2, 2)
+        label = QLabel(name)
+        label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        font = label.font()
+        font.setBold(True)
+        label.setFont(font)
+        layout.addWidget(label, 1)
+        to_canvas = QToolButton()
+        to_canvas.setText("↗")
+        to_canvas.setToolTip("Move this widget to the canvas")
+        to_canvas.clicked.connect(lambda: self.undock_widget(instance_id))
+        layout.addWidget(to_canvas)
+        close = QToolButton()
+        close.setText("✕")
+        close.setToolTip("Remove this widget")
+        close.clicked.connect(lambda: self.close_docked_widget(instance_id))
+        layout.addWidget(close)
+        return bar
+
+    def dock_widget_by_id(
+        self,
+        widget_id: str,
+        state: dict | None = None,
+        instance_id: str | None = None,
+        width: int = 0,
+    ) -> str:
+        """Docks a new instance of a `kind: "python"` widget in the right-hand
+        sidebar and returns its instance_id. `state` seeds its widget-local
+        storage (as for desk_place_widget). Raises ValueError for an unknown
+        widget id, a non-python widget, or a non-dict state."""
+        info = self._widgets.get(widget_id)
+        if info is None:
+            known = ", ".join(sorted(self._widgets)) or "(none)"
+            raise ValueError(f"Unknown widget_id {widget_id!r}. Registered widget ids: {known}.")
+        if info.kind != "python":
+            raise ValueError(f"Only kind: \"python\" widgets can be docked in the sidebar; {widget_id!r} is {info.kind!r}.")
+        if state is not None and not isinstance(state, dict):
+            raise ValueError("state must be a JSON object.")
+        instance_id = instance_id or uuid.uuid4().hex[:8]
+        host = PythonWidgetHost(widget_id, info.path, info.entry, self._broker)
+        if state:
+            _set_python_local_storage(host, state)
+        content = host.current
+        if content is not None and hasattr(content, "bind_event_mediator"):
+            content.bind_event_mediator(instance_id, self._event_mediator)
+        dock = QDockWidget(info.name, self)
+        dock.setObjectName(f"docked-{instance_id}")
+        dock.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
+        dock.setTitleBarWidget(self._docked_title_bar(info.name, instance_id))
+        dock.setWidget(host)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+        if width > 0:
+            self.resizeDocks([dock], [width], Qt.Orientation.Horizontal)
+        self._docked[instance_id] = dock
+        return instance_id
+
+    def _remove_dock(self, instance_id: str) -> tuple[str, dict, int] | None:
+        """Tears a dock down; returns (widget_id, its state, width) or None."""
+        dock = self._docked.pop(instance_id, None)
+        if dock is None:
+            return None
+        host = dock.widget()
+        widget_id = host.widget_id if isinstance(host, PythonWidgetHost) else ""
+        state = _get_python_local_storage(host) if isinstance(host, PythonWidgetHost) else {}
+        width = dock.width()
+        self.removeDockWidget(dock)
+        dock.deleteLater()
+        self._event_mediator.unsubscribe_all(instance_id)
+        return widget_id, state, width
+
+    def undock_widget(self, instance_id: str) -> str:
+        """Moves a docked widget onto the canvas (centered in the view), keeping its
+        state and instance id. Returns the instance id; ValueError if not docked."""
+        if instance_id not in self._docked:
+            raise ValueError(f"No docked widget with instance_id {instance_id!r}.")
+        widget_id, state, _width = self._remove_dock(instance_id)
+        info = self._widgets[widget_id]
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        size = info.default_size or DEFAULT_WIDGET_SIZE
+        pos = (center.x() - size[0] / 2, center.y() - size[1] / 2)
+        frame = self._place_widget(widget_id, info, pos, size, instance_id=instance_id, local_storage_data=state)
+        if frame is None:
+            raise ValueError(f"Could not place widget {widget_id!r} on the canvas (see the Desk log).")
+        self._bind_widget_local_storage(frame, state)
+        return frame.instance_id
+
+    def close_docked_widget(self, instance_id: str) -> bool:
+        return self._remove_dock(instance_id) is not None
+
+    def list_docked_widgets(self) -> list[dict]:
+        out = []
+        for instance_id, dock in self._docked.items():
+            host = dock.widget()
+            out.append(
+                {
+                    "instance_id": instance_id,
+                    "widget_id": host.widget_id if isinstance(host, PythonWidgetHost) else "",
+                    "name": dock.windowTitle(),
+                }
+            )
+        return out
+
+    def _capture_docked(self) -> list[DockedWidgetState]:
+        result = []
+        for instance_id, dock in self._docked.items():
+            host = dock.widget()
+            if not isinstance(host, PythonWidgetHost):
+                continue
+            result.append(
+                DockedWidgetState(
+                    widget_id=host.widget_id,
+                    instance_id=instance_id,
+                    state=_get_python_local_storage(host),
+                    width=dock.width(),
+                )
+            )
+        return result
+
+    def _load_desk_docked(self, desk: Desk) -> None:
+        for d in desk.docked:
+            try:
+                self.dock_widget_by_id(d.widget_id, d.state, d.instance_id, d.width)
+            except ValueError:
+                logging.getLogger("desk.window").warning("Skipping docked widget %r: not available", d.widget_id)
+
+    def _clear_docked(self) -> None:
+        for instance_id in list(self._docked):
+            self._remove_dock(instance_id)
+
+    def _on_widget_dock_requested(self, widget_id: str) -> None:
+        try:
+            self.dock_widget_by_id(widget_id)
+        except ValueError as e:
+            self._info("Dock widget", str(e))
 
     def _on_widget_add_requested(self, widget_id: str, scene_pos: QPointF) -> None:
         widget = self._widgets.get(widget_id)

@@ -6,7 +6,10 @@ from desk.widgets import WidgetInfo
 WIDGET_ID_ROLE = Qt.ItemDataRole.UserRole
 
 # (group label, collapsed by default) -- order here is also display order.
-_GROUPS = (("Active", False), ("Deprecated", True))
+_GROUPS = (("Active", False), ("Deprecated", True), ("Dock in sidebar", True))
+
+# TODO 6413e58: a "Dock in sidebar" entry's id is this prefix + the widget id.
+DOCK_ID_PREFIX = "dock:"
 
 
 class WidgetSpawnMenu(QWidget):
@@ -29,10 +32,15 @@ class WidgetSpawnMenu(QWidget):
     widget_chosen = pyqtSignal(str)
     paste_requested = pyqtSignal()
 
-    def __init__(self, catalog: dict[str, WidgetInfo], parent=None) -> None:
+    def __init__(
+        self, catalog: dict[str, WidgetInfo], parent=None, dockable_ids: frozenset[str] = frozenset()
+    ) -> None:
         super().__init__(parent, Qt.WindowType.Popup)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self._catalog = catalog
+        # TODO 6413e58: ids that can also be docked in the sidebar; listed a
+        # second time, in the collapsed "Dock in sidebar" group.
+        self._dockable_ids = dockable_ids
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -87,6 +95,10 @@ class WidgetSpawnMenu(QWidget):
             item = QTreeWidgetItem([info.name])
             item.setData(0, WIDGET_ID_ROLE, widget_id)
             self._group_items[label].addChild(item)
+            if widget_id in self._dockable_ids:
+                dock_item = QTreeWidgetItem([info.name])
+                dock_item.setData(0, WIDGET_ID_ROLE, DOCK_ID_PREFIX + widget_id)
+                self._group_items["Dock in sidebar"].addChild(dock_item)
 
         for group_item in self._group_items.values():
             group_item.setHidden(group_item.childCount() == 0)
