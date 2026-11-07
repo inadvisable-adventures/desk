@@ -327,7 +327,7 @@ async def _view_area(args: dict[str, Any]) -> dict[str, Any]:
 
 @tool(
     "desk_dock_widget",
-    "Dock a new instance of a kind:\"python\" widget in the main window's right-hand sidebar -- a "
+    "Dock a new instance of a kind:\"python\" widget in the main window's left-hand sidebar (collapsed by default; this opens it) -- a "
     "region outside the zoomable canvas that stays put while the canvas pans and zooms. Returns the "
     "new instance_id. Optional state (a JSON object) seeds the widget's own local storage, as for "
     "desk_place_widget. A docked widget is not listed by desk_list_widget_instances and cannot be "

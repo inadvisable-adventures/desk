@@ -11,7 +11,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
-from PyQt6.QtCore import QObject, QPointF, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QObject, QPoint, QPointF, QRect, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QGuiApplication, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
@@ -102,6 +102,7 @@ from desk.shell.new_desk_dialog import NewDeskDialog
 from desk.shell.promoted_widget_source_watcher import PromotedWidgetSourceWatcher
 from desk.shell.python_widget import PythonWidgetHost
 from desk.shell.hmsvc_dir_watcher import HmsvcDirWatcher
+from desk.shell.sidebar import DEFAULT_SIDEBAR_WIDTH, MIN_DROP_ZONE_PX, DockDropIndicator, SidebarTab
 from desk.shell.schema_file_watcher import SCHEMA_FILES_DIRNAME, TOP_LEVEL_SCHEMAS_DIRNAME, SchemaFileWatcher
 from desk.shell.temp_ui_manager import TempUiManager
 from desk.shell.widget_frame import MIN_HEIGHT, WidgetFrame
@@ -379,6 +380,14 @@ class DeskWindow(QMainWindow):
         self.setCentralWidget(self.view)
         # TODO 6413e58: widgets living in the docked sidebar, by instance id.
         self._docked: dict[str, QDockWidget] = {}
+        # TODO 4ff712c: the sidebar sits on the left, collapsed until the user (or a deliberate dock) opens it.
+        # Session state only -- not saved in the .desk file.
+        self._sidebar_expanded = False
+        self._sidebar_tab = SidebarTab(self)
+        self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, self._sidebar_tab)
+        self._sidebar_tab.button.clicked.connect(lambda: self.set_sidebar_expanded(not self._sidebar_expanded))
+        self._dock_drop_indicator = DockDropIndicator(self)
+        self._update_sidebar_tab()
 
         self._popups_service = get_popups_service()
         self._popups_service.attach_view(self.view)
@@ -395,6 +404,8 @@ class DeskWindow(QMainWindow):
         self.view.widget_add_requested.connect(self._on_widget_add_requested)
         self.view.area_add_requested.connect(self._on_area_add_requested)
         self.view.widget_dock_requested.connect(self._on_widget_dock_requested)
+        self.view.frame_drag_moved.connect(self._on_frame_drag_moved)
+        self.view.frame_drag_ended.connect(self._on_frame_drag_ended)
         self.view.area_geometry_changed.connect(self._on_area_geometry_changed)
         self.view.area_rename_requested.connect(self._on_area_rename_requested)
         self.view.area_delete_requested.connect(self._on_area_delete_requested)
@@ -4878,11 +4889,14 @@ class DeskWindow(QMainWindow):
         state: dict | None = None,
         instance_id: str | None = None,
         width: int = 0,
+        reveal: bool = True,
     ) -> str:
-        """Docks a new instance of a `kind: "python"` widget in the right-hand
+        """Docks a new instance of a `kind: "python"` widget in the left-hand
         sidebar and returns its instance_id. `state` seeds its widget-local
-        storage (as for desk_place_widget). Raises ValueError for an unknown
-        widget id, a non-python widget, or a non-dict state."""
+        storage (as for desk_place_widget). `reveal` expands the sidebar so the
+        result is visible (a restore from a saved Desk passes False and leaves
+        it as the user had it). Raises ValueError for an unknown widget id, a
+        non-python widget, or a non-dict state."""
         info = self._widgets.get(widget_id)
         if info is None:
             known = ", ".join(sorted(self._widgets)) or "(none)"
@@ -4903,11 +4917,82 @@ class DeskWindow(QMainWindow):
         dock.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
         dock.setTitleBarWidget(self._docked_title_bar(info.name, instance_id))
         dock.setWidget(host)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
-        if width > 0:
-            self.resizeDocks([dock], [width], Qt.Orientation.Horizontal)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+        self.resizeDocks([dock], [width if width > 0 else DEFAULT_SIDEBAR_WIDTH], Qt.Orientation.Horizontal)
         self._docked[instance_id] = dock
+        if reveal:
+            self.set_sidebar_expanded(True)
+        else:
+            dock.setVisible(self._sidebar_expanded)
+            self._update_sidebar_tab()
         return instance_id
+
+    # -- Sidebar collapse + drag-and-drop docking (TODO 4ff712c) ------------
+
+    def set_sidebar_expanded(self, expanded: bool) -> None:
+        self._sidebar_expanded = expanded
+        for dock in self._docked.values():
+            dock.setVisible(expanded)
+        self._update_sidebar_tab()
+
+    def _update_sidebar_tab(self) -> None:
+        self._sidebar_tab.show_state(self._sidebar_expanded, len(self._docked))
+
+    def sidebar_drop_zone(self) -> QRect:
+        """Where releasing a dragged widget docks it, in global coordinates:
+        from the tab's left edge across the open docks, never narrower than the
+        tab plus MIN_DROP_ZONE_PX of canvas, over the canvas's full height."""
+        tab = self._sidebar_tab
+        left = tab.mapToGlobal(QPoint(0, 0)).x()
+        right = left + tab.width() + MIN_DROP_ZONE_PX
+        if self._sidebar_expanded:
+            for dock in self._docked.values():
+                right = max(right, dock.mapToGlobal(QPoint(dock.width(), 0)).x())
+        top = self.view.mapToGlobal(QPoint(0, 0)).y()
+        return QRect(left, top, right - left, self.view.height())
+
+    def _on_frame_drag_moved(self, frame, global_pos) -> None:
+        zone = self.sidebar_drop_zone()
+        if zone.contains(global_pos.toPoint()):
+            self._dock_drop_indicator.show_over(QRect(self.mapFromGlobal(zone.topLeft()), zone.size()))
+        else:
+            self._dock_drop_indicator.hide()
+
+    def _on_frame_drag_ended(self, frame, global_pos) -> None:
+        self._dock_drop_indicator.hide()
+        if not self.sidebar_drop_zone().contains(global_pos.toPoint()):
+            return
+        instance_id = frame.instance_id
+
+        def _dock() -> None:
+            try:
+                self.dock_placed_widget(instance_id)
+            except ValueError as e:
+                self._info("Dock widget", str(e))
+
+        # Deferred: this runs inside the view's mouse-release handling, and docking removes the very frame
+        # whose drag is being finished.
+        QTimer.singleShot(0, _dock)
+
+    def dock_placed_widget(self, instance_id: str) -> str:
+        """Moves a placed `kind: "python"` widget into the sidebar, keeping its
+        instance id and widget-local storage (a move, so nothing is tombstoned
+        to Recently Removed). State a widget keeps only in memory is lost, as
+        with undock_widget. Raises ValueError if there is no such python widget."""
+        frame = self.find_frame_by_instance_id(instance_id)
+        if frame is None:
+            raise ValueError(f"No placed widget with instance_id {instance_id!r}.")
+        if not isinstance(frame.content, PythonWidgetHost):
+            raise ValueError("Only kind: \"python\" widgets can be docked in the sidebar.")
+        widget_id = frame.content.widget_id
+        if widget_id not in self._widgets:
+            raise ValueError(f"Widget {widget_id!r} is not available.")
+        state = self._get_widget_local_storage(frame)
+        self.view.remove_widget(frame)
+        self._event_mediator.unsubscribe_all(instance_id)
+        docked_id = self.dock_widget_by_id(widget_id, state, instance_id)
+        self.save_current_desk()
+        return docked_id
 
     def _remove_dock(self, instance_id: str) -> tuple[str, dict, int] | None:
         """Tears a dock down; returns (widget_id, its state, width) or None."""
@@ -4921,6 +5006,7 @@ class DeskWindow(QMainWindow):
         self.removeDockWidget(dock)
         dock.deleteLater()
         self._event_mediator.unsubscribe_all(instance_id)
+        self._update_sidebar_tab()
         return widget_id, state, width
 
     def undock_widget(self, instance_id: str) -> str:
@@ -4974,7 +5060,7 @@ class DeskWindow(QMainWindow):
     def _load_desk_docked(self, desk: Desk) -> None:
         for d in desk.docked:
             try:
-                self.dock_widget_by_id(d.widget_id, d.state, d.instance_id, d.width)
+                self.dock_widget_by_id(d.widget_id, d.state, d.instance_id, d.width, reveal=False)
             except ValueError:
                 logging.getLogger("desk.window").warning("Skipping docked widget %r: not available", d.widget_id)
 

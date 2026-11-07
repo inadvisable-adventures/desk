@@ -256,6 +256,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "mermaid subgraph containment boxes #200896",
     "desk areas: background regions + MCP tools #377360",
     "docked sidebar widgets + MCP tools #797468",
+    "sidebar: left, collapsible, drag-and-drop dock #046076",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -821,16 +822,26 @@ See `desk-temporary-ui.md` (in this same directory) for this directory's
 own overview and its current set of tags. This is not a tempui-DSL file
 type: it is three MCP tools on the `desk` server.
 
-The main window has a **docked sidebar** down its right edge, outside the
+The main window has a **docked sidebar** down its left edge, outside the
 zoomable Workspace Canvas: a docked widget stays put and at a fixed size
-while the canvas pans and zooms behind it. It is for small, always-visible
+while the canvas pans and zooms behind it. The sidebar is **collapsed by
+default** (a thin arrow tab is all that shows; clicking it expands or
+collapses the sidebar, and that choice is not saved in the `.desk` file).
+`desk_dock_widget` expands it so the result is visible; restoring a saved
+Desk does not. It is for small, always-visible
 panels (a list of the desk's areas, say), not for general work.
 
 - Only `kind: "python"` widgets can be docked for now; an html /
   `DefineWidget` widget is refused with an error.
 - A human docks one from the canvas right-click menu: expand "Dock in
   sidebar" and pick the widget. Each docked widget's title bar has a
-  "move to canvas" button and a "remove" button.
+  "move to canvas" button and a "remove" button. A human can also drag a
+  placed python widget by its titlebar onto the sidebar (or its tab); a
+  "Dock in sidebar" highlight shows when releasing will dock it. That is a
+  move, not a removal: the instance keeps its id and widget-local storage,
+  and nothing is added to Recently Removed. State a widget keeps only in
+  memory (not in its widget-local storage) is lost in the move, as for
+  "move to canvas".
 - A docked widget has **no canvas frame**, so it has no titlebar markers
   (`[ERROR]`, `[STALE]`, ...), is **not** listed by
   `desk_list_widget_instances`, and cannot be screenshotted with
@@ -2962,6 +2973,14 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "sidebar: left, collapsible, drag-and-drop dock #046076": """- The docked sidebar is now on the **left** of the main window and is
+  **collapsed by default**: only a thin arrow tab shows until a human clicks
+  it. A human can also **drag a placed `kind: "python"` widget by its
+  titlebar onto the sidebar**; a "Dock in sidebar" highlight shows while the
+  drop will dock it. `desk_dock_widget` opens the sidebar so the result is
+  visible. Nothing about the tool signatures changed. See
+  `tempui-docked-widgets.md`.
+""",
     "docked sidebar widgets + MCP tools #797468": """- A **docked sidebar** on the right of the main window, outside the
   zoomable canvas, that hosts `kind: "python"` widgets. A human docks one
   from the canvas right-click menu's collapsed "Dock in sidebar" group; each

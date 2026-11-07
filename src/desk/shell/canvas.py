@@ -125,6 +125,11 @@ class WorkspaceView(QGraphicsView):
     # TODO 0460b4c (desk areas): the right-click menu's "Desk Area" entry, with the scene pos of the click.
     area_add_requested = pyqtSignal(QPointF)
     widget_dock_requested = pyqtSignal(str)  # TODO 6413e58: widget_id chosen from "Dock in sidebar"
+    # TODO 4ff712c: a dockable (unlocked, python) frame is being dragged by its titlebar; (frame, global cursor
+    # pos). The moves keep arriving outside the viewport (the press grabs the mouse), which is how a drag toward
+    # the sidebar is seen. `ended` follows the release (always, so an indicator can be hidden).
+    frame_drag_moved = pyqtSignal(WidgetFrame, QPointF)
+    frame_drag_ended = pyqtSignal(WidgetFrame, QPointF)
     area_geometry_changed = pyqtSignal(str, float, float, float, float)  # a user move/resize finished
     area_rename_requested = pyqtSignal(str)
     area_delete_requested = pyqtSignal(str)
@@ -674,9 +679,18 @@ class WorkspaceView(QGraphicsView):
             proxy = self._drag_frame.graphicsProxyWidget()
             if proxy is not None:
                 self._apply_drag(proxy, self._drag_edge, dx, dy)
+            if self._drag_edge is None and self._frame_dockable(self._drag_frame):
+                self.frame_drag_moved.emit(self._drag_frame, event.globalPosition())
             event.accept()
             return
         super().mouseMoveEvent(event)
+
+    def _frame_dockable(self, frame: WidgetFrame) -> bool:
+        """TODO 4ff712c: only a placed `kind: "python"` widget can live in the sidebar."""
+        if frame.is_popup:
+            return False
+        info = self._widget_catalog.get(frame.content.widget_id)
+        return info is not None and info.kind == "python"
 
     def mouseReleaseEvent(self, event) -> None:
         if self.hud.forward_view_event(event):
@@ -722,10 +736,13 @@ class WorkspaceView(QGraphicsView):
             event.accept()
             return
         if self._drag_frame is not None:
+            dragged, dragged_edge = self._drag_frame, self._drag_edge
             self._drag_frame = None
             self._drag_edge = None
             self._drag_last_pos = None
             event.accept()
+            if dragged_edge is None and self._frame_dockable(dragged):
+                self.frame_drag_ended.emit(dragged, event.globalPosition())
         if self._titlebar_click_frame is not None:
             # TODO a1c701d: a titlebar press that ends with little-to-no
             # movement counts as a click (re-focuses the widget's last

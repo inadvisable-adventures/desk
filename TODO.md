@@ -35,6 +35,21 @@ reordered or its description edited.
    python widgets only; fixed to the right edge; no titlebar markers; a docked widget is not in `desk_list_widget_instances`
    or screenshot-able; an already-placed widget cannot be moved into the dock (only freshly docked).
 
+4ff712c. COMPLETED: Sidebar changes (from the user, after TODO `6413e58`): (1) the dock moves to the left-hand side; (2) it becomes
+   collapsible and is collapsed by default, with a small tab showing when collapsed; (3) a placed python widget instance
+   can be dragged by its titlebar into the sidebar, with a drop indicator shown when the drop will dock it. Blocks nothing,
+   but precedes TODO `747806b` so the Areas list lands in the final sidebar.
+
+   [planned: sidebar-left-collapsible-dnd.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: left dock area; `desk.shell.sidebar.SidebarTab` (thin left toolbar with an arrow button; collapsed
+   by default, session state only); `DeskWindow.set_sidebar_expanded`/`sidebar_drop_zone`/`dock_placed_widget`;
+   `WorkspaceView.frame_drag_moved`/`frame_drag_ended` and a click-through `DockDropIndicator`; a docked widget now opens at
+   300px. Docking on purpose expands the sidebar, a saved-Desk restore does not. Changelog tag `sidebar: left,
+   collapsible, drag-and-drop dock #046076`; `tempui-docked-widgets.md` updated. `verify_docked_sidebar.py` (65 passed) plus a
+   throwaway real-`DeskWindow` offscreen smoke run; no live (on-screen, real-mouse) check. Moving a placed widget in
+   loses in-memory-only state (as "move to canvas" does).
+
 747806b. The Areas list widget, docked in the sidebar from TODO `6413e58`: lists the desk's areas (live, via
    `desk.areas.changed`); clicking one views it; also rename/delete/add. Reads through `DeskWindow.list_areas` and acts
    through the same area methods the MCP tools use (TODO `0460b4c`). Depends on `6413e58`. Plan before implementing.

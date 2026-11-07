@@ -912,7 +912,7 @@ Desk Bridge API.
     publishes `desk.areas.changed`. A docked sidebar listing areas is TODO
     `6413e58`/`747806b`. See `plans/desk-areas-core.md`.
 36. **Docked sidebar** (`DeskWindow.dock_widget_by_id` et al., `Desk.docked`, TODO
-    `6413e58`) — a right-hand `QDockWidget` region for `kind: "python"` widgets
+    `6413e58`; left side, collapsible and drag-and-drop docking per TODO `4ff712c`) — a left-hand `QDockWidget` region for `kind: "python"` widgets
     outside the zoomable canvas. A docked widget is the bare `PythonWidgetHost`
     in a dock (frame chrome is drawn and hit-tested by the canvas, so a
     `WidgetFrame` cannot live outside it): event mediator and widget-local
@@ -920,7 +920,11 @@ Desk Bridge API.
     and it is not in `desk_list_widget_instances`; `desk_state_dict` carries it
     as `docked`. Entry points are the canvas right-click menu's collapsed "Dock
     in sidebar" group and the `desk_dock_widget`/`desk_undock_widget`/
-    `desk_list_docked_widgets` MCP tools. See `plans/docked-sidebar.md`.
+    `desk_list_docked_widgets` MCP tools. The sidebar is collapsed by default behind a
+    thin tab (`desk.shell.sidebar.SidebarTab`; session state only), and a placed python
+    widget dragged by its titlebar onto the sidebar zone (`DeskWindow.sidebar_drop_zone`,
+    shown by a `DockDropIndicator`) is moved in by `dock_placed_widget`. See
+    `plans/docked-sidebar.md` and `plans/sidebar-left-collapsible-dnd.md`.
 
 
 ## Isolation and trust tiers
