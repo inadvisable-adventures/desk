@@ -261,6 +261,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "inline area rename; labeled sidebar tab #224906",
     "desk_*_expert MCP tools + expert registry #434481",
     "hmsvc experts capability: answer questions #598971",
+    "Experts widget + answer notifications #804805",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -891,7 +892,7 @@ then**. Asking never waits.
 - The built-in expert **`user`** is the person using Desk; they answer in the
   **Experts** widget.
 - When an answer arrives Desk shows the user a top-right notification, and the
-  Experts widget can start a new Claude (Desk) session seeded with the
+  Experts widget can start a new Claude session seeded with the
   question, the answer and your private note.
 
 ## MCP tools
@@ -918,6 +919,24 @@ then**. Asking never waits.
   question that is `open` or `accepted`.
 
 Every change publishes the desk event `desk.experts.changed`.
+
+## The Experts widget and notifications
+
+When an answer arrives for a question you asked, and when a new question is
+put to the built-in `user` expert, Desk shows a top-right notification
+(once per event); clicking it opens the built-in `Experts` widget (widget id
+`experts`, also dockable in the sidebar). The widget lists questions (Open,
+Answered or All), shows one, and lets the person **answer it** or use
+**Send to agent**:
+
+- for a question still waiting, Send to agent starts a new Claude session
+  told to answer it with `desk_answer_expert_question` (it is given the
+  question, never your private note) and marks the question `accepted`;
+- for an answered question, it starts a new Claude session seeded with the
+  question, the answer **and your private `note_to_self`**, so the agent that
+  acts on the answer has the context to do so.
+
+An answer written in the widget does not produce a notification.
 
 ## A Desk-hosted service as an expert
 
@@ -3062,6 +3081,13 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "Experts widget + answer notifications #804805": """- Experts now reach the user. When an answer arrives for a question you
+  asked, or a question is put to the built-in `user` expert, Desk shows a
+  top-right notification, and the new built-in **Experts** widget lists the
+  questions, lets the person answer them, or **sends them to an agent**: a
+  new Claude session seeded with the question (and, for an answered one, the
+  answer and your private `note_to_self`). See `tempui-experts.md`.
+""",
     "hmsvc experts capability: answer questions #598971": """- A Desk-hosted service (hmsvc) can now be an **expert**: give its
   `service.json` the `experts` capability and call
   `desk.experts_register`, `desk.experts_pending`, `desk.experts_accept` and

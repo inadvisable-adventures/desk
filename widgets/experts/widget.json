@@ -1,0 +1,7 @@
+{
+  "name": "Experts",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": [],
+  "default_size": { "width": 420, "height": 560 }
+}

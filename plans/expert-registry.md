@@ -1,4 +1,4 @@
-# Desk-wide "ask an expert" (TODOs `c2555b5`, `b2e031d`, `d15791d`)
+# Desk-wide "ask an expert" (TODOs `c2555b5`, `b2e031d`, `d15791d`) (COMPLETED)
 
 From `../FEEDBACK/FEEDBACK-DESK-request-a-desk-wide-ask-an-expert-mechanism-...-2026-11-05-2336.md`. Decided with the
 user: **use Postgres**; **hmsvcs can register themselves as experts and answer questions**; **humans use a built-in

@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import (
 from desk.custom_widgets import LikelySourceCandidate, build_from_source, find_likely_source_candidates, materialize, read_source_manifest
 from desk import expert_registry
 from desk.expert_registry import EXPERTS_CHANGED_EVENT
+from desk.shell.expert_notifier import ExpertNotifier
 from desk.desks import (
     AREAS_CHANGED_EVENT,
     DESK_SUFFIX,
@@ -158,6 +159,7 @@ LIGHTNING_ROUND_WIDGET_ID = "lightning_round"
 MARKDOWN_WIDGET_ID = "markdown"
 SCRATCH_WIDGET_ID = "scratch"
 CLAUDE_WIDGET_ID = "claude"
+EXPERTS_WIDGET_ID = "experts"
 # TODO a596dbf: a separate, independently-spawnable widget kind built on
 # the Python Claude Agent SDK instead of PTY/pyte -- see
 # plans/claude-widget-agent-sdk-integration.md. Does not replace
@@ -493,6 +495,10 @@ class DeskWindow(QMainWindow):
                 EXPERTS_CHANGED_EVENT, {"kind": kind, "id": ident}, "desk"
             )
         )
+        # TODO d15791d: banners for answers that arrived and new questions for the user.
+        self._expert_notifier = ExpertNotifier(expert_registry.get_registry, parent=self)
+        self._expert_notifier.announced.connect(self._on_expert_announcements)
+        self._expert_notifier.start()
         self._widget_logs = handle.widget_logs  # TODO 1f74c27
         # TODO b4d99a1: off unless DESK_FOCUS_LOG=1 (or a widget enables it).
         self._focus_logger = FocusLogger(self.view, self._widget_logs, parent=self)
@@ -1274,6 +1280,51 @@ class DeskWindow(QMainWindow):
             instance_id=instance_id,
             claude_extra_instructions=extra_instructions,
         )
+
+    def start_expert_session(self, instructions: str) -> str:
+        """TODO d15791d: places a fresh Claude session seeded with `instructions` -- the Experts
+        widget's "Send to agent". Returns the new widget's instance_id; ValueError if the claude widget kind
+        isn't available or the placement fails."""
+        widget = self._widgets.get(CLAUDE_WIDGET_ID)
+        if widget is None:
+            raise ValueError("The Claude widget isn't available in this Desk.")
+        extra_instructions = self._write_claude_instructions_file(instructions, prefix="expert-handoff")
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        frame = self._place_widget(
+            CLAUDE_WIDGET_ID,
+            widget,
+            (center.x(), center.y()),
+            widget.default_size,
+            claude_extra_instructions=extra_instructions,
+        )
+        if frame is None:
+            raise ValueError("Could not place the Claude widget.")
+        return frame.instance_id
+
+    def _on_expert_announcements(self, items: list) -> None:
+        """Top-right banners for what ExpertNotifier found; clicking one opens the Experts widget."""
+        for item in items:
+            question = item["question"]
+            first_line = (question.get("question") or "").strip().splitlines()[0:1]
+            excerpt = (first_line[0] if first_line else "")[:80]
+            if item["kind"] == "answer":
+                text = f"Answer from {question['expert_id']}: {excerpt}"
+            else:
+                text = f"New question for you: {excerpt}"
+            self.view.notify_temp_ui(Path(f"expert:{item['kind']}:{question['question_id']}"), text, self._reveal_experts_widget)
+
+    def _reveal_experts_widget(self) -> None:
+        for dock in self._docked.values():
+            host = dock.widget()
+            if isinstance(host, PythonWidgetHost) and host.widget_id == EXPERTS_WIDGET_ID:
+                self.set_sidebar_expanded(True)
+                return
+        frame = self._find_frame_by_widget_id(EXPERTS_WIDGET_ID)
+        if frame is not None:
+            self.view.bring_to_front(frame)
+            self.view.zoom_to_widget(frame)
+            return
+        self.open_widget_content_centered(EXPERTS_WIDGET_ID)
 
     def _write_claude_instructions_file(self, body: str, prefix: str) -> str:
         """Writes a fresh claude/claude_desk session's actual initial

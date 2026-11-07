@@ -926,6 +926,18 @@ Desk Bridge API.
     shown by a `DockDropIndicator`) is moved in by `dock_placed_widget`. See
     `plans/docked-sidebar.md` and `plans/sidebar-left-collapsible-dnd.md`.
 
+37. **Expert registry** (`desk.expert_registry`, TODOs `c2555b5`/`b2e031d`/`d15791d`) — a Desk-wide
+    registry of experts and the questions put to them, in a local PostgreSQL cluster
+    (`~/.desk/experts/pgdata`, unix socket only, provisioned lazily and left running). No driver: it
+    shells out to `psql` with `:'var'` interpolation, the way `../world-timelines` does. The
+    asker's private `note_to_self` never leaves the registry except through the asker's own read and
+    the agent handoff. Surfaces: seven `desk_*_expert` MCP tools; a Bridge `experts` capability
+    for hmsvcs (`DeskClient.experts_*`, only for experts the service registered); an
+    `ExpertNotifier` thread that turns unannounced answers / new questions for the built-in `user`
+    expert into top-right banners; the built-in `experts` python widget (answer, or send to a new
+    Claude session via `DeskWindow.start_expert_session`). Changes publish `desk.experts.changed`.
+    See `plans/expert-registry.md`.
+
 
 ## Isolation and trust tiers
 

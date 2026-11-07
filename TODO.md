@@ -78,12 +78,20 @@ b2e031d. COMPLETED: Desk-wide "ask an expert" part 2: a Bridge `experts` capabil
    same code path), and the service-only guard for a non-hmsvc caller that holds the capability (no built-in widget does).
 
 
-d15791d. Desk-wide "ask an expert" part 3: a top-right notification when an answer arrives (and when a new question
+d15791d. COMPLETED: Desk-wide "ask an expert" part 3: a top-right notification when an answer arrives (and when a new question
    arrives for the built-in `user` expert), and a built-in python **Experts** widget that shows open questions, lets the
    user answer them or **send them to an agent** (a new Claude (Desk) session seeded with the question, and for an
    answered one the answer and the asker's private note). Completes the feedback file. Depends on `c2555b5`.
 
-   [planned: expert-registry.md]
+   [planned: expert-registry.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: `desk.shell.expert_notifier.ExpertNotifier` (10s daemon poll, stamps before emitting, inert until
+   the cluster exists), `DeskWindow.start_expert_session` / `_on_expert_announcements` / `_reveal_experts_widget`, built-in
+   `widgets/experts` ("Experts": Open/Answered/All filter, answer box, Send to agent / Send answer to agent), doc section
+   + changelog tag `Experts widget + answer notifications #804805`, `verify_experts_widget.py` (31 checks, real
+   throwaway Postgres) and an offscreen real-`DeskWindow` run (docked widget, live refresh, banner). The agent session is
+   the plain `claude` widget. Completes the "ask an expert" feedback.
+
 
 d6c44ab. COMPLETED: Bug (user report): after restarting Desk, a docked Areas list said "Not yet connected to Desk."
    `DeskWindow.__init__` restored saved widgets and docks before `current_context.set_main_window(self)`, so any widget
