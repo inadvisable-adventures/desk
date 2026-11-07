@@ -254,6 +254,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "desk_place_widget MCP places a registered widget #800488",
     "mermaid classDef/class node styling #200895",
     "mermaid subgraph containment boxes #200896",
+    "desk-select replaces native select in html widgets #821015",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1601,6 +1602,19 @@ suits the component. Importing a base class a widget's own file
 widget's own file (see "Authoring from real source" above) so
 `build_widget.py` concatenates it first.
 
+**Don't use a native `<select>` (or any other control that opens an
+OS-level popup) in a `kind: "html"`/`DefineWidget` widget.** Your page
+is embedded in the zoomable, pannable canvas, and a native `<select>`
+opens its list as a separate popup positioned from untransformed screen
+coordinates -- with the canvas away from identity zoom/pan the list
+renders detached from the control (the HTML twin of the Qt `QComboBox`
+problem). Use `shared-components/desk-select` (`<desk-select>`) instead:
+a drop-in replacement whose dropdown is ordinary page content, so it
+rides along with the canvas transform. Same exposure, same advice: avoid
+`<input type="date"|"time"|"month"|"week"|"datetime-local"|"color">`,
+`<input list=...>`, and the browser context menu under the canvas. See
+`shared-components/desk-select/README.md`.
+
 If your widget is actually several wired-together components (a
 multi-pane layout, an event-wiring table between them, shared
 app-level state) rather than one self-contained custom element,
@@ -2861,6 +2875,17 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "desk-select replaces native select in html widgets #821015": """- New `shared-components/desk-select` entry: `<desk-select>`, a drop-in
+  replacement for a native `<select>` for `kind: "html"`/`DefineWidget`
+  widgets. A native `<select>` opens an OS-level popup that lands
+  detached from the control whenever the canvas is zoomed or panned;
+  `<desk-select>`'s list is ordinary page content, so it follows the
+  canvas transform. Works inside shadow roots and `overflow: auto`
+  ancestors, fires `change`, keyboard accessible. See "Reusable UI
+  components" in `tempui-custom-widgets.md` (which now also lists the
+  other native-popup controls to avoid) and the component's own
+  `README.md`.
+""",
     "desk_place_widget MCP places a registered widget #800488": """- New MCP tool `desk_place_widget(widget_id, x?, y?, width?, height?, state?)`
   on the `desk` server: places a new instance of an already-registered
   widget kind on the Workspace Canvas and returns its `instance_id`, with
