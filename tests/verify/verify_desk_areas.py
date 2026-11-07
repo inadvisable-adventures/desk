@@ -95,6 +95,32 @@ eye = item._eye_rect()
 click(view, 100 + eye.center().x() * 1.0, 100 + eye.center().y())
 check("clicking the eye requests a view of the area", views == ["a1"])
 
+# inline title editing: click the title (no drag) -> editor; Enter commits, Escape cancels
+item.set_geometry(100, 100, 600, 400)
+edited = []
+item.title_edited.connect(lambda i, t: edited.append((i, t)))
+click(view, 250, 112)
+check("clicking the title (no drag) opens an inline editor", item._editor is not None and item._editor.text() == "Alpha")
+check("opening the editor did not move the area or request a view", item.scene_rect().x() == 100 and views == ["a1"])
+item._editor.setText("Alpha 2")
+item._editor.editingFinished.emit()
+check("committing applies the title locally and reports it", item.title == "Alpha 2" and edited == [("a1", "Alpha 2")] and item._editor is None)
+QTest.qWait(20)
+click(view, 250, 112)
+QTest.keyClick(item._editor, Qt.Key.Key_Escape)
+check("Escape cancels without a change", item.title == "Alpha 2" and len(edited) == 1 and item._editor is None)
+QTest.qWait(20)
+click(view, 250, 112)
+item._editor.setText("   ")
+item._editor.editingFinished.emit()
+check("an empty title is not committed", item.title == "Alpha 2" and len(edited) == 1)
+QTest.qWait(20)
+item.begin_edit()
+check("begin_edit (the context menu's Rename) opens the editor too", item._editor is not None)
+item._finish_edit(commit=False)
+QTest.qWait(20)
+item.set_title("Alpha")
+
 # interior click does not start an area interaction
 geom.clear()
 before = item.scene_rect()
@@ -189,7 +215,7 @@ win._event_mediator = _Mediator()
 win._prompt_fn = lambda *a: (lambda: "Renamed")
 for name in ("_area_dict", "_find_area", "_publish_areas_changed", "list_areas", "create_area", "update_area",
              "delete_area", "view_area", "_on_area_add_requested", "_on_area_geometry_changed",
-             "_on_area_rename_requested", "_on_area_delete_requested", "_load_desk_areas"):
+             "_on_area_title_edited", "_on_area_delete_requested", "_load_desk_areas"):
     setattr(_Win, name, getattr(DeskWindow, name))
 
 a = win.create_area()
@@ -217,8 +243,10 @@ check("update pushes to the scene item", win.view.items[b["area_id"]] == ("Gamma
 check("update of unknown area raises", raises(lambda: win.update_area("nope", title="x")))
 win._on_area_geometry_changed(b["area_id"], 1.0, 2.0, 3.0, 4.0)
 check("a user drag writes geometry back to the model", win.list_areas()[1]["x"] == 1.0 and win.list_areas()[1]["height"] == 4.0)
-win._on_area_rename_requested(b["area_id"])
-check("rename request prompts and applies the title", win.list_areas()[1]["title"] == "Renamed")
+win._on_area_title_edited(b["area_id"], "  Renamed ")
+check("an inline title edit applies the trimmed title", win.list_areas()[1]["title"] == "Renamed")
+win._on_area_title_edited(b["area_id"], "   ")
+check("an empty inline title is ignored", win.list_areas()[1]["title"] == "Renamed")
 check("view_area delegates to the canvas", win.view_area(a["area_id"]) is True and win.view_area("nope") is False)
 check("delete removes it from model and canvas", win.delete_area(a["area_id"]) is True and a["area_id"] not in win.view.items
       and len(win.list_areas()) == 1)

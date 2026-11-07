@@ -131,7 +131,7 @@ class WorkspaceView(QGraphicsView):
     frame_drag_moved = pyqtSignal(WidgetFrame, QPointF)
     frame_drag_ended = pyqtSignal(WidgetFrame, QPointF)
     area_geometry_changed = pyqtSignal(str, float, float, float, float)  # a user move/resize finished
-    area_rename_requested = pyqtSignal(str)
+    area_title_edited = pyqtSignal(str, str)  # area_id, new title (an inline edit on the canvas finished)
     area_delete_requested = pyqtSignal(str)
 
     def __init__(self, parent=None) -> None:
@@ -1117,7 +1117,7 @@ class WorkspaceView(QGraphicsView):
         item.set_view_scale(self._scale)
         item.geometry_changed.connect(self.area_geometry_changed)
         item.view_requested.connect(self.zoom_to_area)
-        item.rename_requested.connect(self.area_rename_requested)
+        item.title_edited.connect(self.area_title_edited)
         item.delete_requested.connect(self.area_delete_requested)
         self.scene().addItem(item)
         self._areas[area_id] = item

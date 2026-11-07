@@ -258,6 +258,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "docked sidebar widgets + MCP tools #797468",
     "sidebar: left, collapsible, drag-and-drop dock #046076",
     "Areas list widget for the sidebar #632760",
+    "inline area rename; labeled sidebar tab #224906",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -826,8 +827,10 @@ type: it is three MCP tools on the `desk` server.
 The main window has a **docked sidebar** down its left edge, outside the
 zoomable Workspace Canvas: a docked widget stays put and at a fixed size
 while the canvas pans and zooms behind it. The sidebar is **collapsed by
-default** (a thin arrow tab is all that shows; clicking it expands or
-collapses the sidebar, and that choice is not saved in the `.desk` file).
+default** (a thin tab is all that shows: an arrow plus a rotated label per docked
+widget, long titles cut with "..."). The whole tab is one click target: it
+expands the collapsed sidebar and, with its arrow centred, collapses the open
+one. That choice is not saved in the `.desk` file).
 `desk_dock_widget` expands it so the result is visible; restoring a saved
 Desk does not. It is for small, always-visible
 panels (a list of the desk's areas, say), not for general work.
@@ -871,7 +874,8 @@ type: it is five MCP tools on the `desk` server, plus a desk event.
 A **desk area** is a named rectangle drawn on the Workspace Canvas
 background, behind every widget. It marks out a region ("Inbox", "Reading
 list", "Experiments") that a human or agent can jump to. Its title strip
-holds an editable title and an **eye button**; clicking the eye pans and
+holds an editable title and an **eye button**; clicking the title edits it
+in place (Enter saves, Escape cancels) and clicking the eye pans and
 zooms the canvas to fit the area (what `desk_view_area` does).
 
 - The **interior is click-through**: only the title strip and a thin band
@@ -2982,6 +2986,13 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "inline area rename; labeled sidebar tab #224906": """- An area's title is now renamed **inline**: a human clicks the title on
+  the canvas and types (Enter saves, Escape cancels). The sidebar's tab is
+  one big click target in both states: collapsed, it shows a rotated label
+  per docked widget (long titles cut with "...") and opens the sidebar;
+  open, its centred arrow collapses it. See `tempui-areas.md` and
+  `tempui-docked-widgets.md`.
+""",
     "Areas list widget for the sidebar #632760": """- A built-in **Areas** widget lists the desk's areas live: click a row
   to view that area, and Add / Rename / Delete act on the selected row. Dock
   it in the sidebar from the canvas right-click menu's "Dock in sidebar"

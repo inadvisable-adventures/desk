@@ -14,14 +14,16 @@ The item owns no persistent state: `DeskWindow` creates it from an
 `AreaState`, listens to `geometry_changed` to write user edits back, and
 pushes programmatic edits in through `set_geometry`/`set_title`.
 """
-from PyQt6.QtCore import QPointF, QRectF, Qt, pyqtSignal
+from PyQt6.QtCore import QPointF, QRectF, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QCursor, QFont, QFontMetricsF, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import (
     QApplication,
     QGraphicsObject,
+    QGraphicsProxyWidget,
     QGraphicsSceneContextMenuEvent,
     QGraphicsSceneHoverEvent,
     QGraphicsSceneMouseEvent,
+    QLineEdit,
     QMenu,
     QStyleOptionGraphicsItem,
     QWidget,
@@ -43,7 +45,7 @@ class AreaItem(QGraphicsObject):
     # Emitted once at the end of a user move/resize: (area_id, x, y, w, h).
     geometry_changed = pyqtSignal(str, float, float, float, float)
     view_requested = pyqtSignal(str)
-    rename_requested = pyqtSignal(str)
+    title_edited = pyqtSignal(str, str)  # area_id, new title: an inline edit committed
     delete_requested = pyqtSignal(str)
 
     def __init__(self, area_id: str, title: str, x: float, y: float, width: float, height: float) -> None:
@@ -58,6 +60,9 @@ class AreaItem(QGraphicsObject):
         self._drag_start_scene = QPointF()
         self._drag_start_rect = QRectF()
         self._eye_pressed = False
+        self._press_in_title = False
+        self._editor: QLineEdit | None = None
+        self._editor_proxy: QGraphicsProxyWidget | None = None
         self.setPos(x, y)
         self.setZValue(AREA_Z)
         self.setAcceptHoverEvents(True)
@@ -86,6 +91,7 @@ class AreaItem(QGraphicsObject):
     def set_view_scale(self, scale: float) -> None:
         if scale <= 0 or scale == self._view_scale:
             return
+        self._finish_edit(commit=True)  # the editor is laid out for one scale
         self.prepareGeometryChange()
         self._view_scale = scale
         self.update()
@@ -234,6 +240,7 @@ class AreaItem(QGraphicsObject):
             event.accept()
             return
         edges = self._edges_at(pos)
+        self._press_in_title = not edges and self._title_strip().contains(pos)
         self._drag_start_scene = event.scenePos()
         self._drag_start_rect = self.scene_rect()
         if edges:
@@ -272,22 +279,58 @@ class AreaItem(QGraphicsObject):
             return
         if self._drag_mode is not None:
             moved = self.scene_rect() != self._drag_start_rect
+            was_title_click = self._drag_mode == "move" and not moved and self._press_in_title
             self._drag_mode = None
             self._drag_edges = set()
             if moved:
                 r = self.scene_rect()
                 self.geometry_changed.emit(self.area_id, r.x(), r.y(), r.width(), r.height())
+            elif was_title_click:
+                self.begin_edit()
             event.accept()
             return
         event.ignore()
 
-    def mouseDoubleClickEvent(self, event: QGraphicsSceneMouseEvent) -> None:
-        pos = event.pos()
-        if self._title_strip().contains(pos) and not self._eye_rect().contains(pos):
-            self.rename_requested.emit(self.area_id)
-            event.accept()
+    # -- inline title editing ------------------------------------------
+
+    def begin_edit(self) -> None:
+        """Replaces the title text with a line edit (a click on the title, or
+        "Rename…"). Enter or focus loss commits, Escape cancels."""
+        if self._editor is not None:
             return
-        super().mouseDoubleClickEvent(event)
+        k = self._view_scale
+        strip_px = self._strip_height() * k
+        eye = self._eye_rect()
+        edit = _TitleEdit(self._title)
+        edit.setFixedSize(max(60, int(eye.left() * k) - 12), max(16, int(strip_px) - 4))
+        edit.editingFinished.connect(lambda: self._finish_edit(commit=True))
+        edit.cancelled.connect(lambda: self._finish_edit(commit=False))
+        proxy = QGraphicsProxyWidget(self)
+        proxy.setWidget(edit)
+        proxy.setScale(1.0 / k)
+        proxy.setPos(self._px(6), self._px(2))
+        self._editor, self._editor_proxy = edit, proxy
+        edit.selectAll()
+        edit.setFocus()
+        proxy.setFocus()
+
+    def _finish_edit(self, commit: bool) -> None:
+        edit, proxy = self._editor, self._editor_proxy
+        if edit is None:
+            return
+        self._editor = self._editor_proxy = None
+        text = edit.text().strip()
+        if commit and text and text != self._title:
+            self.set_title(text)
+            self.title_edited.emit(self.area_id, text)
+
+        def _dispose() -> None:
+            if proxy.scene() is not None:
+                proxy.scene().removeItem(proxy)
+            proxy.deleteLater()
+
+        # Deferred: this can run from inside the editor's own signal.
+        QTimer.singleShot(0, _dispose)
 
     def contextMenuEvent(self, event: QGraphicsSceneContextMenuEvent) -> None:
         menu = QMenu()
@@ -298,7 +341,20 @@ class AreaItem(QGraphicsObject):
         if chosen is view:
             self.view_requested.emit(self.area_id)
         elif chosen is rename:
-            self.rename_requested.emit(self.area_id)
+            self.begin_edit()
         elif chosen is delete:
             self.delete_requested.emit(self.area_id)
         event.accept()
+
+
+class _TitleEdit(QLineEdit):
+    """The inline title editor; Escape cancels."""
+
+    cancelled = pyqtSignal()
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key.Key_Escape:
+            self.cancelled.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)

@@ -385,7 +385,7 @@ class DeskWindow(QMainWindow):
         self._sidebar_expanded = False
         self._sidebar_tab = SidebarTab(self)
         self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, self._sidebar_tab)
-        self._sidebar_tab.button.clicked.connect(lambda: self.set_sidebar_expanded(not self._sidebar_expanded))
+        self._sidebar_tab.clicked.connect(lambda: self.set_sidebar_expanded(not self._sidebar_expanded))
         self._dock_drop_indicator = DockDropIndicator(self)
         self._update_sidebar_tab()
 
@@ -407,7 +407,7 @@ class DeskWindow(QMainWindow):
         self.view.frame_drag_moved.connect(self._on_frame_drag_moved)
         self.view.frame_drag_ended.connect(self._on_frame_drag_ended)
         self.view.area_geometry_changed.connect(self._on_area_geometry_changed)
-        self.view.area_rename_requested.connect(self._on_area_rename_requested)
+        self.view.area_title_edited.connect(self._on_area_title_edited)
         self.view.area_delete_requested.connect(self._on_area_delete_requested)
         self.view.widget_close_requested.connect(self._on_widget_close_requested)
         self.view.files_dropped.connect(self._on_files_dropped)
@@ -4848,13 +4848,10 @@ class DeskWindow(QMainWindow):
         area.x, area.y, area.width, area.height = x, y, width, height
         self._publish_areas_changed()
 
-    def _on_area_rename_requested(self, area_id: str) -> None:
-        area = self._find_area(area_id)
-        if area is None:
-            return
-        title = self._prompt_fn("Rename Area", "New title for this area:", area.title)()
-        if title and title.strip():
-            self.update_area(area_id, title=title)
+    def _on_area_title_edited(self, area_id: str, title: str) -> None:
+        """The inline title editor on an area finished (TODO 615bd79)."""
+        if title.strip():
+            self.update_area(area_id, title=title.strip())
 
     def _on_area_delete_requested(self, area_id: str) -> None:
         self.delete_area(area_id)
@@ -4936,7 +4933,7 @@ class DeskWindow(QMainWindow):
         self._update_sidebar_tab()
 
     def _update_sidebar_tab(self) -> None:
-        self._sidebar_tab.show_state(self._sidebar_expanded, len(self._docked))
+        self._sidebar_tab.show_state(self._sidebar_expanded, [dock.windowTitle() for dock in self._docked.values()])
 
     def sidebar_drop_zone(self) -> QRect:
         """Where releasing a dragged widget docks it, in global coordinates:

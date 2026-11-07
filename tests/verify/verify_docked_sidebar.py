@@ -122,7 +122,7 @@ class _Win(QMainWindow):
         self._sidebar_expanded = False
         self._sidebar_tab = SidebarTab(self)
         self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, self._sidebar_tab)
-        self._sidebar_tab.button.clicked.connect(lambda: self.set_sidebar_expanded(not self._sidebar_expanded))
+        self._sidebar_tab.clicked.connect(lambda: self.set_sidebar_expanded(not self._sidebar_expanded))
         self._dock_drop_indicator = DockDropIndicator(self)
         self._update_sidebar_tab()
 
@@ -224,26 +224,60 @@ with tempfile.TemporaryDirectory() as d:
     w3 = _Win({"dummy": py, "webby": html})
     check("the sidebar tab sits in the left toolbar area",
           isinstance(w3._sidebar_tab, SidebarTab) and w3.toolBarArea(w3._sidebar_tab) == Qt.ToolBarArea.LeftToolBarArea)
-    check("collapsed by default, with the expand arrow", w3._sidebar_expanded is False and w3._sidebar_tab.button.text() == "▸")
+    check("collapsed by default, with the expand arrow", w3._sidebar_expanded is False and not w3._sidebar_tab.body.expanded)
     w3._load_desk_docked(Desk(path=Path(d) / "r.desk", docked=[DockedWidgetState("dummy", "r1")]))
     check("restoring a saved Desk leaves the sidebar collapsed", w3._docked["r1"].isHidden() and not w3._sidebar_expanded)
     new_id = w3.dock_widget_by_id("dummy")
     check("docking on purpose expands the sidebar and shows every dock",
           w3._sidebar_expanded and not w3._docked[new_id].isHidden() and not w3._docked["r1"].isHidden()
-          and w3._sidebar_tab.button.text() == "◂")
-    w3._sidebar_tab.button.click()
+          and w3._sidebar_tab.body.expanded)
+    w3._sidebar_tab.clicked.emit()
     check("the tab collapses it again: all docks hidden, arrow flips, count in the tooltip",
           not w3._sidebar_expanded and all(dk.isHidden() for dk in w3._docked.values())
-          and w3._sidebar_tab.button.text() == "▸" and "(2 widgets)" in w3._sidebar_tab.button.toolTip())
+          and not w3._sidebar_tab.body.expanded and "(2 widgets)" in w3._sidebar_tab.body.toolTip())
     w3._load_desk_docked(Desk(path=Path(d) / "r2.desk", docked=[DockedWidgetState("dummy", "r2")]))
     check("a restore while collapsed stays hidden; its count is updated", w3._docked["r2"].isHidden()
-          and "(3 widgets)" in w3._sidebar_tab.button.toolTip())
-    w3._sidebar_tab.button.click()
+          and "(3 widgets)" in w3._sidebar_tab.body.toolTip())
+    w3._sidebar_tab.clicked.emit()
     check("the tab expands it", w3._sidebar_expanded and not w3._docked["r2"].isHidden())
-    w3._sidebar_tab.button.click()
+    w3._sidebar_tab.clicked.emit()
     w3.resize(900, 600)
     w3.show()
     QTest.qWait(30)
+
+    # tab: whole-strip click target, centred arrow, rotated labels
+    from desk.shell.sidebar import MAX_LABEL_CHARS, label_for  # noqa: E402
+    body = w3._sidebar_tab.body
+    check("the tab body fills the strip's height", body.height() >= w3.view.height() - 4)
+    hits = []
+    w3._sidebar_tab.clicked.connect(lambda: hits.append(1))
+    for y in (3, body.height() // 2, body.height() - 3):
+        QTest.mouseClick(body, Qt.MouseButton.LeftButton, pos=QPoint(body.width() // 2, y))
+    check("a click anywhere on the strip toggles it (top, middle, bottom)", len(hits) == 3)
+    w3.set_sidebar_expanded(False)
+    check("label_for keeps short titles and cuts long ones with '...'",
+          label_for("Dummy") == "Dummy" and len(label_for("x" * 40)) == MAX_LABEL_CHARS and label_for("x" * 40).endswith("..."))
+
+    def ink_rows(widget):
+        img = widget.grab().toImage()
+        bg = img.pixelColor(img.width() - 1, img.height() - 1)
+        rows = set()
+        for y in range(img.height()):
+            for x in range(img.width()):
+                if img.pixelColor(x, y) != bg:
+                    rows.add(y)
+                    break
+        return rows
+
+    mid = body.height() // 2
+    rows = ink_rows(body)
+    check("collapsed: labels paint in the upper part, the arrow at the vertical centre, nothing below",
+          any(y < mid - 20 for y in rows) and any(abs(y - mid) <= 12 for y in rows) and not any(y > mid + 14 for y in rows))
+    w3.set_sidebar_expanded(True)
+    rows = ink_rows(body)
+    check("expanded: only the centred arrow is painted",
+          rows and all(abs(y - mid) <= 12 for y in rows))
+    w3.set_sidebar_expanded(False)
 
     zone = w3.sidebar_drop_zone()
     tab_global = w3._sidebar_tab.mapToGlobal(QPoint(w3._sidebar_tab.width() // 2, 100))
@@ -380,7 +414,7 @@ import inspect  # noqa: E402
 
 _init_src = inspect.getsource(DeskWindow.__init__)
 check("DeskWindow wires the tab toggle and the two drag signals (a real one is not constructed here)",
-      "self._sidebar_tab.button.clicked.connect(lambda: self.set_sidebar_expanded(not self._sidebar_expanded))" in _init_src
+      "self._sidebar_tab.clicked.connect(lambda: self.set_sidebar_expanded(not self._sidebar_expanded))" in _init_src
       and "self.view.frame_drag_moved.connect(self._on_frame_drag_moved)" in _init_src
       and "self.view.frame_drag_ended.connect(self._on_frame_drag_ended)" in _init_src
       and "LeftToolBarArea" in _init_src)

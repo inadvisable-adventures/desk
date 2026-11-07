@@ -50,6 +50,15 @@ reordered or its description edited.
    throwaway real-`DeskWindow` offscreen smoke run; no live (on-screen, real-mouse) check. Moving a placed widget in
    loses in-memory-only state (as "move to canvas" does).
 
+615bd79. COMPLETED: Sidebar tab and area-title polish (from the user): (1) rename an area inline by clicking its title; (2) the
+   whole collapsed sidebar bar opens it; (3) the collapsed bar shows rotated labels (cut to 16 chars with "...") for
+   every docked widget as well as the arrow; (4) the arrow is vertically centred and the whole bar collapses the open sidebar.
+
+   [planned: sidebar-tab-and-inline-area-rename.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: `SidebarTab` body widget, `AreaItem.begin_edit`/`title_edited`, changelog tag `inline area rename;
+   labeled sidebar tab #224906`, docs updated; tests extended. Headless/offscreen only.
+
 747806b. COMPLETED: The Areas list widget, docked in the sidebar from TODO `6413e58`: lists the desk's areas (live, via
    `desk.areas.changed`); clicking one views it; also rename/delete/add. Reads through `DeskWindow.list_areas` and acts
    through the same area methods the MCP tools use (TODO `0460b4c`). Depends on `6413e58`. Plan before implementing.
