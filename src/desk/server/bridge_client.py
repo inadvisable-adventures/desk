@@ -138,6 +138,14 @@ BRIDGE_CLIENT_TEMPLATE = """
       close: (instanceId) =>
         call("POST", "/api/bridge/widgets/close", { instance_id: instanceId }),
     },
+    // agents (TODO 507b8d5): requires the "launch_agent" capability. Places
+    // a fresh Claude (Desk) session whose first turn carries `instructions`;
+    // resolves to { instance_id }. opts: { x, y } (scene coords; default is
+    // just right of the calling widget).
+    agents: {
+      launch: (instructions, opts) =>
+        call("POST", "/api/bridge/agents/launch", { instructions, ...(opts || {}) }),
+    },
     events: {
       subscribe: (names) => call("POST", "/api/bridge/events/subscribe", { names }),
       unsubscribe: (names) => call("POST", "/api/bridge/events/unsubscribe", { names }),

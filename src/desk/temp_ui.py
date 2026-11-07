@@ -256,6 +256,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "mermaid subgraph containment boxes #200896",
     "desk-select replaces native select in html widgets #821015",
     "shared widget file edits mark dependents stale #911413",
+    "desk.agents.launch bridge api #507b8d5",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1905,6 +1906,20 @@ built for genuine cross-widget signaling:
   instead (the run itself isn't cancelled by the timeout, only this
   call's own wait for its result is).
 
+- `desk.agents.launch(instructions, opts)` (capability `launch_agent`) —
+  places a fresh Claude (Desk) session whose first turn carries
+  `instructions`, e.g. a "chat about this result" button handing a
+  question and answer to a new agent to discuss. `instructions` is a
+  non-empty string (the text is handed to the session as a file it reads
+  first, so long text is fine); `opts` is optional `{ x, y }` scene
+  coordinates — omitted, the session appears just right of the calling
+  widget. Returns `{ instance_id }` of the new session (fire-and-forget:
+  nothing is routed back to your widget). The agent can act on the
+  user's project, so declare `launch_agent` only for a widget that
+  really launches one, and say in its UI that it will. A missing or
+  empty `instructions` is an HTTP 400/422. (`desk.widgets.open` does
+  **not** take instructions — extra keys there are ignored.)
+
 The calls above are almost always all a `DefineWidget` widget actually
 needs.
 
@@ -2196,7 +2211,7 @@ one-shot run, no more.
   same coarse Bridge API capability names a `DefineWidget`'s own
   `Capability` lines use (`workspace`, `fs`, `widgets`, `events`,
   `filetypes`, `editor`, `popups`, `transforms`, `introspect`,
-  `installed_jobs`, `media` -- see "The Desk Bridge API" in
+  `installed_jobs`, `launch_agent`, `media` -- see "The Desk Bridge API" in
   `tempui-custom-widgets.md` for what each one actually grants).
   Declare only what your script actually calls
   -- an undeclared capability's Bridge call gets a real HTTP 403, not
@@ -2882,6 +2897,15 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "desk.agents.launch bridge api #507b8d5": """- New Bridge API capability `launch_agent`:
+  `desk.agents.launch(instructions, { x, y })` lets a `kind: "html"`
+  widget place a fresh Claude (Desk) session whose first turn carries
+  the widget's own `instructions` (e.g. a "chat about this result"
+  button). Returns `{ instance_id }`; positioned right of the calling
+  widget unless x/y are given. Previously no Bridge route could seed a
+  session (`widgets.open` silently ignores extra keys). See "The Desk
+  Bridge API" in `tempui-custom-widgets.md`.
+""",
     "shared widget file edits mark dependents stale #911413": """- A promoted widget's `[STALE]` watch now also follows the files its
   `tsconfig.json` `"files"` array lists from *outside* its own directory
   (a shared base class or module such as `../_shared/x.ts`). Previously
