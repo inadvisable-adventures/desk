@@ -6,6 +6,18 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+99ed232. COMPLETED: Markdown widget: clicking a relative link no longer replaces the block's text with the wrong file
+   (`../FEEDBACK/FEEDBACK-DESK-markdown-widget-silently-inlines-a-linked-file-s-content-in-2026-11-05-1915.md`).
+   Root cause: `QTextBrowser`'s default link navigation loaded `./LICENSE` in place, resolved against the process
+   working directory (Desk's checkout) instead of the project. Links now go through an `anchorClicked` handler:
+   `#fragment` scrolls, non-file schemes use the system handler, relative/`file:` targets resolve against the
+   markdown file's directory and open via the editor-or-scrap service; the block's text is never replaced.
+
+   [planned: markdown-link-clicks.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: `_AutoHeightTextBrowser._on_anchor_clicked` in `widgets/markdown/widget.py`,
+   `verify_markdown_link_clicks.py`. Headless-verified only. `markdown_old_basic` (retired) not changed.
+
 7bdeae5. COMPLETED: Snapshot web-view (QWebEngineView / HTML widget) frames during zoom gestures too: TODO 19052bc excluded them because grab() was unverified, but zooms over complex HTML widgets were painfully janky. A headless probe showed grab() of a loaded web view returns the rendered page; drop the exclusion.
 
    [planned: zoom-gesture-snapshot.md (amended; no separate plan -- a one-condition removal)]

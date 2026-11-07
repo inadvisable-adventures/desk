@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from PyQt6.QtCore import QPointF, QSize, Qt, QUrl, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QIcon, QPainter, QPixmap, QPolygonF
+from PyQt6.QtGui import QColor, QDesktopServices, QFont, QFontMetrics, QIcon, QPainter, QPixmap, QPolygonF
 from PyQt6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -155,7 +155,15 @@ class _AutoHeightTextBrowser(QTextBrowser):
 
     def __init__(self, markdown: str, base_dir: Path, parent=None) -> None:
         super().__init__(parent)
-        self.setOpenExternalLinks(True)
+        # TODO 99ed232: never let QTextBrowser follow a link itself -- its
+        # built-in navigation replaces this block's document with the
+        # target file, resolved against the process's working directory
+        # (Desk's checkout), not the project. Every click goes through
+        # _on_anchor_clicked instead.
+        self._base_dir = base_dir
+        self.setOpenLinks(False)
+        self.setOpenExternalLinks(False)
+        self.anchorClicked.connect(self._on_anchor_clicked)
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -171,6 +179,31 @@ class _AutoHeightTextBrowser(QTextBrowser):
 
     def _update_height(self, *_args) -> None:
         self.setFixedHeight(int(self.document().size().height()) + 4)
+
+    def _on_anchor_clicked(self, url: QUrl) -> None:
+        """TODO 99ed232: a clicked link never replaces this block's own
+        text. `#fragment`: scroll within the block. A URL with a scheme
+        other than `file` (http, https, mailto...): the system handler.
+        Anything else is a path relative to the markdown file's own
+        directory (or a `file:` URL): opened through the shared
+        editor-or-scrap service, same as the widget's Edit button, if it
+        exists on disk."""
+        if url.scheme() == "" and url.path() == "" and url.hasFragment():
+            self.scrollToAnchor(url.fragment())
+            return
+        if url.scheme() not in ("", "file"):
+            QDesktopServices.openUrl(url)
+            return
+        raw = url.toLocalFile() if url.scheme() == "file" else url.path()
+        target = Path(raw)
+        if not target.is_absolute():
+            target = self._base_dir / target
+        if not target.exists():
+            logger.warning("Markdown link target does not exist: %s", target)
+            return
+        opener = current_context.get_editor_or_scrap_opener()
+        if opener is not None:
+            opener(target)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
