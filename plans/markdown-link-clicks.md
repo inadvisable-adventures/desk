@@ -37,3 +37,8 @@ different code path; this one has no shared resolver.
 
 `tests/verify/verify_markdown_link_clicks.py` clicks a real rendered link with `QTest.mouseClick` (offscreen) and
 checks the text is untouched and the right path is opened. Headless only.
+
+## Follow-up
+
+`widgets/markdown_old_basic` was subsequently removed outright (TODO `5a1b231`), so the "out of scope" note above
+about it no longer applies.

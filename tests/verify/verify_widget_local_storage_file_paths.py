@@ -21,9 +21,6 @@ def load_widget_module(name: str, path: str):
     return module
 
 
-markdown_old_basic_mod = load_widget_module(
-    "markdown_old_basic_widget", "widgets/markdown_old_basic/widget.py"
-)
 markdown_mod = load_widget_module("markdown_widget_mod", "widgets/markdown/widget.py")
 editor_mod = load_widget_module("editor_widget_mod", "widgets/editor/widget.py")
 
@@ -37,25 +34,6 @@ def test_resolve_persisted_path():
         real.write_text("hi")
         assert resolve_persisted_path(str(real)) == real
     print("resolve_persisted_path: PASS")
-
-
-def test_markdown_old_basic_round_trip():
-    with tempfile.TemporaryDirectory() as d:
-        path = Path(d) / "notes.md"
-        path.write_text("# Hello")
-        widget = markdown_old_basic_mod.MarkdownWidget()
-        widget.set_file(path)
-        data = widget.get_widget_local_storage()
-        assert data == {"path": str(path)}, data
-
-        fresh = markdown_old_basic_mod.MarkdownWidget()
-        fresh.set_widget_local_storage(data)
-        assert fresh._current_path == path
-
-        missing = markdown_old_basic_mod.MarkdownWidget()
-        missing.set_widget_local_storage({"path": str(Path(d) / "gone.md")})
-        assert missing._current_path is None
-    print("markdown_old_basic widget-local storage round-trip + missing-file recovery: PASS")
 
 
 def test_editor_round_trip():
@@ -102,7 +80,6 @@ def test_markdown_ex_round_trip_and_tempui_not_persisted():
 
 
 test_resolve_persisted_path()
-test_markdown_old_basic_round_trip()
 test_editor_round_trip()
 test_markdown_ex_round_trip_and_tempui_not_persisted()
 print("ALL PASS")

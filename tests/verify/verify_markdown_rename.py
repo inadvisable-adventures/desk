@@ -19,10 +19,7 @@ app = QApplication(sys.argv)
 def test_discover_widgets_reflects_rename():
     widgets = discover_widgets(Path("widgets"))
     assert "markdown_ex" not in widgets
-    assert "markdown_old_basic" in widgets
-    old = widgets["markdown_old_basic"]
-    assert old.deprecated is True
-    assert old.name == "Markdown (Old, Basic)"
+    assert "markdown_old_basic" not in widgets  # removed, TODO 5a1b231
 
     assert "markdown" in widgets
     new = widgets["markdown"]
@@ -31,19 +28,15 @@ def test_discover_widgets_reflects_rename():
     print("discover_widgets reflects the rename correctly: PASS")
 
 
-def test_spawn_menu_groups_reflect_deprecation():
+def test_spawn_menu_lists_markdown_only():
     widgets = discover_widgets(Path("widgets"))
     menu = WidgetSpawnMenu(widgets)
-    active_names = {menu._group_items["Active"].child(i).text(0) for i in range(menu._group_items["Active"].childCount())}
-    deprecated_names = {
-        menu._group_items["Deprecated"].child(i).text(0)
-        for i in range(menu._group_items["Deprecated"].childCount())
-    }
-    assert "Markdown (Old, Basic)" in deprecated_names, deprecated_names
+    active = menu._group_items["Active"]
+    active_names = {active.child(i).text(0) for i in range(active.childCount())}
     assert "Markdown" in active_names, active_names
-    assert menu._group_items["Deprecated"].isExpanded() is False
+    assert "Markdown (Old, Basic)" not in active_names
     menu.close()
-    print("real WidgetSpawnMenu shows the deprecated widget in the collapsed Deprecated group: PASS")
+    print("real WidgetSpawnMenu lists Markdown and no longer the old basic widget: PASS")
 
 
 def test_temp_ui_widget_id_for_open_markdown():
@@ -68,19 +61,15 @@ def load_widget_module(name, path):
     return module
 
 
-def test_both_widgets_still_build():
+def test_markdown_widget_still_builds():
     new_mod = load_widget_module("new_markdown_mod", "widgets/markdown/widget.py")
     w1 = new_mod.build()
     assert type(w1).__name__ == "MarkdownWidget"
-
-    old_mod = load_widget_module("old_markdown_mod", "widgets/markdown_old_basic/widget.py")
-    w2 = old_mod.build()
-    assert type(w2).__name__ == "MarkdownWidget"
-    print("both renamed widgets still build() successfully: PASS")
+    print("markdown widget still build()s successfully: PASS")
 
 
 test_discover_widgets_reflects_rename()
-test_spawn_menu_groups_reflect_deprecation()
+test_spawn_menu_lists_markdown_only()
 test_temp_ui_widget_id_for_open_markdown()
-test_both_widgets_still_build()
+test_markdown_widget_still_builds()
 print("ALL PASS")

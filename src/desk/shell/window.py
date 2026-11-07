@@ -137,8 +137,7 @@ QUESTION_WIDGET_ID = "question"
 LIGHTNING_ROUND_WIDGET_ID = "lightning_round"
 # The widget formerly known as "markdown_ex"/"Markdown (Extended)" --
 # renamed to the new default "markdown"/"Markdown" (TODO 858752b),
-# replacing the old plain widget (renamed to "markdown_old_basic" and
-# deprecated, TODO 96013cf).
+# replacing the old plain widget (since removed).
 MARKDOWN_WIDGET_ID = "markdown"
 SCRATCH_WIDGET_ID = "scratch"
 CLAUDE_WIDGET_ID = "claude"

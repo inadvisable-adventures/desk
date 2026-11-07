@@ -17,25 +17,16 @@ exercising the Mermaid/SVG pieces of this.
     ` ```mermaid ` code blocks.
 
   See `plans/markdown-ex-widget.md`.
-- **Markdown (Old, Basic) Widget** (`widgets/markdown_old_basic/`, id
-  `markdown_old_basic` — renamed from `markdown`/"Markdown", TODO
-  96013cf, now **deprecated**, replaced as the default by the widget
-  above) — the plain viewer this project started with: Qt's native
-  `QTextBrowser.setMarkdown()` with none of the above (no TOC, no
-  folding, no diagrams). Auto-reloads when the file changes on disk.
-  Kept around for continuity, not removed outright. See
-  `plans/markdown-renderer-widget.md`.
-
-Both widgets can be pointed at a file either via their own "Open"
+The Markdown widget can be pointed at a file either via its own "Open"
 button, or programmatically by another widget (`set_file(path)`) — e.g.
 the TODO widget's "open plan" button, or a tempui `OpenMarkdown <path>`
 notification (see "Tempui integration" below).
 
 ## Markdown syntax support
 
-Both widgets render through the same underlying engine,
-`QTextDocument.setMarkdown()` (via `QTextBrowser`), with no custom
-`MarkdownFeature` flags set — so both get Qt's *default* dialect,
+The Markdown widget renders through `QTextDocument.setMarkdown()`
+(via `QTextBrowser`), with no custom `MarkdownFeature` flags set — so
+it gets Qt's *default* dialect,
 `MarkdownDialectGitHub`. In practice that covers:
 
 - Headings (`#` through `######`), paragraphs, line breaks.
@@ -101,8 +92,7 @@ Markdown rendering.
 
 ## Tempui integration
 
-The deprecated Markdown (Old, Basic) widget has no tempui integration.
-The Markdown widget has two, both fire-and-forget (no `Answer` line,
+The Markdown widget has two tempui integrations, both fire-and-forget (no `Answer` line,
 Desk never writes back):
 
 - `OpenMarkdown <path>` (`desk.temp_ui.parse_open_markdown`) — a

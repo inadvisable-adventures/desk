@@ -6,6 +6,16 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+5a1b231. COMPLETED: Remove the retired `markdown_old_basic` widget ("Markdown (Old, Basic)", deprecated since TODO
+   `96013cf`) and every mention of it in docs shown to agents or the user. Follows TODO `99ed232`, which left it
+   unfixed because it was not in use. Historical TODO/plan/QUESTIONS records are left as written.
+
+   COMPLETED 2026-11-06: deleted `widgets/markdown_old_basic/`; updated `design-docs/architecture.md`,
+   `markdown-rendering.md` and a `window.py` comment; `verify_markdown_rename.py` and
+   `verify_widget_local_storage_file_paths.py` no longer exercise it. No plan file (a deletion). An existing `.desk`
+   file that still placed one would simply not restore that instance (none in this repo does). No agent-facing
+   (`temp_ui.py`) docs mentioned it, so no changelog entry.
+
 99ed232. COMPLETED: Markdown widget: clicking a relative link no longer replaces the block's text with the wrong file
    (`../FEEDBACK/FEEDBACK-DESK-markdown-widget-silently-inlines-a-linked-file-s-content-in-2026-11-05-1915.md`).
    Root cause: `QTextBrowser`'s default link navigation loaded `./LICENSE` in place, resolved against the process

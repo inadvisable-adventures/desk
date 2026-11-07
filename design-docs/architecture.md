@@ -280,26 +280,8 @@ Desk Bridge API.
     same `find_git_diff_handler`/`DeskWindow.open_git_diff` mechanism
     described in that widget's own entry below. See
     `plans/git-status-widget.md`.
-14. **Markdown (Old, Basic) Widget** — a built-in, **deprecated**
-    `kind: "python"` widget (`widgets/markdown_old_basic/`, id
-    `markdown_old_basic` — renamed from `widgets/markdown/`/`markdown`,
-    TODO 96013cf) that renders a chosen Markdown file via Qt's native
-    `QTextBrowser.setMarkdown()` (no Markdown-library dependency) and
-    auto-reloads it when the file changes on disk. File watching goes
-    through `desk.file_watch.SingleFileWatcher` — a reusable single-file
-    watcher (itself backed by the shared File Watcher Service, item 19
-    above) extracted from the TODO widget's own original bespoke
-    watcher, which now also uses it, so the two watchdog gotchas
-    (FSEvents reports symlink-resolved paths; an atomic write lands as
-    a `FileMovedEvent`/`dest_path`) live in one place; see
-    `LEARNINGS.md`. The file is picked via an editor-style "Open" button
-    seeded from the current Desk directory (`desk.shell.current_context`)
-    and, like the Code Editor, is not persisted across a reload (the
-    widget contract has no per-instance state payload yet — see
-    `PARKINGLOT.md`). Replaced as the default Markdown experience by the
-    widget in item 16 below, kept around deprecated (shown collapsed in
-    the widget-add menu's Deprecated group, TODO ed483e2) rather than
-    removed. See `plans/markdown-renderer-widget.md`.
+14. *(removed)* The former Markdown (Old, Basic) widget was deleted (TODO
+    `5a1b231`); the Markdown widget in item 16 below is the only Markdown viewer.
 15. **Sheet Widget** — a built-in `kind: "python"` widget
     (`widgets/sheet/`): a basic `QTableWidget`-backed spreadsheet with
     interactively resizable rows/columns, word-wrapped/clipped cells,
@@ -315,9 +297,8 @@ Desk Bridge API.
 16. **Markdown Widget** — a built-in `kind: "python"` widget
     (`widgets/markdown/`, id `markdown` — renamed from
     `widgets/markdown_ex/`/`markdown_ex`, TODO 858752b, becoming the
-    new default Markdown experience and replacing item 14 above, which
-    was renamed to `markdown_old_basic` and deprecated in the same
-    swap): a left-hand TOC `QTreeWidget` plus a foldable, heading-nested
+    new default Markdown experience and replacing the former plain
+    widget, since removed): a left-hand TOC `QTreeWidget` plus a foldable, heading-nested
     section view of the rendered document, with inline Mermaid diagram
     rendering. The raw Markdown is split (fence-aware, so a `#` inside
     a code block is never mistaken for a heading) into heading/text/
@@ -1166,8 +1147,8 @@ now, and it can only have one Desk open at a time).
   onto this too). Pull-based: read fresh at each actual save, same as
   every other per-widget field, not tracked live. Used by the Stack
   widget (its frame list) and, for their currently-open file path (TODO
-  `02eda20`), the Markdown, Markdown (Old, Basic), and Editor widgets —
-  the latter three via a shared `desk.persisted_path.resolve_persisted_
+  `02eda20`), the Markdown and Editor widgets —
+  the latter two via a shared `desk.persisted_path.resolve_persisted_
   path(raw) -> Path | None` helper that tolerates a since-moved/deleted
   file at restore time by returning `None` (leaving the widget in its
   normal no-file-open placeholder state) instead of crashing or adopting
