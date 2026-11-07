@@ -339,8 +339,9 @@ Desk Bridge API.
     TOC are pure native-Qt composition (nested `QToolButton` disclosure
     sections) — no HTML/JS involved anywhere in this widget.
     `desk.mermaid` is a **bespoke, intentionally partial** Mermaid
-    parser/layout/`QGraphicsScene` engine (flowchart basic shapes +
-    flat state diagrams only) rather than a vendored `mermaid.js` —
+    parser/layout/`QGraphicsScene` engine (flowchart basic shapes,
+    `classDef`/`class`/`style` node styling and nestable `subgraph`
+    boxes -- TODOs `a509077`/`a8931c8` -- plus flat state diagrams only) rather than a vendored `mermaid.js` —
     per `CLAUDE.md`'s dependency aversion and direct user direction;
     any other diagram type or unparseable source falls back to showing
     the raw fenced source as plain text instead of erroring (now the

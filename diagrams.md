@@ -72,16 +72,54 @@ Retry[Retry Loop] --> Retry
 A[A] --> B[B] --> C[C] --> A
 ```
 
+### Node styling (`classDef` / `class` / `:::` / `style`)
+
+TODO `a509077`. Drawn properties: `fill`, `stroke`, `stroke-width`,
+`stroke-dasharray`, `color`.
+
+```mermaid
+flowchart LR
+classDef hot fill:#f96,stroke:#c30,stroke-width:3px
+classDef cool fill:#9cf,stroke:#06c,color:#003
+Input[Input] --> Work{Work}
+Work -->|ok| Done([Done]):::cool
+Work -->|fail| Retry[Retry]
+class Work,Retry hot
+style Input stroke-dasharray:5 5
+```
+
+### Subgraphs
+
+TODO `a8931c8`. A labeled box around the nodes first mentioned inside
+it; nestable. Edges *to a subgraph itself* aren't supported.
+
+```mermaid
+flowchart TD
+Start([Start]) --> A
+subgraph g1 [Group One]
+  A --> B --> C
+  subgraph g2 [Nested]
+    D
+  end
+end
+B --> D
+C --> End
+subgraph g3 [Other]
+  P --> Q
+end
+Start --> P
+```
+
 ### Known limitations (not shown above)
 
 - No extended flowchart shapes (stadium, subroutine, cylinder,
   hexagon, ...) — only rect/rounded/diamond/circle.
 - No inline `-- label -->` edge-label form — only `-->|label|`
   immediately after the operator.
-- `subgraph`/`classdef`/`style`/`click`/`linkstyle` lines are ignored
-  (skipped, not rendered as grouping boxes or styling), though nodes
-  and edges inside a `subgraph` block still parse normally as plain
-  nodes.
+- `click`/`linkstyle` lines are ignored (skipped). `subgraph` and
+  `classDef`/`class`/`style` are supported (see above), but an edge to
+  or from a subgraph itself is not, and `direction` inside a subgraph
+  is ignored.
 - No automatic crossing-minimization within a rank (first-seen order
   only).
 

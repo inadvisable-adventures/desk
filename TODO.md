@@ -12960,3 +12960,17 @@ e5b5567. COMPLETED: `compute_version_hash` (`src/desk/installed_jobs.py`) skips 
 
    COMPLETED 2026-11-05: per-entry `Collapse`/`Expand` button (collapsed by default) in `widgets/hmsvc_manager/widget.py`; collapsed rows keep name, status
    and the action buttons. Session-only state (not saved in the `.desk` file). `verify_hmsvc_manager_collapse.py`, headless-verified only.
+
+a509077. COMPLETED: desk.mermaid: support `classDef`/`class`/`A:::name`/`style` node styling instead of skipping them (`../FEEDBACK/FEEDBACK-DESK-desk-mermaid-ignores-standard-subgraph-classdef-two-independ-2026-11-06-1210.md`, suggested fix #2: styling first, it's layout-independent).
+
+   [planned: mermaid-classdef-node-styling.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: parsed in `src/desk/mermaid.py`, resolved at end of parse (default class, then classes, then `style`); draws `fill`/`stroke`/`stroke-width`/`stroke-dasharray`/`color`.
+   Tag `mermaid classDef/class node styling #200895`, changelog entry, `tempui-markdown.md` subset section, `diagrams.md`. `verify_mermaid_styling_subgraphs.py`, headless-verified only.
+
+a8931c8. COMPLETED: desk.mermaid: render `subgraph ... end` as a labeled, nestable box around its nodes (same FEEDBACK file as a509077; the Pipeline widget's synthetic-node workaround for `map` could later use this).
+
+   [planned: mermaid-subgraph-boxes.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: layout became a skyline pack over nodes and subgraph blocks (identical output when there are no subgraphs); boxes hug members; edges to a subgraph id raise `MermaidParseError`.
+   Tag `mermaid subgraph containment boxes #200896`, changelog entry, docs, same verify script. Headless-verified only (PNG inspected); Desk GUI not launched.

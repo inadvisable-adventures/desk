@@ -7,7 +7,10 @@ renderer. Per `CLAUDE.md`'s "avoid adding dependencies, prefer bespoke
 solutions" plus direct user direction (see `plans/markdown-ex-widget
 .md`), this only supports:
 
-- **Flowchart** (`flowchart`/`graph`): five node shapes -- rect
+- **Flowchart** (`flowchart`/`graph`): `subgraph ... end` boxes (nestable;
+  TODO a8931c8) and `classDef`/`class`/`:::`/`style` node styling (TODO
+  a509077) -- `linkStyle`/`click` are still skipped, and an edge to a
+  subgraph itself is a `MermaidParseError`. Five node shapes -- rect
   `[Label]`, rounded `(Label)`, diamond `{Label}`, circle `((Label))`,
   stadium `([Label])` -- no other extended shapes (subroutine,
   cylinder, hexagon, ...). Edge styles `-->`, `---`, `-.->`, `-.-`,
@@ -88,6 +91,13 @@ class Node:
     id: str
     label: str
     shape: str  # "rect" | "rounded" | "diamond" | "circle" | "stadium" | "start" | "end"
+    # TODO a509077: `classDef`/`class`/`:::`/`style` support. `classes` is
+    # the ordered list of class names assigned to this node; `style` is
+    # the fully resolved property map (default class, then each assigned
+    # class in order, then an explicit `style` line), filled in at the
+    # end of parsing -- see `_resolve_node_styles`.
+    classes: list[str] = field(default_factory=list)
+    style: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -100,11 +110,24 @@ class Edge:
 
 
 @dataclass
+class Subgraph:
+    """TODO a8931c8: a `subgraph <id> [title] ... end` block. `members`
+    are the node ids first mentioned directly inside it (not inside a
+    nested subgraph); `parent` is the enclosing subgraph's id, if any."""
+
+    id: str
+    title: str
+    parent: str | None = None
+    members: list[str] = field(default_factory=list)
+
+
+@dataclass
 class Diagram:
     kind: str  # "flowchart" | "state"
     direction: str  # "TD" | "TB" | "LR" | "BT" | "RL"
     nodes: list[Node] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
+    subgraphs: list[Subgraph] = field(default_factory=list)  # outer before inner
 
 
 # --------------------------------------------------------------------
@@ -115,7 +138,20 @@ _FLOWCHART_HEADER = re.compile(r"^(flowchart|graph)\s+(TD|TB|LR|BT|RL)\s*$", re.
 _FLOWCHART_HEADER_NO_DIR = re.compile(r"^(flowchart|graph)\s*$", re.IGNORECASE)
 _STATE_HEADER = re.compile(r"^stateDiagram(-v2)?\s*$", re.IGNORECASE)
 
-_SKIP_FLOWCHART_PREFIXES = ("subgraph", "classdef", "class ", "style ", "click ", "linkstyle")
+# TODO a509077/a8931c8: `subgraph`/`end`/`classDef`/`class`/`style` are
+# now handled; the rest of these are still skipped (not rendered).
+# `direction XX` inside a subgraph is accepted and ignored too.
+_SKIP_FLOWCHART_PREFIXES = ("click ", "linkstyle", "direction ")
+_SUBGRAPH_RE = re.compile(r"^subgraph(?:\s+(?P<rest>.*))?$", re.IGNORECASE)
+_SUBGRAPH_ID_TITLE_RE = re.compile(
+    r'^(?P<id>[A-Za-z0-9_]+)\s*\[\s*(?:"(?P<tq>[^"]*)"|(?P<t>[^\]]*))\s*\]$'
+)
+_CLASSDEF_RE = re.compile(r"^classDef\s+(?P<names>[\w\-]+(?:\s*,\s*[\w\-]+)*)\s+(?P<styles>.+?)\s*;?$", re.IGNORECASE)
+_CLASS_RE = re.compile(r"^class\s+(?P<ids>\w+(?:\s*,\s*\w+)*)\s+(?P<name>[\w\-]+)\s*;?$", re.IGNORECASE)
+_STYLE_RE = re.compile(r"^style\s+(?P<id>\w+)\s+(?P<styles>.+?)\s*;?$", re.IGNORECASE)
+# Splits `fill:#f9f,stroke:#333` on commas that aren't inside parens
+# (so `fill:rgb(1,2,3)` survives).
+_STYLE_SPLIT_RE = re.compile(r",(?![^()]*\))")
 
 # TODO 90dd6e6: unpiped inline edge labels (`A -- text --> B`, standard
 # Mermaid alongside the piped `A -->|text| B` form) sit between an
@@ -157,7 +193,9 @@ _NODE_RE = re.compile(
     r'|\(\[(?:"(?P<stadium_q>[^"]*)"|(?P<stadium>[^\[\]()]*))\]\)'
     r'|\((?:"(?P<rounded_q>[^"]*)"|(?P<rounded>[^()]*))\)'
     r'|\{(?:"(?P<diamond_q>[^"]*)"|(?P<diamond>[^{}]*))\}'
-    r")?$"
+    r")?"
+    # TODO a509077: the `A:::className` class shorthand.
+    r"(?::::(?P<cls>[A-Za-z0-9_\-]+))?$"
 )
 
 _NODE_SHAPES = ("circle", "rect", "stadium", "rounded", "diamond")
@@ -220,8 +258,25 @@ def _parse_node_token(token: str) -> Node:
         if value is None:
             value = match.group(shape)
         if value is not None:
-            return Node(node_id, value.strip() or node_id, shape)
-    return Node(node_id, node_id, "rect")
+            return Node(node_id, value.strip() or node_id, shape, _shorthand_classes(match))
+    return Node(node_id, node_id, "rect", _shorthand_classes(match))
+
+
+def _shorthand_classes(match: re.Match) -> list[str]:
+    cls = match.group("cls")
+    return [cls] if cls else []
+
+
+def _parse_style_props(text: str) -> dict[str, str]:
+    """`fill:#f9f,stroke:#333,stroke-width:4px` -> a property map (keys
+    lowercased; a trailing `;` and malformed pieces are dropped)."""
+    props: dict[str, str] = {}
+    for piece in _STYLE_SPLIT_RE.split(text.strip().rstrip(";")):
+        key, sep, value = piece.partition(":")
+        key, value = key.strip().lower(), value.strip().rstrip(";").strip()
+        if sep and key and value:
+            props[key] = value
+    return props
 
 
 def _edge_match_info(m: re.Match) -> tuple[str, str | None]:
@@ -245,18 +300,57 @@ def _edge_match_info(m: re.Match) -> tuple[str, str | None]:
 def _parse_flowchart(lines: list[str], direction: str) -> Diagram:
     nodes: dict[str, Node] = {}
     edges: list[Edge] = []
+    subgraphs: dict[str, Subgraph] = {}
+    sg_stack: list[Subgraph] = []
+    member_of: set[str] = set()
+    class_defs: dict[str, dict[str, str]] = {}
+    pending_classes: list[tuple[str, str]] = []  # (node id, class name)
+    node_styles: dict[str, dict[str, str]] = {}
 
     def ensure_node(token: str) -> str:
         node = _parse_node_token(token)
+        for cls in node.classes:
+            pending_classes.append((node.id, cls))
+        node.classes = []
         is_default = node.shape == "rect" and node.label == node.id
         if node.id not in nodes or not is_default:
             nodes.setdefault(node.id, node)
             if not is_default:
                 nodes[node.id] = node
+        if sg_stack and node.id not in member_of:
+            # A node belongs to the innermost subgraph it is first
+            # mentioned in; a later mention elsewhere doesn't move it.
+            member_of.add(node.id)
+            sg_stack[-1].members.append(node.id)
         return node.id
 
     for line in lines:
-        if line.lower() == "end" or line.lower().startswith(_SKIP_FLOWCHART_PREFIXES):
+        lowered = line.lower()
+        if lowered == "end":
+            if sg_stack:
+                sg_stack.pop()
+            continue
+        sg_match = _SUBGRAPH_RE.match(line)
+        if sg_match:
+            sg = _open_subgraph(sg_match.group("rest"), sg_stack, subgraphs)
+            sg_stack.append(sg)
+            continue
+        if lowered.startswith(_SKIP_FLOWCHART_PREFIXES):
+            continue
+        m = _CLASSDEF_RE.match(line)
+        if m:
+            props = _parse_style_props(m.group("styles"))
+            for name in m.group("names").split(","):
+                class_defs.setdefault(name.strip(), {}).update(props)
+            continue
+        m = _CLASS_RE.match(line)
+        if m:
+            for node_id in m.group("ids").split(","):
+                pending_classes.append((node_id.strip(), m.group("name")))
+            continue
+        m = _STYLE_RE.match(line)
+        if m:
+            node_styles.setdefault(m.group("id"), {}).update(_parse_style_props(m.group("styles")))
             continue
         matches = list(_EDGE_RE.finditer(line))
         if not matches:
@@ -283,7 +377,58 @@ def _parse_flowchart(lines: list[str], direction: str) -> Diagram:
 
     if not nodes:
         raise MermaidParseError("flowchart has no nodes")
-    return Diagram("flowchart", direction, list(nodes.values()), edges)
+    for sg_id in subgraphs:
+        if sg_id in nodes:
+            raise MermaidParseError(
+                f"{sg_id!r} is a subgraph id used as an edge endpoint or node -- "
+                "edges to/from a subgraph itself aren't supported"
+            )
+    _resolve_node_styles(nodes, class_defs, pending_classes, node_styles)
+    return Diagram("flowchart", direction, list(nodes.values()), edges, list(subgraphs.values()))
+
+
+def _open_subgraph(rest: str | None, stack: list[Subgraph], subgraphs: dict[str, Subgraph]) -> Subgraph:
+    """TODO a8931c8: `subgraph id [Title]`, `subgraph id["Title"]`, or
+    `subgraph Title` (the title doubles as the id)."""
+    rest = (rest or "").strip()
+    if not rest:
+        raise MermaidParseError("subgraph needs an id or title")
+    m = _SUBGRAPH_ID_TITLE_RE.match(rest)
+    if m:
+        sg_id = m.group("id")
+        title = m.group("tq") if m.group("tq") is not None else m.group("t")
+        title = title.strip() or sg_id
+    else:
+        title = rest[1:-1] if len(rest) >= 2 and rest[0] == rest[-1] == '"' else rest
+        sg_id = title
+    if sg_id in subgraphs:
+        raise MermaidParseError(f"duplicate subgraph id: {sg_id!r}")
+    sg = Subgraph(sg_id, title, stack[-1].id if stack else None)
+    subgraphs[sg_id] = sg
+    return sg
+
+
+def _resolve_node_styles(
+    nodes: dict[str, Node],
+    class_defs: dict[str, dict[str, str]],
+    pending_classes: list[tuple[str, str]],
+    node_styles: dict[str, dict[str, str]],
+) -> None:
+    """TODO a509077: fills each node's `classes` and `style` -- done once
+    at the end so `class`/`style` lines may come before or after the
+    nodes and `classDef`s they refer to. A class with no `classDef` and
+    a `class`/`style` naming an unknown node are silently ignored (as in
+    Mermaid)."""
+    for node_id, cls in pending_classes:
+        node = nodes.get(node_id)
+        if node is not None and cls not in node.classes:
+            node.classes.append(cls)
+    for node in nodes.values():
+        style = dict(class_defs.get("default", {}))
+        for cls in node.classes:
+            style.update(class_defs.get(cls, {}))
+        style.update(node_styles.get(node.id, {}))
+        node.style = style
 
 
 def _parse_state(lines: list[str]) -> Diagram:
@@ -359,6 +504,7 @@ _H_PADDING = 24.0
 _V_PADDING = 16.0
 _PSEUDOSTATE_RADIUS = 9.0
 _SCENE_MARGIN = 20.0
+_SUBGRAPH_PADDING = 14.0
 
 
 @dataclass
@@ -379,10 +525,19 @@ class NodeLayout:
 
 
 @dataclass
+class SubgraphLayout:
+    """TODO a8931c8: the bounding box drawn around a subgraph's nodes."""
+
+    subgraph: Subgraph
+    rect: QRectF
+
+
+@dataclass
 class LayoutResult:
     nodes: dict[str, NodeLayout]
     width: float
     height: float
+    subgraphs: dict[str, SubgraphLayout] = field(default_factory=dict)
 
 
 def _node_size(node: Node, measure: MeasureFn) -> tuple[float, float]:
@@ -457,13 +612,121 @@ def layout(diagram: Diagram, measure: MeasureFn) -> LayoutResult:
 
     rank = _assign_ranks(diagram)
     sizes = {n.id: _node_size(n, measure) for n in diagram.nodes}
-
-    ranks_grouped: dict[int, list[Node]] = {}
-    for n in diagram.nodes:
-        ranks_grouped.setdefault(rank[n.id], []).append(n)
+    order_index = {n.id: i for i, n in enumerate(diagram.nodes)}
 
     horizontal = diagram.direction in ("LR", "RL")
     reverse_main = diagram.direction in ("BT", "RL")
+
+    # ---- subgraph bookkeeping (TODO a8931c8) -------------------------
+    sgs = {sg.id: sg for sg in diagram.subgraphs}
+    children: dict[str | None, list[str]] = {}
+    for sg in diagram.subgraphs:
+        children.setdefault(sg.parent, []).append(sg.id)
+    desc: dict[str, list[str]] = {}
+
+    def descendants(sg_id: str) -> list[str]:
+        if sg_id not in desc:
+            ids = [m for m in sgs[sg_id].members if m in sizes]
+            for child in children.get(sg_id, []):
+                ids += descendants(child)
+            desc[sg_id] = ids
+        return desc[sg_id]
+
+    # Empty subgraphs (no nodes anywhere inside) draw nothing.
+    live_children = {
+        parent: [c for c in kids if descendants(c)] for parent, kids in children.items()
+    }
+    live = [sg.id for sg in diagram.subgraphs if descendants(sg.id)]
+    member_of = {m for sg_id in live for m in sgs[sg_id].members if m in sizes}
+    title_h = (measure("Ag")[1] + 4.0) if live else 0.0
+    pad = _SUBGRAPH_PADDING
+
+    def depth(sg_id: str) -> int:
+        return 1 + max((depth(c) for c in live_children.get(sg_id, [])), default=0)
+
+    rank_gap = _RANK_GAP
+    if live:
+        max_depth = max(depth(sg_id) for sg_id in live if sgs[sg_id].parent is None)
+        rank_gap = max(_RANK_GAP, max_depth * (2 * pad + title_h) + 36.0)
+
+    # ---- cross-axis packing ------------------------------------------
+    # Items are nodes ("n", id) and subgraph blocks ("s", id). Each is
+    # placed at the first cross offset clear of everything already placed
+    # in *every rank it spans* -- so a subgraph reserves one contiguous
+    # cross-axis lane across all its ranks, and a non-member in a rank in
+    # the middle of its span is pushed past the lane instead of landing
+    # inside the box. With no subgraphs every item spans exactly one rank
+    # and this is the plain left-to-right packing per rank.
+    block_cache: dict[str, tuple[dict, float]] = {}
+
+    def span(item):
+        kind, ident = item
+        if kind == "n":
+            return rank[ident], rank[ident]
+        ranks = [rank[n] for n in descendants(ident)]
+        return min(ranks), max(ranks)
+
+    def order(item):
+        kind, ident = item
+        return order_index[ident] if kind == "n" else min(order_index[n] for n in descendants(ident))
+
+    def cross_size(item):
+        kind, ident = item
+        if kind == "n":
+            w, h = sizes[ident]
+            return h if horizontal else w
+        return pack(ident)[1]
+
+    def pack(container: str | None):
+        if container is not None and container in block_cache:
+            return block_cache[container]
+        if container is None:
+            start_pad = end_pad = 0.0
+            items = [("n", n.id) for n in diagram.nodes if n.id not in member_of]
+        else:
+            # In a horizontal layout the cross axis is vertical, so the
+            # title strip (drawn at the box's top) lives in the start pad.
+            start_pad = pad + (title_h if horizontal else 0.0)
+            end_pad = pad
+            items = [("n", m) for m in sgs[container].members if m in sizes]
+        items += [("s", c) for c in live_children.get(container, [])]
+        items.sort(key=order)
+        edge: dict[int, float] = {}
+        offsets: dict[tuple[str, str], float] = {}
+        for item in items:
+            lo, hi = span(item)
+            size = cross_size(item)
+            off = max(edge.get(r, start_pad) for r in range(lo, hi + 1))
+            offsets[item] = off
+            for r in range(lo, hi + 1):
+                edge[r] = off + size + _SIBLING_GAP
+        total = (max(edge.values()) - _SIBLING_GAP if edge else start_pad) + end_pad
+        if container is not None and not horizontal:
+            total = max(total, measure(sgs[container].title)[0] + 2 * pad)
+        result = (offsets, total)
+        if container is not None:
+            block_cache[container] = result
+        return result
+
+    cross_pos: dict[str, float] = {}
+    block_pos: dict[str, float] = {}
+
+    def place(container: str | None, base: float) -> None:
+        offsets, _ = pack(container)
+        for (kind, ident), off in offsets.items():
+            if kind == "n":
+                cross_pos[ident] = base + off
+            else:
+                block_pos[ident] = base + off
+                place(ident, base + off)
+
+    place(None, 0.0)
+    total_cross = pack(None)[1]
+
+    # ---- main-axis ranks ---------------------------------------------
+    ranks_grouped: dict[int, list[Node]] = {}
+    for n in diagram.nodes:
+        ranks_grouped.setdefault(rank[n.id], []).append(n)
     max_rank = max(ranks_grouped)
 
     rank_extent = {
@@ -475,34 +738,64 @@ def layout(diagram: Diagram, measure: MeasureFn) -> LayoutResult:
     offset = 0.0
     for r in range(max_rank + 1):
         main_offsets[r] = offset
-        offset += rank_extent.get(r, 0.0) + _RANK_GAP
-    total_main = max(offset - _RANK_GAP, 0.0)
+        offset += rank_extent.get(r, 0.0) + rank_gap
+    total_main = max(offset - rank_gap, 0.0)
 
     layouts: dict[str, NodeLayout] = {}
-    total_cross = 0.0
-    for r, members in ranks_grouped.items():
-        cross = 0.0
-        for n in members:
-            w, h = sizes[n.id]
-            main_size = w if horizontal else h
-            main_pos = main_offsets[r]
-            if reverse_main:
-                main_pos = total_main - main_pos - main_size
-            if horizontal:
-                x, y = main_pos, cross
-            else:
-                x, y = cross, main_pos
-            layouts[n.id] = NodeLayout(n, x, y, w, h)
-            cross += (h if horizontal else w) + _SIBLING_GAP
-        total_cross = max(total_cross, cross - _SIBLING_GAP if members else 0.0)
+    for n in (n for members in ranks_grouped.values() for n in members):
+        w, h = sizes[n.id]
+        main_size = w if horizontal else h
+        main_pos = main_offsets[rank[n.id]]
+        if reverse_main:
+            main_pos = total_main - main_pos - main_size
+        cross = cross_pos[n.id]
+        x, y = (main_pos, cross) if horizontal else (cross, main_pos)
+        layouts[n.id] = NodeLayout(n, x, y, w, h)
 
+    # ---- subgraph boxes ----------------------------------------------
+    # Cross extent is the lane reserved above; main extent hugs the
+    # contained nodes / child boxes (computed bottom-up so a parent
+    # strictly encloses its children).
+    boxes: dict[str, QRectF] = {}
+
+    def box(sg_id: str) -> QRectF:
+        if sg_id in boxes:
+            return boxes[sg_id]
+        rects = [layouts[m].rect for m in sgs[sg_id].members if m in layouts]
+        rects += [box(c) for c in live_children.get(sg_id, [])]
+        union = rects[0]
+        for r in rects[1:]:
+            union = union.united(r)
+        lane_start, lane = block_pos[sg_id], pack(sg_id)[1]
+        if horizontal:
+            rect = QRectF(union.left() - pad, lane_start, union.width() + 2 * pad, lane)
+        else:
+            top = union.top() - pad - title_h
+            rect = QRectF(lane_start, top, lane, union.bottom() + pad - top)
+        boxes[sg_id] = rect
+        return rect
+
+    for sg_id in live:
+        box(sg_id)
+
+    # Boxes may extend past the nodes (negative coordinates); shift
+    # everything so the whole drawing starts at the scene margin.
+    all_rects = [nl.rect for nl in layouts.values()] + list(boxes.values())
+    min_x = min(r.left() for r in all_rects)
+    min_y = min(r.top() for r in all_rects)
+    max_x = max(r.right() for r in all_rects)
+    max_y = max(r.bottom() for r in all_rects)
+    dx, dy = _SCENE_MARGIN - min_x, _SCENE_MARGIN - min_y
     for nl in layouts.values():
-        nl.x += _SCENE_MARGIN
-        nl.y += _SCENE_MARGIN
+        nl.x += dx
+        nl.y += dy
+    sg_layouts = {
+        sg_id: SubgraphLayout(sgs[sg_id], boxes[sg_id].translated(dx, dy)) for sg_id in live
+    }
 
-    width = (total_main if horizontal else total_cross) + _SCENE_MARGIN * 2
-    height = (total_cross if horizontal else total_main) + _SCENE_MARGIN * 2
-    return LayoutResult(layouts, width, height)
+    width = max_x - min_x + _SCENE_MARGIN * 2
+    height = max_y - min_y + _SCENE_MARGIN * 2
+    return LayoutResult(layouts, width, height, sg_layouts)
 
 
 # --------------------------------------------------------------------
@@ -534,9 +827,55 @@ def _boundary_point(nl: NodeLayout, other: tuple[float, float]) -> tuple[float, 
     return cx + dx * t, cy + dy * t
 
 
+_RGB_RE = re.compile(r"^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$", re.IGNORECASE)
+
+
+def _parse_color(value: str) -> QColor | None:
+    """TODO a509077: a CSS-ish color from a `classDef`/`style` value --
+    `#rgb`/`#rrggbb`, a named color, or `rgb(r,g,b)`/`rgba(r,g,b,a)`.
+    `None` for anything else (including `none`), which callers treat as
+    'leave the default'."""
+    value = value.strip()
+    m = _RGB_RE.match(value)
+    if m:
+        r, g, b = (min(int(m.group(i)), 255) for i in (1, 2, 3))
+        alpha = min(float(m.group(4)), 1.0) if m.group(4) else 1.0
+        return QColor(r, g, b, round(alpha * 255))
+    color = QColor(value)
+    return color if color.isValid() else None
+
+
+def _styled(node: Node, pen: QPen, fill: QColor, text_color: QColor) -> tuple[QPen, QColor, QColor]:
+    """TODO a509077: the node's own pen/fill/text color after applying its
+    resolved `classDef`/`style` properties -- `fill`, `stroke`,
+    `stroke-width`, `stroke-dasharray`, `color`. Other properties
+    (font-size, rx, ...) are accepted by the parser but not drawn."""
+    style = node.style
+    if not style:
+        return pen, fill, text_color
+    pen = QPen(pen)
+    if "fill" in style:
+        fill = _parse_color(style["fill"]) or fill
+    if "stroke" in style:
+        stroke = _parse_color(style["stroke"])
+        if stroke is not None:
+            pen.setColor(stroke)
+    if "stroke-width" in style:
+        try:
+            pen.setWidthF(max(float(style["stroke-width"].lower().removesuffix("px")), 0.0))
+        except ValueError:
+            pass
+    if "stroke-dasharray" in style:
+        pen.setStyle(Qt.PenStyle.DashLine)
+    if "color" in style:
+        text_color = _parse_color(style["color"]) or text_color
+    return pen, fill, text_color
+
+
 def _make_node_item(nl: NodeLayout, pen: QPen, fill: QColor, text_color: QColor):
     shape = nl.node.shape
     rect = nl.rect
+    pen, fill, text_color = _styled(nl.node, pen, fill, text_color)
 
     if shape == "start":
         item = QGraphicsEllipseItem(rect)
@@ -654,6 +993,27 @@ def _add_edge(scene: QGraphicsScene, src: NodeLayout, tgt: NodeLayout, edge: Edg
         _add_edge_label(scene, ((p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2), edge.label, color, bg_color)
 
 
+def _add_subgraph_box(scene: QGraphicsScene, sl: SubgraphLayout, border: QColor, text_color: QColor) -> None:
+    fill = QColor(border)
+    fill.setAlpha(22)
+    edge = QColor(border)
+    edge.setAlpha(150)
+    pen = QPen(edge)
+    pen.setWidthF(1.0)
+    path = QPainterPath()
+    path.addRoundedRect(sl.rect, 6, 6)
+    item = QGraphicsPathItem(path)
+    item.setBrush(QBrush(fill))
+    item.setPen(pen)
+    scene.addItem(item)
+    title = QGraphicsSimpleTextItem(sl.subgraph.title)
+    title.setBrush(QBrush(text_color))
+    available = max(sl.rect.width() - 16.0, 8.0)
+    title.setText(QFontMetricsF(title.font()).elidedText(sl.subgraph.title, Qt.TextElideMode.ElideRight, available))
+    title.setPos(sl.rect.left() + 8.0, sl.rect.top() + 4.0)
+    scene.addItem(title)
+
+
 def build_scene(diagram: Diagram, result: LayoutResult, palette: QPalette) -> QGraphicsScene:
     scene = QGraphicsScene(0, 0, max(result.width, 1.0), max(result.height, 1.0))
 
@@ -664,6 +1024,12 @@ def build_scene(diagram: Diagram, result: LayoutResult, palette: QPalette) -> QG
 
     pen = QPen(border)
     pen.setWidthF(1.4)
+
+    # TODO a8931c8: subgraph boxes first, so they sit behind everything.
+    # `result.subgraphs` is outer-before-inner, so a nested box draws on
+    # top of its parent's.
+    for sl in result.subgraphs.values():
+        _add_subgraph_box(scene, sl, border, text_color)
 
     for nl in result.nodes.values():
         scene.addItem(_make_node_item(nl, pen, fill, text_color))

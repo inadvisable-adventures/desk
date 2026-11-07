@@ -251,6 +251,8 @@ CURRENT_TAGS: tuple[str, ...] = (
     "handoff request MCP tools #070658",
     "feedback item MCP tools #156881",
     "installed job version hash skips .venv #284781",
+    "mermaid classDef/class node styling #200895",
+    "mermaid subgraph containment boxes #200896",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -646,6 +648,25 @@ erroring.
   `-->`, `---`, `-.->`, `-.-`, with a label either piped
   (`A -->|label| B`) or unpiped/inline (`A -- label --> B`,
   `A -. label .-> B`, and the arrow-less equivalents `---`/`-.-`).
+- **Node styling** (flowchart): `classDef name fill:#f96,stroke:#333,
+  stroke-width:4px,color:#fff` defines a class (comma-separate several
+  names to define them at once; a class named `default` applies to every
+  node), `class A,B name` or the `A:::name` shorthand assigns it, and
+  `style A fill:#f96` styles one node directly (applied after its
+  classes). Drawn properties: `fill`, `stroke`, `stroke-width`,
+  `stroke-dasharray` (any value draws dashed), `color` (label text);
+  colors may be `#rgb`, `#rrggbb`, a color name, or `rgb(r,g,b)`. Other
+  properties are accepted and ignored. Order doesn't matter, and a
+  `class`/`style` naming an unknown node or an undefined class is
+  ignored. `linkStyle` and `click` lines are still skipped.
+- **Subgraphs** (flowchart): `subgraph id [Title] ... end` (also
+  `subgraph id["Title"]`, or `subgraph Title`) draws a labeled box around
+  the nodes first mentioned inside it; subgraphs may nest. A node
+  belongs to the innermost subgraph it is first mentioned in. `direction`
+  lines inside a subgraph are ignored (the whole diagram uses one
+  direction). **Not supported:** an edge to or from a subgraph itself
+  (`A --> mySubgraph`) -- that diagram falls back to plain text; connect
+  to a node inside it instead.
 - **State diagram** (`stateDiagram`/`stateDiagram-v2`): flat only --
   `[*]` start/end pseudostates, `A --> B` / `A --> B : label`
   transitions, `A : label` descriptions. A composite/nested `state X {
@@ -656,8 +677,8 @@ erroring.
   (no backslash escapes, no HTML entities), and quoting is optional --
   a label with nothing special in it doesn't need it.
 - **Unsupported entirely:** any other diagram type (sequence, class,
-  ER, gantt, pie, ...), thick edges (`==>`), any node shape beyond the
-  five above, and a composite `stateDiagram` block's own nested content
+  ER, gantt, pie, ...), thick edges (`==>`), `linkStyle`/`click`, any
+  node shape beyond the five above, and a composite `stateDiagram` block's own nested content
   (skipped, never rendered, not an error).
 
 **This renders via a transform, not logic built directly into the
@@ -2835,6 +2856,17 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "mermaid classDef/class node styling #200895": """- Mermaid flowcharts (a fenced ```mermaid``` block) now honor
+  `classDef`, `class`, the `A:::name` shorthand and `style` lines for
+  per-node styling (`fill`, `stroke`, `stroke-width`, `stroke-dasharray`,
+  `color`) instead of skipping them. See "Supported Mermaid subset" in
+  `tempui-markdown.md`.
+""",
+    "mermaid subgraph containment boxes #200896": """- Mermaid flowcharts now draw `subgraph id [Title] ... end` as a
+  labeled box around its nodes (nestable) instead of ignoring it. Edges
+  to a subgraph itself are not supported and fall back to plain text.
+  See "Supported Mermaid subset" in `tempui-markdown.md`.
+""",
     "installed job version hash skips .venv #284781": """- An Installed Job's version hash no longer reads the job's own
   top-level `.venv/` directory. A job with a large self-managed venv used
   to take seconds to hash and time out `desk_install_job` /
