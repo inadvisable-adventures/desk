@@ -34,13 +34,19 @@ class _Win:
     def __init__(self, fail=False):
         self._widgets = {"kanban": type("W", (), {"default_size": (400, 300)})()}
         self.placed = []
+        self.bound = []
+        self.kwargs = {}
         self.fail = fail
         self.view = type("V", (), {
             "mapToScene": lambda s, p: type("P", (), {"x": lambda s: 1000.0, "y": lambda s: 500.0})(),
             "viewport": lambda s: type("VP", (), {"rect": lambda s: type("R", (), {"center": lambda s: None})()})(),
         })()
 
+    def _bind_widget_local_storage(self, frame, data):
+        self.bound.append(data)
+
     def _place_widget(self, widget_id, widget, pos, size, **k):
+        self.kwargs = k
         self.placed.append((widget_id, pos, size))
         return None if self.fail else _Frame()
 
@@ -48,6 +54,16 @@ class _Win:
 _Win.place_widget_by_id = DeskWindow.place_widget_by_id
 
 w = _Win()
+
+
+def _raises_state(win):
+    try:
+        win.place_widget_by_id("kanban", state=[1])
+    except ValueError:
+        return True
+    return False
+
+
 check("returns instance_id", w.place_widget_by_id("kanban") == "new-1")
 check("default: centered in view using default size", w.placed[-1] == ("kanban", (800.0, 350.0), (400, 300)))
 w.place_widget_by_id("kanban", 10, 20, 300, 200)
@@ -62,6 +78,10 @@ def raises(fn):
     return False
 
 
+check("no state: nothing seeded", w.kwargs == {"local_storage_data": None} and w.bound == [])
+w.place_widget_by_id("kanban", state={"tab": "b"})
+check("state seeds local storage at placement and is bound", w.kwargs == {"local_storage_data": {"tab": "b"}} and w.bound == [{"tab": "b"}])
+check("non-dict state raises", _raises_state(w))
 check("unknown widget id raises ValueError", raises(lambda: w.place_widget_by_id("nope")))
 check("x without y raises", raises(lambda: w.place_widget_by_id("kanban", 1, None)))
 check("width without height raises", raises(lambda: w.place_widget_by_id("kanban", None, None, 5, None)))
@@ -73,6 +93,11 @@ current_context.set_gui_thread_caller(lambda fn: fn())
 current_context.set_main_window(_Win())
 res = asyncio.run(_place_widget_tool.handler({"widget_id": " kanban ", "x": 1, "y": 2}))
 check("handler returns instance_id", not res.get("is_error") and res["content"][0]["text"] == "new-1")
+_seen = {}
+current_context.set_main_window(type("W", (), {"place_widget_by_id": lambda s, *a: _seen.setdefault("a", a) and "i2"})())
+res = asyncio.run(_place_widget_tool.handler({"widget_id": "k", "state": {"a": 1}}))
+check("handler forwards state", _seen["a"][-1] == {"a": 1} and res["content"][0]["text"] == "i2")
+current_context.set_main_window(_Win())
 res = asyncio.run(_place_widget_tool.handler({"widget_id": "nope"}))
 check("handler reports unknown id as error", res["is_error"] is True)
 res = asyncio.run(_place_widget_tool.handler({"widget_id": ""}))

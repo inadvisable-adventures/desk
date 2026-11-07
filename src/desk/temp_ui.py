@@ -2840,7 +2840,7 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
-    "desk_place_widget MCP places a registered widget #800488": """- New MCP tool `desk_place_widget(widget_id, x?, y?, width?, height?)`
+    "desk_place_widget MCP places a registered widget #800488": """- New MCP tool `desk_place_widget(widget_id, x?, y?, width?, height?, state?)`
   on the `desk` server: places a new instance of an already-registered
   widget kind on the Workspace Canvas and returns its `instance_id`, with
   no human click on a notification. Use it right after building and
@@ -2849,8 +2849,11 @@ _NEW_FEATURES: dict[str, str] = {
   `desk_screenshot_widget`, tweak, rebuild, and repeat. `x`/`y` are the
   top-left in canvas coordinates (the same ones
   `desk_list_widget_instances` reports); omit them to center the widget in
-  the current view. See "Invoking a defined widget" in
-  `tempui-custom-widgets.md`.
+  the current view. An optional `state` object seeds the new instance's
+  widget-local storage, i.e. what the widget's first
+  `window.desk.self.getLocalStorage()` returns -- its shape is whatever
+  your widget stores with `setLocalStorage`. See "Invoking a defined
+  widget" in `tempui-custom-widgets.md`.
 """,
     "installed job version hash skips .venv #284781": """- An Installed Job's version hash no longer reads the job's own
   top-level `.venv/` directory. A job with a large self-managed venv used

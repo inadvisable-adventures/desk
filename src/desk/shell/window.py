@@ -1084,6 +1084,7 @@ class DeskWindow(QMainWindow):
         y: float | None = None,
         width: int | None = None,
         height: int | None = None,
+        state: dict | None = None,
     ) -> str:
         """TODO 1746166, the `desk_place_widget` MCP tool: places a new
         instance of an already-registered widget kind (built-in, or a
@@ -1091,8 +1092,13 @@ class DeskWindow(QMainWindow):
         the agent-side equivalent of a human placing it by hand.
         (x, y) is the top-left in scene coordinates (as reported by
         get_state_dict); omitted, the widget is centered in the current
-        viewport. Raises ValueError for an unknown widget id or a
-        placement that fails (e.g. a schema conflict)."""
+        viewport. `state`, if given, seeds the new instance's
+        widget-local storage (what an html widget reads with
+        `self.getLocalStorage()`, a python widget via
+        `set_widget_local_storage`) exactly as revive_removed_widget
+        seeds a revived one; its shape is defined by the widget.
+        Raises ValueError for an unknown widget id, a non-dict state,
+        or a placement that fails (e.g. a schema conflict)."""
         widget = self._widgets.get(widget_id)
         if widget is None:
             known = ", ".join(sorted(self._widgets)) or "(none)"
@@ -1101,6 +1107,8 @@ class DeskWindow(QMainWindow):
             raise ValueError("Give both x and y, or neither.")
         if (width is None) != (height is None):
             raise ValueError("Give both width and height, or neither.")
+        if state is not None and not isinstance(state, dict):
+            raise ValueError("state must be a JSON object.")
         size = (int(width), int(height)) if width is not None else widget.default_size
         if x is None:
             center = self.view.mapToScene(self.view.viewport().rect().center())
@@ -1108,9 +1116,12 @@ class DeskWindow(QMainWindow):
             pos = (center.x() - w / 2, center.y() - h / 2)
         else:
             pos = (float(x), float(y))
-        frame = self._place_widget(widget_id, widget, pos, size)
+        frame = self._place_widget(widget_id, widget, pos, size, local_storage_data=state)
         if frame is None:
             raise ValueError(f"Could not place widget {widget_id!r} (see the Desk log).")
+        if state is not None:
+            # Same synchronous follow-up revive_removed_widget makes.
+            self._bind_widget_local_storage(frame, state)
         return frame.instance_id
 
     def _build_desk_expert_instructions(self, question: str) -> str:

@@ -7,7 +7,7 @@ after building/registering a widget (`DefineWidget`), an agent had no way to put
 the `desk_*` widget tools only list, reveal or screenshot already-placed instances. A human had to place it,
 blocking the build -> place -> screenshot -> iterate loop.
 
-New `desk` MCP tool `desk_place_widget(widget_id, x?, y?, width?, height?)` returning the new `instance_id`.
+New `desk` MCP tool `desk_place_widget(widget_id, x?, y?, width?, height?, state?)` returning the new `instance_id`.
 
 ## Affected files
 
@@ -24,8 +24,12 @@ New `desk` MCP tool `desk_place_widget(widget_id, x?, y?, width?, height?)` retu
   them from the human "Add widget" menu); unknown id -> error listing registered ids.
 - `x`/`y` are the **top-left** in scene coordinates (matching `desk_list_widget_instances`); omitted, the widget
   is centered in the current viewport. Both-or-neither for x/y and width/height.
-- The feedback's optional `state` argument is deliberately left out of this first pass: there is no generic
-  "initial state" contract across widget kinds, and an agent can adjust a placed widget through its own means.
+- `state` (optional JSON object) seeds the new instance's widget-local storage: passed as `local_storage_data`
+  to `_place_widget` and bound with `_bind_widget_local_storage`, exactly as `revive_removed_widget` does for a
+  revived widget. An html widget's first `self.getLocalStorage()` returns it; a python widget gets it via
+  `set_widget_local_storage`. Its shape is defined by each widget, so the tool description says to pass only what
+  the widget is known to read. (The first pass wrongly omitted `state`, believing there was no initial-state
+  contract; there is -- widget-local storage -- and it was added in a follow-up commit.)
 - No modal UI is involved, so the call stays inside `GuiBridge`'s 5 s window.
 
 ## Verification

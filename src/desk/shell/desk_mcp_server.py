@@ -166,7 +166,10 @@ async def _reveal_widget(args: dict[str, Any]) -> dict[str, Any]:
     "straight to desk_reveal_widget / desk_screenshot_widget. Optional x and y (give both) are "
     "the top-left corner in canvas coordinates, as reported by desk_list_widget_instances; "
     "omitted, the widget is centered in the current view. Optional width and height (give both) "
-    "override the widget's default size.",
+    "override the widget's default size. Optional state (a JSON object) seeds the new instance's "
+    "widget-local storage -- what an html widget's first self.getLocalStorage() returns (a python "
+    "widget gets it via set_widget_local_storage); its shape is whatever that widget stores, so "
+    "only pass what you know the widget reads.",
     {
         "type": "object",
         "properties": {
@@ -175,6 +178,7 @@ async def _reveal_widget(args: dict[str, Any]) -> dict[str, Any]:
             "y": {"type": "number"},
             "width": {"type": "integer"},
             "height": {"type": "integer"},
+            "state": {"type": "object"},
         },
         "required": ["widget_id"],
     },
@@ -189,7 +193,8 @@ async def _place_widget_tool(args: dict[str, Any]) -> dict[str, Any]:
     try:
         instance_id = await _call_on_gui_thread(
             lambda: window.place_widget_by_id(
-                widget_id.strip(), args.get("x"), args.get("y"), args.get("width"), args.get("height")
+                widget_id.strip(), args.get("x"), args.get("y"), args.get("width"), args.get("height"),
+                args.get("state"),
             )
         )
     except (RuntimeError, ValueError) as e:
