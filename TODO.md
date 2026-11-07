@@ -50,6 +50,12 @@ reordered or its description edited.
    throwaway real-`DeskWindow` offscreen smoke run; no live (on-screen, real-mouse) check. Moving a placed widget in
    loses in-memory-only state (as "move to canvas" does).
 
+d6c44ab. COMPLETED: Bug (user report): after restarting Desk, a docked Areas list said "Not yet connected to Desk."
+   `DeskWindow.__init__` restored saved widgets and docks before `current_context.set_main_window(self)`, so any widget
+   reading the main window while being built saw none. Moved the call before `_load_desk_widgets`; this also fixes
+   saved canvas widgets with the same dependency (Recently Removed, ...). Regression check in `verify_docked_sidebar.py`;
+   confirmed with an offscreen save-and-restart of a real `DeskWindow`. No plan (one-line ordering fix).
+
 615bd79. COMPLETED: Sidebar tab and area-title polish (from the user): (1) rename an area inline by clicking its title; (2) the
    whole collapsed sidebar bar opens it; (3) the collapsed bar shows rotated labels (cut to 16 chars with "...") for
    every docked widget as well as the arrow; (4) the arrow is vertically centred and the whole bar collapses the open sidebar.

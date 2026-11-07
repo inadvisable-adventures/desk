@@ -419,6 +419,10 @@ check("DeskWindow wires the tab toggle and the two drag signals (a real one is n
       and "self.view.frame_drag_ended.connect(self._on_frame_drag_ended)" in _init_src
       and "LeftToolBarArea" in _init_src)
 
+check("the main window hook is set before saved widgets/docks are restored (TODO d6c44ab)",
+      _init_src.index("current_context.set_main_window(self)") < _init_src.index("self._load_desk_widgets(")
+      < _init_src.index("self._load_desk_docked("))
+
 # ---- spawn menu group ----
 cat = {
     "a": WidgetInfo("a", Path("."), "python", "Alpha", "w.py", [], None),

@@ -591,6 +591,9 @@ class DeskWindow(QMainWindow):
         # them), and before _load_desk_widgets below places any saved
         # instance that might rely on it.
         self._refresh_builtin_schemas()
+        # Before anything is restored: a saved widget that reads the main window while it is built (the Areas
+        # list, Recently Removed, ...) would otherwise see none and say "not yet connected" (TODO d6c44ab).
+        current_context.set_main_window(self)
         self._load_desk_widgets(self.current_desk)
         self._load_desk_areas(self.current_desk)
         self._load_desk_docked(self.current_desk)
@@ -605,7 +608,6 @@ class DeskWindow(QMainWindow):
         current_context.set_transform_runner_blocking(self.run_transform_blocking)
         current_context.set_git_diff_opener(self.open_git_diff)
         current_context.set_temp_ui_write_recorder(self._temp_ui_manager.record_own_write)
-        current_context.set_main_window(self)
         current_context.set_widget_path_resolver(self.view.describe_widget_at_global_pos)
         current_context.set_discuss_starter(self.start_discussion)
         current_context.set_scratch_agent_sender(self.send_text_to_agent)
