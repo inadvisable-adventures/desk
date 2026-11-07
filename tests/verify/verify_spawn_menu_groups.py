@@ -125,7 +125,23 @@ def test_deprecated_defaults_false():
     print("WidgetInfo.deprecated defaults False, honors explicit True: PASS")
 
 
+def test_empty_deprecated_group_is_hidden():
+    active_only = {k: v for k, v in CATALOG.items() if not v.deprecated}
+    menu = WidgetSpawnMenu(active_only)
+    deprecated = menu._group_items["Deprecated"]
+    assert deprecated.childCount() == 0
+    assert deprecated.isHidden() is True, "an empty Deprecated group should not be shown"
+    assert menu._group_items["Active"].isHidden() is False
+    # Typing then clearing a filter must not resurrect the empty group.
+    menu._filter.setText("mark")
+    menu._filter.setText("")
+    assert deprecated.isHidden() is True
+    menu.close()
+    print("empty Deprecated group is hidden: PASS")
+
+
 test_default_expand_state_and_grouping()
+test_empty_deprecated_group_is_hidden()
 test_filter_match_in_collapsed_group_stays_collapsed()
 test_manual_expand_survives_filter_typing()
 test_keyboard_nav_skips_headers_and_collapsed_entries()
