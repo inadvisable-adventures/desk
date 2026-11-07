@@ -11,13 +11,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from PyQt6.QtGui import QFont, QFontMetricsF  # noqa: E402
+from PyQt6.QtGui import QPalette, QFont, QFontMetricsF  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 
 app = QApplication(sys.argv)
 
 import desk.mermaid as mermaid  # noqa: E402
-from desk.mermaid import MermaidParseError, build_scene, layout, parse  # noqa: E402
+from desk.mermaid import MermaidParseError, build_scene, layout, parse, render_svg  # noqa: E402
 from desk.temp_ui import CURRENT_TAGS, _MARKDOWN_DOC, _NEW_FEATURES  # noqa: E402
 
 passed = 0
@@ -145,6 +145,24 @@ flat_markdown_doc = " ".join(_MARKDOWN_DOC.split())
 check("tempui-markdown.md documents the stadium shape", "stadium" in flat_markdown_doc)
 check("tempui-markdown.md documents unpiped edge labels", "unpiped" in flat_markdown_doc or "inline" in flat_markdown_doc)
 check("tempui-markdown.md documents quoting", "quot" in flat_markdown_doc)
+
+
+# ---- quoted edge / transition labels (TODO 21fc736) --------------------
+
+d = parse('flowchart LR\na -->|"quoted (with parens)"| b\n')
+check("piped edge label: quotes stripped", edges(d) == [("a", "b", "quoted (with parens)", True, False)])
+d = parse('flowchart LR\na -->|"a|b"| b\n')
+check("piped edge label: quoted label may contain a pipe", edges(d) == [("a", "b", "a|b", True, False)])
+d = parse("flowchart LR\na -->|plain| b\n")
+check("regression: unquoted piped label unchanged", edges(d) == [("a", "b", "plain", True, False)])
+d = parse('flowchart LR\na -- "yes" --> b\n')
+check("unpiped edge label: quotes stripped", edges(d) == [("a", "b", "yes", True, False)])
+d = parse('flowchart LR\na -->|""| b\n')
+check("empty quoted label -> no label", edges(d) == [("a", "b", None, True, False)])
+d = parse('stateDiagram-v2\nA --> B : "go now"\n')
+check("state transition label: quotes stripped", [e.label for e in d.edges] == ["go now"])
+svg = render_svg(build_scene(*(lambda dd: (dd, layout(dd, lambda s: (len(s) * 7.0, 16.0)), QPalette()))(parse('flowchart LR\na -->|"lbl"| b\n'))))
+check("rendered svg has no &quot; for a quoted edge label", "&quot;" not in svg and "lbl" in svg)
 
 
 # ---- MermaidParseError still raised for genuinely bad syntax -----------

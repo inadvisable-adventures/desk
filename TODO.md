@@ -6,6 +6,12 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+21fc736. COMPLETED: desk.mermaid: strip the quotes from a quoted edge label (`A -->|"label"| B`, unpiped `A -- "label" --> B`) and state-transition label, like node labels already are; a quoted piped label may also contain `|` (`../FEEDBACK/FEEDBACK-DESK-desk-mermaid-strips-a-quoted-node-label-s-delimiters-but-not-2026-11-06-1831.md`). Prioritized to the top.
+
+   [planned: mermaid-quoted-edge-labels.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: `_unquote` helper; piped regex gains a quoted alternative (tried first so `|` inside quotes works). `verify_mermaid_parser_grammar.py` extended, headless-verified only.
+
 99ed232. COMPLETED: Markdown widget: clicking a relative link no longer replaces the block's text with the wrong file
    (`../FEEDBACK/FEEDBACK-DESK-markdown-widget-silently-inlines-a-linked-file-s-content-in-2026-11-05-1915.md`).
    Root cause: `QTextBrowser`'s default link navigation loaded `./LICENSE` in place, resolved against the process
