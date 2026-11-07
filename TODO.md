@@ -50,6 +50,33 @@ reordered or its description edited.
    throwaway real-`DeskWindow` offscreen smoke run; no live (on-screen, real-mouse) check. Moving a placed widget in
    loses in-memory-only state (as "move to canvas" does).
 
+c2555b5. COMPLETED: Desk-wide "ask an expert" part 1 (feedback `request-a-desk-wide-ask-an-expert-mechanism...`): an expert registry in a
+   local Postgres (no driver: shell out to `psql`, like `../world-timelines`), plus MCP tools `desk_list_experts`,
+   `desk_register_expert`, `desk_ask_expert`, `desk_get_expert_question`, `desk_list_expert_questions`,
+   `desk_accept_expert_question`, `desk_answer_expert_question`; the asker's private note-to-self is never shown to an
+   expert. Agent-visible: new `tempui-experts.md` + changelog tag. Blocks `b2e031d` and `d15791d`.
+
+   [planned: expert-registry.md]
+
+   COMPLETED 2026-11-06: `desk.expert_registry` (psql-based, Desk-wide cluster at `~/.desk/experts/pgdata`, lazily
+   provisioned, recovers a stopped cluster), seven `desk_*_expert` MCP tools, `desk.experts.changed` desk event,
+   `tempui-experts.md` + changelog tag `desk_*_expert MCP tools + expert registry #434481`, `verify_expert_registry.py`
+   (46 checks against a real throwaway Postgres cluster; skips with a message if none is installed). Note: the cluster is
+   left running after use, as in the user's other projects.
+
+
+b2e031d. Desk-wide "ask an expert" part 2: a Bridge `experts` capability so an hmsvc can register itself as an expert, poll
+   its open questions, accept and answer them (`desk.hmsvc_client.experts_*`). Depends on `c2555b5`.
+
+   [planned: expert-registry.md]
+
+d15791d. Desk-wide "ask an expert" part 3: a top-right notification when an answer arrives (and when a new question
+   arrives for the built-in `user` expert), and a built-in python **Experts** widget that shows open questions, lets the
+   user answer them or **send them to an agent** (a new Claude (Desk) session seeded with the question, and for an
+   answered one the answer and the asker's private note). Completes the feedback file. Depends on `c2555b5`.
+
+   [planned: expert-registry.md]
+
 d6c44ab. COMPLETED: Bug (user report): after restarting Desk, a docked Areas list said "Not yet connected to Desk."
    `DeskWindow.__init__` restored saved widgets and docks before `current_context.set_main_window(self)`, so any widget
    reading the main window while being built saw none. Moved the call before `_load_desk_widgets`; this also fixes

@@ -27,6 +27,8 @@ from PyQt6.QtWidgets import (
 )
 
 from desk.custom_widgets import LikelySourceCandidate, build_from_source, find_likely_source_candidates, materialize, read_source_manifest
+from desk import expert_registry
+from desk.expert_registry import EXPERTS_CHANGED_EVENT
 from desk.desks import (
     AREAS_CHANGED_EVENT,
     DESK_SUFFIX,
@@ -484,6 +486,13 @@ class DeskWindow(QMainWindow):
         # and a subscribe from a kind:"python" widget go through the exact
         # same mediator. See _bind_event_mediator/_refresh_picker below.
         self._event_mediator = handle.event_mediator
+        # TODO c2555b5: every expert-registry change (an MCP tool, the Bridge, the Experts widget) is announced
+        # to widgets as a desk event; the listener may run on any thread, like the mediator itself.
+        expert_registry.get_registry().add_listener(
+            lambda kind, ident: self._event_mediator.publish(
+                EXPERTS_CHANGED_EVENT, {"kind": kind, "id": ident}, "desk"
+            )
+        )
         self._widget_logs = handle.widget_logs  # TODO 1f74c27
         # TODO b4d99a1: off unless DESK_FOCUS_LOG=1 (or a widget enables it).
         self._focus_logger = FocusLogger(self.view, self._widget_logs, parent=self)

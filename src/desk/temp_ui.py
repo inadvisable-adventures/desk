@@ -259,6 +259,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "sidebar: left, collapsible, drag-and-drop dock #046076",
     "Areas list widget for the sidebar #632760",
     "inline area rename; labeled sidebar tab #224906",
+    "desk_*_expert MCP tools + expert registry #434481",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -377,6 +378,9 @@ And [tempui-areas.md](./tempui-areas.md) -- desk areas: named, click-through
 background rectangles on the canvas you can create, rename, move, delete
 and jump to with the `desk_*_area` MCP tools; also not a dropped-file
 keyword.
+And [tempui-experts.md](./tempui-experts.md) -- the general expert registry:
+`desk_ask_expert` and friends, for questions whose answers arrive long after
+your session is gone; also not a dropped-file keyword.
 And [tempui-ask-desk-expert.md](./tempui-ask-desk-expert.md) -- the
 `desk_ask_desk_expert` MCP tool, which hands a question about Desk
 itself to a fresh agent that can read Desk's source and docs; also not
@@ -863,6 +867,56 @@ panels (a list of the desk's areas, say), not for general work.
   the current view, keeping its state and `instance_id`.
 - `desk_list_docked_widgets()` -- `[{instance_id, widget_id, name}]`, top to
   bottom.
+"""
+
+_EXPERTS_DOC = """# Asking experts (desk_*_expert MCP tools)
+
+See `desk-temporary-ui.md` (in this same directory) for this directory's
+own overview and its current set of tags. This is not a tempui-DSL file
+type: it is MCP tools on the `desk` server, backed by a registry shared by
+every project on this machine.
+
+`desk_ask_desk_expert` (`tempui-ask-desk-expert.md`) only answers questions
+about Desk itself, once, in a new window. The **expert registry** is the
+general mechanism: a list of experts (the person using Desk, agents, and
+Desk-hosted services) that any agent on any project can ask, where the
+answer may take minutes to days and **your session will usually be gone by
+then**. Asking never waits.
+
+- The registry lives in a local PostgreSQL database (`~/.desk/experts`),
+  created and started the first time it is used. If PostgreSQL is not
+  installed the tools return one clear error and nothing else in Desk is
+  affected.
+- The built-in expert **`user`** is the person using Desk; they answer in the
+  **Experts** widget.
+- When an answer arrives Desk shows the user a top-right notification, and the
+  Experts widget can start a new Claude (Desk) session seeded with the
+  question, the answer and your private note.
+
+## MCP tools
+
+- `desk_list_experts()` -- `[{expert_id, name, description, kind,
+  registered_by}]`; `kind` is `human`, `agent` or `hmsvc`.
+- `desk_register_expert(expert_id, name, description?, kind?, registered_by?)`
+  -- offer yourself (or a person) as an answerer. `expert_id` is lowercase
+  letters, digits, `.`, `_`, `-`. An expert can only be updated by whoever
+  registered it (pass the same `registered_by`).
+- `desk_ask_expert(expert_id, question, note_to_self?, asker?)` -- returns the
+  new `question_id` at once. `question` is shown to the expert verbatim, so
+  make it self-contained. **`note_to_self` is never shown to the expert**: put
+  there what a future agent needs to act on the answer ("if yes, update
+  section 3 of the familiars design doc and reopen TODO `a1b2c3d`").
+- `desk_get_expert_question(question_id)` -- your view: `status` (`open`,
+  `accepted`, `answered`, `withdrawn`), the `answer` once there is one, and your
+  `note_to_self`.
+- `desk_list_expert_questions(expert_id, status?)` -- the answerer's view
+  (default `open`; `all` for every status), without any note.
+- `desk_accept_expert_question(question_id, accepted_by?)` -- claim an `open`
+  question so nobody else starts it.
+- `desk_answer_expert_question(question_id, answer, answered_by?)` -- answer a
+  question that is `open` or `accepted`.
+
+Every change publishes the desk event `desk.experts.changed`.
 """
 
 _AREAS_DOC = """# Desk areas (desk_*_area MCP tools)
@@ -2986,6 +3040,15 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "desk_*_expert MCP tools + expert registry #434481": """- A Desk-wide **expert registry** in a local PostgreSQL database, for
+  questions whose answers arrive long after your session is gone. New MCP
+  tools: `desk_list_experts`, `desk_register_expert`, `desk_ask_expert`
+  (returns a `question_id` at once; includes a `note_to_self` that is never
+  shown to the expert), `desk_get_expert_question`,
+  `desk_list_expert_questions`, `desk_accept_expert_question` and
+  `desk_answer_expert_question`. The built-in expert `user` is the person
+  using Desk. See `tempui-experts.md`.
+""",
     "inline area rename; labeled sidebar tab #224906": """- An area's title is now renamed **inline**: a human clicks the title on
   the canvas and types (Enter saves, Escape cancels). The sidebar's tab is
   one big click target in both states: collapsed, it shows a rotated label
@@ -4387,6 +4450,7 @@ INSTALLED_JOBS_DOC_FILENAME = "tempui-installed-jobs.md"
 HMSVC_DOC_FILENAME = "tempui-hmsvc.md"
 WIDGET_LOGS_DOC_FILENAME = "tempui-widget-logs.md"
 ASK_DESK_EXPERT_DOC_FILENAME = "tempui-ask-desk-expert.md"
+EXPERTS_DOC_FILENAME = "tempui-experts.md"
 AREAS_DOC_FILENAME = "tempui-areas.md"
 DOCKED_WIDGETS_DOC_FILENAME = "tempui-docked-widgets.md"
 AGENT_EVENTS_DOC_FILENAME = "tempui-agent-events.md"
@@ -4421,6 +4485,7 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     HMSVC_DOC_FILENAME: _HMSVC_DOC,
     WIDGET_LOGS_DOC_FILENAME: _WIDGET_LOGS_DOC,
     ASK_DESK_EXPERT_DOC_FILENAME: _ASK_DESK_EXPERT_DOC,
+    EXPERTS_DOC_FILENAME: _EXPERTS_DOC,
     AREAS_DOC_FILENAME: _AREAS_DOC,
     DOCKED_WIDGETS_DOC_FILENAME: _DOCKED_WIDGETS_DOC,
     AGENT_EVENTS_DOC_FILENAME: _AGENT_EVENTS_DOC,

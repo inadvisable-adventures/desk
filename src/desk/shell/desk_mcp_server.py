@@ -57,7 +57,8 @@ from typing import Any
 
 from claude_agent_sdk import McpSdkServerConfig, create_sdk_mcp_server, tool
 
-from desk import feedback_items, handoff_requests, pipeline_dsl
+from desk import expert_registry, feedback_items, handoff_requests, pipeline_dsl
+from desk.expert_registry import ExpertRegistryError
 from desk.event_mediator import MediatedEvent
 from desk.widget_logs import RECORDING_EVENT, STOPPED_RECORDING_EVENT, format_time_iso, parse_time_ms
 from desk.record_store import RecordConflict, RecordNotFound, RecordStore
@@ -1197,6 +1198,153 @@ async def _get_feedback(args: dict[str, Any]) -> dict[str, Any]:
     return _feedback_call(args, get)
 
 
+# ---- Desk-wide expert registry (TODO c2555b5) -- see tempui-experts.md ----
+
+
+async def _expert_call(fn: Callable[[expert_registry.ExpertRegistry], Any]) -> dict[str, Any]:
+    """Runs a registry call off the event loop (it shells out to psql) and
+    returns its result as JSON text, or a clear error."""
+    try:
+        result = await asyncio.to_thread(lambda: fn(expert_registry.get_registry()))
+    except ExpertRegistryError as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(json.dumps(result, indent=2))
+
+
+@tool(
+    "desk_list_experts",
+    "List the experts registered on this Desk (humans, agents and Desk-hosted services) that a question can be "
+    "put to, with what each can answer. The built-in expert `user` is the person using Desk. Read-only. "
+    "See tempui-experts.md.",
+    {"type": "object", "properties": {}},
+)
+async def _list_experts(args: dict[str, Any]) -> dict[str, Any]:
+    return await _expert_call(lambda reg: reg.list_experts())
+
+
+@tool(
+    "desk_register_expert",
+    "Register (or update) an expert so others can ask it questions: expert_id (lowercase letters, digits, . _ -), a "
+    "display name, and a description of what it can answer. kind is 'agent' (default) or 'human'; a "
+    "Desk-hosted service registers itself through the Bridge instead. You can only update an expert you "
+    "registered. See tempui-experts.md.",
+    {
+        "type": "object",
+        "properties": {
+            "expert_id": {"type": "string"},
+            "name": {"type": "string"},
+            "description": {"type": "string"},
+            "kind": {"type": "string", "enum": ["agent", "human"]},
+            "registered_by": {"type": "string", "description": "Who is registering (any label); needed again to update."},
+        },
+        "required": ["expert_id", "name"],
+    },
+)
+async def _register_expert(args: dict[str, Any]) -> dict[str, Any]:
+    return await _expert_call(
+        lambda reg: reg.register_expert(
+            args.get("expert_id", ""), args.get("name", ""), args.get("description", ""),
+            args.get("kind", "agent"), args.get("registered_by", ""),
+        )
+    )
+
+
+@tool(
+    "desk_ask_expert",
+    "Put a question to a registered expert (see desk_list_experts). Returns the question_id at once and does NOT wait: "
+    "the answer may take minutes to days, and your session may be gone when it arrives. Desk shows the user a "
+    "notification when it does. `question` goes to the expert verbatim, so make it self-contained. `note_to_self` is a "
+    "private note for whichever agent later acts on the answer (what to do if yes/no, which files and TODOs matter); "
+    "it is NEVER shown to the expert. Check back with desk_get_expert_question. See tempui-experts.md.",
+    {
+        "type": "object",
+        "properties": {
+            "expert_id": {"type": "string"},
+            "question": {"type": "string"},
+            "note_to_self": {"type": "string"},
+            "asker": {"type": "string", "description": "A label for who is asking (default 'agent')."},
+        },
+        "required": ["expert_id", "question"],
+    },
+)
+async def _ask_expert(args: dict[str, Any]) -> dict[str, Any]:
+    return await _expert_call(
+        lambda reg: reg.ask(
+            args.get("expert_id", ""), args.get("question", ""), args.get("asker") or "agent", args.get("note_to_self", "")
+        )
+    )
+
+
+@tool(
+    "desk_get_expert_question",
+    "The asker's view of one question: its status ('open', 'accepted', 'answered', 'withdrawn'), the answer once there is "
+    "one, and your own private note_to_self. Read-only.",
+    {"type": "object", "properties": {"question_id": {"type": "string"}}, "required": ["question_id"]},
+)
+async def _get_expert_question(args: dict[str, Any]) -> dict[str, Any]:
+    def get(reg):
+        question = reg.get_question(args.get("question_id", ""), include_note=True)
+        if question is None:
+            raise ExpertRegistryError(f"No question {args.get('question_id')!r}.")
+        return question
+
+    return await _expert_call(get)
+
+
+@tool(
+    "desk_list_expert_questions",
+    "The expert's view: questions put to expert_id, newest first, default only those still waiting (status 'open'; also "
+    "accepts 'accepted', 'answered', 'withdrawn' or 'all'). The asker's private note is not included. Read-only.",
+    {
+        "type": "object",
+        "properties": {
+            "expert_id": {"type": "string"},
+            "status": {"type": "string", "enum": ["open", "accepted", "answered", "withdrawn", "all"]},
+        },
+        "required": ["expert_id"],
+    },
+)
+async def _list_expert_questions(args: dict[str, Any]) -> dict[str, Any]:
+    status = args.get("status") or "open"
+    return await _expert_call(
+        lambda reg: reg.list_questions(args.get("expert_id", ""), None if status == "all" else [status])
+    )
+
+
+@tool(
+    "desk_accept_expert_question",
+    "Mark an open question as being worked on so nobody else starts it (status 'open' -> 'accepted'). "
+    "`accepted_by` labels who. Fails if the question is not open.",
+    {
+        "type": "object",
+        "properties": {"question_id": {"type": "string"}, "accepted_by": {"type": "string"}},
+        "required": ["question_id"],
+    },
+)
+async def _accept_expert_question(args: dict[str, Any]) -> dict[str, Any]:
+    return await _expert_call(lambda reg: reg.accept(args.get("question_id", ""), args.get("accepted_by", "")))
+
+
+@tool(
+    "desk_answer_expert_question",
+    "Answer a question that is open or accepted; the asker is notified. `answered_by` labels who. Fails if the "
+    "question was already answered or withdrawn.",
+    {
+        "type": "object",
+        "properties": {
+            "question_id": {"type": "string"},
+            "answer": {"type": "string"},
+            "answered_by": {"type": "string"},
+        },
+        "required": ["question_id", "answer"],
+    },
+)
+async def _answer_expert_question(args: dict[str, Any]) -> dict[str, Any]:
+    return await _expert_call(
+        lambda reg: reg.answer(args.get("question_id", ""), args.get("answer", ""), args.get("answered_by", ""))
+    )
+
+
 _TOOLS = [
     _reveal_widget,
     _place_widget_tool,
@@ -1230,6 +1378,13 @@ _TOOLS = [
     _create_feedback,
     _list_feedback,
     _get_feedback,
+    _list_experts,
+    _register_expert,
+    _ask_expert,
+    _get_expert_question,
+    _list_expert_questions,
+    _accept_expert_question,
+    _answer_expert_question,
 ]
 
 
