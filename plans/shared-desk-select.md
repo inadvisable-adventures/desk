@@ -39,7 +39,6 @@ and the docs/tag/mirroring checks.
 
 ## Status
 
-Verified in a real (offscreen) QtWebEngine page. **Not verified live in Desk under a zoomed/panned canvas**, and the
-claim that QtWebEngine's native `<select>` popup misplaces there rests on the feedback's live observation, not on a
-check here. Per `python-widget-conventions.md`'s note that offscreen geometry isn't evidence of placement, worth a
-quick look in the real app.
+Verified in a real (offscreen) QtWebEngine page, and confirmed live in Desk (2026-11-06, user-checked via a
+`SelectCompare` tempui widget with a native `<select>` beside `<desk-select>` under a zoomed/panned canvas): the
+native popup misbehaved as reported and `<desk-select>` stayed attached to its control.

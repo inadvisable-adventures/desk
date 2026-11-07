@@ -11,7 +11,7 @@ b0dd8e1. COMPLETED: shared-components `desk-select`: a drop-in `<select>` replac
    [planned: shared-desk-select.md (COMPLETED)]
 
    COMPLETED 2026-11-06: `shared-components/desk-select/` (ts + template + README), tag `desk-select replaces native select in html widgets #821015`, changelog entry, `tempui-custom-widgets.md` note.
-   `verify_shared_desk_select.py` runs it in a real offscreen QtWebEngine page. NOT verified live in Desk under a zoomed canvas.
+   `verify_shared_desk_select.py` runs it in a real offscreen QtWebEngine page. Confirmed live in Desk under a zoomed/panned canvas by the user (native misbehaves, `<desk-select>` doesn't).
 
 21fc736. COMPLETED: desk.mermaid: strip the quotes from a quoted edge label (`A -->|"label"| B`, unpiped `A -- "label" --> B`) and state-transition label, like node labels already are; a quoted piped label may also contain `|` (`../FEEDBACK/FEEDBACK-DESK-desk-mermaid-strips-a-quoted-node-label-s-delimiters-but-not-2026-11-06-1831.md`). Prioritized to the top.
 
