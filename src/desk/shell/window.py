@@ -17,7 +17,9 @@ from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow
 
 from desk.custom_widgets import LikelySourceCandidate, build_from_source, find_likely_source_candidates, materialize, read_source_manifest
 from desk.desks import (
+    AREAS_CHANGED_EVENT,
     DESK_SUFFIX,
+    AreaState,
     Desk,
     RemovedWidget,
     StateEntry,
@@ -360,6 +362,10 @@ class DeskWindow(QMainWindow):
         )
         self.view.set_widget_catalog(widgets)
         self.view.widget_add_requested.connect(self._on_widget_add_requested)
+        self.view.area_add_requested.connect(self._on_area_add_requested)
+        self.view.area_geometry_changed.connect(self._on_area_geometry_changed)
+        self.view.area_rename_requested.connect(self._on_area_rename_requested)
+        self.view.area_delete_requested.connect(self._on_area_delete_requested)
         self.view.widget_close_requested.connect(self._on_widget_close_requested)
         self.view.files_dropped.connect(self._on_files_dropped)
         self.view.paste_requested.connect(self._on_paste_requested)
@@ -543,6 +549,7 @@ class DeskWindow(QMainWindow):
         # instance that might rely on it.
         self._refresh_builtin_schemas()
         self._load_desk_widgets(self.current_desk)
+        self._load_desk_areas(self.current_desk)
         self.view.set_view_state(
             self.current_desk.pan_x, self.current_desk.pan_y, self.current_desk.scale
         )
@@ -3075,6 +3082,7 @@ class DeskWindow(QMainWindow):
         # placed below.
         self._refresh_builtin_schemas()
         self._load_desk_widgets(new_desk)
+        self._load_desk_areas(new_desk)
         self.view.set_view_state(new_desk.pan_x, new_desk.pan_y, new_desk.scale)
         self._sync_tempui_doc()
         add_to_mru(path)
@@ -4674,6 +4682,139 @@ class DeskWindow(QMainWindow):
         )()
         if name:
             self.rename_current_desk(name)
+
+    # -- Desk areas (TODO 0460b4c) -----------------------------------------
+
+    def _load_desk_areas(self, desk: Desk) -> None:
+        """Builds the scene items for a freshly loaded Desk's saved areas."""
+        for area in desk.areas:
+            self.view.add_area(area.area_id, area.title, area.x, area.y, area.width, area.height)
+
+    def _area_dict(self, area: AreaState) -> dict:
+        return {
+            "area_id": area.area_id,
+            "title": area.title,
+            "x": area.x,
+            "y": area.y,
+            "width": area.width,
+            "height": area.height,
+        }
+
+    def _find_area(self, area_id: str) -> AreaState | None:
+        return next((a for a in self.current_desk.areas if a.area_id == area_id), None)
+
+    def _publish_areas_changed(self) -> None:
+        self._event_mediator.publish(AREAS_CHANGED_EVENT, {"areas": self.list_areas()}, "desk")
+
+    def list_areas(self) -> list[dict]:
+        """Every desk area (area_id, title, x, y, width, height), in
+        creation order -- `desk_list_areas` and the areas sidebar read this."""
+        return [self._area_dict(a) for a in self.current_desk.areas]
+
+    def create_area(
+        self,
+        title: str = "",
+        x: float | None = None,
+        y: float | None = None,
+        width: float | None = None,
+        height: float | None = None,
+    ) -> dict:
+        """Creates an area. Omitted geometry defaults to the middle 70% of
+        what is on screen right now. Returns the new area's dict."""
+        if (x is None) != (y is None):
+            raise ValueError("Give both x and y, or neither.")
+        if (width is None) != (height is None):
+            raise ValueError("Give both width and height, or neither.")
+        if x is None or width is None:
+            visible = self.view.visible_scene_rect()
+            w = width if width is not None else visible.width() * 0.7
+            h = height if height is not None else visible.height() * 0.7
+            cx = x if x is not None else visible.center().x() - w / 2
+            cy = y if y is not None else visible.center().y() - h / 2
+            x, y, width, height = cx, cy, w, h
+        if width <= 0 or height <= 0:
+            raise ValueError("width and height must be positive.")
+        area = AreaState(
+            area_id=uuid.uuid4().hex[:8],
+            title=(title or "").strip() or f"Area {len(self.current_desk.areas) + 1}",
+            x=float(x),
+            y=float(y),
+            width=float(width),
+            height=float(height),
+        )
+        self.current_desk.areas.append(area)
+        self.view.add_area(area.area_id, area.title, area.x, area.y, area.width, area.height)
+        self._publish_areas_changed()
+        return self._area_dict(area)
+
+    def update_area(
+        self,
+        area_id: str,
+        title: str | None = None,
+        x: float | None = None,
+        y: float | None = None,
+        width: float | None = None,
+        height: float | None = None,
+    ) -> dict:
+        """Renames, moves and/or resizes an area; omitted fields are left
+        alone. Moving or resizing never carries any widgets. Returns the
+        updated area's dict; ValueError if there is no such area."""
+        area = self._find_area(area_id)
+        if area is None:
+            raise ValueError(f"No area with area_id {area_id!r}.")
+        if title is not None:
+            area.title = title.strip() or area.title
+        if x is not None:
+            area.x = float(x)
+        if y is not None:
+            area.y = float(y)
+        if width is not None:
+            if width <= 0:
+                raise ValueError("width must be positive.")
+            area.width = float(width)
+        if height is not None:
+            if height <= 0:
+                raise ValueError("height must be positive.")
+            area.height = float(height)
+        self.view.add_area(area.area_id, area.title, area.x, area.y, area.width, area.height)
+        self._publish_areas_changed()
+        return self._area_dict(area)
+
+    def delete_area(self, area_id: str) -> bool:
+        """Removes an area (never any widget). False if there was no such area."""
+        area = self._find_area(area_id)
+        if area is None:
+            return False
+        self.current_desk.areas.remove(area)
+        self.view.remove_area(area_id)
+        self._publish_areas_changed()
+        return True
+
+    def view_area(self, area_id: str) -> bool:
+        """Pans/zooms the canvas to fit the area. False if no such area."""
+        return self.view.zoom_to_area(area_id)
+
+    def _on_area_add_requested(self, scene_pos: QPointF) -> None:
+        self.create_area(x=scene_pos.x(), y=scene_pos.y(), width=800, height=600)
+
+    def _on_area_geometry_changed(self, area_id: str, x: float, y: float, width: float, height: float) -> None:
+        """A user move/resize of an area's chrome finished: write it back."""
+        area = self._find_area(area_id)
+        if area is None:
+            return
+        area.x, area.y, area.width, area.height = x, y, width, height
+        self._publish_areas_changed()
+
+    def _on_area_rename_requested(self, area_id: str) -> None:
+        area = self._find_area(area_id)
+        if area is None:
+            return
+        title = self._prompt_fn("Rename Area", "New title for this area:", area.title)()
+        if title and title.strip():
+            self.update_area(area_id, title=title)
+
+    def _on_area_delete_requested(self, area_id: str) -> None:
+        self.delete_area(area_id)
 
     def _on_widget_add_requested(self, widget_id: str, scene_pos: QPointF) -> None:
         widget = self._widgets.get(widget_id)

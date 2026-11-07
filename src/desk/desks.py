@@ -74,6 +74,27 @@ class WidgetState:
     placed_content_hash: str | None = None
 
 
+# TODO 0460b4c: published (sender "desk") whenever an area is created, edited,
+# moved, resized or deleted. Payload {"areas": [{area_id, title, x, y, width, height}, ...]}.
+AREAS_CHANGED_EVENT = "desk.areas.changed"
+
+
+@dataclass
+class AreaState:
+    """A "desk area" (TODO 0460b4c): a named rectangle drawn on the
+    canvas background, behind every widget, that can be jumped to. Pure
+    data -- the live scene item is `desk.shell.area_item.AreaItem`;
+    `DeskWindow` keeps the two in step. Coordinates are scene
+    coordinates, `x`/`y` the top-left."""
+
+    area_id: str
+    title: str
+    x: float
+    y: float
+    width: float
+    height: float
+
+
 @dataclass
 class RemovedWidget:
     """A tombstone for a removed widget instance (TODO 454d718): enough to
@@ -127,6 +148,10 @@ class Desk:
     # (capped; see desk.recently_removed.RECENTLY_REMOVED_MAX), carried over
     # unchanged by DeskWindow._capture_desk_state like the fields above.
     recently_removed: list[RemovedWidget] = field(default_factory=list)
+    # TODO 0460b4c: the desk's named background areas. Kept up to date by
+    # DeskWindow as areas are created/moved/renamed/deleted, so
+    # _capture_desk_state carries it over like the fields above.
+    areas: list[AreaState] = field(default_factory=list)
 
     @property
     def name(self) -> str:
@@ -203,6 +228,7 @@ def load_desk(path: Path) -> Desk:
         state=state,
         installed_jobs=installed_jobs,
         recently_removed=[RemovedWidget(**r) for r in data.get("recently_removed", [])],
+        areas=[AreaState(**a) for a in data.get("areas", [])],
     )
 
 
@@ -285,6 +311,7 @@ def desk_state_dict(desk: Desk, stale_by_instance_id: dict[str, bool] | None = N
         "state": {key: state_entry_dict(entry) for key, entry in desk.state.items()},
         "installed_jobs": [_installed_job_dict(j) for j in desk.installed_jobs],
         "recently_removed": [asdict(r) for r in desk.recently_removed],
+        "areas": [asdict(a) for a in desk.areas],
     }
 
 

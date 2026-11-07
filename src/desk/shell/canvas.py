@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
 )
 
 from desk import focus_logger
+from desk.shell.area_item import AreaItem
 from desk.shell.desk_picker import DeskPicker
 from desk.shell.hud import HudController
 from desk.shell.new_scratch_button import NewScratchButton
@@ -51,6 +52,9 @@ WIDGET_ZOOM_MARGIN_FRACTION = 0.2  # 20%, per TODO 33d3e8d -- see zoom_to_widget
 # z-values only ever grow by 1 per bring_to_front click; reaching this
 # band would take on the order of a million clicks in one session.
 POPUP_Z_BASE = 1_000_000.0
+AREA_MENU_ID = "desk.area"  # TODO 0460b4c: the spawn menu's pseudo entry for a new desk area
+AREA_MENU_NAME = "Desk Area"
+AREA_ZOOM_MARGIN_FRACTION = 0.03
 ZOOM_CONTROL_MARGIN = 12
 DESK_PICKER_MARGIN = 12
 TEMP_UI_NOTIFICATIONS_MARGIN = 12
@@ -118,6 +122,11 @@ class WorkspaceView(QGraphicsView):
     popup_closed = pyqtSignal(WidgetFrame)  # TODO 359684f: a popup's close (X) button
     new_scratch_requested = pyqtSignal()  # TODO 945b086: the lower-left hover button clicked
     empty_canvas_double_clicked = pyqtSignal(QPointF)  # TODO 496d685: scene pos of the double-click
+    # TODO 0460b4c (desk areas): the right-click menu's "Desk Area" entry, with the scene pos of the click.
+    area_add_requested = pyqtSignal(QPointF)
+    area_geometry_changed = pyqtSignal(str, float, float, float, float)  # a user move/resize finished
+    area_rename_requested = pyqtSignal(str)
+    area_delete_requested = pyqtSignal(str)
 
     def __init__(self, parent=None) -> None:
         super().__init__(QGraphicsScene(parent), parent)
@@ -127,6 +136,10 @@ class WorkspaceView(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self._scale = 1.0
         self._frames: list[WidgetFrame] = []
+        # TODO 0460b4c: desk areas, by area_id. Scene items far behind every
+        # frame (AREA_Z); deliberately not in _frames, so nothing that
+        # iterates placed widgets ever sees them.
+        self._areas: dict[str, AreaItem] = {}
         # TODO 359684f: kept entirely separate from _frames -- DeskWindow's
         # placed-widget bookkeeping (_capture_desk_state, find_frame_by_
         # instance_id, _find_frame_by_widget_id, stale-hash refresh, ...)
@@ -294,6 +307,10 @@ class WorkspaceView(QGraphicsView):
         if self._hit_test_chrome(QPointF(event.pos())) is None and self._frame_at(QPointF(event.pos())) is not None:
             super().contextMenuEvent(event)
             return
+        if isinstance(self.itemAt(event.pos()), AreaItem):
+            # TODO 0460b4c: the chrome of a desk area has its own menu.
+            super().contextMenuEvent(event)
+            return
         scene_pos = self.mapToScene(event.pos())
         # Excludes tempui-DSL-defined custom widgets (TODO 91b3f42,
         # WidgetInfo.tempui_only) -- those can only ever be placed via
@@ -303,6 +320,17 @@ class WorkspaceView(QGraphicsView):
         spawnable_catalog = {
             widget_id: info for widget_id, info in self._widget_catalog.items() if not info.tempui_only
         }
+        # TODO 0460b4c: "Desk Area" rides along as a pseudo catalog entry so
+        # typing, filtering and keyboard navigation work for it for free.
+        spawnable_catalog[AREA_MENU_ID] = WidgetInfo(
+            id=AREA_MENU_ID,
+            path=Path("."),
+            kind="python",
+            name=AREA_MENU_NAME,
+            entry="",
+            capabilities=[],
+            default_size=None,
+        )
         menu = WidgetSpawnMenu(spawnable_catalog, self)
         # Deferred (TODO 8c9436b): WidgetSpawnMenu, like _DeskListPopup,
         # is a WA_DeleteOnClose QAbstractItemView (QTreeWidget)-based
@@ -310,7 +338,11 @@ class WorkspaceView(QGraphicsView):
         # vulnerable shape, even though neither handler shows a modal
         # dialog today. See qt_utils.deferred and LEARNINGS.md.
         menu.widget_chosen.connect(
-            deferred(lambda widget_id: self.widget_add_requested.emit(widget_id, scene_pos))
+            deferred(
+                lambda widget_id: self.area_add_requested.emit(scene_pos)
+                if widget_id == AREA_MENU_ID
+                else self.widget_add_requested.emit(widget_id, scene_pos)
+            )
         )
         menu.paste_requested.connect(deferred(lambda: self.paste_requested.emit(scene_pos)))
         menu.move(event.globalPos())
@@ -382,6 +414,7 @@ class WorkspaceView(QGraphicsView):
         to a different Desk — see desk.shell.window.DeskWindow)."""
         self.hud.clear()
         self._end_zoom_gesture()
+        self.clear_areas()
         for frame in self._frames:
             proxy = frame.graphicsProxyWidget()
             if proxy is not None:
@@ -1048,6 +1081,47 @@ class WorkspaceView(QGraphicsView):
             return
         self._fit_rect(proxy.sceneBoundingRect(), margin_fraction)
 
+    # -- desk areas (TODO 0460b4c) ---------------------------------------
+
+    def add_area(self, area_id: str, title: str, x: float, y: float, width: float, height: float) -> AreaItem:
+        """Adds (or replaces) the scene item for one desk area."""
+        self.remove_area(area_id)
+        item = AreaItem(area_id, title, x, y, width, height)
+        item.set_view_scale(self._scale)
+        item.geometry_changed.connect(self.area_geometry_changed)
+        item.view_requested.connect(self.zoom_to_area)
+        item.rename_requested.connect(self.area_rename_requested)
+        item.delete_requested.connect(self.area_delete_requested)
+        self.scene().addItem(item)
+        self._areas[area_id] = item
+        return item
+
+    def area_item(self, area_id: str) -> AreaItem | None:
+        return self._areas.get(area_id)
+
+    def remove_area(self, area_id: str) -> bool:
+        item = self._areas.pop(area_id, None)
+        if item is None:
+            return False
+        self.scene().removeItem(item)
+        return True
+
+    def clear_areas(self) -> None:
+        for area_id in list(self._areas):
+            self.remove_area(area_id)
+
+    def zoom_to_area(self, area_id: str) -> bool:
+        """Pans/zooms so the area's rectangle fills the view (the same
+        fit the widget eye button uses). False if there is no such area."""
+        item = self._areas.get(area_id)
+        if item is None:
+            return False
+        self._fit_rect(item.scene_rect(), AREA_ZOOM_MARGIN_FRACTION)
+        return True
+
+    def visible_scene_rect(self):
+        return self.mapToScene(self.viewport().rect()).boundingRect()
+
     def _fit_rect(self, rect, margin_fraction: float) -> None:
         """Shared core of zoom_to_fit/zoom_to_widget: fits `rect` in the
         viewport with a margin of margin_fraction of its own width/height
@@ -1132,4 +1206,6 @@ class WorkspaceView(QGraphicsView):
             frame.set_view_scale(self._scale)
         for frame in self._popup_frames:
             frame.set_view_scale(self._scale)
+        for area in self._areas.values():
+            area.set_view_scale(self._scale)
         self.zoom_control.set_zoom(self._scale)

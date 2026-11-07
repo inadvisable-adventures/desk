@@ -254,6 +254,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "desk_place_widget MCP places a registered widget #800488",
     "mermaid classDef/class node styling #200895",
     "mermaid subgraph containment boxes #200896",
+    "desk areas: background regions + MCP tools #377360",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -364,6 +365,10 @@ And [tempui-widget-logs.md](./tempui-widget-logs.md) -- the `log` Bridge
 capability and its `desk_list_widget_logs`/`desk_query_widget_log` MCP
 tools, for letting an agent query what a widget has been doing; also not
 a dropped-file keyword.
+And [tempui-areas.md](./tempui-areas.md) -- desk areas: named, click-through
+background rectangles on the canvas you can create, rename, move, delete
+and jump to with the `desk_*_area` MCP tools; also not a dropped-file
+keyword.
 And [tempui-ask-desk-expert.md](./tempui-ask-desk-expert.md) -- the
 `desk_ask_desk_expert` MCP tool, which hands a question about Desk
 itself to a fresh agent that can read Desk's source and docs; also not
@@ -372,6 +377,12 @@ And [tempui-agent-events.md](./tempui-agent-events.md) -- the
 `desk_raise_event` and `desk_wait_for_event` MCP tools, for an agent to
 signal a running widget, and hear back, directly over `desk.events`
 instead of through a polled file.
+And [tempui-handoff-requests.md](./tempui-handoff-requests.md) -- the
+`desk_*_handoff_request` MCP tools, for handing a task from one agent to
+another and tracking its status; also not a dropped-file keyword.
+And [tempui-feedback-items.md](./tempui-feedback-items.md) -- the
+`desk_create_feedback`/`desk_list_feedback`/`desk_get_feedback` MCP tools,
+for reporting friction with Desk itself; also not a dropped-file keyword.
 
 ## Project widgets
 
@@ -797,6 +808,53 @@ reporting friction with Desk itself (not with your own project).
 Triage is done by Desk's maintainers; you can create and read, not move
 or edit. `directory` is relative to the current project (default
 `../FEEDBACK`); absolute paths are refused.
+"""
+
+_AREAS_DOC = """# Desk areas (desk_*_area MCP tools)
+
+See `desk-temporary-ui.md` (in this same directory) for this directory's
+own overview and its current set of tags. This is not a tempui-DSL file
+type: it is five MCP tools on the `desk` server, plus a desk event.
+
+A **desk area** is a named rectangle drawn on the Workspace Canvas
+background, behind every widget. It marks out a region ("Inbox", "Reading
+list", "Experiments") that a human or agent can jump to. Its title strip
+holds an editable title and an **eye button**; clicking the eye pans and
+zooms the canvas to fit the area (what `desk_view_area` does).
+
+- The **interior is click-through**: only the title strip and a thin band
+  along the border are part of the area. Clicks, drags and scrolls inside
+  it reach the canvas background and any widget on top, so an area never
+  blocks interaction with what it contains.
+- Areas always sit **behind every widget**, including ones created later.
+- Moving or resizing an area **does not move widgets**. An area is a label
+  on the canvas, not a container.
+- Areas are saved in the project's `.desk` file.
+
+## MCP tools
+
+- `desk_list_areas()` -- every area as `{area_id, title, x, y, width,
+  height}`. `x`/`y` are the top-left in canvas coordinates, the same ones
+  `desk_list_widget_instances` reports, so you can tell which widgets
+  fall inside an area by comparing rectangles.
+- `desk_create_area(title?, x?, y?, width?, height?)` -- give both `x` and
+  `y`, or neither; both `width` and `height`, or neither. Omitted geometry
+  defaults to the middle 70% of what is on screen right now. Returns the
+  new area, including its `area_id`.
+- `desk_update_area(area_id, title?, x?, y?, width?, height?)` -- rename,
+  move and/or resize; omitted fields are unchanged.
+- `desk_delete_area(area_id)` -- removes the area only; returns whether it
+  existed.
+- `desk_view_area(area_id)` -- pans and zooms to fit the area; pair it with
+  `desk_screenshot_desk` to see what is inside.
+
+## Event
+
+Every create, edit, move, resize and delete -- by a human or by a tool --
+publishes the desk event `desk.areas.changed` with the payload
+`{"areas": [<same dicts as desk_list_areas>]}`. A `kind: "html"` widget can
+subscribe with `desk.events.subscribe("desk.areas.changed", ...)`.
+`desk.workspace.getState()` also carries the list as `areas`.
 """
 
 _ASK_DESK_EXPERT_DOC = """# Asking a Desk expert (desk_ask_desk_expert)
@@ -1252,6 +1310,9 @@ Desk Bridge API", for each call's exact shape.
   `DeskProc` tempui file for one-off access to the live shell;
   `desk_ask_desk_expert` to hand a question about Desk itself to an
   agent that can read Desk's source (`tempui-ask-desk-expert.md`).
+- Named background regions of the canvas ("areas") you can create and
+  jump to with `desk_list_areas`/`desk_create_area`/`desk_update_area`/
+  `desk_delete_area`/`desk_view_area` (`tempui-areas.md`).
 - Layout helpers built in: Open Widgets (a live table of everything
   placed, with stale markers), Minimap (navigate, tile, organize) and
   Recently Removed (revive a removed widget with its state).
@@ -2861,6 +2922,31 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "desk areas: background regions + MCP tools #377360": """- Desk **areas**: named rectangles drawn on the canvas background,
+  behind every widget, that mark out a region and can be jumped to. A
+  human adds one from the canvas right-click menu ("Desk Area"), drags its
+  title strip to move it and its border to resize it, double-clicks the
+  title to rename it, and clicks its eye button to fit the view to it. The
+  interior is click-through: an area never blocks anything inside it, and
+  moving or resizing one does not carry any widgets. Five new MCP tools on
+  the `desk` server manage them -- `desk_list_areas`, `desk_create_area`,
+  `desk_update_area`, `desk_delete_area` and `desk_view_area` -- and every
+  change publishes a `desk.areas.changed` desk event (payload
+  `{"areas": [...]}`) that widgets can subscribe to. Areas are saved in the
+  `.desk` file and appear in `desk.workspace.getState()` as `areas`. See
+  `tempui-areas.md`.
+""",
+    "mermaid subgraph containment boxes #200896": """- Mermaid flowcharts now draw `subgraph id [Title] ... end` as a
+  labeled box around its nodes (nestable) instead of ignoring it. Edges
+  to a subgraph itself are not supported and fall back to plain text.
+  See "Supported Mermaid subset" in `tempui-markdown.md`.
+""",
+    "mermaid classDef/class node styling #200895": """- Mermaid flowcharts (a fenced ```mermaid``` block) now honor
+  `classDef`, `class`, the `A:::name` shorthand and `style` lines for
+  per-node styling (`fill`, `stroke`, `stroke-width`, `stroke-dasharray`,
+  `color`) instead of skipping them. See "Supported Mermaid subset" in
+  `tempui-markdown.md`.
+""",
     "desk_place_widget MCP places a registered widget #800488": """- New MCP tool `desk_place_widget(widget_id, x?, y?, width?, height?, state?)`
   on the `desk` server: places a new instance of an already-registered
   widget kind on the Workspace Canvas and returns its `instance_id`, with
@@ -2875,17 +2961,6 @@ _NEW_FEATURES: dict[str, str] = {
   `window.desk.self.getLocalStorage()` returns -- its shape is whatever
   your widget stores with `setLocalStorage`. See "Invoking a defined
   widget" in `tempui-custom-widgets.md`.
-""",
-    "mermaid classDef/class node styling #200895": """- Mermaid flowcharts (a fenced ```mermaid``` block) now honor
-  `classDef`, `class`, the `A:::name` shorthand and `style` lines for
-  per-node styling (`fill`, `stroke`, `stroke-width`, `stroke-dasharray`,
-  `color`) instead of skipping them. See "Supported Mermaid subset" in
-  `tempui-markdown.md`.
-""",
-    "mermaid subgraph containment boxes #200896": """- Mermaid flowcharts now draw `subgraph id [Title] ... end` as a
-  labeled box around its nodes (nestable) instead of ignoring it. Edges
-  to a subgraph itself are not supported and fall back to plain text.
-  See "Supported Mermaid subset" in `tempui-markdown.md`.
 """,
     "installed job version hash skips .venv #284781": """- An Installed Job's version hash no longer reads the job's own
   top-level `.venv/` directory. A job with a large self-managed venv used
@@ -4214,6 +4289,7 @@ INSTALLED_JOBS_DOC_FILENAME = "tempui-installed-jobs.md"
 HMSVC_DOC_FILENAME = "tempui-hmsvc.md"
 WIDGET_LOGS_DOC_FILENAME = "tempui-widget-logs.md"
 ASK_DESK_EXPERT_DOC_FILENAME = "tempui-ask-desk-expert.md"
+AREAS_DOC_FILENAME = "tempui-areas.md"
 AGENT_EVENTS_DOC_FILENAME = "tempui-agent-events.md"
 HANDOFF_REQUESTS_DOC_FILENAME = "tempui-handoff-requests.md"
 FEEDBACK_ITEMS_DOC_FILENAME = "tempui-feedback-items.md"
@@ -4246,6 +4322,7 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     HMSVC_DOC_FILENAME: _HMSVC_DOC,
     WIDGET_LOGS_DOC_FILENAME: _WIDGET_LOGS_DOC,
     ASK_DESK_EXPERT_DOC_FILENAME: _ASK_DESK_EXPERT_DOC,
+    AREAS_DOC_FILENAME: _AREAS_DOC,
     AGENT_EVENTS_DOC_FILENAME: _AGENT_EVENTS_DOC,
     HANDOFF_REQUESTS_DOC_FILENAME: _HANDOFF_REQUESTS_DOC,
     FEEDBACK_ITEMS_DOC_FILENAME: _FEEDBACK_ITEMS_DOC,

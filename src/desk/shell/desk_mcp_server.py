@@ -202,6 +202,129 @@ async def _place_widget_tool(args: dict[str, Any]) -> dict[str, Any]:
     return _text_result(instance_id)
 
 
+_AREA_NUMBER = {"type": "number"}
+
+
+@tool(
+    "desk_list_areas",
+    "List the current Desk's areas: named rectangles drawn on the canvas background, behind every "
+    "widget, that mark out a region and can be jumped to. Each entry has area_id, title, x, y "
+    "(top-left, canvas coordinates -- the same ones desk_list_widget_instances uses), width and "
+    "height. Read-only. See tempui-areas.md.",
+    {},
+)
+async def _list_areas(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        areas = await _call_on_gui_thread(lambda: window.list_areas())
+    except RuntimeError as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(json.dumps(areas))
+
+
+@tool(
+    "desk_create_area",
+    "Create a desk area (a named background rectangle; see desk_list_areas). All arguments are "
+    "optional: title defaults to 'Area N'; x and y (give both) are the top-left in canvas "
+    "coordinates and width and height (give both) the size -- omitted geometry defaults to the "
+    "middle 70% of what is on screen right now. An area never blocks clicks on anything inside "
+    "it and never carries widgets when moved. Returns the new area as JSON, including its "
+    "area_id.",
+    {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "x": _AREA_NUMBER,
+            "y": _AREA_NUMBER,
+            "width": _AREA_NUMBER,
+            "height": _AREA_NUMBER,
+        },
+    },
+)
+async def _create_area(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        area = await _call_on_gui_thread(
+            lambda: window.create_area(
+                args.get("title") or "", args.get("x"), args.get("y"), args.get("width"), args.get("height")
+            )
+        )
+    except (RuntimeError, ValueError) as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(json.dumps(area))
+
+
+@tool(
+    "desk_update_area",
+    "Rename, move and/or resize a desk area; omit any field to leave it unchanged. Moving or "
+    "resizing an area does not move any widget. Returns the updated area as JSON.",
+    {
+        "type": "object",
+        "properties": {
+            "area_id": {"type": "string"},
+            "title": {"type": "string"},
+            "x": _AREA_NUMBER,
+            "y": _AREA_NUMBER,
+            "width": _AREA_NUMBER,
+            "height": _AREA_NUMBER,
+        },
+        "required": ["area_id"],
+    },
+)
+async def _update_area(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        area = await _call_on_gui_thread(
+            lambda: window.update_area(
+                args["area_id"], args.get("title"), args.get("x"), args.get("y"), args.get("width"), args.get("height")
+            )
+        )
+    except (RuntimeError, ValueError) as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(json.dumps(area))
+
+
+@tool(
+    "desk_delete_area",
+    "Delete a desk area. Widgets inside it are untouched. Returns whether an area with that "
+    "area_id existed.",
+    {"area_id": str},
+)
+async def _delete_area(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        found = await _call_on_gui_thread(lambda: window.delete_area(args["area_id"]))
+    except RuntimeError as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(str(found))
+
+
+@tool(
+    "desk_view_area",
+    "Pan and zoom the Workspace Canvas so a desk area fills the view -- the same as clicking the "
+    "area's eye button. Pair with desk_screenshot_desk to see what is in an area. Returns "
+    "whether an area with that area_id was found.",
+    {"area_id": str},
+)
+async def _view_area(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        found = await _call_on_gui_thread(lambda: window.view_area(args["area_id"]))
+    except RuntimeError as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(str(found))
+
+
 @tool(
     "desk_screenshot_widget",
     "Save a real PNG screenshot of a specific placed widget instance's own frame (titlebar and "
@@ -1016,6 +1139,11 @@ async def _get_feedback(args: dict[str, Any]) -> dict[str, Any]:
 _TOOLS = [
     _reveal_widget,
     _place_widget_tool,
+    _list_areas,
+    _create_area,
+    _update_area,
+    _delete_area,
+    _view_area,
     _screenshot_widget,
     _screenshot_desk,
     _list_widget_instances,

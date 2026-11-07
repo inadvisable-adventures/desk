@@ -6,6 +6,32 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+0460b4c. COMPLETED: Desk areas core (`../FEEDBACK/FEEDBACK-DESK-desk-areas-background-frames-with-area-view-switching-2026-11-04-0000.md`):
+   named background rectangles on the canvas, behind every widget, with an editable title and an eye button; only the
+   title strip and border take part in hit-testing, so the interior is click-through. Create (right-click menu "Desk
+   Area"), rename, move, resize, delete, list and view (fit the view to the area), persisted in the `.desk` file, all
+   also available as `desk_list_areas`/`desk_create_area`/`desk_update_area`/`desk_delete_area`/`desk_view_area`
+   MCP tools; every change publishes `desk.areas.changed`. Native scene item (not a `WidgetFrame`); viewing is fit-view
+   only; moving/resizing never carries widgets. Decided with the user. Agent-visible: `tempui-areas.md` + changelog tag.
+
+   [planned: desk-areas-core.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: `desk.shell.area_item.AreaItem`, `AreaState`/`Desk.areas`, `WorkspaceView` area API and spawn-menu
+   entry, `DeskWindow` area methods, five MCP tools, `verify_desk_areas.py`. Headless-verified only; the item's own
+   right-click menu and a live visual check were not exercised. Also re-ordered `_NEW_FEATURES` (out of order after a merge).
+
+6413e58. Docked sidebar region in the main window that can host a widget (from the desk-areas feedback, which asks for
+   "a side-bar docked widget that lists the areas"; chosen with the user as a real docked sidebar rather than a normal
+   canvas widget). Nothing like it exists yet: `DeskWindow` is a `QMainWindow` whose central widget is the canvas, so a
+   `QDockWidget` region is the natural base. Needs: which widget kinds can dock (python only first?), how a widget is
+   docked/undocked, whether the dock state persists in the `.desk` file, show/hide, and the embedded-control rules in
+   `python-widget-conventions.md` (a docked widget is outside the zoomable canvas, so the QComboBox caveat should not apply
+   there -- verify). Plan before implementing. Blocks TODO `747806b`.
+
+747806b. The Areas list widget, docked in the sidebar from TODO `6413e58`: lists the desk's areas (live, via
+   `desk.areas.changed`); clicking one views it; also rename/delete/add. Reads through `DeskWindow.list_areas` and acts
+   through the same area methods the MCP tools use (TODO `0460b4c`). Depends on `6413e58`. Plan before implementing.
+
 5a1b231. COMPLETED: Remove the retired `markdown_old_basic` widget ("Markdown (Old, Basic)", deprecated since TODO
    `96013cf`) and every mention of it in docs shown to agents or the user. Follows TODO `99ed232`, which left it
    unfixed because it was not in use. Historical TODO/plan/QUESTIONS records are left as written.

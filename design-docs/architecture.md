@@ -894,6 +894,23 @@ Desk Bridge API.
     `desk.recently_removed.changed`) with **Revive** (a brand-new instance,
     seeded with the saved state before its page first reads it) and a
     confirmed **Clear all**.
+35. **Desk areas** (`desk.shell.area_item.AreaItem`, `Desk.areas`, TODO
+    `0460b4c`) — named rectangles drawn on the canvas background behind every
+    widget, for marking out a region and jumping to it. Each is a plain
+    `QGraphicsObject` (not a `WidgetFrame`, so Open Widgets, the Minimap, HUD,
+    stale tracking and the widget lifecycle never see it) at a fixed z far below
+    any frame. Its `shape()` is only the title strip and a thin border band, so
+    the interior is click-through by construction (note the winding fill rule:
+    the strip overlaps the bands). Chrome is sized in screen pixels (÷ view
+    scale), so it stays usable when zoomed far out. The eye button fits the view
+    to the area (`WorkspaceView.zoom_to_area`, the widget eye button's fit with a
+    small margin); moving or resizing never carries widgets. The persistent
+    model is `AreaState` in `Desk.areas` (carried by `_capture_desk_state`'s
+    `replace`), kept in step with the scene items by `DeskWindow`'s
+    `create_area`/`update_area`/`delete_area`/`view_area`, which the
+    `desk_*_area` MCP tools and the canvas chrome both call. Every change
+    publishes `desk.areas.changed`. A docked sidebar listing areas is TODO
+    `6413e58`/`747806b`. See `plans/desk-areas-core.md`.
 
 
 ## Isolation and trust tiers
