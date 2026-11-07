@@ -13,6 +13,13 @@ b0dd8e1. COMPLETED: shared-components `desk-select`: a drop-in `<select>` replac
    COMPLETED 2026-11-06: `shared-components/desk-select/` (ts + template + README), tag `desk-select replaces native select in html widgets #821015`, changelog entry, `tempui-custom-widgets.md` note.
    `verify_shared_desk_select.py` runs it in a real offscreen QtWebEngine page. Confirmed live in Desk under a zoomed/panned canvas by the user (native misbehaves, `<desk-select>` doesn't).
 
+8a65056. COMPLETED: Promoted-widget `[STALE]` marking ignored edits to shared files a widget lists in its `tsconfig.json` `"files"` from outside its own directory (`../FEEDBACK/FEEDBACK-DESK-shared-widget-file-edits-may-not-mark-dependents-stale-2026-10-21-0038.md`). Source check confirmed the gap. Prioritized to the top.
+
+   [planned: shared-file-staleness.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: `external_source_files`; `PromotedWidgetSourceWatcher` also watches those files (parent dir, filtered) and re-arms on a tsconfig edit. Tag `shared widget file edits mark dependents stale #911413`, changelog entry, doc note.
+   `verify_shared_file_staleness.py` (13 checks). Headless-verified only.
+
 21fc736. COMPLETED: desk.mermaid: strip the quotes from a quoted edge label (`A -->|"label"| B`, unpiped `A -- "label" --> B`) and state-transition label, like node labels already are; a quoted piped label may also contain `|` (`../FEEDBACK/FEEDBACK-DESK-desk-mermaid-strips-a-quoted-node-label-s-delimiters-but-not-2026-11-06-1831.md`). Prioritized to the top.
 
    [planned: mermaid-quoted-edge-labels.md (COMPLETED)]

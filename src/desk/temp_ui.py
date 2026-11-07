@@ -255,6 +255,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "mermaid classDef/class node styling #200895",
     "mermaid subgraph containment boxes #200896",
     "desk-select replaces native select in html widgets #821015",
+    "shared widget file edits mark dependents stale #911413",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1527,7 +1528,13 @@ directly (`<name>.ts`, `widget.html`, ...) and save — Desk watches
 that directory itself and marks every already-placed instance
 `[STALE]`, exactly like a still-`.desk_temp`-sourced `DefineWidget`'s
 own live edits already do; click it to rebuild (`tsc`, same as before)
-and reload. The rebuild also re-reads `widget.json`'s `"capabilities"`
+and reload. This covers the widget's directory **and** any file its
+`tsconfig.json` `"files"` array lists from outside it (e.g. a shared
+`../_shared/x.ts`): one edit to a shared file marks *every* promoted
+widget that lists it `[STALE]` (a widget whose `tsconfig.json` you edit
+to add a shared file starts following it immediately). A *file* outside
+the directory is only followed if it's listed in `"files"` -- an
+unlisted sibling in the shared directory is ignored. The rebuild also re-reads `widget.json`'s `"capabilities"`
 and `"state_schema"` into the widget's stored definition, so changing
 them there works the same way (a newly *added* capability asks the user
 to confirm; never hand-edit the `.desk` file to change them).
@@ -2875,6 +2882,14 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "shared widget file edits mark dependents stale #911413": """- A promoted widget's `[STALE]` watch now also follows the files its
+  `tsconfig.json` `"files"` array lists from *outside* its own directory
+  (a shared base class or module such as `../_shared/x.ts`). Previously
+  only edits inside `desk_widgets/<name>/` marked it stale, so editing
+  shared code left every dependent widget silently running its old
+  compiled JS. One edit now marks every widget that lists the file. See
+  "Authoring from real source" in `tempui-custom-widgets.md`.
+""",
     "desk-select replaces native select in html widgets #821015": """- New `shared-components/desk-select` entry: `<desk-select>`, a drop-in
   replacement for a native `<select>` for `kind: "html"`/`DefineWidget`
   widgets. A native `<select>` opens an OS-level popup that lands
