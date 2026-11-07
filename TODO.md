@@ -129,6 +129,33 @@ d6c44ab. COMPLETED: Bug (user report): after restarting Desk, a docked Areas lis
    file that still placed one would simply not restore that instance (none in this repo does). No agent-facing
    (`temp_ui.py`) docs mentioned it, so no changelog entry.
 
+507b8d5. COMPLETED: Bridge API `launch_agent`: `desk.agents.launch(instructions, {x, y})` (capability `launch_agent`) lets a `kind:"html"` widget place a Claude (Desk) session seeded with its own instructions, e.g. a "chat about this result" button (`../FEEDBACK/FEEDBACK-DESK-no-bridge-api-capability-lets-a-kind-html-widget-launch-a-cl-2026-11-06-2320.md`). A dedicated API rather than extra fields on `widgets.open`. Prioritized to the top.
+
+   [planned: bridge-launch-agent.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: `DeskWindow.launch_agent`, `POST /api/bridge/agents/launch`, `desk.agents.launch` in the client, tag `desk.agents.launch bridge api #507b8d5`, changelog + Bridge API docs.
+   `verify_bridge_agents_launch.py` (15 checks). Headless-verified only.
+
+b0dd8e1. COMPLETED: shared-components `desk-select`: a drop-in `<select>` replacement for `kind:"html"`/`DefineWidget` widgets whose dropdown is ordinary DOM (a native `<select>` opens an OS popup that lands detached under canvas zoom/pan), plus a doc note covering the other native-popup controls (`../FEEDBACK/FEEDBACK-DESK-html-lt-select-gt-popups-misposition-under-canvas-zoom-pan-t-2026-11-06-1606.md`). Prioritized to the top.
+
+   [planned: shared-desk-select.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: `shared-components/desk-select/` (ts + template + README), tag `desk-select replaces native select in html widgets #821015`, changelog entry, `tempui-custom-widgets.md` note.
+   `verify_shared_desk_select.py` runs it in a real offscreen QtWebEngine page. Confirmed live in Desk under a zoomed/panned canvas by the user (native misbehaves, `<desk-select>` doesn't).
+
+8a65056. COMPLETED: Promoted-widget `[STALE]` marking ignored edits to shared files a widget lists in its `tsconfig.json` `"files"` from outside its own directory (`../FEEDBACK/FEEDBACK-DESK-shared-widget-file-edits-may-not-mark-dependents-stale-2026-10-21-0038.md`). Source check confirmed the gap. Prioritized to the top.
+
+   [planned: shared-file-staleness.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: `external_source_files`; `PromotedWidgetSourceWatcher` also watches those files (parent dir, filtered) and re-arms on a tsconfig edit. Tag `shared widget file edits mark dependents stale #911413`, changelog entry, doc note.
+   `verify_shared_file_staleness.py` (13 checks). Headless-verified only.
+
+21fc736. COMPLETED: desk.mermaid: strip the quotes from a quoted edge label (`A -->|"label"| B`, unpiped `A -- "label" --> B`) and state-transition label, like node labels already are; a quoted piped label may also contain `|` (`../FEEDBACK/FEEDBACK-DESK-desk-mermaid-strips-a-quoted-node-label-s-delimiters-but-not-2026-11-06-1831.md`). Prioritized to the top.
+
+   [planned: mermaid-quoted-edge-labels.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: `_unquote` helper; piped regex gains a quoted alternative (tried first so `|` inside quotes works). `verify_mermaid_parser_grammar.py` extended, headless-verified only.
+
 99ed232. COMPLETED: Markdown widget: clicking a relative link no longer replaces the block's text with the wrong file
    (`../FEEDBACK/FEEDBACK-DESK-markdown-widget-silently-inlines-a-linked-file-s-content-in-2026-11-05-1915.md`).
    Root cause: `QTextBrowser`'s default link navigation loaded `./LICENSE` in place, resolved against the process

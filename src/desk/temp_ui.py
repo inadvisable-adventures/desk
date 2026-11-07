@@ -262,6 +262,9 @@ CURRENT_TAGS: tuple[str, ...] = (
     "desk_*_expert MCP tools + expert registry #434481",
     "hmsvc experts capability: answer questions #598971",
     "Experts widget + answer notifications #804805",
+    "desk-select replaces native select in html widgets #821015",
+    "shared widget file edits mark dependents stale #911413",
+    "desk.agents.launch bridge api #507b8d5",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1745,7 +1748,13 @@ directly (`<name>.ts`, `widget.html`, ...) and save — Desk watches
 that directory itself and marks every already-placed instance
 `[STALE]`, exactly like a still-`.desk_temp`-sourced `DefineWidget`'s
 own live edits already do; click it to rebuild (`tsc`, same as before)
-and reload. The rebuild also re-reads `widget.json`'s `"capabilities"`
+and reload. This covers the widget's directory **and** any file its
+`tsconfig.json` `"files"` array lists from outside it (e.g. a shared
+`../_shared/x.ts`): one edit to a shared file marks *every* promoted
+widget that lists it `[STALE]` (a widget whose `tsconfig.json` you edit
+to add a shared file starts following it immediately). A *file* outside
+the directory is only followed if it's listed in `"files"` -- an
+unlisted sibling in the shared directory is ignored. The rebuild also re-reads `widget.json`'s `"capabilities"`
 and `"state_schema"` into the widget's stored definition, so changing
 them there works the same way (a newly *added* capability asks the user
 to confirm; never hand-edit the `.desk` file to change them).
@@ -1819,6 +1828,19 @@ suits the component. Importing a base class a widget's own file
 `extends` needs its own `tsconfig.json` `"files"` entry ahead of the
 widget's own file (see "Authoring from real source" above) so
 `build_widget.py` concatenates it first.
+
+**Don't use a native `<select>` (or any other control that opens an
+OS-level popup) in a `kind: "html"`/`DefineWidget` widget.** Your page
+is embedded in the zoomable, pannable canvas, and a native `<select>`
+opens its list as a separate popup positioned from untransformed screen
+coordinates -- with the canvas away from identity zoom/pan the list
+renders detached from the control (the HTML twin of the Qt `QComboBox`
+problem). Use `shared-components/desk-select` (`<desk-select>`) instead:
+a drop-in replacement whose dropdown is ordinary page content, so it
+rides along with the canvas transform. Same exposure, same advice: avoid
+`<input type="date"|"time"|"month"|"week"|"datetime-local"|"color">`,
+`<input list=...>`, and the browser context menu under the canvas. See
+`shared-components/desk-select/README.md`.
 
 If your widget is actually several wired-together components (a
 multi-pane layout, an event-wiring table between them, shared
@@ -2102,6 +2124,20 @@ built for genuine cross-widget signaling:
   expected to genuinely run longer belongs on the agent/MCP path
   instead (the run itself isn't cancelled by the timeout, only this
   call's own wait for its result is).
+
+- `desk.agents.launch(instructions, opts)` (capability `launch_agent`) —
+  places a fresh Claude (Desk) session whose first turn carries
+  `instructions`, e.g. a "chat about this result" button handing a
+  question and answer to a new agent to discuss. `instructions` is a
+  non-empty string (the text is handed to the session as a file it reads
+  first, so long text is fine); `opts` is optional `{ x, y }` scene
+  coordinates — omitted, the session appears just right of the calling
+  widget. Returns `{ instance_id }` of the new session (fire-and-forget:
+  nothing is routed back to your widget). The agent can act on the
+  user's project, so declare `launch_agent` only for a widget that
+  really launches one, and say in its UI that it will. A missing or
+  empty `instructions` is an HTTP 400/422. (`desk.widgets.open` does
+  **not** take instructions — extra keys there are ignored.)
 
 The calls above are almost always all a `DefineWidget` widget actually
 needs.
@@ -2394,7 +2430,7 @@ one-shot run, no more.
   same coarse Bridge API capability names a `DefineWidget`'s own
   `Capability` lines use (`workspace`, `fs`, `widgets`, `events`,
   `filetypes`, `editor`, `popups`, `transforms`, `introspect`,
-  `installed_jobs`, `media` -- see "The Desk Bridge API" in
+  `installed_jobs`, `launch_agent`, `media` -- see "The Desk Bridge API" in
   `tempui-custom-widgets.md` for what each one actually grants).
   Declare only what your script actually calls
   -- an undeclared capability's Bridge call gets a real HTTP 403, not
@@ -3161,6 +3197,34 @@ _NEW_FEATURES: dict[str, str] = {
   per-node styling (`fill`, `stroke`, `stroke-width`, `stroke-dasharray`,
   `color`) instead of skipping them. See "Supported Mermaid subset" in
   `tempui-markdown.md`.
+""",
+    "desk.agents.launch bridge api #507b8d5": """- New Bridge API capability `launch_agent`:
+  `desk.agents.launch(instructions, { x, y })` lets a `kind: "html"`
+  widget place a fresh Claude (Desk) session whose first turn carries
+  the widget's own `instructions` (e.g. a "chat about this result"
+  button). Returns `{ instance_id }`; positioned right of the calling
+  widget unless x/y are given. Previously no Bridge route could seed a
+  session (`widgets.open` silently ignores extra keys). See "The Desk
+  Bridge API" in `tempui-custom-widgets.md`.
+""",
+    "shared widget file edits mark dependents stale #911413": """- A promoted widget's `[STALE]` watch now also follows the files its
+  `tsconfig.json` `"files"` array lists from *outside* its own directory
+  (a shared base class or module such as `../_shared/x.ts`). Previously
+  only edits inside `desk_widgets/<name>/` marked it stale, so editing
+  shared code left every dependent widget silently running its old
+  compiled JS. One edit now marks every widget that lists the file. See
+  "Authoring from real source" in `tempui-custom-widgets.md`.
+""",
+    "desk-select replaces native select in html widgets #821015": """- New `shared-components/desk-select` entry: `<desk-select>`, a drop-in
+  replacement for a native `<select>` for `kind: "html"`/`DefineWidget`
+  widgets. A native `<select>` opens an OS-level popup that lands
+  detached from the control whenever the canvas is zoomed or panned;
+  `<desk-select>`'s list is ordinary page content, so it follows the
+  canvas transform. Works inside shadow roots and `overflow: auto`
+  ancestors, fires `change`, keyboard accessible. See "Reusable UI
+  components" in `tempui-custom-widgets.md` (which now also lists the
+  other native-popup controls to avoid) and the component's own
+  `README.md`.
 """,
     "desk_place_widget MCP places a registered widget #800488": """- New MCP tool `desk_place_widget(widget_id, x?, y?, width?, height?, state?)`
   on the `desk` server: places a new instance of an already-registered

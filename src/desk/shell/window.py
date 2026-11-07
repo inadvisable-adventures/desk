@@ -1117,6 +1117,42 @@ class DeskWindow(QMainWindow):
         )
         return None if frame is not None else "Could not place the Claude (Desk) widget."
 
+    def launch_agent(
+        self,
+        instructions: str,
+        source_instance_id: str | None = None,
+        pos: tuple[float, float] | None = None,
+    ) -> str:
+        """TODO 507b8d5, the Bridge API's `agents.launch`: places a fresh
+        claude_desk widget whose first turn carries `instructions`
+        (written by the calling widget -- e.g. a "chat about this
+        result" button handing off a question and answer). Positioned at
+        `pos` if given, else just right of the calling widget's frame
+        (`source_instance_id`), else viewport-centered. The text goes in
+        a standalone file the session is told to read (not the launch
+        command line), like the `[CHAT]` button. Fire-and-forget --
+        returns the new widget's instance_id. Raises ValueError if the
+        claude_desk widget kind isn't registered or placement fails."""
+        widget = self._widgets.get(CLAUDE_DESK_WIDGET_ID)
+        if widget is None:
+            raise ValueError("The Claude (Desk) widget isn't available in this Desk.")
+        if pos is None:
+            source = self.find_frame_by_instance_id(source_instance_id) if source_instance_id else None
+            proxy = source.graphicsProxyWidget() if source is not None else None
+            if proxy is not None:
+                rect = proxy.sceneBoundingRect()
+                pos = (rect.right() + 24, rect.top())
+            else:
+                center = self.view.mapToScene(self.view.viewport().rect().center())
+                pos = (center.x(), center.y())
+        extra_instructions = self._write_claude_instructions_file(instructions, prefix="launch")
+        frame = self._place_widget(
+            CLAUDE_DESK_WIDGET_ID, widget, pos, widget.default_size, claude_extra_instructions=extra_instructions
+        )
+        if frame is None:
+            raise ValueError("Could not place the Claude (Desk) widget.")
+        return frame.instance_id
+
     def ask_desk_expert(self, question: str) -> str:
         """TODO c4ef727, the `desk_ask_desk_expert` MCP tool: places a
         fresh claude_desk widget whose session answers `question`

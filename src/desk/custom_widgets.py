@@ -11,6 +11,7 @@ import base64
 import binascii
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -233,6 +234,29 @@ def source_watch_exclusions(widget_dir: Path) -> set[Path]:
     except SourceBuildError:
         pass
     return exclusions
+
+
+def external_source_files(widget_dir: Path) -> list[Path]:
+    """TODO 8a65056: the files a source-backed widget's `tsconfig.json`
+    `"files"` array lists that live *outside* its own directory (a shared
+    base class or module, e.g. `../_shared/x.ts`), as absolute, lexically
+    normalized paths -- the files `build_from_source` compiles into the
+    widget but that a watch of `widget_dir` alone never sees change.
+    Best-effort like `source_watch_exclusions`: a missing/malformed
+    tsconfig.json or a non-string entry just yields fewer paths."""
+    try:
+        entries = _read_files_entries(_read_tsconfig(widget_dir))
+    except SourceBuildError:
+        return []
+    base = Path(os.path.normpath(widget_dir))
+    external: list[Path] = []
+    for entry in entries:
+        if not isinstance(entry, str):
+            continue
+        path = Path(os.path.normpath(base / entry))
+        if path != base and base not in path.parents and path not in external:
+            external.append(path)
+    return external
 
 
 _NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")

@@ -155,6 +155,12 @@ class OpenWidgetRequest(BaseModel):
     height: int | None = None
 
 
+class LaunchAgentRequest(BaseModel):
+    instructions: str
+    x: float | None = None
+    y: float | None = None
+
+
 class CloseWidgetRequest(BaseModel):
     instance_id: str
 
@@ -628,6 +634,25 @@ def create_app(
         pos = (body.x, body.y) if body.x is not None and body.y is not None else None
         size = (body.width, body.height) if body.width is not None and body.height is not None else None
         instance_id = await run_on_gui(lambda: gui_bridge.window.open_widget(body.widget_id, pos, size))
+        return {"instance_id": instance_id}
+
+    @app.post("/api/bridge/agents/launch")
+    async def agents_launch(
+        body: LaunchAgentRequest,
+        widget: WidgetInfo = Depends(require_caller("launch_agent")),
+        x_desk_instance_id_header: str | None = Header(None, alias="X-Desk-Instance-Id"),
+    ):
+        # TODO 507b8d5: places a fresh Claude (Desk) session whose first
+        # turn carries body.instructions. Deliberately its own capability
+        # and route, not extra fields on widgets/open (which silently
+        # drops unknown keys): it starts an agent that can act on the
+        # user's project, so declaring it is the trust boundary.
+        if not body.instructions.strip():
+            raise HTTPException(400, "instructions must not be empty")
+        pos = (body.x, body.y) if body.x is not None and body.y is not None else None
+        instance_id = await run_on_gui(
+            lambda: gui_bridge.window.launch_agent(body.instructions, x_desk_instance_id_header, pos)
+        )
         return {"instance_id": instance_id}
 
     @app.post("/api/bridge/widgets/close")

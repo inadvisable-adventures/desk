@@ -169,7 +169,10 @@ _EDGE_RE = re.compile(
     r"|(?:--\s+(?P<open_label>.+?)\s+---)"
     r"|(?:-\.\s*(?P<dotted_arrow_label>.+?)\s*\.->)"
     r"|(?:-\.\s*(?P<dotted_open_label>.+?)\s*\.-(?!>))"
-    r"|(?P<op>-\.->|-\.-|-->|---)(?:\s*\|(?P<label>[^|]*)\|)?"
+    # TODO 21fc736: a quoted piped label may contain `|` (`-->|"a|b"|`),
+    # tried first -- the unquoted class would otherwise stop at the
+    # first `|` inside the quotes and keep the quote marks as text.
+    r'|(?P<op>-\.->|-\.-|-->|---)(?:\s*\|(?:"(?P<label_q>[^"]*)"|(?P<label>[^|]*))\|)?'
 )
 
 # TODO 90dd6e6: every shape's content is either double-quoted (any
@@ -279,6 +282,15 @@ def _parse_style_props(text: str) -> dict[str, str]:
     return props
 
 
+def _unquote(label: str) -> str:
+    """Strips one matched pair of surrounding double quotes (the quoting
+    node labels already support) from an edge/transition label."""
+    label = label.strip()
+    if len(label) >= 2 and label[0] == label[-1] == '"':
+        return label[1:-1]
+    return label
+
+
 def _edge_match_info(m: re.Match) -> tuple[str, str | None]:
     """TODO 90dd6e6: normalizes an `_EDGE_RE` match -- whichever
     unpiped-label alternative matched (if any), or the plain literal
@@ -293,8 +305,11 @@ def _edge_match_info(m: re.Match) -> tuple[str, str | None]:
     ):
         label = m.group(group)
         if label is not None:
-            return op, label
-    return m.group("op"), m.group("label")
+            return op, _unquote(label)
+    label = m.group("label_q")
+    if label is None:
+        label = m.group("label")
+    return m.group("op"), label
 
 
 def _parse_flowchart(lines: list[str], direction: str) -> Diagram:
@@ -476,7 +491,7 @@ def _parse_state(lines: list[str]) -> Diagram:
             src_id = next_pseudo("start") if match.group("src") == "[*]" else ensure_named(match.group("src"))
             dst_id = next_pseudo("end") if match.group("dst") == "[*]" else ensure_named(match.group("dst"))
             label = match.group("label")
-            edges.append(Edge(src_id, dst_id, label.strip() if label else None))
+            edges.append(Edge(src_id, dst_id, _unquote(label) if label else None))
             continue
 
         match = _STATE_DESC_RE.match(line)

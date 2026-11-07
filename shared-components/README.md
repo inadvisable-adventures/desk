@@ -28,6 +28,9 @@ local edits there will be silently overwritten.
 
 - [`hsv-color-picker/`](hsv-color-picker/README.md) — an HSV color
   wheel + brightness bar + hex field.
+- [`desk-select/`](desk-select/README.md) — a drop-in replacement for a
+  native `<select>` whose dropdown is ordinary page content, so it works
+  under the zoomable canvas (a native one opens a detached OS popup).
 - [`document-editor-base/`](document-editor-base/README.md) — a base
   class for a title-to-path, auto-load/auto-save file-backed document
   editor.
