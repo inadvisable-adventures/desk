@@ -257,6 +257,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "desk areas: background regions + MCP tools #377360",
     "docked sidebar widgets + MCP tools #797468",
     "sidebar: left, collapsible, drag-and-drop dock #046076",
+    "Areas list widget for the sidebar #632760",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -898,6 +899,14 @@ zooms the canvas to fit the area (what `desk_view_area` does).
   existed.
 - `desk_view_area(area_id)` -- pans and zooms to fit the area; pair it with
   `desk_screenshot_desk` to see what is inside.
+
+## The Areas widget
+
+A built-in `Areas` widget (widget id `areas`) lists the areas for a human:
+click a row to view it; Add, Rename and Delete act on the selected row. It is
+meant to be docked in the sidebar (`desk_dock_widget("areas")`, or the canvas
+right-click menu's "Dock in sidebar" group) but also works placed on the
+canvas.
 
 ## Event
 
@@ -2973,6 +2982,13 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "Areas list widget for the sidebar #632760": """- A built-in **Areas** widget lists the desk's areas live: click a row
+  to view that area, and Add / Rename / Delete act on the selected row. Dock
+  it in the sidebar from the canvas right-click menu's "Dock in sidebar"
+  group (or place it on the canvas as usual). It uses the same area methods
+  as the `desk_*_area` MCP tools, so a change from either is shown in the
+  other. See `tempui-areas.md`.
+""",
     "sidebar: left, collapsible, drag-and-drop dock #046076": """- The docked sidebar is now on the **left** of the main window and is
   **collapsed by default**: only a thin arrow tab shows until a human clicks
   it. A human can also **drag a placed `kind: "python"` widget by its

@@ -50,9 +50,16 @@ reordered or its description edited.
    throwaway real-`DeskWindow` offscreen smoke run; no live (on-screen, real-mouse) check. Moving a placed widget in
    loses in-memory-only state (as "move to canvas" does).
 
-747806b. The Areas list widget, docked in the sidebar from TODO `6413e58`: lists the desk's areas (live, via
+747806b. COMPLETED: The Areas list widget, docked in the sidebar from TODO `6413e58`: lists the desk's areas (live, via
    `desk.areas.changed`); clicking one views it; also rename/delete/add. Reads through `DeskWindow.list_areas` and acts
    through the same area methods the MCP tools use (TODO `0460b4c`). Depends on `6413e58`. Plan before implementing.
+
+   [planned: areas-list-widget.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: built-in `widgets/areas` ("Areas"): rows live from `desk.areas.changed`, click = view, Add /
+   Rename (in place) / Delete (confirmed) on the selected row; changelog tag `Areas list widget for the sidebar #632760`
+   and a paragraph in `tempui-areas.md`; `verify_areas_widget.py` (22 passed) plus an offscreen run docked in a real
+   `DeskWindow` (create/rename from the API showed up live). Completes the desk-areas feedback.
 
 5a1b231. COMPLETED: Remove the retired `markdown_old_basic` widget ("Markdown (Old, Basic)", deprecated since TODO
    `96013cf`) and every mention of it in docs shown to agents or the user. Follows TODO `99ed232`, which left it
