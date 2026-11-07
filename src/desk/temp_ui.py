@@ -251,6 +251,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "handoff request MCP tools #070658",
     "feedback item MCP tools #156881",
     "installed job version hash skips .venv #284781",
+    "desk_place_widget MCP places a registered widget #800488",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1225,7 +1226,8 @@ Desk Bridge API", for each call's exact shape.
 **Seeing and driving Desk itself**
 - `desk.introspect.*` plus the screenshot/reveal/list MCP tools
   (`desk_screenshot_widget`, `desk_reveal_widget`,
-  `desk_list_widget_instances`) to inspect what is on the canvas; a
+  `desk_list_widget_instances`) to inspect what is on the canvas, and
+  `desk_place_widget` to put a new instance of a registered widget on it; a
   `DeskProc` tempui file for one-off access to the live shell;
   `desk_ask_desk_expert` to hand a question about Desk itself to an
   agent that can read Desk's source (`tempui-ask-desk-expert.md`).
@@ -1610,7 +1612,10 @@ widget kinds with separate keywords.
 
 A widget placed this way **can only ever be placed via tempui** — it
 never appears in the canvas's right-click "Add widget" menu, unlike
-every ordinary widget in `widgets/`.
+every ordinary widget in `widgets/`. (An agent can also place an instance
+directly with the `desk_place_widget` MCP tool, which takes the keyword as
+`widget_id` and returns the new `instance_id` to chain into
+`desk_screenshot_widget` — no notification click needed.)
 
 ## Promoting a defined widget to the Desk
 
@@ -2835,6 +2840,18 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "desk_place_widget MCP places a registered widget #800488": """- New MCP tool `desk_place_widget(widget_id, x?, y?, width?, height?)`
+  on the `desk` server: places a new instance of an already-registered
+  widget kind on the Workspace Canvas and returns its `instance_id`, with
+  no human click on a notification. Use it right after building and
+  registering a `DefineWidget` (or for any widget in the catalog) to close
+  the loop yourself: place, then `desk_reveal_widget` /
+  `desk_screenshot_widget`, tweak, rebuild, and repeat. `x`/`y` are the
+  top-left in canvas coordinates (the same ones
+  `desk_list_widget_instances` reports); omit them to center the widget in
+  the current view. See "Invoking a defined widget" in
+  `tempui-custom-widgets.md`.
+""",
     "installed job version hash skips .venv #284781": """- An Installed Job's version hash no longer reads the job's own
   top-level `.venv/` directory. A job with a large self-managed venv used
   to take seconds to hash and time out `desk_install_job` /

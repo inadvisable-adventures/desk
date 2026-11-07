@@ -159,6 +159,45 @@ async def _reveal_widget(args: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool(
+    "desk_place_widget",
+    "Place a new instance of an already-registered widget kind (a built-in widget id, or the "
+    "keyword of a DefineWidget you just registered) on the Workspace Canvas -- the agent-side "
+    "equivalent of a human placing it by hand. Returns the new instance_id, which you can pass "
+    "straight to desk_reveal_widget / desk_screenshot_widget. Optional x and y (give both) are "
+    "the top-left corner in canvas coordinates, as reported by desk_list_widget_instances; "
+    "omitted, the widget is centered in the current view. Optional width and height (give both) "
+    "override the widget's default size.",
+    {
+        "type": "object",
+        "properties": {
+            "widget_id": {"type": "string"},
+            "x": {"type": "number"},
+            "y": {"type": "number"},
+            "width": {"type": "integer"},
+            "height": {"type": "integer"},
+        },
+        "required": ["widget_id"],
+    },
+)
+async def _place_widget_tool(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    widget_id = args.get("widget_id")
+    if not isinstance(widget_id, str) or not widget_id.strip():
+        return _text_result("widget_id must be a non-empty string.", is_error=True)
+    try:
+        instance_id = await _call_on_gui_thread(
+            lambda: window.place_widget_by_id(
+                widget_id.strip(), args.get("x"), args.get("y"), args.get("width"), args.get("height")
+            )
+        )
+    except (RuntimeError, ValueError) as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(instance_id)
+
+
+@tool(
     "desk_screenshot_widget",
     "Save a real PNG screenshot of a specific placed widget instance's own frame (titlebar and "
     "content, exactly as it looks on the canvas) to path. A relative path resolves against the "
@@ -971,6 +1010,7 @@ async def _get_feedback(args: dict[str, Any]) -> dict[str, Any]:
 
 _TOOLS = [
     _reveal_widget,
+    _place_widget_tool,
     _screenshot_widget,
     _screenshot_desk,
     _list_widget_instances,

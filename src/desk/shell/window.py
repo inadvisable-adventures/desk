@@ -82,7 +82,7 @@ from desk.schema_types import SchemaSyntaxError, coerce, parse_type_expression, 
 from desk.server.bridge_client import DOM_SNAPSHOT_JS
 from desk.server.runner import ServerHandle
 from desk.shell import current_context
-from desk.shell.canvas import WorkspaceView
+from desk.shell.canvas import DEFAULT_WIDGET_SIZE, WorkspaceView
 from desk.shell.chromium_widget import ChromiumWidget
 from desk.shell.new_desk_dialog import NewDeskDialog
 from desk.shell.promoted_widget_source_watcher import PromotedWidgetSourceWatcher
@@ -1075,6 +1075,42 @@ class DeskWindow(QMainWindow):
         )
         if frame is None:
             raise ValueError("Could not place the Claude (Desk) widget.")
+        return frame.instance_id
+
+    def place_widget_by_id(
+        self,
+        widget_id: str,
+        x: float | None = None,
+        y: float | None = None,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> str:
+        """TODO 1746166, the `desk_place_widget` MCP tool: places a new
+        instance of an already-registered widget kind (built-in, or a
+        tempui/promoted `DefineWidget`) and returns its instance_id --
+        the agent-side equivalent of a human placing it by hand.
+        (x, y) is the top-left in scene coordinates (as reported by
+        get_state_dict); omitted, the widget is centered in the current
+        viewport. Raises ValueError for an unknown widget id or a
+        placement that fails (e.g. a schema conflict)."""
+        widget = self._widgets.get(widget_id)
+        if widget is None:
+            known = ", ".join(sorted(self._widgets)) or "(none)"
+            raise ValueError(f"Unknown widget_id {widget_id!r}. Registered widget ids: {known}.")
+        if (x is None) != (y is None):
+            raise ValueError("Give both x and y, or neither.")
+        if (width is None) != (height is None):
+            raise ValueError("Give both width and height, or neither.")
+        size = (int(width), int(height)) if width is not None else widget.default_size
+        if x is None:
+            center = self.view.mapToScene(self.view.viewport().rect().center())
+            w, h = size or DEFAULT_WIDGET_SIZE
+            pos = (center.x() - w / 2, center.y() - h / 2)
+        else:
+            pos = (float(x), float(y))
+        frame = self._place_widget(widget_id, widget, pos, size)
+        if frame is None:
+            raise ValueError(f"Could not place widget {widget_id!r} (see the Desk log).")
         return frame.instance_id
 
     def _build_desk_expert_instructions(self, question: str) -> str:

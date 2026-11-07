@@ -12960,3 +12960,17 @@ e5b5567. COMPLETED: `compute_version_hash` (`src/desk/installed_jobs.py`) skips 
 
    COMPLETED 2026-11-05: per-entry `Collapse`/`Expand` button (collapsed by default) in `widgets/hmsvc_manager/widget.py`; collapsed rows keep name, status
    and the action buttons. Session-only state (not saved in the `.desk` file). `verify_hmsvc_manager_collapse.py`, headless-verified only.
+
+1746166. COMPLETED: New `desk_place_widget(widget_id, x?, y?, width?, height?)` MCP tool
+   (`../FEEDBACK/FEEDBACK-DESK-no-mcp-tool-to-place-a-new-widget-instance-on-the-canvas-2026-11-06-1245.md`):
+   places a new instance of an already-registered widget kind (built-in or a `DefineWidget` keyword) on the
+   Workspace Canvas and returns its `instance_id`, so an agent can build -> place -> `desk_screenshot_widget` ->
+   iterate without a human clicking a notification. Defaults to the viewport center; `x`/`y` are top-left scene
+   coordinates. The feedback's optional `state` argument is left out of this pass (no generic initial-state
+   contract). Agent-visible, so changelog tag + entry.
+
+   [planned: place-widget-mcp.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: `DeskWindow.place_widget_by_id`, `desk_place_widget` in `desk_mcp_server.py`, tag
+   `desk_place_widget MCP places a registered widget #800488` + `_NEW_FEATURES` entry, mentions in the overview and
+   `tempui-custom-widgets.md` docs, `verify_place_widget_tool.py`. Headless-verified only; not run against a live Desk.
