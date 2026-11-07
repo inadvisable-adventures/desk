@@ -96,5 +96,25 @@ class DeskClient:
         result = self._call("GET", "/api/bridge/events/poll", query={"timeout": timeout}, timeout=timeout + 10.0)
         return result["event"]
 
+    # -- experts -------------------------------------------------------
+    # Requires the `experts` capability in service.json. A service answers
+    # questions put to experts it registered itself; see tempui-experts.md.
+
+    def experts_register(self, expert_id: str, name: str, description: str = "") -> dict:
+        """Registers (or updates) this service as an expert and returns the record."""
+        return self._call("POST", "/api/bridge/experts/register", {"expert_id": expert_id, "name": name, "description": description})
+
+    def experts_pending(self, expert_id: str) -> list:
+        """Open questions put to `expert_id`: `[{question_id, question, asker, asked_at, ...}]`."""
+        return self._call("GET", "/api/bridge/experts/pending", query={"expert_id": expert_id})
+
+    def experts_accept(self, question_id: str) -> dict:
+        """Claims an open question so nothing else answers it."""
+        return self._call("POST", "/api/bridge/experts/accept", {"question_id": question_id})
+
+    def experts_answer(self, question_id: str, answer: str) -> dict:
+        """Answers an open or accepted question; the asker is notified."""
+        return self._call("POST", "/api/bridge/experts/answer", {"question_id": question_id, "answer": answer})
+
 
 desk = DeskClient()

@@ -260,6 +260,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "Areas list widget for the sidebar #632760",
     "inline area rename; labeled sidebar tab #224906",
     "desk_*_expert MCP tools + expert registry #434481",
+    "hmsvc experts capability: answer questions #598971",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -917,6 +918,26 @@ then**. Asking never waits.
   question that is `open` or `accepted`.
 
 Every change publishes the desk event `desk.experts.changed`.
+
+## A Desk-hosted service as an expert
+
+An hmsvc (`tempui-hmsvc.md`) can register itself as an expert and answer
+questions. Give its `service.json` the `experts` capability, then, from
+`service.py`, with `from desk.hmsvc_client import desk` (each call blocks;
+wrap it in `asyncio.to_thread` from an `async def`):
+
+- `desk.experts_register(expert_id, name, description="")` -- registers or
+  updates an expert (kind `hmsvc`) owned by this service.
+- `desk.experts_pending(expert_id)` -- the open questions put to it:
+  `[{question_id, question, asker, asked_at, ...}]`. The asker's private
+  note is never included.
+- `desk.experts_accept(question_id)` -- claim one so nothing else starts it.
+- `desk.experts_answer(question_id, answer)` -- answer it; the asker is
+  notified.
+
+A service can only act on experts it registered itself. Poll
+`experts_pending` (or subscribe to the `desk.experts.changed` desk event and
+call it when one arrives).
 """
 
 _AREAS_DOC = """# Desk areas (desk_*_area MCP tools)
@@ -2590,8 +2611,9 @@ means all defaults.
   local network can reach it (the widget then also shows its LAN URL).
   Either way the port is **unauthenticated** -- add your own auth to an
   external service.
-- `capabilities` (list, default `["state", "events"]`; `workspace` is
-  also available): which Bridge capabilities the service's own calls to
+- `capabilities` (list, default `["state", "events"]`; `workspace` and
+  `experts` are also available -- `experts` lets the service register as an
+  expert and answer questions, see `tempui-experts.md`): which Bridge capabilities the service's own calls to
   Desk hold. A call needing one it lacks fails with HTTP 403.
 - `venv` (string): a project-relative venv directory; the service runs
   under `<venv>/bin/python`.
@@ -3040,6 +3062,12 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "hmsvc experts capability: answer questions #598971": """- A Desk-hosted service (hmsvc) can now be an **expert**: give its
+  `service.json` the `experts` capability and call
+  `desk.experts_register`, `desk.experts_pending`, `desk.experts_accept` and
+  `desk.experts_answer` from `service.py`. A service can only act on experts
+  it registered itself. See `tempui-experts.md`.
+""",
     "desk_*_expert MCP tools + expert registry #434481": """- A Desk-wide **expert registry** in a local PostgreSQL database, for
   questions whose answers arrive long after your session is gone. New MCP
   tools: `desk_list_experts`, `desk_register_expert`, `desk_ask_expert`

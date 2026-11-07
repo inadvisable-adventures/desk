@@ -65,10 +65,18 @@ c2555b5. COMPLETED: Desk-wide "ask an expert" part 1 (feedback `request-a-desk-w
    left running after use, as in the user's other projects.
 
 
-b2e031d. Desk-wide "ask an expert" part 2: a Bridge `experts` capability so an hmsvc can register itself as an expert, poll
+b2e031d. COMPLETED: Desk-wide "ask an expert" part 2: a Bridge `experts` capability so an hmsvc can register itself as an expert, poll
    its open questions, accept and answer them (`desk.hmsvc_client.experts_*`). Depends on `c2555b5`.
 
    [planned: expert-registry.md]
+
+   COMPLETED 2026-11-06: Bridge `experts` capability (`/api/bridge/experts/register|pending|accept|answer`; service callers
+   only, only for experts the service registered, kind forced to `hmsvc`, note never returned) and
+   `DeskClient.experts_register/pending/accept/answer`; docs (`tempui-experts.md`, `tempui-hmsvc.md`) + changelog tag
+   `hmsvc experts capability: answer questions #598971`; `verify_expert_bridge.py` (18 checks: real Local Web Server,
+   real Postgres, the real `DeskClient`). Not exercised: a service subprocess calling it end to end (the client is the
+   same code path), and the service-only guard for a non-hmsvc caller that holds the capability (no built-in widget does).
+
 
 d15791d. Desk-wide "ask an expert" part 3: a top-right notification when an answer arrives (and when a new question
    arrives for the built-in `user` expert), and a built-in python **Experts** widget that shows open questions, lets the
