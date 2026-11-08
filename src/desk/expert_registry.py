@@ -37,6 +37,8 @@ STATUSES = ("open", "accepted", "answered", "withdrawn")
 OPEN_STATUSES = ("open", "accepted")
 EXPERT_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 MAX_TEXT_CHARS = 20000
+# A Desk is considered running while its notifier has checked in this recently (a few 10s polls).
+PRESENCE_TTL_SECONDS = 35
 _KEG_VERSIONS = ("18", "17", "16", "15", "14")
 
 NO_POSTGRES_MESSAGE = (
@@ -67,7 +69,13 @@ CREATE TABLE IF NOT EXISTS expert_questions (
   answered_at        timestamptz,
   answer_notified_at timestamptz,
   expert_notified_at timestamptz,
-  handed_off_at      timestamptz
+  handed_off_at      timestamptz,
+  origin             text NOT NULL DEFAULT ''
+);
+ALTER TABLE expert_questions ADD COLUMN IF NOT EXISTS origin text NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS desk_presence (
+  origin  text PRIMARY KEY,
+  seen_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS expert_questions_status_idx ON expert_questions (status, asked_at);
 INSERT INTO experts (expert_id, name, description, kind, registered_by)
@@ -294,19 +302,20 @@ class ExpertRegistry:
             clauses.append("status IN (" + ", ".join(f"'{s}'" for s in statuses) + ")")
         return self._question_rows(" AND ".join(clauses), include_note, limit, **variables)
 
-    def ask(self, expert_id: str, question: str, asker: str = "", note_to_self: str = "") -> dict:
+    def ask(self, expert_id: str, question: str, asker: str = "", note_to_self: str = "", origin: str = "") -> dict:
         expert_id = self._expert_id(expert_id)
         question = self._text(question, "question")
         asker = self._text(asker, "asker", required=False)
         note = self._text(note_to_self, "note_to_self", required=False)
+        origin = self._text(origin, "origin", required=False)
         if self.get_expert(expert_id) is None:
             known = ", ".join(e["expert_id"] for e in self.list_experts()) or "(none)"
             raise ExpertRegistryError(f"No expert {expert_id!r}. Registered experts: {known}.")
         rows = self._json(
-            "WITH r AS (INSERT INTO expert_questions (expert_id, asker, question, note_to_self) "
-            "VALUES (:'eid', :'asker', :'question', :'note') RETURNING " + _PUBLIC_COLUMNS + ") "
+            "WITH r AS (INSERT INTO expert_questions (expert_id, asker, question, note_to_self, origin) "
+            "VALUES (:'eid', :'asker', :'question', :'note', :'origin') RETURNING " + _PUBLIC_COLUMNS + ") "
             "SELECT coalesce(json_agg(r), '[]'::json) FROM r;",
-            eid=expert_id, asker=asker, question=question, note=note,
+            eid=expert_id, asker=asker, question=question, note=note, origin=origin,
         )
         self._changed("question", rows[0]["question_id"])
         return rows[0]
@@ -353,15 +362,39 @@ class ExpertRegistry:
 
     # -- what the notifier still has to announce --------------------------
 
-    def unannounced_answers(self) -> list[dict]:
-        """Answered questions whose asker has not been notified yet."""
-        return self._question_rows("status = 'answered' AND answer_notified_at IS NULL", include_note=False)
-
-    def unannounced_questions_for_user(self) -> list[dict]:
-        """Open questions for the built-in `user` expert not yet announced."""
-        return self._question_rows(
-            "status = 'open' AND expert_id = :'eid' AND expert_notified_at IS NULL", include_note=False, eid=USER_EXPERT_ID
+    def heartbeat(self, origin: str) -> None:
+        """Records that the Desk at `origin` (its directory) is running right now."""
+        self._json(
+            "WITH r AS (INSERT INTO desk_presence (origin, seen_at) VALUES (:'origin', now()) "
+            "ON CONFLICT (origin) DO UPDATE SET seen_at = now() RETURNING 1) "
+            "SELECT coalesce(json_agg(r), '[]'::json) FROM r;",
+            origin=self._text(origin, "origin", required=False),
         )
+
+    def claim_announcements(self, origin: str) -> list[dict]:
+        """Atomically takes the announcements the Desk at `origin` should show, stamping each as announced in
+        the same statement so two Desks polling together can never both show one. That Desk's own answers
+        (and questions for the built-in `user`) come first; a question with no origin, or whose asking Desk
+        has not checked in lately (closed), is claimed by whichever Desk polls first. Returns
+        [{"kind": "answer" | "question", "question": {...}}], never including the private note."""
+        origin = self._text(origin, "origin", required=False)
+        mine = (
+            "(origin = '' OR origin = :'origin' OR NOT EXISTS (SELECT 1 FROM desk_presence p WHERE "
+            f"p.origin = expert_questions.origin AND p.seen_at > now() - interval '{int(PRESENCE_TTL_SECONDS)} seconds'))"
+        )
+        found: list[dict] = []
+        for kind, column, condition, extra in (
+            ("answer", "answer_notified_at", "status = 'answered' AND answer_notified_at IS NULL", {}),
+            ("question", "expert_notified_at", "status = 'open' AND expert_id = :'eid' AND expert_notified_at IS NULL",
+             {"eid": USER_EXPERT_ID}),
+        ):
+            rows = self._json(
+                f"WITH r AS (UPDATE expert_questions SET {column} = now() WHERE {condition} AND {mine} "
+                f"RETURNING {_PUBLIC_COLUMNS}) SELECT coalesce(json_agg(r), '[]'::json) FROM r;",
+                origin=origin, **extra,
+            )
+            found += [{"kind": kind, "question": row} for row in rows]
+        return found
 
     def mark_announced(self, question_id: str, kind: str) -> None:
         column = {"answer": "answer_notified_at", "question": "expert_notified_at"}.get(kind)

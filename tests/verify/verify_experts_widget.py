@@ -102,6 +102,18 @@ try:
           sorted(i["kind"] for i in found) == ["answer", "question"] and len(seen) == 1)
     check("each is stamped, so the next poll is empty", notifier.poll_once() == [] and len(seen) == 1)
 
+    # ---- two Desks sharing the registry (TODO 488cf49) ----
+    ca = ExpertNotifier(lambda: reg, origin_provider=lambda: "/desk/a")
+    cb = ExpertNotifier(lambda: reg, origin_provider=lambda: "/desk/b")
+    ca.poll_once(); cb.poll_once()  # both check in
+    q1 = reg.ask("bot", "asked in A", "agent", origin="/desk/a")
+    reg.answer(q1["question_id"], "ok", "bot")
+    got_b = cb.poll_once()
+    got_a = ca.poll_once()
+    check("only the asking Desk announces the answer",
+          got_b == [] and [i["question"]["question_id"] for i in got_a] == [q1["question_id"]])
+    check("and the other Desk never repeats it", cb.poll_once() == [] and ca.poll_once() == [])
+
     # ---- the window glue (real methods on a stand-in) ----
     class _View:
         def __init__(self):
@@ -196,7 +208,7 @@ try:
 
     # the Answered filter and hand-off of an answered question (this one carries a private note)
     w._filter.setCurrentIndex(1)
-    check("the Answered filter lists both answered questions", spin(lambda: w._list.count() == 2))
+    check("the Answered filter lists all three answered questions", spin(lambda: w._list.count() == 3))
     row = [i for i in range(w._list.count()) if "answered one?" in w._list.item(i).text()][0]
     w._list.setCurrentRow(row)
     check("an answered question shows its answer", "--- Answer (bot) ---" in w._detail.toPlainText() and not w._answer_button.isEnabled())

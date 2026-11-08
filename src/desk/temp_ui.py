@@ -266,6 +266,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "shared widget file edits mark dependents stale #911413",
     "desk.agents.launch bridge api #507b8d5",
     "discuss/expert sessions use Claude (Desk) #275381",
+    "expert banners: one Desk, the asking one #983312",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -941,6 +942,12 @@ Answered or All), shows one, and lets the person **answer it** or use
   acts on the answer has the context to do so.
 
 An answer written in the widget does not produce a notification.
+
+With several Desks running on one machine, each notification is shown by
+exactly **one** Desk: the one whose session asked the question (the registry
+records the asking Desk's directory). If that Desk has been closed for a
+little while, or the question has no recorded Desk, whichever Desk is
+running announces it instead.
 
 ## A Desk-hosted service as an expert
 
@@ -3118,6 +3125,10 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "expert banners: one Desk, the asking one #983312": """- With several Desks running, an expert answer's notification now appears
+  in exactly one Desk: the one whose session asked (or, if that Desk is
+  closed, whichever is running), never in several. See `tempui-experts.md`.
+""",
     "discuss/expert sessions use Claude (Desk) #275381": """- The plain **Claude** widget is deprecated. Sessions Desk starts itself
   (a `DiscussParkingLotItem` notification, a Questions-widget Discuss, the
   Experts widget's **Send to agent**) now open a **Claude (Desk)** widget.

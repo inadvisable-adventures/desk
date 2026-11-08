@@ -1211,6 +1211,12 @@ async def _expert_call(fn: Callable[[expert_registry.ExpertRegistry], Any]) -> d
     return _text_result(json.dumps(result, indent=2))
 
 
+def _expert_origin() -> str:
+    """Which Desk is asking (its directory), so the answer is announced in that Desk -- see ExpertRegistry."""
+    directory = current_context.get_current_desk_directory()
+    return str(directory) if directory is not None else ""
+
+
 @tool(
     "desk_list_experts",
     "List the experts registered on this Desk (humans, agents and Desk-hosted services) that a question can be "
@@ -1270,7 +1276,8 @@ async def _register_expert(args: dict[str, Any]) -> dict[str, Any]:
 async def _ask_expert(args: dict[str, Any]) -> dict[str, Any]:
     return await _expert_call(
         lambda reg: reg.ask(
-            args.get("expert_id", ""), args.get("question", ""), args.get("asker") or "agent", args.get("note_to_self", "")
+            args.get("expert_id", ""), args.get("question", ""), args.get("asker") or "agent", args.get("note_to_self", ""),
+            origin=_expert_origin(),
         )
     )
 

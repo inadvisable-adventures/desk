@@ -11,19 +11,28 @@ import threading
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from desk.shell import current_context
 from desk.expert_registry import ExpertRegistry, ExpertRegistryError
 
 POLL_INTERVAL_SECONDS = 10.0
+
+
+def current_origin() -> str:
+    """This Desk's identity in the registry: its directory (empty if none is known yet)."""
+    directory = current_context.get_current_desk_directory()
+    return str(directory) if directory is not None else ""
 
 
 class ExpertNotifier(QObject):
     # A list of {"kind": "answer" | "question", "question": {...}}.
     announced = pyqtSignal(list)
 
-    def __init__(self, registry_provider, interval: float = POLL_INTERVAL_SECONDS, parent=None) -> None:
+    def __init__(self, registry_provider, interval: float = POLL_INTERVAL_SECONDS, parent=None,
+                 origin_provider=None) -> None:
         super().__init__(parent)
         self._registry_provider = registry_provider  # a callable, so a test can swap the registry
         self._interval = interval
+        self._origin_provider = origin_provider or current_origin
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -42,19 +51,16 @@ class ExpertNotifier(QObject):
             self._stop.wait(self._interval)
 
     def poll_once(self) -> list[dict]:
-        """One poll. Each finding is stamped as announced *before* it is emitted, so a crash can lose a
-        banner but never repeat one."""
+        """One poll: check in, then atomically claim this Desk's announcements (see
+        ExpertRegistry.claim_announcements -- they are stamped as announced by the claim itself, so a crash can
+        lose a banner but never repeat one, and no other Desk shows the same one)."""
         registry: ExpertRegistry = self._registry_provider()
         if not registry.cluster_exists():
             return []
-        found: list[dict] = []
         try:
-            for question in registry.unannounced_answers():
-                found.append({"kind": "answer", "question": question})
-            for question in registry.unannounced_questions_for_user():
-                found.append({"kind": "question", "question": question})
-            for item in found:
-                registry.mark_announced(item["question"]["question_id"], item["kind"])
+            origin = self._origin_provider()
+            registry.heartbeat(origin)
+            found = registry.claim_announcements(origin)
         except ExpertRegistryError:
             return []
         if found:
