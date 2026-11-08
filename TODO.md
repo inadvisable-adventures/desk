@@ -19,6 +19,129 @@ c8bb4eb. COMPLETED: `<desk-select>` silently broke when built via the `<template
    COMPLETED 2026-11-07: `connectedCallback` re-applies own `value`/`selectedIndex`/`disabled`; pre-connection `value`/`selectedIndex` kept; an explicit non-matching value selects nothing. `customElements.upgrade()` not upgrading a template clone is spec behavior (documented; `document.importNode`/`createElement` do upgrade). Tag `#c8bb4eb`, changelog, README + `tempui-custom-widgets.md` notes.
    `verify_desk_select_template_clone.py` (16 checks; 10 failed before the fix). Headless-verified only.
 
+0460b4c. COMPLETED: Desk areas core (`../FEEDBACK/FEEDBACK-DESK-desk-areas-background-frames-with-area-view-switching-2026-11-04-0000.md`):
+   named background rectangles on the canvas, behind every widget, with an editable title and an eye button; only the
+   title strip and border take part in hit-testing, so the interior is click-through. Create (right-click menu "Desk
+   Area"), rename, move, resize, delete, list and view (fit the view to the area), persisted in the `.desk` file, all
+   also available as `desk_list_areas`/`desk_create_area`/`desk_update_area`/`desk_delete_area`/`desk_view_area`
+   MCP tools; every change publishes `desk.areas.changed`. Native scene item (not a `WidgetFrame`); viewing is fit-view
+   only; moving/resizing never carries widgets. Decided with the user. Agent-visible: `tempui-areas.md` + changelog tag.
+
+   [planned: desk-areas-core.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: `desk.shell.area_item.AreaItem`, `AreaState`/`Desk.areas`, `WorkspaceView` area API and spawn-menu
+   entry, `DeskWindow` area methods, five MCP tools, `verify_desk_areas.py`. Headless-verified only; the item's own
+   right-click menu and a live visual check were not exercised. Also re-ordered `_NEW_FEATURES` (out of order after a merge).
+
+6413e58. COMPLETED: Docked sidebar region in the main window that can host a widget (from the desk-areas feedback, which asks for
+   "a side-bar docked widget that lists the areas"; chosen with the user as a real docked sidebar rather than a normal
+   canvas widget). A right-hand `QDockWidget` region hosting `kind: "python"` widgets outside the zoomable canvas; a docked
+   widget is the bare `PythonWidgetHost` (no canvas frame), with a title bar offering "move to canvas" and "remove". Human
+   entry: a collapsed "Dock in sidebar" group in the canvas right-click menu. Agent entry: `desk_dock_widget`,
+   `desk_undock_widget`, `desk_list_docked_widgets`. Persisted in the `.desk` file. Blocks TODO `747806b`.
+
+   [planned: docked-sidebar.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: `Desk.docked`/`DockedWidgetState`, `DeskWindow.dock_widget_by_id`/`undock_widget`/
+   `close_docked_widget`/`list_docked_widgets` (+ capture/load/clear), spawn-menu group, three MCP tools,
+   `tempui-docked-widgets.md` + changelog tag, `verify_docked_sidebar.py`. Headless-verified only. Limits, by design:
+   python widgets only; fixed to the right edge; no titlebar markers; a docked widget is not in `desk_list_widget_instances`
+   or screenshot-able; an already-placed widget cannot be moved into the dock (only freshly docked).
+
+4ff712c. COMPLETED: Sidebar changes (from the user, after TODO `6413e58`): (1) the dock moves to the left-hand side; (2) it becomes
+   collapsible and is collapsed by default, with a small tab showing when collapsed; (3) a placed python widget instance
+   can be dragged by its titlebar into the sidebar, with a drop indicator shown when the drop will dock it. Blocks nothing,
+   but precedes TODO `747806b` so the Areas list lands in the final sidebar.
+
+   [planned: sidebar-left-collapsible-dnd.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: left dock area; `desk.shell.sidebar.SidebarTab` (thin left toolbar with an arrow button; collapsed
+   by default, session state only); `DeskWindow.set_sidebar_expanded`/`sidebar_drop_zone`/`dock_placed_widget`;
+   `WorkspaceView.frame_drag_moved`/`frame_drag_ended` and a click-through `DockDropIndicator`; a docked widget now opens at
+   300px. Docking on purpose expands the sidebar, a saved-Desk restore does not. Changelog tag `sidebar: left,
+   collapsible, drag-and-drop dock #046076`; `tempui-docked-widgets.md` updated. `verify_docked_sidebar.py` (65 passed) plus a
+   throwaway real-`DeskWindow` offscreen smoke run; no live (on-screen, real-mouse) check. Moving a placed widget in
+   loses in-memory-only state (as "move to canvas" does).
+
+c2555b5. COMPLETED: Desk-wide "ask an expert" part 1 (feedback `request-a-desk-wide-ask-an-expert-mechanism...`): an expert registry in a
+   local Postgres (no driver: shell out to `psql`, like `../world-timelines`), plus MCP tools `desk_list_experts`,
+   `desk_register_expert`, `desk_ask_expert`, `desk_get_expert_question`, `desk_list_expert_questions`,
+   `desk_accept_expert_question`, `desk_answer_expert_question`; the asker's private note-to-self is never shown to an
+   expert. Agent-visible: new `tempui-experts.md` + changelog tag. Blocks `b2e031d` and `d15791d`.
+
+   [planned: expert-registry.md]
+
+   COMPLETED 2026-11-06: `desk.expert_registry` (psql-based, Desk-wide cluster at `~/.desk/experts/pgdata`, lazily
+   provisioned, recovers a stopped cluster), seven `desk_*_expert` MCP tools, `desk.experts.changed` desk event,
+   `tempui-experts.md` + changelog tag `desk_*_expert MCP tools + expert registry #434481`, `verify_expert_registry.py`
+   (46 checks against a real throwaway Postgres cluster; skips with a message if none is installed). Note: the cluster is
+   left running after use, as in the user's other projects.
+
+
+b2e031d. COMPLETED: Desk-wide "ask an expert" part 2: a Bridge `experts` capability so an hmsvc can register itself as an expert, poll
+   its open questions, accept and answer them (`desk.hmsvc_client.experts_*`). Depends on `c2555b5`.
+
+   [planned: expert-registry.md]
+
+   COMPLETED 2026-11-06: Bridge `experts` capability (`/api/bridge/experts/register|pending|accept|answer`; service callers
+   only, only for experts the service registered, kind forced to `hmsvc`, note never returned) and
+   `DeskClient.experts_register/pending/accept/answer`; docs (`tempui-experts.md`, `tempui-hmsvc.md`) + changelog tag
+   `hmsvc experts capability: answer questions #598971`; `verify_expert_bridge.py` (18 checks: real Local Web Server,
+   real Postgres, the real `DeskClient`). Not exercised: a service subprocess calling it end to end (the client is the
+   same code path), and the service-only guard for a non-hmsvc caller that holds the capability (no built-in widget does).
+
+
+d15791d. COMPLETED: Desk-wide "ask an expert" part 3: a top-right notification when an answer arrives (and when a new question
+   arrives for the built-in `user` expert), and a built-in python **Experts** widget that shows open questions, lets the
+   user answer them or **send them to an agent** (a new Claude (Desk) session seeded with the question, and for an
+   answered one the answer and the asker's private note). Completes the feedback file. Depends on `c2555b5`.
+
+   [planned: expert-registry.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: `desk.shell.expert_notifier.ExpertNotifier` (10s daemon poll, stamps before emitting, inert until
+   the cluster exists), `DeskWindow.start_expert_session` / `_on_expert_announcements` / `_reveal_experts_widget`, built-in
+   `widgets/experts` ("Experts": Open/Answered/All filter, answer box, Send to agent / Send answer to agent), doc section
+   + changelog tag `Experts widget + answer notifications #804805`, `verify_experts_widget.py` (31 checks, real
+   throwaway Postgres) and an offscreen real-`DeskWindow` run (docked widget, live refresh, banner). The agent session is
+   the plain `claude` widget. Completes the "ask an expert" feedback.
+
+
+d6c44ab. COMPLETED: Bug (user report): after restarting Desk, a docked Areas list said "Not yet connected to Desk."
+   `DeskWindow.__init__` restored saved widgets and docks before `current_context.set_main_window(self)`, so any widget
+   reading the main window while being built saw none. Moved the call before `_load_desk_widgets`; this also fixes
+   saved canvas widgets with the same dependency (Recently Removed, ...). Regression check in `verify_docked_sidebar.py`;
+   confirmed with an offscreen save-and-restart of a real `DeskWindow`. No plan (one-line ordering fix).
+
+615bd79. COMPLETED: Sidebar tab and area-title polish (from the user): (1) rename an area inline by clicking its title; (2) the
+   whole collapsed sidebar bar opens it; (3) the collapsed bar shows rotated labels (cut to 16 chars with "...") for
+   every docked widget as well as the arrow; (4) the arrow is vertically centred and the whole bar collapses the open sidebar.
+
+   [planned: sidebar-tab-and-inline-area-rename.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: `SidebarTab` body widget, `AreaItem.begin_edit`/`title_edited`, changelog tag `inline area rename;
+   labeled sidebar tab #224906`, docs updated; tests extended. Headless/offscreen only.
+
+747806b. COMPLETED: The Areas list widget, docked in the sidebar from TODO `6413e58`: lists the desk's areas (live, via
+   `desk.areas.changed`); clicking one views it; also rename/delete/add. Reads through `DeskWindow.list_areas` and acts
+   through the same area methods the MCP tools use (TODO `0460b4c`). Depends on `6413e58`. Plan before implementing.
+
+   [planned: areas-list-widget.md (COMPLETED)]
+
+   COMPLETED 2026-11-06: built-in `widgets/areas` ("Areas"): rows live from `desk.areas.changed`, click = view, Add /
+   Rename (in place) / Delete (confirmed) on the selected row; changelog tag `Areas list widget for the sidebar #632760`
+   and a paragraph in `tempui-areas.md`; `verify_areas_widget.py` (22 passed) plus an offscreen run docked in a real
+   `DeskWindow` (create/rename from the API showed up live). Completes the desk-areas feedback.
+
+5a1b231. COMPLETED: Remove the retired `markdown_old_basic` widget ("Markdown (Old, Basic)", deprecated since TODO
+   `96013cf`) and every mention of it in docs shown to agents or the user. Follows TODO `99ed232`, which left it
+   unfixed because it was not in use. Historical TODO/plan/QUESTIONS records are left as written.
+
+   COMPLETED 2026-11-06: deleted `widgets/markdown_old_basic/`; updated `design-docs/architecture.md`,
+   `markdown-rendering.md` and a `window.py` comment; `verify_markdown_rename.py` and
+   `verify_widget_local_storage_file_paths.py` no longer exercise it. No plan file (a deletion). An existing `.desk`
+   file that still placed one would simply not restore that instance (none in this repo does). No agent-facing
+   (`temp_ui.py`) docs mentioned it, so no changelog entry.
+
 507b8d5. COMPLETED: Bridge API `launch_agent`: `desk.agents.launch(instructions, {x, y})` (capability `launch_agent`) lets a `kind:"html"` widget place a Claude (Desk) session seeded with its own instructions, e.g. a "chat about this result" button (`../FEEDBACK/FEEDBACK-DESK-no-bridge-api-capability-lets-a-kind-html-widget-launch-a-cl-2026-11-06-2320.md`). A dedicated API rather than extra fields on `widgets.open`. Prioritized to the top.
 
    [planned: bridge-launch-agent.md (COMPLETED)]
@@ -13040,3 +13163,7 @@ a8931c8. COMPLETED: desk.mermaid: render `subgraph ... end` as a labeled, nestab
 
    COMPLETED 2026-11-06: layout became a skyline pack over nodes and subgraph blocks (identical output when there are no subgraphs); boxes hug members; edges to a subgraph id raise `MermaidParseError`.
    Tag `mermaid subgraph containment boxes #200896`, changelog entry, docs, same verify script. Headless-verified only (PNG inspected); Desk GUI not launched.
+
+c3beaa4. COMPLETED: use Claude (Desk) for every session Desk starts itself (Discuss from PARKINGLOT/Questions, Experts "Send to agent"), and deprecate the plain `claude` widget (`"deprecated": true`, so it moves to the spawn menu's Deprecated group; existing placed instances still restore). Tag `discuss/expert sessions use Claude (Desk) #275381`. [planned: none, small change]
+
+488cf49. COMPLETED: expert notifications with several Desks on one machine: (1) the claim is atomic (one UPDATE ... RETURNING stamps and returns), so two Desks polling together never both show a banner; (2) questions record the asking Desk (its directory) and only that Desk announces the answer; a question with no recorded Desk, or whose Desk has not checked in for 35s (`desk_presence` heartbeat table), is claimed by any running Desk. Existing clusters get the `origin` column by `ADD COLUMN IF NOT EXISTS`. Tag `expert banners: one Desk, the asking one #983312`. Registry verify 53 checks, widget verify 33. Headless only; not tried with two real Desk processes. [planned: none, small change]

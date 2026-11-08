@@ -254,11 +254,21 @@ CURRENT_TAGS: tuple[str, ...] = (
     "desk_place_widget MCP places a registered widget #800488",
     "mermaid classDef/class node styling #200895",
     "mermaid subgraph containment boxes #200896",
+    "desk areas: background regions + MCP tools #377360",
+    "docked sidebar widgets + MCP tools #797468",
+    "sidebar: left, collapsible, drag-and-drop dock #046076",
+    "Areas list widget for the sidebar #632760",
+    "inline area rename; labeled sidebar tab #224906",
+    "desk_*_expert MCP tools + expert registry #434481",
+    "hmsvc experts capability: answer questions #598971",
+    "Experts widget + answer notifications #804805",
     "desk-select replaces native select in html widgets #821015",
     "shared widget file edits mark dependents stale #911413",
     "desk.agents.launch bridge api #507b8d5",
     "custom elements cloned from a template: set properties safely #c8bb4eb",
     "hmsvc.list resolves to {services}; docs fixed #650713d",
+    "discuss/expert sessions use Claude (Desk) #275381",
+    "expert banners: one Desk, the asking one #983312",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -369,6 +379,17 @@ And [tempui-widget-logs.md](./tempui-widget-logs.md) -- the `log` Bridge
 capability and its `desk_list_widget_logs`/`desk_query_widget_log` MCP
 tools, for letting an agent query what a widget has been doing; also not
 a dropped-file keyword.
+And [tempui-docked-widgets.md](./tempui-docked-widgets.md) -- the docked
+sidebar: `desk_dock_widget`/`desk_undock_widget`/`desk_list_docked_widgets`
+MCP tools for putting a `kind: "python"` widget in a panel outside the
+zoomable canvas; also not a dropped-file keyword.
+And [tempui-areas.md](./tempui-areas.md) -- desk areas: named, click-through
+background rectangles on the canvas you can create, rename, move, delete
+and jump to with the `desk_*_area` MCP tools; also not a dropped-file
+keyword.
+And [tempui-experts.md](./tempui-experts.md) -- the general expert registry:
+`desk_ask_expert` and friends, for questions whose answers arrive long after
+your session is gone; also not a dropped-file keyword.
 And [tempui-ask-desk-expert.md](./tempui-ask-desk-expert.md) -- the
 `desk_ask_desk_expert` MCP tool, which hands a question about Desk
 itself to a fresh agent that can read Desk's source and docs; also not
@@ -377,6 +398,12 @@ And [tempui-agent-events.md](./tempui-agent-events.md) -- the
 `desk_raise_event` and `desk_wait_for_event` MCP tools, for an agent to
 signal a running widget, and hear back, directly over `desk.events`
 instead of through a polled file.
+And [tempui-handoff-requests.md](./tempui-handoff-requests.md) -- the
+`desk_*_handoff_request` MCP tools, for handing a task from one agent to
+another and tracking its status; also not a dropped-file keyword.
+And [tempui-feedback-items.md](./tempui-feedback-items.md) -- the
+`desk_create_feedback`/`desk_list_feedback`/`desk_get_feedback` MCP tools,
+for reporting friction with Desk itself; also not a dropped-file keyword.
 
 ## Project widgets
 
@@ -802,6 +829,203 @@ reporting friction with Desk itself (not with your own project).
 Triage is done by Desk's maintainers; you can create and read, not move
 or edit. `directory` is relative to the current project (default
 `../FEEDBACK`); absolute paths are refused.
+"""
+
+_DOCKED_WIDGETS_DOC = """# Docked sidebar (desk_dock_widget)
+
+See `desk-temporary-ui.md` (in this same directory) for this directory's
+own overview and its current set of tags. This is not a tempui-DSL file
+type: it is three MCP tools on the `desk` server.
+
+The main window has a **docked sidebar** down its left edge, outside the
+zoomable Workspace Canvas: a docked widget stays put and at a fixed size
+while the canvas pans and zooms behind it. The sidebar is **collapsed by
+default** (a thin tab is all that shows: an arrow plus a rotated label per docked
+widget, long titles cut with "..."). The whole tab is one click target: it
+expands the collapsed sidebar and, with its arrow centred, collapses the open
+one. That choice is not saved in the `.desk` file).
+`desk_dock_widget` expands it so the result is visible; restoring a saved
+Desk does not. It is for small, always-visible
+panels (a list of the desk's areas, say), not for general work.
+
+- Only `kind: "python"` widgets can be docked for now; an html /
+  `DefineWidget` widget is refused with an error.
+- A human docks one from the canvas right-click menu: expand "Dock in
+  sidebar" and pick the widget. Each docked widget's title bar has a
+  "move to canvas" button and a "remove" button. A human can also drag a
+  placed python widget by its titlebar onto the sidebar (or its tab); a
+  "Dock in sidebar" highlight shows when releasing will dock it. That is a
+  move, not a removal: the instance keeps its id and widget-local storage,
+  and nothing is added to Recently Removed. State a widget keeps only in
+  memory (not in its widget-local storage) is lost in the move, as for
+  "move to canvas".
+- A docked widget has **no canvas frame**, so it has no titlebar markers
+  (`[ERROR]`, `[STALE]`, ...), is **not** listed by
+  `desk_list_widget_instances`, and cannot be screenshotted with
+  `desk_screenshot_widget`. Use `desk_list_docked_widgets` to see what is
+  docked; `desk.workspace.getState()` carries the same list as `docked`.
+- It keeps its widget-local storage (`get_widget_local_storage` /
+  `set_widget_local_storage`) and is saved in the `.desk` file.
+
+## MCP tools
+
+- `desk_dock_widget(widget_id, state?)` -- docks a new instance; the optional
+  `state` object seeds its widget-local storage, exactly as for
+  `desk_place_widget`. Returns the new `instance_id`.
+- `desk_undock_widget(instance_id)` -- moves it onto the canvas, centered in
+  the current view, keeping its state and `instance_id`.
+- `desk_list_docked_widgets()` -- `[{instance_id, widget_id, name}]`, top to
+  bottom.
+"""
+
+_EXPERTS_DOC = """# Asking experts (desk_*_expert MCP tools)
+
+See `desk-temporary-ui.md` (in this same directory) for this directory's
+own overview and its current set of tags. This is not a tempui-DSL file
+type: it is MCP tools on the `desk` server, backed by a registry shared by
+every project on this machine.
+
+`desk_ask_desk_expert` (`tempui-ask-desk-expert.md`) only answers questions
+about Desk itself, once, in a new window. The **expert registry** is the
+general mechanism: a list of experts (the person using Desk, agents, and
+Desk-hosted services) that any agent on any project can ask, where the
+answer may take minutes to days and **your session will usually be gone by
+then**. Asking never waits.
+
+- The registry lives in a local PostgreSQL database (`~/.desk/experts`),
+  created and started the first time it is used. If PostgreSQL is not
+  installed the tools return one clear error and nothing else in Desk is
+  affected.
+- The built-in expert **`user`** is the person using Desk; they answer in the
+  **Experts** widget.
+- When an answer arrives Desk shows the user a top-right notification, and the
+  Experts widget can start a new Claude session seeded with the
+  question, the answer and your private note.
+
+## MCP tools
+
+- `desk_list_experts()` -- `[{expert_id, name, description, kind,
+  registered_by}]`; `kind` is `human`, `agent` or `hmsvc`.
+- `desk_register_expert(expert_id, name, description?, kind?, registered_by?)`
+  -- offer yourself (or a person) as an answerer. `expert_id` is lowercase
+  letters, digits, `.`, `_`, `-`. An expert can only be updated by whoever
+  registered it (pass the same `registered_by`).
+- `desk_ask_expert(expert_id, question, note_to_self?, asker?)` -- returns the
+  new `question_id` at once. `question` is shown to the expert verbatim, so
+  make it self-contained. **`note_to_self` is never shown to the expert**: put
+  there what a future agent needs to act on the answer ("if yes, update
+  section 3 of the familiars design doc and reopen TODO `a1b2c3d`").
+- `desk_get_expert_question(question_id)` -- your view: `status` (`open`,
+  `accepted`, `answered`, `withdrawn`), the `answer` once there is one, and your
+  `note_to_self`.
+- `desk_list_expert_questions(expert_id, status?)` -- the answerer's view
+  (default `open`; `all` for every status), without any note.
+- `desk_accept_expert_question(question_id, accepted_by?)` -- claim an `open`
+  question so nobody else starts it.
+- `desk_answer_expert_question(question_id, answer, answered_by?)` -- answer a
+  question that is `open` or `accepted`.
+
+Every change publishes the desk event `desk.experts.changed`.
+
+## The Experts widget and notifications
+
+When an answer arrives for a question you asked, and when a new question is
+put to the built-in `user` expert, Desk shows a top-right notification
+(once per event); clicking it opens the built-in `Experts` widget (widget id
+`experts`, also dockable in the sidebar). The widget lists questions (Open,
+Answered or All), shows one, and lets the person **answer it** or use
+**Send to agent**:
+
+- for a question still waiting, Send to agent starts a new Claude session
+  told to answer it with `desk_answer_expert_question` (it is given the
+  question, never your private note) and marks the question `accepted`;
+- for an answered question, it starts a new Claude session seeded with the
+  question, the answer **and your private `note_to_self`**, so the agent that
+  acts on the answer has the context to do so.
+
+An answer written in the widget does not produce a notification.
+
+With several Desks running on one machine, each notification is shown by
+exactly **one** Desk: the one whose session asked the question (the registry
+records the asking Desk's directory). If that Desk has been closed for a
+little while, or the question has no recorded Desk, whichever Desk is
+running announces it instead.
+
+## A Desk-hosted service as an expert
+
+An hmsvc (`tempui-hmsvc.md`) can register itself as an expert and answer
+questions. Give its `service.json` the `experts` capability, then, from
+`service.py`, with `from desk.hmsvc_client import desk` (each call blocks;
+wrap it in `asyncio.to_thread` from an `async def`):
+
+- `desk.experts_register(expert_id, name, description="")` -- registers or
+  updates an expert (kind `hmsvc`) owned by this service.
+- `desk.experts_pending(expert_id)` -- the open questions put to it:
+  `[{question_id, question, asker, asked_at, ...}]`. The asker's private
+  note is never included.
+- `desk.experts_accept(question_id)` -- claim one so nothing else starts it.
+- `desk.experts_answer(question_id, answer)` -- answer it; the asker is
+  notified.
+
+A service can only act on experts it registered itself. Poll
+`experts_pending` (or subscribe to the `desk.experts.changed` desk event and
+call it when one arrives).
+"""
+
+_AREAS_DOC = """# Desk areas (desk_*_area MCP tools)
+
+See `desk-temporary-ui.md` (in this same directory) for this directory's
+own overview and its current set of tags. This is not a tempui-DSL file
+type: it is five MCP tools on the `desk` server, plus a desk event.
+
+A **desk area** is a named rectangle drawn on the Workspace Canvas
+background, behind every widget. It marks out a region ("Inbox", "Reading
+list", "Experiments") that a human or agent can jump to. Its title strip
+holds an editable title and an **eye button**; clicking the title edits it
+in place (Enter saves, Escape cancels) and clicking the eye pans and
+zooms the canvas to fit the area (what `desk_view_area` does).
+
+- The **interior is click-through**: only the title strip and a thin band
+  along the border are part of the area. Clicks, drags and scrolls inside
+  it reach the canvas background and any widget on top, so an area never
+  blocks interaction with what it contains.
+- Areas always sit **behind every widget**, including ones created later.
+- Moving or resizing an area **does not move widgets**. An area is a label
+  on the canvas, not a container.
+- Areas are saved in the project's `.desk` file.
+
+## MCP tools
+
+- `desk_list_areas()` -- every area as `{area_id, title, x, y, width,
+  height}`. `x`/`y` are the top-left in canvas coordinates, the same ones
+  `desk_list_widget_instances` reports, so you can tell which widgets
+  fall inside an area by comparing rectangles.
+- `desk_create_area(title?, x?, y?, width?, height?)` -- give both `x` and
+  `y`, or neither; both `width` and `height`, or neither. Omitted geometry
+  defaults to the middle 70% of what is on screen right now. Returns the
+  new area, including its `area_id`.
+- `desk_update_area(area_id, title?, x?, y?, width?, height?)` -- rename,
+  move and/or resize; omitted fields are unchanged.
+- `desk_delete_area(area_id)` -- removes the area only; returns whether it
+  existed.
+- `desk_view_area(area_id)` -- pans and zooms to fit the area; pair it with
+  `desk_screenshot_desk` to see what is inside.
+
+## The Areas widget
+
+A built-in `Areas` widget (widget id `areas`) lists the areas for a human:
+click a row to view it; Add, Rename and Delete act on the selected row. It is
+meant to be docked in the sidebar (`desk_dock_widget("areas")`, or the canvas
+right-click menu's "Dock in sidebar" group) but also works placed on the
+canvas.
+
+## Event
+
+Every create, edit, move, resize and delete -- by a human or by a tool --
+publishes the desk event `desk.areas.changed` with the payload
+`{"areas": [<same dicts as desk_list_areas>]}`. A `kind: "html"` widget can
+subscribe with `desk.events.subscribe("desk.areas.changed", ...)`.
+`desk.workspace.getState()` also carries the list as `areas`.
 """
 
 _ASK_DESK_EXPERT_DOC = """# Asking a Desk expert (desk_ask_desk_expert)
@@ -1257,6 +1481,9 @@ Desk Bridge API", for each call's exact shape.
   `DeskProc` tempui file for one-off access to the live shell;
   `desk_ask_desk_expert` to hand a question about Desk itself to an
   agent that can read Desk's source (`tempui-ask-desk-expert.md`).
+- Named background regions of the canvas ("areas") you can create and
+  jump to with `desk_list_areas`/`desk_create_area`/`desk_update_area`/
+  `desk_delete_area`/`desk_view_area` (`tempui-areas.md`).
 - Layout helpers built in: Open Widgets (a live table of everything
   placed, with stale markers), Minimap (navigate, tile, organize) and
   Recently Removed (revive a removed widget with its state).
@@ -2195,10 +2422,10 @@ DiscussParkingLotItem A way to end a claude widget's session
 Line 533
 ```
 
-Clicking the resulting notification places a **new** claude widget
+Clicking the resulting notification places a **new** Claude (Desk) widget
 with a fresh session (not the one that created this file) — its
 initial prompt is the same "you're embedded in Desk" instructions
-every claude widget gets, plus an instruction to read that line of
+every Claude (Desk) widget gets, plus an instruction to read that line of
 `PARKINGLOT.md` and discuss the item found there, **in this same new
 session** (it's told explicitly not to kick off yet another new Desk
 discussion of its own, e.g. by writing another `DiscussParkingLotItem`
@@ -2468,8 +2695,9 @@ means all defaults.
   local network can reach it (the widget then also shows its LAN URL).
   Either way the port is **unauthenticated** -- add your own auth to an
   external service.
-- `capabilities` (list, default `["state", "events"]`; `workspace` is
-  also available): which Bridge capabilities the service's own calls to
+- `capabilities` (list, default `["state", "events"]`; `workspace` and
+  `experts` are also available -- `experts` lets the service register as an
+  expert and answer questions, see `tempui-experts.md`): which Bridge capabilities the service's own calls to
   Desk hold. A call needing one it lacks fails with HTTP 403.
 - `venv` (string): a project-relative venv directory; the service runs
   under `<venv>/bin/python`.
@@ -2957,6 +3185,95 @@ _NEW_FEATURES: dict[str, str] = {
   cannot upgrade a template clone; use `document.createElement` or
   `document.importNode`).
 """,
+    "expert banners: one Desk, the asking one #983312": """- With several Desks running, an expert answer's notification now appears
+  in exactly one Desk: the one whose session asked (or, if that Desk is
+  closed, whichever is running), never in several. See `tempui-experts.md`.
+""",
+    "discuss/expert sessions use Claude (Desk) #275381": """- The plain **Claude** widget is deprecated. Sessions Desk starts itself
+  (a `DiscussParkingLotItem` notification, a Questions-widget Discuss, the
+  Experts widget's **Send to agent**) now open a **Claude (Desk)** widget.
+""",
+    "Experts widget + answer notifications #804805": """- Experts now reach the user. When an answer arrives for a question you
+  asked, or a question is put to the built-in `user` expert, Desk shows a
+  top-right notification, and the new built-in **Experts** widget lists the
+  questions, lets the person answer them, or **sends them to an agent**: a
+  new Claude session seeded with the question (and, for an answered one, the
+  answer and your private `note_to_self`). See `tempui-experts.md`.
+""",
+    "hmsvc experts capability: answer questions #598971": """- A Desk-hosted service (hmsvc) can now be an **expert**: give its
+  `service.json` the `experts` capability and call
+  `desk.experts_register`, `desk.experts_pending`, `desk.experts_accept` and
+  `desk.experts_answer` from `service.py`. A service can only act on experts
+  it registered itself. See `tempui-experts.md`.
+""",
+    "desk_*_expert MCP tools + expert registry #434481": """- A Desk-wide **expert registry** in a local PostgreSQL database, for
+  questions whose answers arrive long after your session is gone. New MCP
+  tools: `desk_list_experts`, `desk_register_expert`, `desk_ask_expert`
+  (returns a `question_id` at once; includes a `note_to_self` that is never
+  shown to the expert), `desk_get_expert_question`,
+  `desk_list_expert_questions`, `desk_accept_expert_question` and
+  `desk_answer_expert_question`. The built-in expert `user` is the person
+  using Desk. See `tempui-experts.md`.
+""",
+    "inline area rename; labeled sidebar tab #224906": """- An area's title is now renamed **inline**: a human clicks the title on
+  the canvas and types (Enter saves, Escape cancels). The sidebar's tab is
+  one big click target in both states: collapsed, it shows a rotated label
+  per docked widget (long titles cut with "...") and opens the sidebar;
+  open, its centred arrow collapses it. See `tempui-areas.md` and
+  `tempui-docked-widgets.md`.
+""",
+    "Areas list widget for the sidebar #632760": """- A built-in **Areas** widget lists the desk's areas live: click a row
+  to view that area, and Add / Rename / Delete act on the selected row. Dock
+  it in the sidebar from the canvas right-click menu's "Dock in sidebar"
+  group (or place it on the canvas as usual). It uses the same area methods
+  as the `desk_*_area` MCP tools, so a change from either is shown in the
+  other. See `tempui-areas.md`.
+""",
+    "sidebar: left, collapsible, drag-and-drop dock #046076": """- The docked sidebar is now on the **left** of the main window and is
+  **collapsed by default**: only a thin arrow tab shows until a human clicks
+  it. A human can also **drag a placed `kind: "python"` widget by its
+  titlebar onto the sidebar**; a "Dock in sidebar" highlight shows while the
+  drop will dock it. `desk_dock_widget` opens the sidebar so the result is
+  visible. Nothing about the tool signatures changed. See
+  `tempui-docked-widgets.md`.
+""",
+    "docked sidebar widgets + MCP tools #797468": """- A **docked sidebar** on the right of the main window, outside the
+  zoomable canvas, that hosts `kind: "python"` widgets. A human docks one
+  from the canvas right-click menu's collapsed "Dock in sidebar" group; each
+  docked widget has a title bar with "move to canvas" and "remove" buttons.
+  New MCP tools: `desk_dock_widget(widget_id, state?)`,
+  `desk_undock_widget(instance_id)` and `desk_list_docked_widgets()`. A
+  docked widget keeps its widget-local storage and is saved in the `.desk`
+  file, but it has no canvas frame: it is not listed by
+  `desk_list_widget_instances` or screenshot-able with
+  `desk_screenshot_widget`, and appears as `docked` in
+  `desk.workspace.getState()`. See `tempui-docked-widgets.md`.
+""",
+    "desk areas: background regions + MCP tools #377360": """- Desk **areas**: named rectangles drawn on the canvas background,
+  behind every widget, that mark out a region and can be jumped to. A
+  human adds one from the canvas right-click menu ("Desk Area"), drags its
+  title strip to move it and its border to resize it, double-clicks the
+  title to rename it, and clicks its eye button to fit the view to it. The
+  interior is click-through: an area never blocks anything inside it, and
+  moving or resizing one does not carry any widgets. Five new MCP tools on
+  the `desk` server manage them -- `desk_list_areas`, `desk_create_area`,
+  `desk_update_area`, `desk_delete_area` and `desk_view_area` -- and every
+  change publishes a `desk.areas.changed` desk event (payload
+  `{"areas": [...]}`) that widgets can subscribe to. Areas are saved in the
+  `.desk` file and appear in `desk.workspace.getState()` as `areas`. See
+  `tempui-areas.md`.
+""",
+    "mermaid subgraph containment boxes #200896": """- Mermaid flowcharts now draw `subgraph id [Title] ... end` as a
+  labeled box around its nodes (nestable) instead of ignoring it. Edges
+  to a subgraph itself are not supported and fall back to plain text.
+  See "Supported Mermaid subset" in `tempui-markdown.md`.
+""",
+    "mermaid classDef/class node styling #200895": """- Mermaid flowcharts (a fenced ```mermaid``` block) now honor
+  `classDef`, `class`, the `A:::name` shorthand and `style` lines for
+  per-node styling (`fill`, `stroke`, `stroke-width`, `stroke-dasharray`,
+  `color`) instead of skipping them. See "Supported Mermaid subset" in
+  `tempui-markdown.md`.
+""",
     "desk.agents.launch bridge api #507b8d5": """- New Bridge API capability `launch_agent`:
   `desk.agents.launch(instructions, { x, y })` lets a `kind: "html"`
   widget place a fresh Claude (Desk) session whose first turn carries
@@ -2999,17 +3316,6 @@ _NEW_FEATURES: dict[str, str] = {
   `window.desk.self.getLocalStorage()` returns -- its shape is whatever
   your widget stores with `setLocalStorage`. See "Invoking a defined
   widget" in `tempui-custom-widgets.md`.
-""",
-    "mermaid classDef/class node styling #200895": """- Mermaid flowcharts (a fenced ```mermaid``` block) now honor
-  `classDef`, `class`, the `A:::name` shorthand and `style` lines for
-  per-node styling (`fill`, `stroke`, `stroke-width`, `stroke-dasharray`,
-  `color`) instead of skipping them. See "Supported Mermaid subset" in
-  `tempui-markdown.md`.
-""",
-    "mermaid subgraph containment boxes #200896": """- Mermaid flowcharts now draw `subgraph id [Title] ... end` as a
-  labeled box around its nodes (nestable) instead of ignoring it. Edges
-  to a subgraph itself are not supported and fall back to plain text.
-  See "Supported Mermaid subset" in `tempui-markdown.md`.
 """,
     "installed job version hash skips .venv #284781": """- An Installed Job's version hash no longer reads the job's own
   top-level `.venv/` directory. A job with a large self-managed venv used
@@ -4338,6 +4644,9 @@ INSTALLED_JOBS_DOC_FILENAME = "tempui-installed-jobs.md"
 HMSVC_DOC_FILENAME = "tempui-hmsvc.md"
 WIDGET_LOGS_DOC_FILENAME = "tempui-widget-logs.md"
 ASK_DESK_EXPERT_DOC_FILENAME = "tempui-ask-desk-expert.md"
+EXPERTS_DOC_FILENAME = "tempui-experts.md"
+AREAS_DOC_FILENAME = "tempui-areas.md"
+DOCKED_WIDGETS_DOC_FILENAME = "tempui-docked-widgets.md"
 AGENT_EVENTS_DOC_FILENAME = "tempui-agent-events.md"
 HANDOFF_REQUESTS_DOC_FILENAME = "tempui-handoff-requests.md"
 FEEDBACK_ITEMS_DOC_FILENAME = "tempui-feedback-items.md"
@@ -4370,6 +4679,9 @@ SPLIT_DOC_CONTENT: dict[str, str] = {
     HMSVC_DOC_FILENAME: _HMSVC_DOC,
     WIDGET_LOGS_DOC_FILENAME: _WIDGET_LOGS_DOC,
     ASK_DESK_EXPERT_DOC_FILENAME: _ASK_DESK_EXPERT_DOC,
+    EXPERTS_DOC_FILENAME: _EXPERTS_DOC,
+    AREAS_DOC_FILENAME: _AREAS_DOC,
+    DOCKED_WIDGETS_DOC_FILENAME: _DOCKED_WIDGETS_DOC,
     AGENT_EVENTS_DOC_FILENAME: _AGENT_EVENTS_DOC,
     HANDOFF_REQUESTS_DOC_FILENAME: _HANDOFF_REQUESTS_DOC,
     FEEDBACK_ITEMS_DOC_FILENAME: _FEEDBACK_ITEMS_DOC,

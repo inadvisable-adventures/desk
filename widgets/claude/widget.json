@@ -3,5 +3,6 @@
   "kind": "python",
   "entry": "widget.py",
   "capabilities": [],
+  "deprecated": true,
   "default_size": { "width": 720, "height": 420 }
 }

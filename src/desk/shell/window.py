@@ -11,14 +11,31 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
-from PyQt6.QtCore import QObject, QPointF, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QObject, QPoint, QPointF, QRect, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QGuiApplication, QPixmap
-from PyQt6.QtWidgets import QApplication, QFileDialog, QInputDialog, QMainWindow, QMessageBox, QWidget
+from PyQt6.QtWidgets import (
+    QApplication,
+    QDockWidget,
+    QFileDialog,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QToolButton,
+    QWidget,
+)
 
 from desk.custom_widgets import LikelySourceCandidate, build_from_source, find_likely_source_candidates, materialize, read_source_manifest
+from desk import expert_registry
+from desk.expert_registry import EXPERTS_CHANGED_EVENT
+from desk.shell.expert_notifier import ExpertNotifier
 from desk.desks import (
+    AREAS_CHANGED_EVENT,
     DESK_SUFFIX,
+    AreaState,
     Desk,
+    DockedWidgetState,
     RemovedWidget,
     StateEntry,
     StateHistoryEntry,
@@ -88,6 +105,7 @@ from desk.shell.new_desk_dialog import NewDeskDialog
 from desk.shell.promoted_widget_source_watcher import PromotedWidgetSourceWatcher
 from desk.shell.python_widget import PythonWidgetHost
 from desk.shell.hmsvc_dir_watcher import HmsvcDirWatcher
+from desk.shell.sidebar import DEFAULT_SIDEBAR_WIDTH, MIN_DROP_ZONE_PX, DockDropIndicator, SidebarTab
 from desk.shell.schema_file_watcher import SCHEMA_FILES_DIRNAME, TOP_LEVEL_SCHEMAS_DIRNAME, SchemaFileWatcher
 from desk.shell.temp_ui_manager import TempUiManager
 from desk.shell.widget_frame import MIN_HEIGHT, WidgetFrame
@@ -137,15 +155,17 @@ QUESTION_WIDGET_ID = "question"
 LIGHTNING_ROUND_WIDGET_ID = "lightning_round"
 # The widget formerly known as "markdown_ex"/"Markdown (Extended)" --
 # renamed to the new default "markdown"/"Markdown" (TODO 858752b),
-# replacing the old plain widget (renamed to "markdown_old_basic" and
-# deprecated, TODO 96013cf).
+# replacing the old plain widget (since removed).
 MARKDOWN_WIDGET_ID = "markdown"
 SCRATCH_WIDGET_ID = "scratch"
 CLAUDE_WIDGET_ID = "claude"
+EXPERTS_WIDGET_ID = "experts"
 # TODO a596dbf: a separate, independently-spawnable widget kind built on
 # the Python Claude Agent SDK instead of PTY/pyte -- see
 # plans/claude-widget-agent-sdk-integration.md. Does not replace
-# CLAUDE_WIDGET_ID above; both can be placed on the same Desk.
+# CLAUDE_WIDGET_ID above; both can be placed on the same Desk. The plain
+# "claude" widget is now deprecated: every new session Desk starts itself
+# (discuss, expert handoff, ...) uses this one.
 CLAUDE_DESK_WIDGET_ID = "claude_desk"
 # TODO 90efef6: the widget a Claude (Desk) background task's "View Log" opens.
 CLAUDE_DESK_TASK_LOG_WIDGET_ID = "claude_desk_task_log"
@@ -318,6 +338,23 @@ class _DeprecationRelay(QObject):
     reported = pyqtSignal(object)
 
 
+def _set_python_local_storage(host: "PythonWidgetHost", data: dict) -> None:
+    """Restores a python widget's widget-local storage (TODO fb76057); a no-op
+    for one that does not implement `set_widget_local_storage`. Module-level so
+    both a placed frame and a docked widget (TODO 6413e58) share it."""
+    content = host.current
+    if content is None or not hasattr(content, "set_widget_local_storage"):
+        return
+    content.set_widget_local_storage(data)
+
+
+def _get_python_local_storage(host: "PythonWidgetHost") -> dict:
+    content = host.current
+    if content is None or not hasattr(content, "get_widget_local_storage"):
+        return {}
+    return content.get_widget_local_storage()
+
+
 class DeskWindow(QMainWindow):
     """Owns the single currently-open Desk for this window (only one
     window exists for now, and it can only have one Desk open at a time —
@@ -347,6 +384,16 @@ class DeskWindow(QMainWindow):
 
         self.view = WorkspaceView()
         self.setCentralWidget(self.view)
+        # TODO 6413e58: widgets living in the docked sidebar, by instance id.
+        self._docked: dict[str, QDockWidget] = {}
+        # TODO 4ff712c: the sidebar sits on the left, collapsed until the user (or a deliberate dock) opens it.
+        # Session state only -- not saved in the .desk file.
+        self._sidebar_expanded = False
+        self._sidebar_tab = SidebarTab(self)
+        self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, self._sidebar_tab)
+        self._sidebar_tab.clicked.connect(lambda: self.set_sidebar_expanded(not self._sidebar_expanded))
+        self._dock_drop_indicator = DockDropIndicator(self)
+        self._update_sidebar_tab()
 
         self._popups_service = get_popups_service()
         self._popups_service.attach_view(self.view)
@@ -361,6 +408,13 @@ class DeskWindow(QMainWindow):
         )
         self.view.set_widget_catalog(widgets)
         self.view.widget_add_requested.connect(self._on_widget_add_requested)
+        self.view.area_add_requested.connect(self._on_area_add_requested)
+        self.view.widget_dock_requested.connect(self._on_widget_dock_requested)
+        self.view.frame_drag_moved.connect(self._on_frame_drag_moved)
+        self.view.frame_drag_ended.connect(self._on_frame_drag_ended)
+        self.view.area_geometry_changed.connect(self._on_area_geometry_changed)
+        self.view.area_title_edited.connect(self._on_area_title_edited)
+        self.view.area_delete_requested.connect(self._on_area_delete_requested)
         self.view.widget_close_requested.connect(self._on_widget_close_requested)
         self.view.files_dropped.connect(self._on_files_dropped)
         self.view.paste_requested.connect(self._on_paste_requested)
@@ -436,6 +490,17 @@ class DeskWindow(QMainWindow):
         # and a subscribe from a kind:"python" widget go through the exact
         # same mediator. See _bind_event_mediator/_refresh_picker below.
         self._event_mediator = handle.event_mediator
+        # TODO c2555b5: every expert-registry change (an MCP tool, the Bridge, the Experts widget) is announced
+        # to widgets as a desk event; the listener may run on any thread, like the mediator itself.
+        expert_registry.get_registry().add_listener(
+            lambda kind, ident: self._event_mediator.publish(
+                EXPERTS_CHANGED_EVENT, {"kind": kind, "id": ident}, "desk"
+            )
+        )
+        # TODO d15791d: banners for answers that arrived and new questions for the user.
+        self._expert_notifier = ExpertNotifier(expert_registry.get_registry, parent=self)
+        self._expert_notifier.announced.connect(self._on_expert_announcements)
+        self._expert_notifier.start()
         self._widget_logs = handle.widget_logs  # TODO 1f74c27
         # TODO b4d99a1: off unless DESK_FOCUS_LOG=1 (or a widget enables it).
         self._focus_logger = FocusLogger(self.view, self._widget_logs, parent=self)
@@ -543,7 +608,12 @@ class DeskWindow(QMainWindow):
         # them), and before _load_desk_widgets below places any saved
         # instance that might rely on it.
         self._refresh_builtin_schemas()
+        # Before anything is restored: a saved widget that reads the main window while it is built (the Areas
+        # list, Recently Removed, ...) would otherwise see none and say "not yet connected" (TODO d6c44ab).
+        current_context.set_main_window(self)
         self._load_desk_widgets(self.current_desk)
+        self._load_desk_areas(self.current_desk)
+        self._load_desk_docked(self.current_desk)
         self.view.set_view_state(
             self.current_desk.pan_x, self.current_desk.pan_y, self.current_desk.scale
         )
@@ -555,7 +625,6 @@ class DeskWindow(QMainWindow):
         current_context.set_transform_runner_blocking(self.run_transform_blocking)
         current_context.set_git_diff_opener(self.open_git_diff)
         current_context.set_temp_ui_write_recorder(self._temp_ui_manager.record_own_write)
-        current_context.set_main_window(self)
         current_context.set_widget_path_resolver(self.view.describe_widget_at_global_pos)
         current_context.set_discuss_starter(self.start_discussion)
         current_context.set_scratch_agent_sender(self.send_text_to_agent)
@@ -1218,8 +1287,8 @@ class DeskWindow(QMainWindow):
         `.desk_temp` instructions file, not spliced into the launch
         command line itself (TODO 51be2bc, see
         _write_discuss_instructions_file). Returns None (placing
-        nothing) if the "claude" widget kind isn't registered."""
-        widget = self._widgets.get(CLAUDE_WIDGET_ID)
+        nothing) if the "claude_desk" widget kind isn't registered."""
+        widget = self._widgets.get(CLAUDE_DESK_WIDGET_ID)
         if widget is None:
             return None
         if parking_lot_line is not None:
@@ -1242,13 +1311,58 @@ class DeskWindow(QMainWindow):
         extra_instructions = self._write_claude_instructions_file(instructions_body, prefix="discuss")
         center = self.view.mapToScene(self.view.viewport().rect().center())
         return self._place_widget(
-            CLAUDE_WIDGET_ID,
+            CLAUDE_DESK_WIDGET_ID,
             widget,
             (center.x(), center.y()),
             widget.default_size,
             instance_id=instance_id,
             claude_extra_instructions=extra_instructions,
         )
+
+    def start_expert_session(self, instructions: str) -> str:
+        """TODO d15791d: places a fresh Claude session seeded with `instructions` -- the Experts
+        widget's "Send to agent". Returns the new widget's instance_id; ValueError if the claude widget kind
+        isn't available or the placement fails."""
+        widget = self._widgets.get(CLAUDE_DESK_WIDGET_ID)
+        if widget is None:
+            raise ValueError("The Claude (Desk) widget isn't available in this Desk.")
+        extra_instructions = self._write_claude_instructions_file(instructions, prefix="expert-handoff")
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        frame = self._place_widget(
+            CLAUDE_DESK_WIDGET_ID,
+            widget,
+            (center.x(), center.y()),
+            widget.default_size,
+            claude_extra_instructions=extra_instructions,
+        )
+        if frame is None:
+            raise ValueError("Could not place the Claude (Desk) widget.")
+        return frame.instance_id
+
+    def _on_expert_announcements(self, items: list) -> None:
+        """Top-right banners for what ExpertNotifier found; clicking one opens the Experts widget."""
+        for item in items:
+            question = item["question"]
+            first_line = (question.get("question") or "").strip().splitlines()[0:1]
+            excerpt = (first_line[0] if first_line else "")[:80]
+            if item["kind"] == "answer":
+                text = f"Answer from {question['expert_id']}: {excerpt}"
+            else:
+                text = f"New question for you: {excerpt}"
+            self.view.notify_temp_ui(Path(f"expert:{item['kind']}:{question['question_id']}"), text, self._reveal_experts_widget)
+
+    def _reveal_experts_widget(self) -> None:
+        for dock in self._docked.values():
+            host = dock.widget()
+            if isinstance(host, PythonWidgetHost) and host.widget_id == EXPERTS_WIDGET_ID:
+                self.set_sidebar_expanded(True)
+                return
+        frame = self._find_frame_by_widget_id(EXPERTS_WIDGET_ID)
+        if frame is not None:
+            self.view.bring_to_front(frame)
+            self.view.zoom_to_widget(frame)
+            return
+        self.open_widget_content_centered(EXPERTS_WIDGET_ID)
 
     def _write_claude_instructions_file(self, body: str, prefix: str) -> str:
         """Writes a fresh claude/claude_desk session's actual initial
@@ -1918,12 +2032,11 @@ class DeskWindow(QMainWindow):
         `getLocalStorage()` from its own startup code always sees the
         restored data, never a race against an empty default."""
         if isinstance(frame.content, PythonWidgetHost):
-            content = frame.content.current
-            if content is None or not hasattr(content, "set_widget_local_storage"):
-                return
-            content.set_widget_local_storage(data)
+            _set_python_local_storage(frame.content, data)
         elif isinstance(frame.content, ChromiumWidget):
             self._html_widget_local_storage[frame.instance_id] = data
+
+
 
     def _get_widget_local_storage(self, frame: WidgetFrame) -> dict:
         """The counterpart read side, called by `_capture_desk_state`
@@ -1941,10 +2054,7 @@ class DeskWindow(QMainWindow):
         to ask a browser page "what's your current state" the way a
         Python method call can)."""
         if isinstance(frame.content, PythonWidgetHost):
-            content = frame.content.current
-            if content is None or not hasattr(content, "get_widget_local_storage"):
-                return {}
-            return content.get_widget_local_storage()
+            return _get_python_local_storage(frame.content)
         if isinstance(frame.content, ChromiumWidget):
             return self._html_widget_local_storage.get(frame.instance_id, {})
         return {}
@@ -2684,6 +2794,7 @@ class DeskWindow(QMainWindow):
             pan_x=pan_x,
             pan_y=pan_y,
             scale=scale,
+            docked=self._capture_docked(),
         )
 
     def get_state_dict(self) -> dict:
@@ -3037,6 +3148,7 @@ class DeskWindow(QMainWindow):
             return
         self.save_current_desk()
         self.view.clear_widgets()
+        self._clear_docked()
         # TODO 929e730: every widget instance's Bridge credential belonged to
         # a frame clear_widgets() just destroyed (hmsvc credentials are
         # managed by their own start/stop).
@@ -3112,6 +3224,8 @@ class DeskWindow(QMainWindow):
         # placed below.
         self._refresh_builtin_schemas()
         self._load_desk_widgets(new_desk)
+        self._load_desk_areas(new_desk)
+        self._load_desk_docked(new_desk)
         self.view.set_view_state(new_desk.pan_x, new_desk.pan_y, new_desk.scale)
         self._sync_tempui_doc()
         add_to_mru(path)
@@ -3564,7 +3678,7 @@ class DeskWindow(QMainWindow):
         if kind == "scratch":
             return SCRATCH_WIDGET_ID
         if kind == "discuss_parking_lot_item":
-            return CLAUDE_WIDGET_ID
+            return CLAUDE_DESK_WIDGET_ID
         if kind == "job":
             return JOB_RUNNER_WIDGET_ID
         if kind == "desk_proc":
@@ -3593,7 +3707,7 @@ class DeskWindow(QMainWindow):
         if widget is None:
             return
         center = self.view.mapToScene(self.view.viewport().rect().center())
-        if widget_id == CLAUDE_WIDGET_ID:
+        if widget_id == CLAUDE_DESK_WIDGET_ID:
             # DiscussParkingLotItem (TODO c0875bc): a claude widget's
             # session starts *inside* _place_widget itself (see
             # _bind_claude_widget), before the generic
@@ -4711,6 +4825,351 @@ class DeskWindow(QMainWindow):
         )()
         if name:
             self.rename_current_desk(name)
+
+    # -- Desk areas (TODO 0460b4c) -----------------------------------------
+
+    def _load_desk_areas(self, desk: Desk) -> None:
+        """Builds the scene items for a freshly loaded Desk's saved areas."""
+        for area in desk.areas:
+            self.view.add_area(area.area_id, area.title, area.x, area.y, area.width, area.height)
+
+    def _area_dict(self, area: AreaState) -> dict:
+        return {
+            "area_id": area.area_id,
+            "title": area.title,
+            "x": area.x,
+            "y": area.y,
+            "width": area.width,
+            "height": area.height,
+        }
+
+    def _find_area(self, area_id: str) -> AreaState | None:
+        return next((a for a in self.current_desk.areas if a.area_id == area_id), None)
+
+    def _publish_areas_changed(self) -> None:
+        self._event_mediator.publish(AREAS_CHANGED_EVENT, {"areas": self.list_areas()}, "desk")
+
+    def list_areas(self) -> list[dict]:
+        """Every desk area (area_id, title, x, y, width, height), in
+        creation order -- `desk_list_areas` and the areas sidebar read this."""
+        return [self._area_dict(a) for a in self.current_desk.areas]
+
+    def create_area(
+        self,
+        title: str = "",
+        x: float | None = None,
+        y: float | None = None,
+        width: float | None = None,
+        height: float | None = None,
+    ) -> dict:
+        """Creates an area. Omitted geometry defaults to the middle 70% of
+        what is on screen right now. Returns the new area's dict."""
+        if (x is None) != (y is None):
+            raise ValueError("Give both x and y, or neither.")
+        if (width is None) != (height is None):
+            raise ValueError("Give both width and height, or neither.")
+        if x is None or width is None:
+            visible = self.view.visible_scene_rect()
+            w = width if width is not None else visible.width() * 0.7
+            h = height if height is not None else visible.height() * 0.7
+            cx = x if x is not None else visible.center().x() - w / 2
+            cy = y if y is not None else visible.center().y() - h / 2
+            x, y, width, height = cx, cy, w, h
+        if width <= 0 or height <= 0:
+            raise ValueError("width and height must be positive.")
+        area = AreaState(
+            area_id=uuid.uuid4().hex[:8],
+            title=(title or "").strip() or f"Area {len(self.current_desk.areas) + 1}",
+            x=float(x),
+            y=float(y),
+            width=float(width),
+            height=float(height),
+        )
+        self.current_desk.areas.append(area)
+        self.view.add_area(area.area_id, area.title, area.x, area.y, area.width, area.height)
+        self._publish_areas_changed()
+        return self._area_dict(area)
+
+    def update_area(
+        self,
+        area_id: str,
+        title: str | None = None,
+        x: float | None = None,
+        y: float | None = None,
+        width: float | None = None,
+        height: float | None = None,
+    ) -> dict:
+        """Renames, moves and/or resizes an area; omitted fields are left
+        alone. Moving or resizing never carries any widgets. Returns the
+        updated area's dict; ValueError if there is no such area."""
+        area = self._find_area(area_id)
+        if area is None:
+            raise ValueError(f"No area with area_id {area_id!r}.")
+        if title is not None:
+            area.title = title.strip() or area.title
+        if x is not None:
+            area.x = float(x)
+        if y is not None:
+            area.y = float(y)
+        if width is not None:
+            if width <= 0:
+                raise ValueError("width must be positive.")
+            area.width = float(width)
+        if height is not None:
+            if height <= 0:
+                raise ValueError("height must be positive.")
+            area.height = float(height)
+        self.view.add_area(area.area_id, area.title, area.x, area.y, area.width, area.height)
+        self._publish_areas_changed()
+        return self._area_dict(area)
+
+    def delete_area(self, area_id: str) -> bool:
+        """Removes an area (never any widget). False if there was no such area."""
+        area = self._find_area(area_id)
+        if area is None:
+            return False
+        self.current_desk.areas.remove(area)
+        self.view.remove_area(area_id)
+        self._publish_areas_changed()
+        return True
+
+    def view_area(self, area_id: str) -> bool:
+        """Pans/zooms the canvas to fit the area. False if no such area."""
+        return self.view.zoom_to_area(area_id)
+
+    def _on_area_add_requested(self, scene_pos: QPointF) -> None:
+        self.create_area(x=scene_pos.x(), y=scene_pos.y(), width=800, height=600)
+
+    def _on_area_geometry_changed(self, area_id: str, x: float, y: float, width: float, height: float) -> None:
+        """A user move/resize of an area's chrome finished: write it back."""
+        area = self._find_area(area_id)
+        if area is None:
+            return
+        area.x, area.y, area.width, area.height = x, y, width, height
+        self._publish_areas_changed()
+
+    def _on_area_title_edited(self, area_id: str, title: str) -> None:
+        """The inline title editor on an area finished (TODO 615bd79)."""
+        if title.strip():
+            self.update_area(area_id, title=title.strip())
+
+    def _on_area_delete_requested(self, area_id: str) -> None:
+        self.delete_area(area_id)
+
+    # -- Docked sidebar (TODO 6413e58) -------------------------------------
+
+    def _docked_title_bar(self, name: str, instance_id: str) -> QWidget:
+        bar = QWidget()
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(6, 2, 2, 2)
+        label = QLabel(name)
+        label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        font = label.font()
+        font.setBold(True)
+        label.setFont(font)
+        layout.addWidget(label, 1)
+        to_canvas = QToolButton()
+        to_canvas.setText("↗")
+        to_canvas.setToolTip("Move this widget to the canvas")
+        to_canvas.clicked.connect(lambda: self.undock_widget(instance_id))
+        layout.addWidget(to_canvas)
+        close = QToolButton()
+        close.setText("✕")
+        close.setToolTip("Remove this widget")
+        close.clicked.connect(lambda: self.close_docked_widget(instance_id))
+        layout.addWidget(close)
+        return bar
+
+    def dock_widget_by_id(
+        self,
+        widget_id: str,
+        state: dict | None = None,
+        instance_id: str | None = None,
+        width: int = 0,
+        reveal: bool = True,
+    ) -> str:
+        """Docks a new instance of a `kind: "python"` widget in the left-hand
+        sidebar and returns its instance_id. `state` seeds its widget-local
+        storage (as for desk_place_widget). `reveal` expands the sidebar so the
+        result is visible (a restore from a saved Desk passes False and leaves
+        it as the user had it). Raises ValueError for an unknown widget id, a
+        non-python widget, or a non-dict state."""
+        info = self._widgets.get(widget_id)
+        if info is None:
+            known = ", ".join(sorted(self._widgets)) or "(none)"
+            raise ValueError(f"Unknown widget_id {widget_id!r}. Registered widget ids: {known}.")
+        if info.kind != "python":
+            raise ValueError(f"Only kind: \"python\" widgets can be docked in the sidebar; {widget_id!r} is {info.kind!r}.")
+        if state is not None and not isinstance(state, dict):
+            raise ValueError("state must be a JSON object.")
+        instance_id = instance_id or uuid.uuid4().hex[:8]
+        host = PythonWidgetHost(widget_id, info.path, info.entry, self._broker)
+        if state:
+            _set_python_local_storage(host, state)
+        content = host.current
+        if content is not None and hasattr(content, "bind_event_mediator"):
+            content.bind_event_mediator(instance_id, self._event_mediator)
+        dock = QDockWidget(info.name, self)
+        dock.setObjectName(f"docked-{instance_id}")
+        dock.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
+        dock.setTitleBarWidget(self._docked_title_bar(info.name, instance_id))
+        dock.setWidget(host)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+        self.resizeDocks([dock], [width if width > 0 else DEFAULT_SIDEBAR_WIDTH], Qt.Orientation.Horizontal)
+        self._docked[instance_id] = dock
+        if reveal:
+            self.set_sidebar_expanded(True)
+        else:
+            dock.setVisible(self._sidebar_expanded)
+            self._update_sidebar_tab()
+        return instance_id
+
+    # -- Sidebar collapse + drag-and-drop docking (TODO 4ff712c) ------------
+
+    def set_sidebar_expanded(self, expanded: bool) -> None:
+        self._sidebar_expanded = expanded
+        for dock in self._docked.values():
+            dock.setVisible(expanded)
+        self._update_sidebar_tab()
+
+    def _update_sidebar_tab(self) -> None:
+        self._sidebar_tab.show_state(self._sidebar_expanded, [dock.windowTitle() for dock in self._docked.values()])
+
+    def sidebar_drop_zone(self) -> QRect:
+        """Where releasing a dragged widget docks it, in global coordinates:
+        from the tab's left edge across the open docks, never narrower than the
+        tab plus MIN_DROP_ZONE_PX of canvas, over the canvas's full height."""
+        tab = self._sidebar_tab
+        left = tab.mapToGlobal(QPoint(0, 0)).x()
+        right = left + tab.width() + MIN_DROP_ZONE_PX
+        if self._sidebar_expanded:
+            for dock in self._docked.values():
+                right = max(right, dock.mapToGlobal(QPoint(dock.width(), 0)).x())
+        top = self.view.mapToGlobal(QPoint(0, 0)).y()
+        return QRect(left, top, right - left, self.view.height())
+
+    def _on_frame_drag_moved(self, frame, global_pos) -> None:
+        zone = self.sidebar_drop_zone()
+        if zone.contains(global_pos.toPoint()):
+            self._dock_drop_indicator.show_over(QRect(self.mapFromGlobal(zone.topLeft()), zone.size()))
+        else:
+            self._dock_drop_indicator.hide()
+
+    def _on_frame_drag_ended(self, frame, global_pos) -> None:
+        self._dock_drop_indicator.hide()
+        if not self.sidebar_drop_zone().contains(global_pos.toPoint()):
+            return
+        instance_id = frame.instance_id
+
+        def _dock() -> None:
+            try:
+                self.dock_placed_widget(instance_id)
+            except ValueError as e:
+                self._info("Dock widget", str(e))
+
+        # Deferred: this runs inside the view's mouse-release handling, and docking removes the very frame
+        # whose drag is being finished.
+        QTimer.singleShot(0, _dock)
+
+    def dock_placed_widget(self, instance_id: str) -> str:
+        """Moves a placed `kind: "python"` widget into the sidebar, keeping its
+        instance id and widget-local storage (a move, so nothing is tombstoned
+        to Recently Removed). State a widget keeps only in memory is lost, as
+        with undock_widget. Raises ValueError if there is no such python widget."""
+        frame = self.find_frame_by_instance_id(instance_id)
+        if frame is None:
+            raise ValueError(f"No placed widget with instance_id {instance_id!r}.")
+        if not isinstance(frame.content, PythonWidgetHost):
+            raise ValueError("Only kind: \"python\" widgets can be docked in the sidebar.")
+        widget_id = frame.content.widget_id
+        if widget_id not in self._widgets:
+            raise ValueError(f"Widget {widget_id!r} is not available.")
+        state = self._get_widget_local_storage(frame)
+        self.view.remove_widget(frame)
+        self._event_mediator.unsubscribe_all(instance_id)
+        docked_id = self.dock_widget_by_id(widget_id, state, instance_id)
+        self.save_current_desk()
+        return docked_id
+
+    def _remove_dock(self, instance_id: str) -> tuple[str, dict, int] | None:
+        """Tears a dock down; returns (widget_id, its state, width) or None."""
+        dock = self._docked.pop(instance_id, None)
+        if dock is None:
+            return None
+        host = dock.widget()
+        widget_id = host.widget_id if isinstance(host, PythonWidgetHost) else ""
+        state = _get_python_local_storage(host) if isinstance(host, PythonWidgetHost) else {}
+        width = dock.width()
+        self.removeDockWidget(dock)
+        dock.deleteLater()
+        self._event_mediator.unsubscribe_all(instance_id)
+        self._update_sidebar_tab()
+        return widget_id, state, width
+
+    def undock_widget(self, instance_id: str) -> str:
+        """Moves a docked widget onto the canvas (centered in the view), keeping its
+        state and instance id. Returns the instance id; ValueError if not docked."""
+        if instance_id not in self._docked:
+            raise ValueError(f"No docked widget with instance_id {instance_id!r}.")
+        widget_id, state, _width = self._remove_dock(instance_id)
+        info = self._widgets[widget_id]
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        size = info.default_size or DEFAULT_WIDGET_SIZE
+        pos = (center.x() - size[0] / 2, center.y() - size[1] / 2)
+        frame = self._place_widget(widget_id, info, pos, size, instance_id=instance_id, local_storage_data=state)
+        if frame is None:
+            raise ValueError(f"Could not place widget {widget_id!r} on the canvas (see the Desk log).")
+        self._bind_widget_local_storage(frame, state)
+        return frame.instance_id
+
+    def close_docked_widget(self, instance_id: str) -> bool:
+        return self._remove_dock(instance_id) is not None
+
+    def list_docked_widgets(self) -> list[dict]:
+        out = []
+        for instance_id, dock in self._docked.items():
+            host = dock.widget()
+            out.append(
+                {
+                    "instance_id": instance_id,
+                    "widget_id": host.widget_id if isinstance(host, PythonWidgetHost) else "",
+                    "name": dock.windowTitle(),
+                }
+            )
+        return out
+
+    def _capture_docked(self) -> list[DockedWidgetState]:
+        result = []
+        for instance_id, dock in self._docked.items():
+            host = dock.widget()
+            if not isinstance(host, PythonWidgetHost):
+                continue
+            result.append(
+                DockedWidgetState(
+                    widget_id=host.widget_id,
+                    instance_id=instance_id,
+                    state=_get_python_local_storage(host),
+                    width=dock.width(),
+                )
+            )
+        return result
+
+    def _load_desk_docked(self, desk: Desk) -> None:
+        for d in desk.docked:
+            try:
+                self.dock_widget_by_id(d.widget_id, d.state, d.instance_id, d.width, reveal=False)
+            except ValueError:
+                logging.getLogger("desk.window").warning("Skipping docked widget %r: not available", d.widget_id)
+
+    def _clear_docked(self) -> None:
+        for instance_id in list(self._docked):
+            self._remove_dock(instance_id)
+
+    def _on_widget_dock_requested(self, widget_id: str) -> None:
+        try:
+            self.dock_widget_by_id(widget_id)
+        except ValueError as e:
+            self._info("Dock widget", str(e))
 
     def _on_widget_add_requested(self, widget_id: str, scene_pos: QPointF) -> None:
         widget = self._widgets.get(widget_id)

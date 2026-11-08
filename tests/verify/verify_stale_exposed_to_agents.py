@@ -115,6 +115,7 @@ _FakeWindow._bind_event_mediator = DeskWindow._bind_event_mediator
 _FakeWindow._bind_error_indicator = DeskWindow._bind_error_indicator
 _FakeWindow._bind_widget_local_storage = DeskWindow._bind_widget_local_storage
 _FakeWindow._capture_desk_state = DeskWindow._capture_desk_state
+_FakeWindow._capture_docked = lambda self: []  # TODO 6413e58
 _FakeWindow._flush_scratch_backing_files = DeskWindow._flush_scratch_backing_files
 _FakeWindow._get_widget_local_storage = DeskWindow._get_widget_local_storage
 _FakeWindow.get_state_dict = DeskWindow.get_state_dict

@@ -9,7 +9,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from desk import expert_registry
 from desk.event_mediator import EventMediator
+from desk.expert_registry import ExpertRegistryError
 from desk.widget_logs import WidgetLogStore
 from desk.deprecations import DeprecationRegistry, format_error, get_registry as get_deprecation_registry
 from desk.server.credentials import CredentialRegistry
@@ -202,6 +204,21 @@ class EventNamesRequest(BaseModel):
 class EventPublishRequest(BaseModel):
     name: str
     payload: object = None
+
+
+class ExpertRegisterRequest(BaseModel):
+    expert_id: str
+    name: str
+    description: str = ""
+
+
+class ExpertAnswerRequest(BaseModel):
+    question_id: str
+    answer: str
+
+
+class ExpertAcceptRequest(BaseModel):
+    question_id: str
 
 
 class LogEntryRequest(BaseModel):
@@ -685,6 +702,75 @@ def create_app(
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, mediator.publish, body.name, body.payload, instance_id)
         return {"ok": True}
+
+    # --- experts (TODO b2e031d) -- a Desk-hosted service registers itself as an
+    # expert (kind forced to "hmsvc"), polls the open questions put to its own
+    # experts, accepts and answers them. Only an hmsvc caller, and only for
+    # experts it registered itself; the asker's private note is never returned.
+    # Each call shells out to psql, so runs off the event loop.
+
+    async def run_registry(fn):
+        loop = asyncio.get_event_loop()
+        try:
+            return await loop.run_in_executor(None, lambda: fn(expert_registry.get_registry()))
+        except ExpertRegistryError as e:
+            raise HTTPException(400, str(e))
+
+    def require_service_caller(widget: WidgetInfo) -> str:
+        if service_name_from_caller_id(widget.id) is None:
+            raise HTTPException(403, "Only Desk-hosted services (hmsvc) can act as experts through the Bridge.")
+        return widget.id
+
+    def own_expert(registry, expert_id: str, caller: str) -> None:
+        expert = registry.get_expert(expert_id)
+        if expert is None:
+            raise ExpertRegistryError(f"No expert {expert_id!r}.")
+        if expert["registered_by"] != caller:
+            raise HTTPException(403, f"Expert {expert_id!r} was not registered by {caller!r}.")
+
+    def own_question(registry, question_id: str, caller: str) -> dict:
+        question = registry.get_question(question_id)
+        if question is None:
+            raise ExpertRegistryError(f"No question {question_id!r}.")
+        own_expert(registry, question["expert_id"], caller)
+        return question
+
+    @app.post("/api/bridge/experts/register")
+    async def experts_register(body: ExpertRegisterRequest, widget: WidgetInfo = Depends(require_caller("experts"))):
+        caller = require_service_caller(widget)
+        return await run_registry(
+            lambda reg: reg.register_expert(body.expert_id, body.name, body.description, "hmsvc", caller)
+        )
+
+    @app.get("/api/bridge/experts/pending")
+    async def experts_pending(expert_id: str, widget: WidgetInfo = Depends(require_caller("experts"))):
+        caller = require_service_caller(widget)
+
+        def pending(reg):
+            own_expert(reg, expert_id, caller)
+            return reg.list_questions(expert_id, ["open"])
+
+        return await run_registry(pending)
+
+    @app.post("/api/bridge/experts/accept")
+    async def experts_accept(body: ExpertAcceptRequest, widget: WidgetInfo = Depends(require_caller("experts"))):
+        caller = require_service_caller(widget)
+
+        def accept(reg):
+            own_question(reg, body.question_id, caller)
+            return reg.accept(body.question_id, caller)
+
+        return await run_registry(accept)
+
+    @app.post("/api/bridge/experts/answer")
+    async def experts_answer(body: ExpertAnswerRequest, widget: WidgetInfo = Depends(require_caller("experts"))):
+        caller = require_service_caller(widget)
+
+        def answer(reg):
+            own_question(reg, body.question_id, caller)
+            return reg.answer(body.question_id, body.answer, caller)
+
+        return await run_registry(answer)
 
     @app.get("/api/bridge/events/poll")
     async def events_poll(

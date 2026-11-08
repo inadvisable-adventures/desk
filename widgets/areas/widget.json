@@ -1,0 +1,7 @@
+{
+  "name": "Areas",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": [],
+  "default_size": { "width": 300, "height": 360 }
+}

@@ -721,7 +721,7 @@ def test_context_menu_excludes_tempui_only_from_spawn_menu():
                 pass
 
         class _CapturingMenu:
-            def __init__(self, catalog, parent=None):
+            def __init__(self, catalog, parent=None, dockable=frozenset()):  # TODO 6413e58
                 captured["catalog"] = catalog
                 self.widget_chosen = _NullSignal()
                 self.paste_requested = _NullSignal()

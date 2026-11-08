@@ -57,7 +57,8 @@ from typing import Any
 
 from claude_agent_sdk import McpSdkServerConfig, create_sdk_mcp_server, tool
 
-from desk import feedback_items, handoff_requests, pipeline_dsl
+from desk import expert_registry, feedback_items, handoff_requests, pipeline_dsl
+from desk.expert_registry import ExpertRegistryError
 from desk.event_mediator import MediatedEvent
 from desk.widget_logs import RECORDING_EVENT, STOPPED_RECORDING_EVENT, format_time_iso, parse_time_ms
 from desk.record_store import RecordConflict, RecordNotFound, RecordStore
@@ -200,6 +201,190 @@ async def _place_widget_tool(args: dict[str, Any]) -> dict[str, Any]:
     except (RuntimeError, ValueError) as e:
         return _text_result(str(e), is_error=True)
     return _text_result(instance_id)
+
+
+_AREA_NUMBER = {"type": "number"}
+
+
+@tool(
+    "desk_list_areas",
+    "List the current Desk's areas: named rectangles drawn on the canvas background, behind every "
+    "widget, that mark out a region and can be jumped to. Each entry has area_id, title, x, y "
+    "(top-left, canvas coordinates -- the same ones desk_list_widget_instances uses), width and "
+    "height. Read-only. See tempui-areas.md.",
+    {},
+)
+async def _list_areas(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        areas = await _call_on_gui_thread(lambda: window.list_areas())
+    except RuntimeError as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(json.dumps(areas))
+
+
+@tool(
+    "desk_create_area",
+    "Create a desk area (a named background rectangle; see desk_list_areas). All arguments are "
+    "optional: title defaults to 'Area N'; x and y (give both) are the top-left in canvas "
+    "coordinates and width and height (give both) the size -- omitted geometry defaults to the "
+    "middle 70% of what is on screen right now. An area never blocks clicks on anything inside "
+    "it and never carries widgets when moved. Returns the new area as JSON, including its "
+    "area_id.",
+    {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "x": _AREA_NUMBER,
+            "y": _AREA_NUMBER,
+            "width": _AREA_NUMBER,
+            "height": _AREA_NUMBER,
+        },
+    },
+)
+async def _create_area(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        area = await _call_on_gui_thread(
+            lambda: window.create_area(
+                args.get("title") or "", args.get("x"), args.get("y"), args.get("width"), args.get("height")
+            )
+        )
+    except (RuntimeError, ValueError) as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(json.dumps(area))
+
+
+@tool(
+    "desk_update_area",
+    "Rename, move and/or resize a desk area; omit any field to leave it unchanged. Moving or "
+    "resizing an area does not move any widget. Returns the updated area as JSON.",
+    {
+        "type": "object",
+        "properties": {
+            "area_id": {"type": "string"},
+            "title": {"type": "string"},
+            "x": _AREA_NUMBER,
+            "y": _AREA_NUMBER,
+            "width": _AREA_NUMBER,
+            "height": _AREA_NUMBER,
+        },
+        "required": ["area_id"],
+    },
+)
+async def _update_area(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        area = await _call_on_gui_thread(
+            lambda: window.update_area(
+                args["area_id"], args.get("title"), args.get("x"), args.get("y"), args.get("width"), args.get("height")
+            )
+        )
+    except (RuntimeError, ValueError) as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(json.dumps(area))
+
+
+@tool(
+    "desk_delete_area",
+    "Delete a desk area. Widgets inside it are untouched. Returns whether an area with that "
+    "area_id existed.",
+    {"area_id": str},
+)
+async def _delete_area(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        found = await _call_on_gui_thread(lambda: window.delete_area(args["area_id"]))
+    except RuntimeError as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(str(found))
+
+
+@tool(
+    "desk_view_area",
+    "Pan and zoom the Workspace Canvas so a desk area fills the view -- the same as clicking the "
+    "area's eye button. Pair with desk_screenshot_desk to see what is in an area. Returns "
+    "whether an area with that area_id was found.",
+    {"area_id": str},
+)
+async def _view_area(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        found = await _call_on_gui_thread(lambda: window.view_area(args["area_id"]))
+    except RuntimeError as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(str(found))
+
+
+@tool(
+    "desk_dock_widget",
+    "Dock a new instance of a kind:\"python\" widget in the main window's left-hand sidebar (collapsed by default; this opens it) -- a "
+    "region outside the zoomable canvas that stays put while the canvas pans and zooms. Returns the "
+    "new instance_id. Optional state (a JSON object) seeds the widget's own local storage, as for "
+    "desk_place_widget. A docked widget is not listed by desk_list_widget_instances and cannot be "
+    "screenshotted with desk_screenshot_widget; use desk_list_docked_widgets to see what is docked. "
+    "See tempui-docked-widgets.md.",
+    {
+        "type": "object",
+        "properties": {"widget_id": {"type": "string"}, "state": {"type": "object"}},
+        "required": ["widget_id"],
+    },
+)
+async def _dock_widget(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    widget_id = args.get("widget_id")
+    if not isinstance(widget_id, str) or not widget_id.strip():
+        return _text_result("widget_id must be a non-empty string.", is_error=True)
+    try:
+        instance_id = await _call_on_gui_thread(lambda: window.dock_widget_by_id(widget_id.strip(), args.get("state")))
+    except (RuntimeError, ValueError) as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(instance_id)
+
+
+@tool(
+    "desk_undock_widget",
+    "Move a docked widget (see desk_dock_widget) onto the canvas, centered in the current view, "
+    "keeping its state and instance_id. Returns the instance_id.",
+    {"instance_id": str},
+)
+async def _undock_widget(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        instance_id = await _call_on_gui_thread(lambda: window.undock_widget(args["instance_id"]))
+    except (RuntimeError, ValueError) as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(instance_id)
+
+
+@tool(
+    "desk_list_docked_widgets",
+    "List the widgets docked in the sidebar (instance_id, widget_id, name), top to bottom. Read-only.",
+    {},
+)
+async def _list_docked_widgets(args: dict[str, Any]) -> dict[str, Any]:
+    window = current_context.get_main_window()
+    if window is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        docked = await _call_on_gui_thread(lambda: window.list_docked_widgets())
+    except RuntimeError as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(json.dumps(docked))
 
 
 @tool(
@@ -1013,9 +1198,171 @@ async def _get_feedback(args: dict[str, Any]) -> dict[str, Any]:
     return _feedback_call(args, get)
 
 
+# ---- Desk-wide expert registry (TODO c2555b5) -- see tempui-experts.md ----
+
+
+async def _expert_call(fn: Callable[[expert_registry.ExpertRegistry], Any]) -> dict[str, Any]:
+    """Runs a registry call off the event loop (it shells out to psql) and
+    returns its result as JSON text, or a clear error."""
+    try:
+        result = await asyncio.to_thread(lambda: fn(expert_registry.get_registry()))
+    except ExpertRegistryError as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(json.dumps(result, indent=2))
+
+
+def _expert_origin() -> str:
+    """Which Desk is asking (its directory), so the answer is announced in that Desk -- see ExpertRegistry."""
+    directory = current_context.get_current_desk_directory()
+    return str(directory) if directory is not None else ""
+
+
+@tool(
+    "desk_list_experts",
+    "List the experts registered on this Desk (humans, agents and Desk-hosted services) that a question can be "
+    "put to, with what each can answer. The built-in expert `user` is the person using Desk. Read-only. "
+    "See tempui-experts.md.",
+    {"type": "object", "properties": {}},
+)
+async def _list_experts(args: dict[str, Any]) -> dict[str, Any]:
+    return await _expert_call(lambda reg: reg.list_experts())
+
+
+@tool(
+    "desk_register_expert",
+    "Register (or update) an expert so others can ask it questions: expert_id (lowercase letters, digits, . _ -), a "
+    "display name, and a description of what it can answer. kind is 'agent' (default) or 'human'; a "
+    "Desk-hosted service registers itself through the Bridge instead. You can only update an expert you "
+    "registered. See tempui-experts.md.",
+    {
+        "type": "object",
+        "properties": {
+            "expert_id": {"type": "string"},
+            "name": {"type": "string"},
+            "description": {"type": "string"},
+            "kind": {"type": "string", "enum": ["agent", "human"]},
+            "registered_by": {"type": "string", "description": "Who is registering (any label); needed again to update."},
+        },
+        "required": ["expert_id", "name"],
+    },
+)
+async def _register_expert(args: dict[str, Any]) -> dict[str, Any]:
+    return await _expert_call(
+        lambda reg: reg.register_expert(
+            args.get("expert_id", ""), args.get("name", ""), args.get("description", ""),
+            args.get("kind", "agent"), args.get("registered_by", ""),
+        )
+    )
+
+
+@tool(
+    "desk_ask_expert",
+    "Put a question to a registered expert (see desk_list_experts). Returns the question_id at once and does NOT wait: "
+    "the answer may take minutes to days, and your session may be gone when it arrives. Desk shows the user a "
+    "notification when it does. `question` goes to the expert verbatim, so make it self-contained. `note_to_self` is a "
+    "private note for whichever agent later acts on the answer (what to do if yes/no, which files and TODOs matter); "
+    "it is NEVER shown to the expert. Check back with desk_get_expert_question. See tempui-experts.md.",
+    {
+        "type": "object",
+        "properties": {
+            "expert_id": {"type": "string"},
+            "question": {"type": "string"},
+            "note_to_self": {"type": "string"},
+            "asker": {"type": "string", "description": "A label for who is asking (default 'agent')."},
+        },
+        "required": ["expert_id", "question"],
+    },
+)
+async def _ask_expert(args: dict[str, Any]) -> dict[str, Any]:
+    return await _expert_call(
+        lambda reg: reg.ask(
+            args.get("expert_id", ""), args.get("question", ""), args.get("asker") or "agent", args.get("note_to_self", ""),
+            origin=_expert_origin(),
+        )
+    )
+
+
+@tool(
+    "desk_get_expert_question",
+    "The asker's view of one question: its status ('open', 'accepted', 'answered', 'withdrawn'), the answer once there is "
+    "one, and your own private note_to_self. Read-only.",
+    {"type": "object", "properties": {"question_id": {"type": "string"}}, "required": ["question_id"]},
+)
+async def _get_expert_question(args: dict[str, Any]) -> dict[str, Any]:
+    def get(reg):
+        question = reg.get_question(args.get("question_id", ""), include_note=True)
+        if question is None:
+            raise ExpertRegistryError(f"No question {args.get('question_id')!r}.")
+        return question
+
+    return await _expert_call(get)
+
+
+@tool(
+    "desk_list_expert_questions",
+    "The expert's view: questions put to expert_id, newest first, default only those still waiting (status 'open'; also "
+    "accepts 'accepted', 'answered', 'withdrawn' or 'all'). The asker's private note is not included. Read-only.",
+    {
+        "type": "object",
+        "properties": {
+            "expert_id": {"type": "string"},
+            "status": {"type": "string", "enum": ["open", "accepted", "answered", "withdrawn", "all"]},
+        },
+        "required": ["expert_id"],
+    },
+)
+async def _list_expert_questions(args: dict[str, Any]) -> dict[str, Any]:
+    status = args.get("status") or "open"
+    return await _expert_call(
+        lambda reg: reg.list_questions(args.get("expert_id", ""), None if status == "all" else [status])
+    )
+
+
+@tool(
+    "desk_accept_expert_question",
+    "Mark an open question as being worked on so nobody else starts it (status 'open' -> 'accepted'). "
+    "`accepted_by` labels who. Fails if the question is not open.",
+    {
+        "type": "object",
+        "properties": {"question_id": {"type": "string"}, "accepted_by": {"type": "string"}},
+        "required": ["question_id"],
+    },
+)
+async def _accept_expert_question(args: dict[str, Any]) -> dict[str, Any]:
+    return await _expert_call(lambda reg: reg.accept(args.get("question_id", ""), args.get("accepted_by", "")))
+
+
+@tool(
+    "desk_answer_expert_question",
+    "Answer a question that is open or accepted; the asker is notified. `answered_by` labels who. Fails if the "
+    "question was already answered or withdrawn.",
+    {
+        "type": "object",
+        "properties": {
+            "question_id": {"type": "string"},
+            "answer": {"type": "string"},
+            "answered_by": {"type": "string"},
+        },
+        "required": ["question_id", "answer"],
+    },
+)
+async def _answer_expert_question(args: dict[str, Any]) -> dict[str, Any]:
+    return await _expert_call(
+        lambda reg: reg.answer(args.get("question_id", ""), args.get("answer", ""), args.get("answered_by", ""))
+    )
+
+
 _TOOLS = [
     _reveal_widget,
     _place_widget_tool,
+    _list_areas,
+    _create_area,
+    _update_area,
+    _delete_area,
+    _view_area,
+    _dock_widget,
+    _undock_widget,
+    _list_docked_widgets,
     _screenshot_widget,
     _screenshot_desk,
     _list_widget_instances,
@@ -1038,6 +1385,13 @@ _TOOLS = [
     _create_feedback,
     _list_feedback,
     _get_feedback,
+    _list_experts,
+    _register_expert,
+    _ask_expert,
+    _get_expert_question,
+    _list_expert_questions,
+    _accept_expert_question,
+    _answer_expert_question,
 ]
 
 

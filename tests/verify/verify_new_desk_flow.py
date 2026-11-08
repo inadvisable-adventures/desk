@@ -322,6 +322,15 @@ class _OrderTrackingWindow:
     def _load_desk_widgets(self, desk):
         self.order.append("load_desk_widgets")
 
+    def _load_desk_areas(self, desk):  # TODO 0460b4c
+        pass
+
+    def _load_desk_docked(self, desk):  # TODO 6413e58
+        pass
+
+    def _clear_docked(self):  # TODO 6413e58
+        pass
+
     def _refresh_picker(self):
         self.order.append("refresh_picker")
 

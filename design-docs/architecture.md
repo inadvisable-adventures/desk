@@ -280,26 +280,8 @@ Desk Bridge API.
     same `find_git_diff_handler`/`DeskWindow.open_git_diff` mechanism
     described in that widget's own entry below. See
     `plans/git-status-widget.md`.
-14. **Markdown (Old, Basic) Widget** — a built-in, **deprecated**
-    `kind: "python"` widget (`widgets/markdown_old_basic/`, id
-    `markdown_old_basic` — renamed from `widgets/markdown/`/`markdown`,
-    TODO 96013cf) that renders a chosen Markdown file via Qt's native
-    `QTextBrowser.setMarkdown()` (no Markdown-library dependency) and
-    auto-reloads it when the file changes on disk. File watching goes
-    through `desk.file_watch.SingleFileWatcher` — a reusable single-file
-    watcher (itself backed by the shared File Watcher Service, item 19
-    above) extracted from the TODO widget's own original bespoke
-    watcher, which now also uses it, so the two watchdog gotchas
-    (FSEvents reports symlink-resolved paths; an atomic write lands as
-    a `FileMovedEvent`/`dest_path`) live in one place; see
-    `LEARNINGS.md`. The file is picked via an editor-style "Open" button
-    seeded from the current Desk directory (`desk.shell.current_context`)
-    and, like the Code Editor, is not persisted across a reload (the
-    widget contract has no per-instance state payload yet — see
-    `PARKINGLOT.md`). Replaced as the default Markdown experience by the
-    widget in item 16 below, kept around deprecated (shown collapsed in
-    the widget-add menu's Deprecated group, TODO ed483e2) rather than
-    removed. See `plans/markdown-renderer-widget.md`.
+14. *(removed)* The former Markdown (Old, Basic) widget was deleted (TODO
+    `5a1b231`); the Markdown widget in item 16 below is the only Markdown viewer.
 15. **Sheet Widget** — a built-in `kind: "python"` widget
     (`widgets/sheet/`): a basic `QTableWidget`-backed spreadsheet with
     interactively resizable rows/columns, word-wrapped/clipped cells,
@@ -315,9 +297,8 @@ Desk Bridge API.
 16. **Markdown Widget** — a built-in `kind: "python"` widget
     (`widgets/markdown/`, id `markdown` — renamed from
     `widgets/markdown_ex/`/`markdown_ex`, TODO 858752b, becoming the
-    new default Markdown experience and replacing item 14 above, which
-    was renamed to `markdown_old_basic` and deprecated in the same
-    swap): a left-hand TOC `QTreeWidget` plus a foldable, heading-nested
+    new default Markdown experience and replacing the former plain
+    widget, since removed): a left-hand TOC `QTreeWidget` plus a foldable, heading-nested
     section view of the rendered document, with inline Mermaid diagram
     rendering. The raw Markdown is split (fence-aware, so a `#` inside
     a code block is never mistaken for a heading) into heading/text/
@@ -913,6 +894,49 @@ Desk Bridge API.
     `desk.recently_removed.changed`) with **Revive** (a brand-new instance,
     seeded with the saved state before its page first reads it) and a
     confirmed **Clear all**.
+35. **Desk areas** (`desk.shell.area_item.AreaItem`, `Desk.areas`, TODO
+    `0460b4c`) — named rectangles drawn on the canvas background behind every
+    widget, for marking out a region and jumping to it. Each is a plain
+    `QGraphicsObject` (not a `WidgetFrame`, so Open Widgets, the Minimap, HUD,
+    stale tracking and the widget lifecycle never see it) at a fixed z far below
+    any frame. Its `shape()` is only the title strip and a thin border band, so
+    the interior is click-through by construction (note the winding fill rule:
+    the strip overlaps the bands). Chrome is sized in screen pixels (÷ view
+    scale), so it stays usable when zoomed far out. The eye button fits the view
+    to the area (`WorkspaceView.zoom_to_area`, the widget eye button's fit with a
+    small margin); moving or resizing never carries widgets. The persistent
+    model is `AreaState` in `Desk.areas` (carried by `_capture_desk_state`'s
+    `replace`), kept in step with the scene items by `DeskWindow`'s
+    `create_area`/`update_area`/`delete_area`/`view_area`, which the
+    `desk_*_area` MCP tools and the canvas chrome both call. Every change
+    publishes `desk.areas.changed`. A docked sidebar listing areas is TODO
+    `6413e58`/`747806b`. See `plans/desk-areas-core.md`.
+36. **Docked sidebar** (`DeskWindow.dock_widget_by_id` et al., `Desk.docked`, TODO
+    `6413e58`; left side, collapsible and drag-and-drop docking per TODO `4ff712c`) — a left-hand `QDockWidget` region for `kind: "python"` widgets
+    outside the zoomable canvas. A docked widget is the bare `PythonWidgetHost`
+    in a dock (frame chrome is drawn and hit-tested by the canvas, so a
+    `WidgetFrame` cannot live outside it): event mediator and widget-local
+    storage are bound as for a placed widget, but there are no titlebar markers
+    and it is not in `desk_list_widget_instances`; `desk_state_dict` carries it
+    as `docked`. Entry points are the canvas right-click menu's collapsed "Dock
+    in sidebar" group and the `desk_dock_widget`/`desk_undock_widget`/
+    `desk_list_docked_widgets` MCP tools. The sidebar is collapsed by default behind a
+    thin tab (`desk.shell.sidebar.SidebarTab`; session state only), and a placed python
+    widget dragged by its titlebar onto the sidebar zone (`DeskWindow.sidebar_drop_zone`,
+    shown by a `DockDropIndicator`) is moved in by `dock_placed_widget`. See
+    `plans/docked-sidebar.md` and `plans/sidebar-left-collapsible-dnd.md`.
+
+37. **Expert registry** (`desk.expert_registry`, TODOs `c2555b5`/`b2e031d`/`d15791d`) — a Desk-wide
+    registry of experts and the questions put to them, in a local PostgreSQL cluster
+    (`~/.desk/experts/pgdata`, unix socket only, provisioned lazily and left running). No driver: it
+    shells out to `psql` with `:'var'` interpolation, the way `../world-timelines` does. The
+    asker's private `note_to_self` never leaves the registry except through the asker's own read and
+    the agent handoff. Surfaces: seven `desk_*_expert` MCP tools; a Bridge `experts` capability
+    for hmsvcs (`DeskClient.experts_*`, only for experts the service registered); an
+    `ExpertNotifier` thread that turns unannounced answers / new questions for the built-in `user`
+    expert into top-right banners; the built-in `experts` python widget (answer, or send to a new
+    Claude session via `DeskWindow.start_expert_session`). Changes publish `desk.experts.changed`.
+    See `plans/expert-registry.md`.
 
 
 ## Isolation and trust tiers
@@ -1166,8 +1190,8 @@ now, and it can only have one Desk open at a time).
   onto this too). Pull-based: read fresh at each actual save, same as
   every other per-widget field, not tracked live. Used by the Stack
   widget (its frame list) and, for their currently-open file path (TODO
-  `02eda20`), the Markdown, Markdown (Old, Basic), and Editor widgets —
-  the latter three via a shared `desk.persisted_path.resolve_persisted_
+  `02eda20`), the Markdown and Editor widgets —
+  the latter two via a shared `desk.persisted_path.resolve_persisted_
   path(raw) -> Path | None` helper that tolerates a since-moved/deleted
   file at restore time by returning `None` (leaving the widget in its
   normal no-file-open placeholder state) instead of crashing or adopting
