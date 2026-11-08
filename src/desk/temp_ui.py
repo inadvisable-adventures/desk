@@ -257,6 +257,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "desk-select replaces native select in html widgets #821015",
     "shared widget file edits mark dependents stale #911413",
     "desk.agents.launch bridge api #507b8d5",
+    "custom elements cloned from a template: set properties safely #c8bb4eb",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1623,6 +1624,21 @@ rides along with the canvas transform. Same exposure, same advice: avoid
 `<input list=...>`, and the browser context menu under the canvas. See
 `shared-components/desk-select/README.md`.
 
+**Custom elements and `<template>` cloning.** A `<template>`'s content
+is inert: an element cloned out of it (`template.content.firstElementChild
+.cloneNode(true)`) is *not* upgraded to its custom-element class until it
+is connected to the live document -- and `customElements.upgrade(clone)`
+does **not** change that (the clone still belongs to the template's inert
+document, which has no custom-element registry). So `clone.value = x` on
+an un-upgraded custom element silently creates a plain own property that
+can shadow the class's real accessor once it upgrades, with no error.
+`<desk-select>` guards against this itself, but a custom element you write
+will not unless it re-applies such properties on connect. To get an
+already-upgraded element, build it with `document.createElement("tag-name")`
+or clone with `document.importNode(template.content.firstElementChild,
+true)` (which adopts it into the live document, upgrading it); or set
+properties only after inserting the clone.
+
 If your widget is actually several wired-together components (a
 multi-pane layout, an event-wiring table between them, shared
 app-level state) rather than one self-contained custom element,
@@ -2897,6 +2913,18 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "custom elements cloned from a template: set properties safely #c8bb4eb": """- `<desk-select>` now works when built the way a widget usually builds
+  controls -- cloned out of a `<template>`, a property set on the clone,
+  then inserted. Previously `el.value = x` on the un-upgraded clone made
+  an own property that shadowed the real accessor, so picking an option
+  never changed `value` (no error, a control that looked fine). It also
+  now honors `value`/`selectedIndex` set before the element is connected,
+  and an explicit `value` matching no option selects nothing instead of
+  silently picking the first. `tempui-custom-widgets.md` documents the
+  general trap for any custom element (and that `customElements.upgrade()`
+  cannot upgrade a template clone; use `document.createElement` or
+  `document.importNode`).
+""",
     "desk.agents.launch bridge api #507b8d5": """- New Bridge API capability `launch_agent`:
   `desk.agents.launch(instructions, { x, y })` lets a `kind: "html"`
   widget place a fresh Claude (Desk) session whose first turn carries

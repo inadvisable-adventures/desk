@@ -25,6 +25,8 @@ class DeskSelect extends HTMLElement {
   private typeahead = "";
   private typeaheadTimer = 0;
   private initialized = false;
+  // A selectedIndex assigned before options exist (before connecting).
+  private pendingIndex = -1;
 
   constructor() {
     super();
@@ -49,6 +51,18 @@ class DeskSelect extends HTMLElement {
   }
 
   connectedCallback(): void {
+    // An element cloned out of a <template> is inert, not upgraded: a
+    // property assigned to it (`el.value = x`) lands as an own data
+    // property that would shadow this class's accessors forever once the
+    // element upgrades. Re-route each such value through the real setter
+    // (the standard "upgrade property" pattern) before reading options.
+    for (const name of ["value", "selectedIndex", "disabled"] as const) {
+      if (Object.prototype.hasOwnProperty.call(this, name)) {
+        const own = (this as unknown as Record<string, unknown>)[name];
+        delete (this as unknown as Record<string, unknown>)[name];
+        (this as unknown as Record<string, unknown>)[name] = own;
+      }
+    }
     this.observer.observe(this, {
       childList: true,
       subtree: true,
@@ -83,6 +97,13 @@ class DeskSelect extends HTMLElement {
   }
 
   set value(next: string) {
+    if (!this.initialized) {
+      // No options read yet (not connected): remember it as the value
+      // attribute, which readOptions() consults on connect.
+      this.setAttribute("value", String(next));
+      this.pendingIndex = -1;
+      return;
+    }
     this.index = this.items.findIndex((item) => item.value === next);
     this.render();
   }
@@ -92,6 +113,11 @@ class DeskSelect extends HTMLElement {
   }
 
   set selectedIndex(next: number) {
+    if (!this.initialized) {
+      this.pendingIndex = next;
+      this.removeAttribute("value");
+      return;
+    }
     this.index = next >= 0 && next < this.items.length ? next : -1;
     this.render();
   }
@@ -118,9 +144,17 @@ class DeskSelect extends HTMLElement {
       disabled: option.disabled,
       selected: option.hasAttribute("selected"),
     }));
-    const wanted = previous ?? this.getAttribute("value");
-    let index = wanted === null ? -1 : this.items.findIndex((item) => item.value === wanted);
-    if (index < 0 && (previous === null || previous === "")) {
+    // An explicit value (the current selection, else the `value`
+    // attribute) that matches no option selects nothing, like <select>;
+    // only when nothing was specified at all does the default apply.
+    const wanted = previous !== null && previous !== "" ? previous : this.getAttribute("value");
+    let index = -1;
+    if (this.pendingIndex >= 0) {
+      index = this.pendingIndex < this.items.length ? this.pendingIndex : -1;
+      this.pendingIndex = -1;
+    } else if (wanted !== null) {
+      index = this.items.findIndex((item) => item.value === wanted);
+    } else {
       index = this.items.findIndex((item) => item.selected);
       if (index < 0) {
         index = this.items.findIndex((item) => !item.disabled);

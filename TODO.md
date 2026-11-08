@@ -6,6 +6,13 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+c8bb4eb. COMPLETED: `<desk-select>` silently broke when built via the `<template>`-cloning convention (clone, set `.value`, insert): the un-upgraded clone's own property shadowed the real accessor, so user picks never changed `value`; also document the general custom-element trap (`../FEEDBACK/FEEDBACK-DESK-lt-desk-select-gt-silently-breaks-wrong-value-saved-not-a-vi-2026-11-07-1645.md`). Prioritized to the top.
+
+   [planned: desk-select-template-clone.md (COMPLETED)]
+
+   COMPLETED 2026-11-07: `connectedCallback` re-applies own `value`/`selectedIndex`/`disabled`; pre-connection `value`/`selectedIndex` kept; an explicit non-matching value selects nothing. `customElements.upgrade()` not upgrading a template clone is spec behavior (documented; `document.importNode`/`createElement` do upgrade). Tag `#c8bb4eb`, changelog, README + `tempui-custom-widgets.md` notes.
+   `verify_desk_select_template_clone.py` (16 checks; 10 failed before the fix). Headless-verified only.
+
 507b8d5. COMPLETED: Bridge API `launch_agent`: `desk.agents.launch(instructions, {x, y})` (capability `launch_agent`) lets a `kind:"html"` widget place a Claude (Desk) session seeded with its own instructions, e.g. a "chat about this result" button (`../FEEDBACK/FEEDBACK-DESK-no-bridge-api-capability-lets-a-kind-html-widget-launch-a-cl-2026-11-06-2320.md`). A dedicated API rather than extra fields on `widgets.open`. Prioritized to the top.
 
    [planned: bridge-launch-agent.md (COMPLETED)]

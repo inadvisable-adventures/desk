@@ -60,6 +60,21 @@ sel.addEventListener("change", () => console.log(sel.value));
 sel.value = "major"; // programmatic; fires no event, like <select>
 ```
 
+### Building one from a `<template>` is fine
+
+You can clone a `<desk-select>` out of a `<template>`, set `.value`,
+`.selectedIndex` or `.disabled` on the clone, and insert it afterwards --
+the element re-applies those when it connects. (This is a trap for custom
+elements in general: a clone from a `<template>` is not upgraded until it
+is connected, so a property set on it becomes a plain own property that
+shadows the class's accessor. `customElements.upgrade(clone)` does not
+help, because the clone belongs to the template's inert document. If you
+write your own custom element, re-apply such properties in
+`connectedCallback`, or construct with `document.createElement` /
+`document.importNode(template.content.firstElementChild, true)`, which
+return an upgraded element.) A `value` or `selectedIndex` set before the
+element is connected is kept and applied once its options are read.
+
 ## What matches `<select>`
 
 - `<option>` children (`value` attribute or, absent that, the text;
