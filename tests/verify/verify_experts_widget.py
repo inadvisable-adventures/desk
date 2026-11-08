@@ -120,7 +120,7 @@ try:
     class _Win:
         def __init__(self):
             self.view = _View()
-            self._widgets = {"claude": WidgetInfo("claude", Path("."), "python", "Claude", "w.py", [], (400, 300))}
+            self._widgets = {"claude_desk": WidgetInfo("claude_desk", Path("."), "python", "Claude (Desk)", "w.py", [], (400, 300))}
             self.placed = []
             self.written = []
             self._docked = {}
@@ -146,8 +146,8 @@ try:
           and texts[1].startswith("New question for you: for the human"))
     check("banner keys are distinct per question and kind", len({n[0] for n in win.view.notes}) == 2)
     iid = win.start_expert_session("do the thing")
-    check("start_expert_session places a claude widget seeded through an instructions file",
-          iid == "claude-1" and win.placed[0][0] == "claude" and win.placed[0][1]["claude_extra_instructions"] == " read it"
+    check("start_expert_session places a claude_desk widget seeded through an instructions file",
+          iid == "claude-1" and win.placed[0][0] == "claude_desk" and win.placed[0][1]["claude_extra_instructions"] == " read it"
           and win.written == [("expert-handoff", "do the thing")])
     win._widgets.clear()
     try:

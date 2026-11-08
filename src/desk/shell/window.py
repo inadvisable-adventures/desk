@@ -163,7 +163,9 @@ EXPERTS_WIDGET_ID = "experts"
 # TODO a596dbf: a separate, independently-spawnable widget kind built on
 # the Python Claude Agent SDK instead of PTY/pyte -- see
 # plans/claude-widget-agent-sdk-integration.md. Does not replace
-# CLAUDE_WIDGET_ID above; both can be placed on the same Desk.
+# CLAUDE_WIDGET_ID above; both can be placed on the same Desk. The plain
+# "claude" widget is now deprecated: every new session Desk starts itself
+# (discuss, expert handoff, ...) uses this one.
 CLAUDE_DESK_WIDGET_ID = "claude_desk"
 # TODO 90efef6: the widget a Claude (Desk) background task's "View Log" opens.
 CLAUDE_DESK_TASK_LOG_WIDGET_ID = "claude_desk_task_log"
@@ -1285,8 +1287,8 @@ class DeskWindow(QMainWindow):
         `.desk_temp` instructions file, not spliced into the launch
         command line itself (TODO 51be2bc, see
         _write_discuss_instructions_file). Returns None (placing
-        nothing) if the "claude" widget kind isn't registered."""
-        widget = self._widgets.get(CLAUDE_WIDGET_ID)
+        nothing) if the "claude_desk" widget kind isn't registered."""
+        widget = self._widgets.get(CLAUDE_DESK_WIDGET_ID)
         if widget is None:
             return None
         if parking_lot_line is not None:
@@ -1309,7 +1311,7 @@ class DeskWindow(QMainWindow):
         extra_instructions = self._write_claude_instructions_file(instructions_body, prefix="discuss")
         center = self.view.mapToScene(self.view.viewport().rect().center())
         return self._place_widget(
-            CLAUDE_WIDGET_ID,
+            CLAUDE_DESK_WIDGET_ID,
             widget,
             (center.x(), center.y()),
             widget.default_size,
@@ -1321,20 +1323,20 @@ class DeskWindow(QMainWindow):
         """TODO d15791d: places a fresh Claude session seeded with `instructions` -- the Experts
         widget's "Send to agent". Returns the new widget's instance_id; ValueError if the claude widget kind
         isn't available or the placement fails."""
-        widget = self._widgets.get(CLAUDE_WIDGET_ID)
+        widget = self._widgets.get(CLAUDE_DESK_WIDGET_ID)
         if widget is None:
-            raise ValueError("The Claude widget isn't available in this Desk.")
+            raise ValueError("The Claude (Desk) widget isn't available in this Desk.")
         extra_instructions = self._write_claude_instructions_file(instructions, prefix="expert-handoff")
         center = self.view.mapToScene(self.view.viewport().rect().center())
         frame = self._place_widget(
-            CLAUDE_WIDGET_ID,
+            CLAUDE_DESK_WIDGET_ID,
             widget,
             (center.x(), center.y()),
             widget.default_size,
             claude_extra_instructions=extra_instructions,
         )
         if frame is None:
-            raise ValueError("Could not place the Claude widget.")
+            raise ValueError("Could not place the Claude (Desk) widget.")
         return frame.instance_id
 
     def _on_expert_announcements(self, items: list) -> None:
@@ -3676,7 +3678,7 @@ class DeskWindow(QMainWindow):
         if kind == "scratch":
             return SCRATCH_WIDGET_ID
         if kind == "discuss_parking_lot_item":
-            return CLAUDE_WIDGET_ID
+            return CLAUDE_DESK_WIDGET_ID
         if kind == "job":
             return JOB_RUNNER_WIDGET_ID
         if kind == "desk_proc":
@@ -3705,7 +3707,7 @@ class DeskWindow(QMainWindow):
         if widget is None:
             return
         center = self.view.mapToScene(self.view.viewport().rect().center())
-        if widget_id == CLAUDE_WIDGET_ID:
+        if widget_id == CLAUDE_DESK_WIDGET_ID:
             # DiscussParkingLotItem (TODO c0875bc): a claude widget's
             # session starts *inside* _place_widget itself (see
             # _bind_claude_widget), before the generic

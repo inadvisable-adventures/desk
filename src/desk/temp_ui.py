@@ -265,6 +265,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "desk-select replaces native select in html widgets #821015",
     "shared widget file edits mark dependents stale #911413",
     "desk.agents.launch bridge api #507b8d5",
+    "discuss/expert sessions use Claude (Desk) #275381",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -2393,10 +2394,10 @@ DiscussParkingLotItem A way to end a claude widget's session
 Line 533
 ```
 
-Clicking the resulting notification places a **new** claude widget
+Clicking the resulting notification places a **new** Claude (Desk) widget
 with a fresh session (not the one that created this file) — its
 initial prompt is the same "you're embedded in Desk" instructions
-every claude widget gets, plus an instruction to read that line of
+every Claude (Desk) widget gets, plus an instruction to read that line of
 `PARKINGLOT.md` and discuss the item found there, **in this same new
 session** (it's told explicitly not to kick off yet another new Desk
 discussion of its own, e.g. by writing another `DiscussParkingLotItem`
@@ -3117,6 +3118,10 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "discuss/expert sessions use Claude (Desk) #275381": """- The plain **Claude** widget is deprecated. Sessions Desk starts itself
+  (a `DiscussParkingLotItem` notification, a Questions-widget Discuss, the
+  Experts widget's **Send to agent**) now open a **Claude (Desk)** widget.
+""",
     "Experts widget + answer notifications #804805": """- Experts now reach the user. When an answer arrives for a question you
   asked, or a question is put to the built-in `user` expert, Desk shows a
   top-right notification, and the new built-in **Experts** widget lists the

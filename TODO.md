@@ -13150,3 +13150,5 @@ a8931c8. COMPLETED: desk.mermaid: render `subgraph ... end` as a labeled, nestab
 
    COMPLETED 2026-11-06: layout became a skyline pack over nodes and subgraph blocks (identical output when there are no subgraphs); boxes hug members; edges to a subgraph id raise `MermaidParseError`.
    Tag `mermaid subgraph containment boxes #200896`, changelog entry, docs, same verify script. Headless-verified only (PNG inspected); Desk GUI not launched.
+
+c3beaa4. COMPLETED: use Claude (Desk) for every session Desk starts itself (Discuss from PARKINGLOT/Questions, Experts "Send to agent"), and deprecate the plain `claude` widget (`"deprecated": true`, so it moves to the spawn menu's Deprecated group; existing placed instances still restore). Tag `discuss/expert sessions use Claude (Desk) #275381`. [planned: none, small change]
