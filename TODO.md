@@ -6,6 +6,12 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+650713d. COMPLETED: `tempui-hmsvc.md`'s worked example treated `desk.hmsvc.list()` as a bare array; it resolves to `{services: [...]}`. Fix the example, document every `desk.hmsvc.*` return shape, lead with the `desk.state` pattern for the URL-only case, and make the doc test run the JS (`../FEEDBACK/FEEDBACK-DESK-tempui-hmsvc-md-s-worked-example-treats-desk-hmsvc-list-as-a-2026-11-06-2216.md`). Prioritized to the top.
+
+   [planned: tempui-hmsvc-list-shape.md (COMPLETED)]
+
+   COMPLETED 2026-11-07: docs only (route unchanged). Tag `#650713d`, changelog. `verify_tempui_hmsvc_doc.py` now hits the real `/hmsvc/list` and `/hmsvc/logs` routes and runs the doc's JS blocks under node against those shapes (the old example fails that check).
+
 c8bb4eb. COMPLETED: `<desk-select>` silently broke when built via the `<template>`-cloning convention (clone, set `.value`, insert): the un-upgraded clone's own property shadowed the real accessor, so user picks never changed `value`; also document the general custom-element trap (`../FEEDBACK/FEEDBACK-DESK-lt-desk-select-gt-silently-breaks-wrong-value-saved-not-a-vi-2026-11-07-1645.md`). Prioritized to the top.
 
    [planned: desk-select-template-clone.md (COMPLETED)]

@@ -72,5 +72,78 @@ check("TODO 601dae5: changelog entry for the rule", nav_tag in _NEW_FEATURES)
 dev = open("development-process.md").read()
 check("TODO 601dae5: process doc has the dedicated-doc policy", "Give agent-visible features a real doc" in dev and "SPLIT_DOC_CONTENT" in dev)
 
+# TODO 650713d: the doc's JS examples run against the REAL route's response shapes
+import json  # noqa: E402
+import os  # noqa: E402
+import shutil  # noqa: E402
+import subprocess  # noqa: E402
+import tempfile  # noqa: E402
+import threading  # noqa: E402
+import time  # noqa: E402
+import urllib.request  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PyQt6.QtWidgets import QApplication  # noqa: E402
+
+qt_app = QApplication.instance() or QApplication(sys.argv)
+from desk.server.runner import start_server  # noqa: E402
+from desk.widgets import WidgetInfo  # noqa: E402
+
+
+class _Window:
+    def get_widget_info(self, widget_id):
+        return WidgetInfo(id=widget_id, path=Path("."), kind="html", name=widget_id, entry="index.html",
+                          capabilities=["hmsvc"], default_size=None)
+
+
+def _get(url, token):
+    req = urllib.request.Request(url, headers={"X-Desk-Token": token, "X-Desk-Widget-Id": "w", "X-Desk-Instance-Id": "i"})
+    with urllib.request.urlopen(req, timeout=5) as r:
+        return json.loads(r.read().decode())
+
+
+with tempfile.TemporaryDirectory() as wd:
+    handle = start_server(widgets_dir=Path(wd))
+    try:
+        handle.gui_bridge.attach(_Window())
+        token = handle.issue_credential("w", "i")
+        base = f"http://{handle.host}:{handle.port}/api/bridge/hmsvc"
+        got = {}
+
+        def fetch_all():
+            got["list"] = _get(base + "/list", token)
+            got["logs"] = _get(base + "/logs?name=nope", token)
+
+        t = threading.Thread(target=fetch_all, daemon=True)
+        t.start()
+        end = time.time() + 10
+        while t.is_alive() and time.time() < end:
+            qt_app.processEvents()
+            time.sleep(0.01)
+        check("real list route resolves to an object with `services`", isinstance(got.get("list"), dict) and isinstance(got["list"].get("services"), list))
+        check("real logs route resolves to an object with `lines`", isinstance(got.get("logs"), dict) and isinstance(got["logs"].get("lines"), list))
+    finally:
+        handle.stop()
+
+check("doc states list() resolves to {services}", "`{ services: [...] }`" in doc and "not a bare array" in doc)
+check("doc states logs() -> {lines} and start/stop/restart -> {ok, message}", "`{ lines: [...] }`" in doc and "`{ ok, message }`" in doc)
+check("doc points URL-only widgets at desk.state before the hmsvc walkthrough",
+      doc.index("Only need a service's URL?") < doc.index("calls `await desk.hmsvc.list()`"))
+blocks = re.findall(r"```js\n(.*?)```", doc, re.S)
+check("doc has the JS examples", any("desk.hmsvc.list()" in b for b in blocks) and any("desk.state.get" in b for b in blocks))
+if shutil.which("node") and "list" in got:
+    stub = (
+        "const desk = {hmsvc: {list: async () => (%s)}, events: {subscribe: async () => ({})}, state: {get: async () => ({value: {status: 'running', url: 'http://x/'}})}};\n"
+        "const fetch = async () => ({json: async () => ({})});\n" % json.dumps(got["list"])
+    )
+    for block in blocks:
+        if "desk.hmsvc.list()" in block or "desk.state.get(\"desk.hmsvc.hello\")" in block:
+            r = subprocess.run(["node", "-e", f"(async () => {{ {stub} {block} }})().catch(e => {{ console.error(e.message); process.exit(1); }})"],
+                               capture_output=True, text=True)
+            check(f"doc JS example runs against real response shapes: {block.strip().splitlines()[0][:50]}", r.returncode == 0)
+            if r.returncode:
+                print(r.stderr)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

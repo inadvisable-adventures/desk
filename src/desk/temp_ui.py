@@ -258,6 +258,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "shared widget file edits mark dependents stale #911413",
     "desk.agents.launch bridge api #507b8d5",
     "custom elements cloned from a template: set properties safely #c8bb4eb",
+    "hmsvc.list resolves to {services}; docs fixed #650713d",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1895,7 +1896,11 @@ built for genuine cross-widget signaling:
   surprisingly inside an embedded `ChromiumWidget`).
 - `desk.hmsvc.list()` / `.logs(name, limit)` / `.start(name)` /
   `.stop(name)` / `.restart(name)` (capability `hmsvc`) — manage the
-  project's Desk-hosted microservices (`desk_hmsvc/<name>/`). This is
+  project's Desk-hosted microservices (`desk_hmsvc/<name>/`). They
+  resolve to objects, never bare arrays: `list()` → `{ services: [...] }`,
+  `logs()` → `{ lines: [...] }`, `start/stop/restart()` → `{ ok, message }`.
+  If you only need a service's URL, read `desk.state` instead (no `hmsvc`
+  capability needed; see `tempui-hmsvc.md`). This is
   *management only*: `list()` gives each running service's current
   `url` (a new port every launch) and your widget then calls `fetch()`
   against it itself, so the service must send its own CORS headers. See
@@ -2498,15 +2503,23 @@ request gives the process a short grace period, then kills it.
 `desk.hmsvc.*` is **management only**; it does not proxy requests into
 the service. A `kind: "html"` widget with the `hmsvc` capability:
 
-1. calls `await desk.hmsvc.list()` -- each entry is `{name, description,
+**Only need a service's URL? Skip this and read `desk.state`
+(next section) -- it needs no `hmsvc` capability.** Use `desk.hmsvc.*`
+when the widget manages services (list them all, start/stop/restart,
+read logs).
+
+1. calls `await desk.hmsvc.list()` -- it resolves to an **object**,
+   `{ services: [...] }` (not a bare array), so destructure it:
+   `const { services } = await desk.hmsvc.list();`. Each entry is `{name, description,
    status, port, pid, url, external, lan_url, capabilities, autostart,
    started_at, exit_code}`; `url` (e.g. `http://127.0.0.1:53211/`) is
    `null` unless the service is `running`, and **the port is new on
    every launch**, so never hard-code or cache it across restarts;
 2. then does its own direct `fetch()` against that `url`.
 
-Also available: `desk.hmsvc.logs(name, limit)`, `start(name)`,
-`stop(name)`, `restart(name)`. Every status change is broadcast as the
+Also available: `desk.hmsvc.logs(name, limit)` (resolves to
+`{ lines: [...] }`), and `start(name)`, `stop(name)`, `restart(name)`
+(each resolves to `{ ok, message }`). Every status change is broadcast as the
 mediated event `desk.hmsvc.changed` (`{"services": [...]}`), so a widget
 can subscribe instead of polling. The `hmsvc` capability covers every
 service in the project; it is broader than "tell me one URL" -- for just
@@ -2597,10 +2610,20 @@ async def app(scope, receive, send):
     await send({"type": "http.response.body", "body": body})
 ```
 
-In a widget with the `hmsvc` capability:
+In a widget that only needs the URL (the `state` capability):
 
 ```js
-const services = await desk.hmsvc.list();
+const { value } = await desk.state.get("desk.hmsvc.hello");   // {status, url}, or null
+if (value && value.url) {
+  const reply = await (await fetch(value.url + "greet")).json();
+}
+```
+
+In a widget that manages services (the `hmsvc` capability) -- note
+`list()` resolves to `{ services }`, not a bare array:
+
+```js
+const { services } = await desk.hmsvc.list();
 const hello = services.find(s => s.name === "hello");
 if (hello && hello.url) {
   const reply = await (await fetch(hello.url + "greet")).json();
@@ -2913,6 +2936,15 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "hmsvc.list resolves to {services}; docs fixed #650713d": """- Doc fix, no behavior change: `tempui-hmsvc.md`'s worked example treated
+  `desk.hmsvc.list()` as a bare array, but it resolves to
+  `{ services: [...] }` (so `services.find` threw `TypeError`). The
+  example now destructures it, the return shapes of every `desk.hmsvc.*`
+  call are documented (`logs` -> `{ lines }`, `start/stop/restart` ->
+  `{ ok, message }`), and the example for the common "just need the URL"
+  case now leads with `desk.state.get("desk.hmsvc.<name>")`, which needs
+  no `hmsvc` capability.
+""",
     "custom elements cloned from a template: set properties safely #c8bb4eb": """- `<desk-select>` now works when built the way a widget usually builds
   controls -- cloned out of a `<template>`, a property set on the clone,
   then inserted. Previously `el.value = x` on the un-upgraded clone made
