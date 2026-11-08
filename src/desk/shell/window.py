@@ -500,6 +500,7 @@ class DeskWindow(QMainWindow):
         # TODO d15791d: banners for answers that arrived and new questions for the user.
         self._expert_notifier = ExpertNotifier(expert_registry.get_registry, parent=self)
         self._expert_notifier.announced.connect(self._on_expert_announcements)
+        self._expert_notifier.fallback_needed.connect(self._on_expert_fallbacks)
         self._expert_notifier.start()
         self._widget_logs = handle.widget_logs  # TODO 1f74c27
         # TODO b4d99a1: off unless DESK_FOCUS_LOG=1 (or a widget enables it).
@@ -1229,19 +1230,33 @@ class DeskWindow(QMainWindow):
             self._bind_widget_local_storage(frame, state)
         return frame.instance_id
 
-    def _build_desk_expert_instructions(self, question: str) -> str:
+    def _build_desk_expert_instructions(self, question: str, question_id: str | None = None) -> str:
         """The instructions file body for ask_desk_expert (TODO
         c4ef727). The source/docs locations are resolved concretely
         here (the checkout this running Desk was loaded from) rather
         than left for the session to hunt for."""
         source_root = Path(__file__).resolve().parents[3]
         project = current_context.get_current_desk_directory()
+        if question_id is None:
+            intro = (
+                "Another agent, running in this same session of Desk, has asked you the "
+                "following question about Desk and/or the current Desk session. Your job is to "
+                "answer it. Put your answer in this widget's own window (the user will read it "
+                "here and decide what to do with it); the asking agent will not see it.\n\n"
+            )
+        else:
+            intro = (
+                "An agent asked the built-in `desk` expert the following question about Desk and/or the "
+                "current Desk session, and nobody else answered in time. Your job is to answer it. "
+                f"When you have the answer, record it by calling the desk MCP tool "
+                f"desk_answer_expert_question with question_id \"{question_id}\" and answered_by "
+                "\"desk-fallback\" -- that is how the asking agent receives it (also say it here, in this "
+                "widget, for the user). If you cannot determine the answer, record that instead, saying what "
+                "you checked and what remains unknown.\n\n"
+            )
         return (
-            "Another agent, running in this same session of Desk, has asked you the "
-            "following question about Desk and/or the current Desk session. Your job is to "
-            "answer it. Put your answer in this widget's own window (the user will read it "
-            "here and decide what to do with it); the asking agent will not see it.\n\n"
-            "## The question (from another agent)\n\n"
+            intro
+            + "## The question (from another agent)\n\n"
             f"{question}\n\n"
             "## Where to look\n"
             f"- Desk's own source checkout, the code this Desk is running from: `{source_root}` "
@@ -1334,6 +1349,41 @@ class DeskWindow(QMainWindow):
             (center.x(), center.y()),
             widget.default_size,
             claude_extra_instructions=extra_instructions,
+        )
+        if frame is None:
+            raise ValueError("Could not place the Claude (Desk) widget.")
+        return frame.instance_id
+
+    def _on_expert_fallbacks(self, questions: list) -> None:
+        """TODO 86a837e: a question to the built-in `desk` expert went unanswered, so this Desk answers it."""
+        for question in questions:
+            try:
+                self.start_registry_desk_expert(question)
+            except ValueError:
+                # Could not place the session: hand the question back so another poll (or an expert) can try.
+                try:
+                    expert_registry.get_registry().reopen(question["question_id"])
+                except expert_registry.ExpertRegistryError:
+                    pass
+
+    def start_registry_desk_expert(self, question: dict) -> str:
+        """Places a Claude (Desk) session that answers a registry question to the `desk` expert and records
+        the answer with desk_answer_expert_question. Returns the widget's instance_id."""
+        widget = self._widgets.get(CLAUDE_DESK_WIDGET_ID)
+        if widget is None:
+            raise ValueError("The Claude (Desk) widget isn't available in this Desk.")
+        extra_instructions = self._write_claude_instructions_file(
+            self._build_desk_expert_instructions(question["question"], question_id=question["question_id"]),
+            prefix="expert",
+        )
+        center = self.view.mapToScene(self.view.viewport().rect().center())
+        frame = self._place_widget(
+            CLAUDE_DESK_WIDGET_ID,
+            widget,
+            (center.x(), center.y()),
+            widget.default_size,
+            claude_extra_instructions=extra_instructions,
+            claude_answer_question=True,
         )
         if frame is None:
             raise ValueError("Could not place the Claude (Desk) widget.")

@@ -57,9 +57,9 @@ try:
 
     experts = reg.list_experts()
     check("first use provisions the cluster; the built-in user expert exists",
-          reg.cluster_exists() and [e["expert_id"] for e in experts] == ["user"] and experts[0]["kind"] == "human")
+          reg.cluster_exists() and sorted(e["expert_id"] for e in experts) == ["desk", "user"] and [e for e in experts if e["expert_id"] == "user"][0]["kind"] == "human")
     reg.ensure()
-    check("ensure is idempotent", len(reg.list_experts()) == 1)
+    check("ensure is idempotent", len(reg.list_experts()) == 2)
 
     # experts
     e = reg.register_expert("docs-bot", "Docs bot", "answers doc questions", "agent", "me")
@@ -78,7 +78,7 @@ try:
     qid = q["question_id"]
     check("ask returns an open question without the note", q["status"] == "open" and "note_to_self" not in q and q["question"] == nasty)
     check("a hostile question and note are stored literally, tables intact",
-          reg.get_question(qid)["question"] == nasty and len(reg.list_experts()) == 2)
+          reg.get_question(qid)["question"] == nasty and len(reg.list_experts()) == 3)
     check("the expert-side read never includes the note", all("note_to_self" not in x for x in reg.list_questions("docs-bot")))
     check("the asker's read includes the note", reg.get_question(qid, include_note=True)["note_to_self"] == note)
     check("asking an unknown expert lists the registered ones", raises(lambda: reg.ask("nope", "q"), "docs-bot"))
@@ -108,6 +108,32 @@ try:
     reg.mark_announced(mk["question_id"], "question")
     check("mark_announced still suppresses a banner", reg.claim_announcements("/d/a") == [])
     reg.withdraw(mk["question_id"])
+
+    # -- the built-in desk expert's fallback (TODO 86a837e) --
+    d1 = reg.ask("desk", "how does X work?", "agent", origin="/d/a")
+    d2 = reg.ask("desk", "origin-less", "agent")
+    d3 = reg.ask("desk", "from B", "agent", origin="/d/b")
+    check("nothing is claimed before the wait is over", reg.claim_fallback("/d/a") == [])
+    got = reg.claim_fallback("/d/a", min_age_seconds=0)
+    check("a Desk claims its own and origin-less questions, not another Desk's",
+          sorted(x["question_id"] for x in got) == sorted([d1["question_id"], d2["question_id"]])
+          and all(x["status"] == "accepted" and x["accepted_by"] == "desk-fallback" for x in got))
+    check("a claim is not repeated", reg.claim_fallback("/d/a", min_age_seconds=0) == [])
+    check("the other Desk still gets its own", [x["question_id"] for x in reg.claim_fallback("/d/b", min_age_seconds=0)] == [d3["question_id"]])
+    d4 = reg.ask("desk", "someone is on it", "agent", origin="/d/a")
+    reg.accept(d4["question_id"], "human")
+    check("an already-accepted question is left alone", reg.claim_fallback("/d/a", min_age_seconds=0) == [])
+    d5 = reg.ask("desk", "by id", "agent", origin="/d/a")
+    d6 = reg.ask("desk", "other", "agent", origin="/d/a")
+    check("a claim can be limited to one question",
+          [x["question_id"] for x in reg.claim_fallback("/d/a", d5["question_id"], 0)] == [d5["question_id"]]
+          and reg.get_question(d6["question_id"])["status"] == "open")
+    reg.reopen(d5["question_id"])
+    check("reopen hands a claimed question back", reg.get_question(d5["question_id"])["status"] == "open")
+    reg.reopen(d4["question_id"])
+    check("reopen leaves someone else's acceptance alone", reg.get_question(d4["question_id"])["accepted_by"] == "human")
+    q_other = reg.ask("docs-bot", "not for desk", "agent", origin="/d/a")
+    check("only the desk expert is claimed", q_other["question_id"] not in [x["question_id"] for x in reg.claim_fallback("/d/a", min_age_seconds=0)])
 
     # -- several Desks (TODO 488cf49) --
     reg.register_expert("multi-bot", "Multi", "x", "agent", "t")

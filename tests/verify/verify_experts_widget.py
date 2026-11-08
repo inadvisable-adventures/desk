@@ -114,6 +114,44 @@ try:
           got_b == [] and [i["question"]["question_id"] for i in got_a] == [q1["question_id"]])
     check("and the other Desk never repeats it", cb.poll_once() == [] and ca.poll_once() == [])
 
+    # ---- the desk expert's fallback (TODO 86a837e) ----
+    fb = []
+    ca.fallback_needed.connect(fb.append)
+    dq = reg.ask("desk", "what is X?", "agent", origin="/desk/a")
+    ca.poll_once()
+    check("a fresh question to desk is not taken over yet", fb == [])
+    reg._exec(f"UPDATE expert_questions SET asked_at = now() - interval '30 seconds' WHERE question_id = '{dq['question_id']}';")
+    cb.poll_once()
+    check("another Desk does not take it over", fb == [])
+    ca.poll_once()
+    check("after the wait the asking Desk is told to answer it",
+          len(fb) == 1 and [q["question_id"] for q in fb[0]] == [dq["question_id"]]
+          and reg.get_question(dq["question_id"])["accepted_by"] == "desk-fallback")
+    ca.poll_once()
+    check("and only once", len(fb) == 1)
+
+    class _FallbackWin:
+        def __init__(self, fail):
+            self.fail, self.started = fail, []
+
+        def start_registry_desk_expert(self, question):
+            if self.fail:
+                raise ValueError("no widget")
+            self.started.append(question["question_id"])
+
+    from desk.shell.window import DeskWindow as _DW
+    _FallbackWin._on_expert_fallbacks = _DW.__dict__["_on_expert_fallbacks"]
+    ok_win = _FallbackWin(False)
+    ok_win._on_expert_fallbacks(fb[0])
+    check("the window starts a session for each", ok_win.started == [dq["question_id"]])
+    _FallbackWin(True)._on_expert_fallbacks(fb[0])
+    check("if it cannot, the question goes back to open", reg.get_question(dq["question_id"])["status"] == "open")
+    body = _DW.__dict__["_build_desk_expert_instructions"](type("S", (), {})(), "what is X?", question_id=dq["question_id"])
+    check("the session is told to record its answer against that question",
+          dq["question_id"] in body and "desk_answer_expert_question" in body and "desk-fallback" in body and "what is X?" in body)
+
+    reg.withdraw(dq["question_id"])  # keep the widget checks below about their own questions
+
     # ---- the window glue (real methods on a stand-in) ----
     class _View:
         def __init__(self):

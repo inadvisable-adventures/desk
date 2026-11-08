@@ -770,13 +770,21 @@ async def _git_commit(args: dict[str, Any]) -> dict[str, Any]:
     return _text_result(text, is_error=not ok)
 
 
+def _reopen_quietly(question_id: str) -> None:
+    try:
+        expert_registry.get_registry().reopen(question_id)
+    except ExpertRegistryError:
+        pass
+
+
 @tool(
     "desk_ask_desk_expert",
-    "Ask a question about Desk itself or the current Desk session. Places a new Claude (Desk) widget "
-    "whose agent can read Desk's own source and docs (and write diagnostic python widgets) and is told "
-    "to answer your question. Fire-and-forget: returns the new widget's instance_id at once; nothing "
-    "comes back to you -- the answer appears in that widget for the user. Put everything the expert "
-    "needs in the one string; it does not see this conversation. See tempui-ask-desk-expert.md.",
+    "Ask a question about Desk itself or the current Desk session. Shorthand for desk_ask_expert with expert_id "
+    "`desk`, answered at once by a new Claude (Desk) widget whose agent can read Desk's own source and docs (and "
+    "write diagnostic python widgets). Returns a question_id; the answer is recorded in the expert registry (check "
+    "desk_get_expert_question, and Desk notifies the user), and also appears in that widget. If the expert "
+    "registry is unavailable (no PostgreSQL) it falls back to fire-and-forget: nothing comes back to you. Put "
+    "everything the expert needs in the one string; it does not see this conversation. See tempui-ask-desk-expert.md.",
     {"question": str},
 )
 async def _ask_desk_expert(args: dict[str, Any]) -> dict[str, Any]:
@@ -786,9 +794,28 @@ async def _ask_desk_expert(args: dict[str, Any]) -> dict[str, Any]:
     question = str(args.get("question", "")).strip()
     if not question:
         return _text_result("question must be a non-empty string.", is_error=True)
+
+    def ask_and_claim() -> dict | None:
+        registry = expert_registry.get_registry()
+        asked = registry.ask(expert_registry.DESK_EXPERT_ID, question, "agent", origin=_expert_origin())
+        claimed = registry.claim_fallback(_expert_origin(), asked["question_id"], min_age_seconds=0)
+        return claimed[0] if claimed else None
+
     try:
+        claimed = await asyncio.to_thread(ask_and_claim)
+    except ExpertRegistryError:
+        claimed = None  # no registry: the old fire-and-forget behavior below
+    try:
+        if claimed is not None:
+            instance_id = await _call_on_gui_thread(lambda: window.start_registry_desk_expert(claimed))
+            return _text_result(
+                f"Asked the `desk` expert (question_id {claimed['question_id']}); a Desk expert widget "
+                f"(instance_id {instance_id}) is answering. Check desk_get_expert_question for the answer."
+            )
         instance_id = await _call_on_gui_thread(lambda: window.ask_desk_expert(question))
     except (RuntimeError, ValueError) as e:
+        if claimed is not None:
+            await asyncio.to_thread(_reopen_quietly, claimed["question_id"])
         return _text_result(str(e), is_error=True)
     return _text_result(
         f"Placed a Desk expert widget (instance_id {instance_id}). It will answer in its own window; "

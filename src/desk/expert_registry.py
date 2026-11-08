@@ -31,6 +31,9 @@ from pathlib import Path
 EXPERTS_CHANGED_EVENT = "desk.experts.changed"
 DEFAULT_PGDATA = Path.home() / ".desk" / "experts" / "pgdata"
 DBNAME = "desk_experts"
+DESK_EXPERT_ID = "desk"  # questions about Desk itself; a local Claude (Desk) session answers if nobody does
+FALLBACK_ACCEPTED_BY = "desk-fallback"
+FALLBACK_AFTER_SECONDS = 20
 USER_EXPERT_ID = "user"  # the built-in human expert, answered through the Experts widget
 KINDS = ("human", "hmsvc", "agent")
 STATUSES = ("open", "accepted", "answered", "withdrawn")
@@ -80,6 +83,9 @@ CREATE TABLE IF NOT EXISTS desk_presence (
 CREATE INDEX IF NOT EXISTS expert_questions_status_idx ON expert_questions (status, asked_at);
 INSERT INTO experts (expert_id, name, description, kind, registered_by)
 VALUES ('user', 'You', 'The person using this Desk; questions are answered in the Experts widget.', 'human', 'desk')
+ON CONFLICT (expert_id) DO NOTHING;
+INSERT INTO experts (expert_id, name, description, kind, registered_by)
+VALUES ('desk', 'Desk', 'Questions about Desk itself or the running Desk session. If nobody answers within about 20 seconds, Desk starts a local Claude (Desk) session that reads its own source and docs and answers.', 'agent', 'desk')
 ON CONFLICT (expert_id) DO NOTHING;
 """
 
@@ -395,6 +401,33 @@ class ExpertRegistry:
             )
             found += [{"kind": kind, "question": row} for row in rows]
         return found
+
+    def claim_fallback(self, origin: str, question_id: str = "", min_age_seconds: float = FALLBACK_AFTER_SECONDS) -> list[dict]:
+        """Atomically takes the still-open questions to the built-in `desk` expert that the Desk at `origin`
+        should answer itself -- asked from that Desk (or with no recorded Desk) at least `min_age_seconds` ago
+        -- marking each accepted by "desk-fallback" so nobody else picks it up. A question someone has
+        already accepted is left alone. `question_id` limits the claim to one question."""
+        rows = self._json(
+            "WITH r AS (UPDATE expert_questions SET status = 'accepted', accepted_by = :'by' "
+            "WHERE expert_id = :'eid' AND status = 'open' AND (origin = '' OR origin = :'origin') "
+            "AND asked_at <= now() - (:'age')::float8 * interval '1 second' "
+            "AND (:'qid' = '' OR question_id = :'qid') RETURNING " + _PUBLIC_COLUMNS + ") "
+            "SELECT coalesce(json_agg(r), '[]'::json) FROM r;",
+            by=FALLBACK_ACCEPTED_BY, eid=DESK_EXPERT_ID, origin=self._text(origin, "origin", required=False),
+            age=str(float(min_age_seconds)), qid=question_id,
+        )
+        for row in rows:
+            self._changed("question", row["question_id"])
+        return rows
+
+    def reopen(self, question_id: str) -> None:
+        """Hands a question the fallback claimed but could not start back to `open`."""
+        self._json(
+            "WITH r AS (UPDATE expert_questions SET status = 'open', accepted_by = NULL WHERE question_id = :'qid' "
+            "AND status = 'accepted' AND accepted_by = :'by' RETURNING 1) SELECT coalesce(json_agg(r), '[]'::json) FROM r;",
+            qid=self._text(question_id, "question_id"), by=FALLBACK_ACCEPTED_BY,
+        )
+        self._changed("question", question_id)
 
     def mark_announced(self, question_id: str, kind: str) -> None:
         column = {"answer": "answer_notified_at", "question": "expert_notified_at"}.get(kind)

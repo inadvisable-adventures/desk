@@ -269,6 +269,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "hmsvc.list resolves to {services}; docs fixed #650713d",
     "discuss/expert sessions use Claude (Desk) #275381",
     "expert banners: one Desk, the asking one #983312",
+    "desk expert: local fallback answers in 20s #379639",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -951,6 +952,18 @@ records the asking Desk's directory). If that Desk has been closed for a
 little while, or the question has no recorded Desk, whichever Desk is
 running announces it instead.
 
+## The built-in `desk` expert
+
+`desk` answers questions about Desk itself or the running session (how a
+feature behaves, why something timed out, what is on the canvas). A person
+or a Desk-hosted service may answer for it like any expert. If a question to
+`desk` is still `open` (nobody has accepted it) after about 20 seconds, the
+Desk it was asked from starts a Claude (Desk) session that reads Desk's own
+source and docs, answers, and records the answer as `desk-fallback`; you get
+it the usual way (`desk_get_expert_question`, plus the notification). A
+question someone has already accepted is left alone. `desk_ask_desk_expert`
+is shorthand for asking `desk` and having that session start immediately.
+
 ## A Desk-hosted service as an expert
 
 An hmsvc (`tempui-hmsvc.md`) can register itself as an expert and answer
@@ -1034,9 +1047,10 @@ See `desk-temporary-ui.md` (in this same directory) for this
 directory's own overview and its current set of tags. This is not a
 tempui-DSL file type: it is one MCP tool on the `desk` server.
 
-`desk_ask_desk_expert(question)` takes a single string. Desk places a
-new Claude (Desk) widget on the canvas and starts an agent in it whose
-prompt contains:
+`desk_ask_desk_expert(question)` takes a single string. It is shorthand for
+asking the built-in `desk` expert (`tempui-experts.md`) and having Desk
+answer at once. Desk places a new Claude (Desk) widget on the canvas and
+starts an agent in it whose prompt contains:
 
 - the usual "you are running inside of Desk" orientation and tool list;
 - the location of Desk's own source checkout (the code this very Desk
@@ -1051,10 +1065,12 @@ It is told to answer your question, not to wait for the user.
 
 ## What to expect
 
-- **Fire-and-forget.** The call returns the new widget's `instance_id`
-  immediately. Nothing is returned to you later: the answer lands in the
-  new widget's own window, and the user decides what to do with it.
-  Do not wait on it or poll for it.
+- **Does not wait.** The call returns at once with a `question_id` and the
+  new widget's `instance_id`. The answer is recorded in the expert registry
+  (read it with `desk_get_expert_question`; Desk also notifies the user) and
+  appears in the new widget's window. Do not block on it. Only when the
+  expert registry is unavailable (no PostgreSQL) does it fall back to
+  fire-and-forget, where nothing comes back to you.
 - It runs as an ordinary Claude (Desk) session: the user may see
   permission prompts in that widget for reads outside the project.
 - Put everything the expert needs in the one string (what you tried,
@@ -3164,6 +3180,13 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "desk expert: local fallback answers in 20s #379639": """- There is now a built-in expert **`desk`** for questions about Desk itself
+  or the running session. If nobody answers one within about 20 seconds,
+  the Desk you asked from starts a Claude (Desk) session that reads Desk's
+  source and docs and records the answer, so `desk_ask_expert("desk", ...)`
+  does get an answer back. `desk_ask_desk_expert` is now shorthand for that,
+  answered at once. See `tempui-experts.md` and `tempui-ask-desk-expert.md`.
+""",
     "hmsvc.list resolves to {services}; docs fixed #650713d": """- Doc fix, no behavior change: `tempui-hmsvc.md`'s worked example treated
   `desk.hmsvc.list()` as a bare array, but it resolves to
   `{ services: [...] }` (so `services.find` threw `TypeError`). The
