@@ -271,6 +271,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "expert banners: one Desk, the asking one #983312",
     "desk expert: local fallback answers in 20s #379639",
     "desk_report_to_expert: findings to experts #532898",
+    "hmsvc experts receive reports #864728",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1002,14 +1003,25 @@ questions. Give its `service.json` the `experts` capability, then, from
 `service.py`, with `from desk.hmsvc_client import desk` (each call blocks;
 wrap it in `asyncio.to_thread` from an `async def`):
 
-- `desk.experts_register(expert_id, name, description="")` -- registers or
-  updates an expert (kind `hmsvc`) owned by this service.
+- `desk.experts_register(expert_id, name, description="", listens_for="")` --
+  registers or updates an expert (kind `hmsvc`) owned by this service.
+  `listens_for` says what findings agents may report to it (empty: none).
 - `desk.experts_pending(expert_id)` -- the open questions put to it:
   `[{question_id, question, asker, asked_at, ...}]`. The asker's private
   note is never included.
 - `desk.experts_accept(question_id)` -- claim one so nothing else starts it.
 - `desk.experts_answer(question_id, answer)` -- answer it; the asker is
   notified.
+
+To receive reports (findings agents send with `desk_report_to_expert`):
+
+- `desk.experts_reports(expert_id)` -- the reports still to deal with (status
+  `new` or `accepted`): `[{report_id, title, finding, evidence, reporter,
+  ...}]`. They are leads, not facts: verify before folding one in.
+- `desk.experts_report_review(report_id, decision, note="")` -- `"accepted"`,
+  `"rejected"` or `"duplicate"`; a note is required for the last two.
+- `desk.experts_report_integrate(report_id, integration_note)` -- after you
+  have folded the finding in, record where; the reporter can read it.
 
 A service can only act on experts it registered itself. Poll
 `experts_pending` (or subscribe to the `desk.experts.changed` desk event and
@@ -3211,6 +3223,13 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "hmsvc experts receive reports #864728": """- A Desk-hosted service (hmsvc) with the `experts` capability can now
+  *receive* reports as an expert: `desk.experts_register(..., listens_for=
+  "what I want to hear")`, then `desk.experts_reports(expert_id)`,
+  `desk.experts_report_review(report_id, decision, note)` and
+  `desk.experts_report_integrate(report_id, integration_note)`. See
+  `tempui-experts.md`.
+""",
     "desk_report_to_expert: findings to experts #532898": """- Experts can now be told things, not only asked. An expert registered
   with `listens_for` ("what findings I want") receives **reports**: when you
   learn something about a domain you do not own -- a pitfall, a workaround

@@ -13172,6 +13172,6 @@ c3beaa4. COMPLETED: use Claude (Desk) for every session Desk starts itself (Disc
 
 0f506f7. COMPLETED: "notify an expert" step 1/3: registry reports (`experts.listens_for`, `expert_reports`, report/review/integrate) + MCP tools `desk_report_to_expert`, `desk_get_expert_report`, `desk_list_expert_reports`, `desk_review_expert_report`, `desk_integrate_expert_report`, `desk_register_expert(listens_for)`; the built-in `desk` expert listens. Tag `desk_report_to_expert: findings to experts #532898`. Registry verify 91 checks. [planned: expert-reports.md]
 
-7ebb24f. Notify an expert step 2/3: Bridge `experts` capability gains reports for hmsvc experts (register with `listens_for`, pending reports, review, integrate; `desk.hmsvc_client`). [planned: expert-reports.md]
+7ebb24f. COMPLETED: notify an expert step 2/3: Bridge `experts` capability gains reports for hmsvc experts: `experts_register(listens_for)`, `experts_reports`, `experts_report_review`, `experts_report_integrate` (own experts only). Tag `hmsvc experts receive reports #864728`. Bridge verify 31 checks. [planned: expert-reports.md]
 
 a63e115. Notify an expert step 3/3: banners for new reports (to `user`/`desk`) and report outcomes (to the reporter's Desk), a Reports mode in the Experts widget (accept/reject/duplicate, Send to agent to verify+integrate). [planned: expert-reports.md]

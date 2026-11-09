@@ -210,6 +210,18 @@ class ExpertRegisterRequest(BaseModel):
     expert_id: str
     name: str
     description: str = ""
+    listens_for: str = ""  # TODO 7ebb24f: what findings this expert wants reported to it (empty = none)
+
+
+class ExpertReportReviewRequest(BaseModel):
+    report_id: str
+    decision: str
+    note: str = ""
+
+
+class ExpertReportIntegrateRequest(BaseModel):
+    report_id: str
+    integration_note: str
 
 
 class ExpertAnswerRequest(BaseModel):
@@ -739,7 +751,7 @@ def create_app(
     async def experts_register(body: ExpertRegisterRequest, widget: WidgetInfo = Depends(require_caller("experts"))):
         caller = require_service_caller(widget)
         return await run_registry(
-            lambda reg: reg.register_expert(body.expert_id, body.name, body.description, "hmsvc", caller)
+            lambda reg: reg.register_expert(body.expert_id, body.name, body.description, "hmsvc", caller, body.listens_for)
         )
 
     @app.get("/api/bridge/experts/pending")
@@ -771,6 +783,48 @@ def create_app(
             return reg.answer(body.question_id, body.answer, caller)
 
         return await run_registry(answer)
+
+    def own_report(registry, report_id: str, caller: str) -> dict:
+        report = registry.get_report(report_id)
+        if report is None:
+            raise ExpertRegistryError(f"No report {report_id!r}.")
+        own_expert(registry, report["expert_id"], caller)
+        return report
+
+    # TODO 7ebb24f: reports (findings agents send to listening experts) for a service's own experts.
+    @app.get("/api/bridge/experts/reports")
+    async def experts_reports(expert_id: str, widget: WidgetInfo = Depends(require_caller("experts"))):
+        caller = require_service_caller(widget)
+
+        def pending(reg):
+            own_expert(reg, expert_id, caller)
+            return reg.list_reports(expert_id, list(expert_registry.OPEN_REPORT_STATUSES))
+
+        return await run_registry(pending)
+
+    @app.post("/api/bridge/experts/reports/review")
+    async def experts_report_review(
+        body: ExpertReportReviewRequest, widget: WidgetInfo = Depends(require_caller("experts"))
+    ):
+        caller = require_service_caller(widget)
+
+        def review(reg):
+            own_report(reg, body.report_id, caller)
+            return reg.review_report(body.report_id, body.decision, body.note, caller)
+
+        return await run_registry(review)
+
+    @app.post("/api/bridge/experts/reports/integrate")
+    async def experts_report_integrate(
+        body: ExpertReportIntegrateRequest, widget: WidgetInfo = Depends(require_caller("experts"))
+    ):
+        caller = require_service_caller(widget)
+
+        def integrate(reg):
+            own_report(reg, body.report_id, caller)
+            return reg.integrate_report(body.report_id, body.integration_note, caller)
+
+        return await run_registry(integrate)
 
     @app.get("/api/bridge/events/poll")
     async def events_poll(

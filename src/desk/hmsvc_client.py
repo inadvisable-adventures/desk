@@ -100,9 +100,13 @@ class DeskClient:
     # Requires the `experts` capability in service.json. A service answers
     # questions put to experts it registered itself; see tempui-experts.md.
 
-    def experts_register(self, expert_id: str, name: str, description: str = "") -> dict:
-        """Registers (or updates) this service as an expert and returns the record."""
-        return self._call("POST", "/api/bridge/experts/register", {"expert_id": expert_id, "name": name, "description": description})
+    def experts_register(self, expert_id: str, name: str, description: str = "", listens_for: str = "") -> dict:
+        """Registers (or updates) this service as an expert and returns the record. `listens_for` says what
+        findings agents may report to it (empty: none); see experts_reports."""
+        return self._call(
+            "POST", "/api/bridge/experts/register",
+            {"expert_id": expert_id, "name": name, "description": description, "listens_for": listens_for},
+        )
 
     def experts_pending(self, expert_id: str) -> list:
         """Open questions put to `expert_id`: `[{question_id, question, asker, asked_at, ...}]`."""
@@ -115,6 +119,21 @@ class DeskClient:
     def experts_answer(self, question_id: str, answer: str) -> dict:
         """Answers an open or accepted question; the asker is notified."""
         return self._call("POST", "/api/bridge/experts/answer", {"question_id": question_id, "answer": answer})
+
+    def experts_reports(self, expert_id: str) -> list:
+        """Findings reported to `expert_id` still to deal with (status new or accepted):
+        `[{report_id, title, finding, evidence, reporter, status, ...}]`. Treat them as leads to verify."""
+        return self._call("GET", "/api/bridge/experts/reports", query={"expert_id": expert_id})
+
+    def experts_report_review(self, report_id: str, decision: str, note: str = "") -> dict:
+        """Evaluates a report: decision "accepted", "rejected" or "duplicate" (a note is required for the last two)."""
+        return self._call("POST", "/api/bridge/experts/reports/review", {"report_id": report_id, "decision": decision, "note": note})
+
+    def experts_report_integrate(self, report_id: str, integration_note: str) -> dict:
+        """Records that a report has been folded into what this service knows; the note says where."""
+        return self._call(
+            "POST", "/api/bridge/experts/reports/integrate", {"report_id": report_id, "integration_note": integration_note}
+        )
 
 
 desk = DeskClient()
