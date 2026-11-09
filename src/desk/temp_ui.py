@@ -270,6 +270,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "discuss/expert sessions use Claude (Desk) #275381",
     "expert banners: one Desk, the asking one #983312",
     "desk expert: local fallback answers in 20s #379639",
+    "desk_report_to_expert: findings to experts #532898",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -906,8 +907,8 @@ then**. Asking never waits.
 ## MCP tools
 
 - `desk_list_experts()` -- `[{expert_id, name, description, kind,
-  registered_by}]`; `kind` is `human`, `agent` or `hmsvc`.
-- `desk_register_expert(expert_id, name, description?, kind?, registered_by?)`
+  registered_by, listens_for}]`; `kind` is `human`, `agent` or `hmsvc`.
+- `desk_register_expert(expert_id, name, description?, kind?, registered_by?, listens_for?)`
   -- offer yourself (or a person) as an answerer. `expert_id` is lowercase
   letters, digits, `.`, `_`, `-`. An expert can only be updated by whoever
   registered it (pass the same `registered_by`).
@@ -927,6 +928,36 @@ then**. Asking never waits.
   question that is `open` or `accepted`.
 
 Every change publishes the desk event `desk.experts.changed`.
+
+## Reporting findings to an expert
+
+Experts can also be **told** things. Sometimes an agent learns something
+about a domain it does not own (a library pitfall, a Desk quirk, a doc that
+is wrong, a workaround that worked) and the expert who maintains that
+knowledge would want to know. An expert opts in by registering with
+`listens_for` (a sentence saying what it wants to hear); `desk_list_experts`
+shows it. The built-in `desk` expert listens for findings about Desk itself.
+
+- `desk_report_to_expert(expert_id, title, finding, evidence?, reporter?)`
+  -- returns a `report_id` at once and never waits. Make it self-contained and
+  report what you actually observed, with the evidence (commands, paths, exact
+  output). Reporting to an expert that is not listening is refused, and the
+  error lists the experts that are.
+- `desk_get_expert_report(report_id)` -- your view: `status` (`new`,
+  `accepted`, `rejected`, `duplicate`, `integrated`), the expert's
+  `review_note`, and once folded in, the `integration_note` saying where.
+- `desk_list_expert_reports(expert_id, status?)` -- the expert's view; by
+  default the reports still to deal with (`new` and `accepted`).
+- `desk_review_expert_report(report_id, decision, note?, reviewed_by?)` --
+  `accepted` (worth keeping), `rejected` or `duplicate` (a note is required, so
+  the reporter learns why).
+- `desk_integrate_expert_report(report_id, integration_note, integrated_by?)`
+  -- after you have actually folded the finding into what you maintain, record
+  where. Do the integration first; this only records it.
+
+An expert that is an agent should check `desk_list_expert_reports` when it
+starts work in its domain. Treat a report as a lead, not a fact: verify it
+before integrating, and reject it if it does not hold.
 
 ## The Experts widget and notifications
 
@@ -3180,6 +3211,16 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "desk_report_to_expert: findings to experts #532898": """- Experts can now be told things, not only asked. An expert registered
+  with `listens_for` ("what findings I want") receives **reports**: when you
+  learn something about a domain you do not own -- a pitfall, a workaround
+  that worked, a doc that is wrong -- call `desk_report_to_expert`
+  (`desk_list_experts` shows who listens). The expert evaluates it later with
+  `desk_review_expert_report` and folds it in with
+  `desk_integrate_expert_report`; you read the outcome with
+  `desk_get_expert_report`. The built-in `desk` expert listens for findings
+  about Desk itself. See `tempui-experts.md`.
+""",
     "desk expert: local fallback answers in 20s #379639": """- There is now a built-in expert **`desk`** for questions about Desk itself
   or the running session. If nobody answers one within about 20 seconds,
   the Desk you asked from starts a Claude (Desk) session that reads Desk's

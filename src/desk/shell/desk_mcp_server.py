@@ -1258,7 +1258,8 @@ async def _list_experts(args: dict[str, Any]) -> dict[str, Any]:
 @tool(
     "desk_register_expert",
     "Register (or update) an expert so others can ask it questions: expert_id (lowercase letters, digits, . _ -), a "
-    "display name, and a description of what it can answer. kind is 'agent' (default) or 'human'; a "
+    "display name, and a description of what it can answer; optionally `listens_for`, what findings it wants "
+    "reported to it (see desk_report_to_expert). kind is 'agent' (default) or 'human'; a "
     "Desk-hosted service registers itself through the Bridge instead. You can only update an expert you "
     "registered. See tempui-experts.md.",
     {
@@ -1269,6 +1270,11 @@ async def _list_experts(args: dict[str, Any]) -> dict[str, Any]:
             "description": {"type": "string"},
             "kind": {"type": "string", "enum": ["agent", "human"]},
             "registered_by": {"type": "string", "description": "Who is registering (any label); needed again to update."},
+            "listens_for": {
+                "type": "string",
+                "description": "Optional. What findings this expert wants to be told about (agents send them with "
+                "desk_report_to_expert). Leave empty to not receive reports.",
+            },
         },
         "required": ["expert_id", "name"],
     },
@@ -1277,7 +1283,7 @@ async def _register_expert(args: dict[str, Any]) -> dict[str, Any]:
     return await _expert_call(
         lambda reg: reg.register_expert(
             args.get("expert_id", ""), args.get("name", ""), args.get("description", ""),
-            args.get("kind", "agent"), args.get("registered_by", ""),
+            args.get("kind", "agent"), args.get("registered_by", ""), args.get("listens_for", ""),
         )
     )
 
@@ -1379,6 +1385,121 @@ async def _answer_expert_question(args: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+# ---- Reports to listening experts (TODO 0f506f7) -- see tempui-experts.md ----
+
+
+@tool(
+    "desk_report_to_expert",
+    "Tell a listening expert something you learned about their domain that they would want to know: a quirk, a "
+    "pitfall, a workaround that worked, a correction to something documented. Experts that accept reports show a "
+    "non-empty `listens_for` in desk_list_experts. Returns a report_id at once and does NOT wait: the expert "
+    "evaluates it later and may reject it, call it a duplicate, or fold it in; check desk_get_expert_report. "
+    "Make it self-contained (the expert does not see your conversation): `title` is a short headline, `finding` the "
+    "finding itself, `evidence` what supports it (commands run, file paths, exact output). Report what you actually "
+    "observed, not guesses. See tempui-experts.md.",
+    {
+        "type": "object",
+        "properties": {
+            "expert_id": {"type": "string"},
+            "title": {"type": "string"},
+            "finding": {"type": "string"},
+            "evidence": {"type": "string"},
+            "reporter": {"type": "string", "description": "A label for who is reporting (default 'agent')."},
+        },
+        "required": ["expert_id", "title", "finding"],
+    },
+)
+async def _report_to_expert(args: dict[str, Any]) -> dict[str, Any]:
+    return await _expert_call(
+        lambda reg: reg.report(
+            args.get("expert_id", ""), args.get("title", ""), args.get("finding", ""), args.get("evidence", ""),
+            args.get("reporter") or "agent", origin=_expert_origin(),
+        )
+    )
+
+
+@tool(
+    "desk_get_expert_report",
+    "The reporter's view of one report: its status ('new', 'accepted', 'rejected', 'duplicate', 'integrated'), the "
+    "expert's review note and, once folded in, the integration note saying where. Read-only.",
+    {"type": "object", "properties": {"report_id": {"type": "string"}}, "required": ["report_id"]},
+)
+async def _get_expert_report(args: dict[str, Any]) -> dict[str, Any]:
+    def get(reg):
+        report = reg.get_report(args.get("report_id", ""))
+        if report is None:
+            raise ExpertRegistryError(f"No report {args.get('report_id')!r}.")
+        return report
+
+    return await _expert_call(get)
+
+
+@tool(
+    "desk_list_expert_reports",
+    "The expert's view: findings reported to expert_id, newest first. Default only those still to deal with "
+    "(status 'new' and 'accepted'); also accepts 'rejected', 'duplicate', 'integrated' or 'all'. Read-only.",
+    {
+        "type": "object",
+        "properties": {
+            "expert_id": {"type": "string"},
+            "status": {"type": "string", "enum": ["pending", "new", "accepted", "rejected", "duplicate", "integrated", "all"]},
+        },
+        "required": ["expert_id"],
+    },
+)
+async def _list_expert_reports(args: dict[str, Any]) -> dict[str, Any]:
+    status = args.get("status") or "pending"
+    statuses = None if status == "all" else (list(expert_registry.OPEN_REPORT_STATUSES) if status == "pending" else [status])
+    return await _expert_call(lambda reg: reg.list_reports(args.get("expert_id", ""), statuses))
+
+
+@tool(
+    "desk_review_expert_report",
+    "Evaluate a report that is 'new' or 'accepted': decision 'accepted' (worth keeping; fold it in with "
+    "desk_integrate_expert_report), 'rejected' (wrong, unsupported or out of scope) or 'duplicate' (already known). "
+    "A note is required for 'rejected' and 'duplicate' -- the reporter reads it to learn why.",
+    {
+        "type": "object",
+        "properties": {
+            "report_id": {"type": "string"},
+            "decision": {"type": "string", "enum": ["accepted", "rejected", "duplicate"]},
+            "note": {"type": "string"},
+            "reviewed_by": {"type": "string"},
+        },
+        "required": ["report_id", "decision"],
+    },
+)
+async def _review_expert_report(args: dict[str, Any]) -> dict[str, Any]:
+    return await _expert_call(
+        lambda reg: reg.review_report(
+            args.get("report_id", ""), args.get("decision", ""), args.get("note", ""), args.get("reviewed_by", "")
+        )
+    )
+
+
+@tool(
+    "desk_integrate_expert_report",
+    "Record that a report ('new' or 'accepted') has been folded into what the expert knows or maintains. "
+    "`integration_note` says where and how (the file or doc changed, the TODO opened) so the reporter and later "
+    "readers can find it. Do the integration first; this only records it.",
+    {
+        "type": "object",
+        "properties": {
+            "report_id": {"type": "string"},
+            "integration_note": {"type": "string"},
+            "integrated_by": {"type": "string"},
+        },
+        "required": ["report_id", "integration_note"],
+    },
+)
+async def _integrate_expert_report(args: dict[str, Any]) -> dict[str, Any]:
+    return await _expert_call(
+        lambda reg: reg.integrate_report(
+            args.get("report_id", ""), args.get("integration_note", ""), args.get("integrated_by", "")
+        )
+    )
+
+
 _TOOLS = [
     _reveal_widget,
     _place_widget_tool,
@@ -1419,6 +1540,11 @@ _TOOLS = [
     _list_expert_questions,
     _accept_expert_question,
     _answer_expert_question,
+    _report_to_expert,
+    _get_expert_report,
+    _list_expert_reports,
+    _review_expert_report,
+    _integrate_expert_report,
 ]
 
 

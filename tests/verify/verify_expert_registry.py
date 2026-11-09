@@ -167,6 +167,38 @@ try:
     check("handoff is stamped", reg.get_question(qid)["handed_off_at"] is not None)
     check("listeners saw question changes", ("question", qid) in changes)
 
+    # -- reports to listening experts (TODO 0f506f7) --
+    check("the desk expert listens by default, user does not",
+          [e["expert_id"] for e in reg.listening_experts()] == ["desk"])
+    check("a report to a non-listening expert is refused, naming who listens",
+          raises(lambda: reg.report("docs-bot", "t", "f"), "not listening") and raises(lambda: reg.report("docs-bot", "t", "f"), "desk ("))
+    check("reporting to an unknown expert is refused", raises(lambda: reg.report("nope", "t", "f"), "No expert"))
+    lst = reg.register_expert("lib-expert", "Lib", "knows libs", "agent", "t", listens_for="Pitfalls of library X")
+    check("registering with listens_for makes an expert listen", lst["listens_for"] == "Pitfalls of library X"
+          and "lib-expert" in [e["expert_id"] for e in reg.listening_experts()])
+    check("empty title or finding refused", raises(lambda: reg.report("lib-expert", " ", "f"), "title")
+          and raises(lambda: reg.report("lib-expert", "t", ""), "finding"))
+    rep = reg.report("lib-expert", "X leaks handles", "X leaks a handle per call", "ran: lsof | wc -l", "agent", "/d/a")
+    check("a report starts new and carries what was given",
+          rep["status"] == "new" and rep["title"] == "X leaks handles" and rep["evidence"] == "ran: lsof | wc -l" and rep["reporter"] == "agent")
+    hostile = "'; DROP TABLE expert_reports; -- \\ :'x' \n\"q\""
+    h = reg.report("lib-expert", hostile, hostile, hostile)
+    check("hostile text is stored literally", reg.get_report(h["report_id"])["finding"] == hostile)
+    check("list defaults and filters", len(reg.list_reports("lib-expert", ["new"])) == 2 and reg.list_reports("lib-expert", ["integrated"]) == []
+          and raises(lambda: reg.list_reports("lib-expert", ["x"]), "status"))
+    check("bad decision refused", raises(lambda: reg.review_report(rep["report_id"], "maybe"), "decision"))
+    check("rejecting needs a note", raises(lambda: reg.review_report(rep["report_id"], "rejected"), "note"))
+    r1 = reg.review_report(rep["report_id"], "accepted", "", "lib-agent")
+    check("accepting records who and when", r1["status"] == "accepted" and r1["reviewed_by"] == "lib-agent" and r1["reviewed_at"])
+    r2 = reg.integrate_report(rep["report_id"], "Added to docs/pitfalls.md", "lib-agent")
+    check("integrating records the note", r2["status"] == "integrated" and r2["integration_note"] == "Added to docs/pitfalls.md" and r2["integrated_at"])
+    check("an integrated report cannot be reviewed again", raises(lambda: reg.review_report(rep["report_id"], "rejected", "n"), "integrated"))
+    check("integration needs a note", raises(lambda: reg.integrate_report(h["report_id"], " "), "integration_note"))
+    d = reg.review_report(h["report_id"], "duplicate", "same as the pitfalls doc")
+    check("duplicate keeps the reason", d["status"] == "duplicate" and d["review_note"] == "same as the pitfalls doc")
+    check("an unknown report id is reported", raises(lambda: reg.review_report("nope", "accepted"), "No report"))
+    check("listeners saw report changes", ("report", rep["report_id"]) in changes)
+
     # the cluster going away is recovered from
     reg.stop()
     check("a stopped cluster is brought back on the next call", reg.get_question(qid)["status"] == "answered")
@@ -183,6 +215,8 @@ try:
     names = {"desk_list_experts", "desk_register_expert", "desk_ask_expert", "desk_get_expert_question",
              "desk_list_expert_questions", "desk_accept_expert_question", "desk_answer_expert_question"}
     check("all seven tools are registered", names <= {t.name for t in mcp._TOOLS})
+    check("the five report tools are registered", {"desk_report_to_expert", "desk_get_expert_report", "desk_list_expert_reports",
+          "desk_review_expert_report", "desk_integrate_expert_report"} <= {t.name for t in mcp._TOOLS})
     res, text = call(mcp._list_experts, {})
     check("list tool returns JSON", not res["is_error"] and {x["expert_id"] for x in json.loads(text)} >= {"user", "docs-bot"})
     res, text = call(mcp._register_expert, {"expert_id": "mcp-bot", "name": "MCP bot", "registered_by": "t"})
@@ -196,6 +230,27 @@ try:
     check("expert-side list is open-only and note-free", [x["question_id"] for x in json.loads(text)] == [mq] and "secret" not in text)
     res, text = call(mcp._accept_expert_question, {"question_id": mq, "accepted_by": "bot"})
     check("accept tool works", json.loads(text)["status"] == "accepted")
+    res, text = call(mcp._register_expert, {"expert_id": "mcp-ears", "name": "Ears", "registered_by": "t", "listens_for": "anything about ears"})
+    check("register tool takes listens_for", not res["is_error"] and json.loads(text)["listens_for"] == "anything about ears")
+    res, text = call(mcp._report_to_expert, {"expert_id": "mcp-bot", "title": "t", "finding": "f"})
+    check("reporting to a non-listener is a tool error", res["is_error"] and "not listening" in text)
+    res, text = call(mcp._report_to_expert, {"expert_id": "mcp-ears", "title": "Ears ring", "finding": "they do", "evidence": "e"})
+    rid = json.loads(text)["report_id"]
+    check("report tool returns a report id", not res["is_error"] and json.loads(text)["status"] == "new")
+    res, text = call(mcp._list_expert_reports, {"expert_id": "mcp-ears"})
+    check("expert-side report list defaults to pending", [x["report_id"] for x in json.loads(text)] == [rid])
+    res, text = call(mcp._review_expert_report, {"report_id": rid, "decision": "accepted"})
+    check("review tool works", json.loads(text)["status"] == "accepted")
+    res, text = call(mcp._list_expert_reports, {"expert_id": "mcp-ears"})
+    check("accepted is still pending", len(json.loads(text)) == 1)
+    res, text = call(mcp._integrate_expert_report, {"report_id": rid, "integration_note": "in ears.md"})
+    check("integrate tool works", json.loads(text)["status"] == "integrated")
+    res, text = call(mcp._get_expert_report, {"report_id": rid})
+    check("reporter's get shows the outcome", json.loads(text)["integration_note"] == "in ears.md")
+    res, text = call(mcp._list_expert_reports, {"expert_id": "mcp-ears"})
+    check("integrated leaves the pending list", json.loads(text) == [])
+    res, text = call(mcp._get_expert_report, {"report_id": "nope"})
+    check("unknown report is a tool error", res["is_error"])
     res, text = call(mcp._answer_expert_question, {"question_id": mq, "answer": "pong", "answered_by": "bot"})
     check("answer tool works", json.loads(text)["answer"] == "pong")
     res, text = call(mcp._list_expert_questions, {"expert_id": "mcp-bot", "status": "all"})
@@ -211,10 +266,13 @@ finally:
 
 tag = "desk_*_expert MCP tools + expert registry #434481"
 check("changelog tag current, with an entry", tag in temp_ui.CURRENT_TAGS and tag in temp_ui._NEW_FEATURES)
+check("report tag current, with an entry", "desk_report_to_expert: findings to experts #532898" in temp_ui.CURRENT_TAGS and "desk_report_to_expert: findings to experts #532898" in temp_ui._NEW_FEATURES)
 doc = temp_ui.SPLIT_DOC_CONTENT["tempui-experts.md"]
 check("dedicated doc names every tool", all(n in doc for n in (
     "desk_list_experts", "desk_register_expert", "desk_ask_expert", "desk_get_expert_question",
-    "desk_list_expert_questions", "desk_accept_expert_question", "desk_answer_expert_question")))
+    "desk_list_expert_questions", "desk_accept_expert_question", "desk_answer_expert_question",
+    "desk_report_to_expert", "desk_get_expert_report", "desk_list_expert_reports", "desk_review_expert_report",
+    "desk_integrate_expert_report")))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
