@@ -63,7 +63,7 @@ from desk.event_mediator import MediatedEvent
 from desk.widget_logs import RECORDING_EVENT, STOPPED_RECORDING_EVENT, format_time_iso, parse_time_ms
 from desk.record_store import RecordConflict, RecordNotFound, RecordStore
 from desk.shell import current_context
-from desk.todo_file import TodoItem, find_nearest_todo_file, parse_todo_file
+from desk.todo_file import TodoItem, find_nearest_todo_file, parse_todo_file, unrecognized_items_message
 
 DESK_MCP_SERVER_NAME = "desk"
 
@@ -493,6 +493,11 @@ async def _list_todo_items(args: dict[str, Any]) -> dict[str, Any]:
     if path is None:
         return _text_result("No TODO.md found.", is_error=True)
     _preamble, items = parse_todo_file(path)
+    if not items:
+        # TODO 80de4d4: an unreadable-format file must not look like an empty list.
+        problem = unrecognized_items_message(path)
+        if problem is not None:
+            return _text_result(problem, is_error=True)
     return _text_result(json.dumps([_todo_item_dict(item) for item in items]))
 
 
@@ -512,6 +517,10 @@ async def _get_next_todo_item(args: dict[str, Any]) -> dict[str, Any]:
     if path is None:
         return _text_result("No TODO.md found.", is_error=True)
     _preamble, items = parse_todo_file(path)
+    if not items:
+        problem = unrecognized_items_message(path)
+        if problem is not None:
+            return _text_result(problem, is_error=True)
     for item in items:
         if item.status not in ("completed", "superseded", "pending"):
             return _text_result(json.dumps(_todo_item_dict(item)))

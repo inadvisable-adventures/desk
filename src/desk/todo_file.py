@@ -12,8 +12,19 @@ TODO_FILENAME = "TODO.md"
 # by a GitHub-style checklist marker ("- [ ] "/"- [x] ", another common
 # other-project convention -- see TODO 5a2f5b9), followed by ". ".
 # Generalized to match all of these since this reads arbitrary projects'
-# TODO.md files, not just this one's.
-ITEM_START_RE = re.compile(r"^(?:- \[([ xX])\]\s+)?([0-9a-f]{7}|\d+)\.\s")
+# TODO.md files, not just this one's. TODO 80de4d4: a plain markdown
+# list bullet ("- id. ", "* id. ", "+ id. ", no checkbox) is accepted too --
+# the natural way to write the id scheme in Markdown, which used to match
+# nothing and so parsed as zero items. A bullet is kept in an item's
+# raw_text (reordering never reformats) but is not part of its description.
+ITEM_START_RE = re.compile(r"^(?:[-*+] (?:\[([ xX])\]\s+)?)?([0-9a-f]{7}|\d+)\.\s")
+
+# Deliberately looser than ITEM_START_RE, used only to explain a file in
+# which ITEM_START_RE recognized nothing: any line that, after optional
+# indentation and a list marker ("-", "*", "+", "1.", "1)"), starts with a
+# 7-hex id and ". " -- so "I see something item-shaped but can't read it"
+# is told apart from a genuinely empty TODO list.
+_ITEM_SHAPED_RE = re.compile(r"^\s*(?:(?:[-*+]|\d+[.)])\s+)?(?:\[[ xX]\]\s+)?[0-9a-f]{7}\.\s")
 
 _WHITESPACE_RE = re.compile(r"\s+")
 
@@ -91,6 +102,28 @@ def parse_todo_file(path: Path) -> tuple[str, list[TodoItem]]:
             )
         )
     return preamble, items
+
+
+def unrecognized_items_message(path: Path) -> str | None:
+    """TODO 80de4d4: when parse_todo_file finds no items in `path` but the file
+    has item-shaped lines (an id followed by ". " behind indentation or an
+    unsupported list marker), a message saying so -- otherwise None. An
+    empty item list is otherwise indistinguishable from "nothing to do",
+    which is how a mis-formatted TODO.md used to fail silently. Run
+    `python3 scripts/todo_item_ids.py canonicalize TODO.md` to reformat."""
+    lines = path.read_text().splitlines()
+    if any(ITEM_START_RE.match(line) for line in lines):
+        return None
+    shaped = [i + 1 for i, line in enumerate(lines) if _ITEM_SHAPED_RE.match(line)]
+    if not shaped:
+        return None
+    shown = ", ".join(str(n) for n in shaped[:5]) + (", ..." if len(shaped) > 5 else "")
+    return (
+        f"{path.name}: no items recognized, but {len(shaped)} line(s) look like item starts "
+        f"(line {shown}) in a shape this parser does not read -- items must start at column 0 as "
+        f"'<id>. ', '- <id>. ', or '- [ ] <id>. '. Reformat with "
+        f"`python3 scripts/todo_item_ids.py canonicalize {path.name}`."
+    )
 
 
 def render_todo_file(preamble: str, items: list[TodoItem]) -> str:

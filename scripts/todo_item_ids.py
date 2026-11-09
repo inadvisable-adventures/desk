@@ -20,6 +20,16 @@ Usage:
         ("N. description...") to use a hash id instead of its number, and
         rewrites every "item N" cross-reference elsewhere in the file to
         "TODO <id>". Prints the number -> id mapping it used.
+
+    python3 scripts/todo_item_ids.py canonicalize TODO.md [--dry-run]
+        Reformats item starts that Desk's TODO tooling would not read:
+        a column-0 list marker ("- ", "* ", "+ ", "1. ", "1) ") in front
+        of a 7-hex id ("- 4f9f415. ...") is removed, leaving "4f9f415. ...".
+        "- [ ] <id>. " checklist items are already supported and left
+        alone. Lines inside fenced code blocks or HTML comments are
+        skipped. Any other item-shaped line it will not rewrite on its own
+        (e.g. an indented "  - 4f9f415. ...") is listed for manual
+        review. --dry-run reports without writing.
 """
 import hashlib
 import re
@@ -187,6 +197,38 @@ def convert(path: Path) -> dict[int, str]:
     return number_to_id
 
 
+# TODO 80de4d4: "<marker> <7-hex id>. " at column 0, marker a bullet or an
+# ordered-list number, no checkbox (a "- [ ] " checklist is already read
+# by the parser as-is).
+_MARKED_ITEM_RE = re.compile(r"^(?:[-*+]|\d+[.)])\s+(?=[0-9a-f]{7}\.\s)")
+_ITEM_SHAPED_RE = re.compile(r"^\s*(?:(?:[-*+]|\d+[.)])\s+)?(?:\[[ xX]\]\s+)?[0-9a-f]{7}\.\s")
+_BARE_OR_CHECKBOX_RE = re.compile(r"^(?:- \[[ xX]\]\s+)?[0-9a-f]{7}\.\s")
+
+
+def canonicalize(path: Path, dry_run: bool = False) -> tuple[int, list[tuple[int, str]]]:
+    """Returns (rewritten_count, [(line_number, line)] needing manual
+    review). See the module docstring."""
+    lines = path.read_text().splitlines(keepends=True)
+    skipped = _html_comment_line_indices(lines)
+    rewritten = 0
+    review = []
+    in_fence = False
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence or i in skipped:
+            continue
+        if _MARKED_ITEM_RE.match(line):
+            lines[i] = _MARKED_ITEM_RE.sub("", line, count=1)
+            rewritten += 1
+        elif _ITEM_SHAPED_RE.match(line) and not _BARE_OR_CHECKBOX_RE.match(line):
+            review.append((i + 1, line.rstrip("\n")))
+    if rewritten and not dry_run:
+        path.write_text("".join(lines))
+    return rewritten, review
+
+
 def main(argv: list[str]) -> int:
     if len(argv) >= 2 and argv[0] == "new":
         print(make_item_id(" ".join(argv[1:])))
@@ -195,6 +237,13 @@ def main(argv: list[str]) -> int:
         mapping = convert(Path(argv[1]))
         for number in sorted(mapping):
             print(f"{number} -> {mapping[number]}")
+        return 0
+    if len(argv) in (2, 3) and argv[0] == "canonicalize" and (len(argv) == 2 or argv[2] == "--dry-run"):
+        dry = len(argv) == 3
+        count, review = canonicalize(Path(argv[1]), dry_run=dry)
+        print(f"{'would rewrite' if dry else 'rewrote'} {count} item line(s)")
+        for number, text in review:
+            print(f"needs manual review: line {number}: {text[:100]}")
         return 0
     print(__doc__)
     return 1

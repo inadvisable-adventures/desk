@@ -30,6 +30,7 @@ from desk.todo_file import (
     render_todo_file,
     status_of,
     truncate_description,
+    unrecognized_items_message,
 )
 from desk.todo_ids import make_item_id
 
@@ -444,7 +445,7 @@ class TodoWidget(QWidget):
 
         preamble, items = parse_todo_file(todo_path)
         self._state.update(todo_path=todo_path, preamble=preamble, items=items, pending=False)
-        self._status_label.setText(str(todo_path))
+        self._status_label.setText((unrecognized_items_message(todo_path) if not items else None) or str(todo_path))
         self._touch_timestamp("Reloaded")
         self._populate_list()
         self.refresh_external_path_status()
@@ -510,7 +511,7 @@ class TodoWidget(QWidget):
                 self._resolve_edit_conflict(item_id, dialog)
 
         self._state.update(preamble=preamble, items=items, pending=False)
-        self._status_label.setText(str(todo_path))
+        self._status_label.setText((unrecognized_items_message(todo_path) if not items else None) or str(todo_path))
         self._touch_timestamp("Reloaded")
         self._populate_list()
 

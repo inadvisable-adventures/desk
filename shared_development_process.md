@@ -35,6 +35,10 @@ TODO items are **not** numbered sequentially. Each item has a permanent, opaque 
 
 Run `python3 scripts/todo_item_ids.py new "<the item's description>"` and use the printed 7-hex-digit result as the item's id (`<id>. <description>`, replacing the old `N.` numbering style). If the description is shorter than 10 characters the script hashes a random string instead (a very short description alone doesn't hash well) — this is handled automatically, nothing extra to do.
 
+### Item format Desk's tooling reads
+
+An item starts at **column 0** with its id: `<id>. ...` (preferred), or a markdown list bullet (`- <id>. ...`, `* `, `+ `), or a checklist box (`- [ ] <id>. ...` / `- [x] <id>. ...`). Continuation lines are indented. Indented item starts (`  - <id>. ...`) and other markers (`1. <id>. ...`) are **not** read: the TODO widget and the `desk_list_todo_items` / `desk_get_next_todo_item` tools report an error saying so (rather than an empty list) when a file has item-shaped lines but none they can read. To reformat a file, run `python3 scripts/todo_item_ids.py canonicalize TODO.md` (`--dry-run` to preview); it rewrites what it safely can and lists the rest for manual review.
+
 ## Planning
 
 Before implementing any significant feature or change, a plan is written and stored in the `plans/` directory. Each TODO item in `TODO.md` gets its own plan file.

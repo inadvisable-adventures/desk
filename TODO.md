@@ -6,6 +6,13 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+80de4d4. COMPLETED: TODO.md items written as markdown bullets (`- 4f9f415. ...`) parsed as zero items, so `desk_list_todo_items`, `desk_get_next_todo_item` and the TODO widget silently saw an empty list: accept `- `/`* `/`+ ` bullets, report item-shaped-but-unreadable files loudly, and add a `canonicalize` reformat command (`../FEEDBACK/FEEDBACK-DESK-todo-md-items-with-a-leading-markdown-bullet-4f9f415-parse-a-2026-11-08-1138.md`). Prioritized to the top.
+
+   [planned: todo-bullet-items.md (COMPLETED)]
+
+   COMPLETED 2026-11-09: all three suggested fixes. `ITEM_START_RE` widened; `unrecognized_items_message` used by both MCP tools (error) and the widget status line; `scripts/todo_item_ids.py canonicalize [--dry-run]`; process-doc note.
+   `verify_todo_bullet_items.py` (18 checks) + `verify_desk_mcp_server.py` extended. Headless-verified only.
+
 650713d. COMPLETED: `tempui-hmsvc.md`'s worked example treated `desk.hmsvc.list()` as a bare array; it resolves to `{services: [...]}`. Fix the example, document every `desk.hmsvc.*` return shape, lead with the `desk.state` pattern for the URL-only case, and make the doc test run the JS (`../FEEDBACK/FEEDBACK-DESK-tempui-hmsvc-md-s-worked-example-treats-desk-hmsvc-list-as-a-2026-11-06-2216.md`). Prioritized to the top.
 
    [planned: tempui-hmsvc-list-shape.md (COMPLETED)]

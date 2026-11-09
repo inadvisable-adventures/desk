@@ -316,6 +316,25 @@ def test_list_todo_items_reflects_real_file():
         current_context.set_current_desk_directory(None)
 
 
+def test_todo_tools_fail_loudly_on_an_unreadable_format_and_read_bullets():
+    # TODO 80de4d4
+    with tempfile.TemporaryDirectory() as d:
+        directory = Path(d)
+        current_context.set_current_desk_directory(directory)
+        _write_todo(directory, "# T\n\n- abc1234. COMPLETED: bulleted\n\n- fed9876. Next one\n")
+        items = json.loads(_text_of(run(_list_todo_items.handler({}))))
+        check("a markdown-bulleted TODO.md lists its items", [i["item_id"] for i in items] == ["abc1234", "fed9876"])
+        check("and the next item is found", json.loads(_text_of(run(_get_next_todo_item.handler({}))))["item_id"] == "fed9876")
+        _write_todo(directory, "# T\n\n  - abc1234. indented, unreadable\n")
+        for tool in (_list_todo_items, _get_next_todo_item):
+            result = run(tool.handler({}))
+            check(f"{tool.name} errors (not []/'nothing to do') for item-shaped but unreadable lines",
+                  result.get("is_error") is True and "canonicalize" in _text_of(result))
+        _write_todo(directory, "# T\n\nNo items yet.\n")
+        check("a genuinely empty list is still just []", _text_of(run(_list_todo_items.handler({}))) == "[]")
+        current_context.set_current_desk_directory(None)
+
+
 def test_get_next_todo_item_skips_completed_and_pending():
     with tempfile.TemporaryDirectory() as d:
         directory = Path(d)
@@ -385,6 +404,7 @@ test_save_desk_calls_save_current_desk()
 test_all_handlers_report_not_ready_with_no_gui_thread_caller()
 test_all_handlers_report_not_ready_with_no_main_window()
 test_list_todo_items_reflects_real_file()
+test_todo_tools_fail_loudly_on_an_unreadable_format_and_read_bullets()
 test_get_next_todo_item_skips_completed_and_pending()
 test_get_next_todo_item_when_everything_is_done()
 test_todo_tools_report_a_clear_error_with_no_desk_directory_known()
