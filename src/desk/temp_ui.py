@@ -272,6 +272,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "desk expert: local fallback answers in 20s #379639",
     "desk_report_to_expert: findings to experts #532898",
     "hmsvc experts receive reports #864728",
+    "Experts widget: review reports #223281",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -977,6 +978,14 @@ Answered or All), shows one, and lets the person **answer it** or use
   acts on the answer has the context to do so.
 
 An answer written in the widget does not produce a notification.
+
+Reports (see "Reporting findings to an expert") show up too: a new report
+for `desk` or `user` produces a notification in the Desk that reported it,
+and when a report you filed is rejected, called a duplicate or integrated,
+the Desk you filed it from shows that outcome. In the widget, pick *Reports
+to review* (or *Reports: all*) to see them, **Accept** / **Reject** /
+**Duplicate** with a note, or **Send to agent** to have a new Claude session
+verify the finding, fold it in and record where.
 
 With several Desks running on one machine, each notification is shown by
 exactly **one** Desk: the one whose session asked the question (the registry
@@ -3223,6 +3232,14 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "Experts widget: review reports #223281": """- Reports reach the person too. A new finding for the built-in `desk`
+  expert (or `user`) shows a top-right notification in the Desk that reported
+  it, and when a report you filed is rejected, called a duplicate or
+  integrated, your Desk shows that too. The **Experts** widget has a
+  *Reports to review* mode to **Accept**, **Reject** or mark **Duplicate**
+  (with a note) and to **Send to agent**: a new session told to verify the
+  finding, fold it in and record where. See `tempui-experts.md`.
+""",
     "hmsvc experts receive reports #864728": """- A Desk-hosted service (hmsvc) with the `experts` capability can now
   *receive* reports as an expert: `desk.experts_register(..., listens_for=
   "what I want to hear")`, then `desk.experts_reports(expert_id)`,

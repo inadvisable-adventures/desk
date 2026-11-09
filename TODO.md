@@ -13174,4 +13174,4 @@ c3beaa4. COMPLETED: use Claude (Desk) for every session Desk starts itself (Disc
 
 7ebb24f. COMPLETED: notify an expert step 2/3: Bridge `experts` capability gains reports for hmsvc experts: `experts_register(listens_for)`, `experts_reports`, `experts_report_review`, `experts_report_integrate` (own experts only). Tag `hmsvc experts receive reports #864728`. Bridge verify 31 checks. [planned: expert-reports.md]
 
-a63e115. Notify an expert step 3/3: banners for new reports (to `user`/`desk`) and report outcomes (to the reporter's Desk), a Reports mode in the Experts widget (accept/reject/duplicate, Send to agent to verify+integrate). [planned: expert-reports.md]
+a63e115. COMPLETED: notify an expert step 3/3: `claim_report_announcements` (banners for new reports to `user`/`desk` and report outcomes, routed to the reporting Desk), a Reports mode in the Experts widget (Accept/Reject/Duplicate with a note, Send to agent to verify+integrate), architecture item 37. Tag `Experts widget: review reports #223281`. Widget verify 56 checks. Headless only. [planned: expert-reports.md]

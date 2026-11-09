@@ -24,7 +24,8 @@ def current_origin() -> str:
 
 
 class ExpertNotifier(QObject):
-    # A list of {"kind": "answer" | "question", "question": {...}}.
+    # A list of {"kind": "answer" | "question", "question": {...}} or
+    # {"kind": "report" | "report_outcome", "report": {...}}.
     announced = pyqtSignal(list)
     # Questions to the built-in `desk` expert nobody answered in time (already marked accepted by the fallback).
     fallback_needed = pyqtSignal(list)
@@ -63,6 +64,7 @@ class ExpertNotifier(QObject):
             origin = self._origin_provider()
             registry.heartbeat(origin)
             found = registry.claim_announcements(origin)
+            found += registry.claim_report_announcements(origin)
             fallback = registry.claim_fallback(origin)
         except ExpertRegistryError:
             return []

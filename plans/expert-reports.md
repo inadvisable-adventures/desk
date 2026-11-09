@@ -1,4 +1,4 @@
-# "Notify an expert": findings agents report to listening experts (TODOs `0f506f7`, `7ebb24f`, `a63e115`)
+# (COMPLETED) "Notify an expert": findings agents report to listening experts (TODOs `0f506f7`, `7ebb24f`, `a63e115`)
 
 User request (2026-11-09): "Sometimes, even non-experts can learn interesting things about domains. Let's extend the
 'ask an expert' system to include a 'notify an expert' subsystem, with infra for agents to report on interesting

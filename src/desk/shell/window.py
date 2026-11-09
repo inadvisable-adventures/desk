@@ -1392,6 +1392,16 @@ class DeskWindow(QMainWindow):
     def _on_expert_announcements(self, items: list) -> None:
         """Top-right banners for what ExpertNotifier found; clicking one opens the Experts widget."""
         for item in items:
+            if "report" in item:
+                report = item["report"]
+                if item["kind"] == "report":
+                    text = f"New finding for {report['expert_id']}: {report['title'][:80]}"
+                else:
+                    text = f"Your report was {report['status']}: {report['title'][:80]}"
+                self.view.notify_temp_ui(
+                    Path(f"expert:{item['kind']}:{report['report_id']}"), text, self._reveal_experts_widget
+                )
+                continue
             question = item["question"]
             first_line = (question.get("question") or "").strip().splitlines()[0:1]
             excerpt = (first_line[0] if first_line else "")[:80]

@@ -529,6 +529,31 @@ class ExpertRegistry:
             found += [{"kind": kind, "question": row} for row in rows]
         return found
 
+    def claim_report_announcements(self, origin: str) -> list[dict]:
+        """Like claim_announcements, for reports (TODO a63e115): new reports to the experts the person answers
+        for (`user`, `desk`) -- shown by the reporting Desk -- and the final outcome (rejected, duplicate or
+        integrated) of a report, shown by the Desk that reported it. Each is stamped in the claiming statement.
+        Returns [{"kind": "report" | "report_outcome", "report": {...}}]."""
+        origin = self._text(origin, "origin", required=False)
+        mine = (
+            "(origin = '' OR origin = :'origin' OR NOT EXISTS (SELECT 1 FROM desk_presence p WHERE "
+            f"p.origin = expert_reports.origin AND p.seen_at > now() - interval '{int(PRESENCE_TTL_SECONDS)} seconds'))"
+        )
+        found: list[dict] = []
+        for kind, column, condition in (
+            ("report", "expert_notified_at",
+             "status = 'new' AND expert_id IN ('user', 'desk') AND expert_notified_at IS NULL"),
+            ("report_outcome", "outcome_notified_at",
+             "status IN ('rejected', 'duplicate', 'integrated') AND outcome_notified_at IS NULL"),
+        ):
+            rows = self._json(
+                f"WITH r AS (UPDATE expert_reports SET {column} = now() WHERE {condition} AND {mine} "
+                f"RETURNING {_REPORT_COLUMNS}) SELECT coalesce(json_agg(r), '[]'::json) FROM r;",
+                origin=origin,
+            )
+            found += [{"kind": kind, "report": row} for row in rows]
+        return found
+
     def claim_fallback(self, origin: str, question_id: str = "", min_age_seconds: float = FALLBACK_AFTER_SECONDS) -> list[dict]:
         """Atomically takes the still-open questions to the built-in `desk` expert that the Desk at `origin`
         should answer itself -- asked from that Desk (or with no recorded Desk) at least `min_age_seconds` ago

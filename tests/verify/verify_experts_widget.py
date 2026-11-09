@@ -150,6 +150,25 @@ try:
     check("the session is told to record its answer against that question",
           dq["question_id"] in body and "desk_answer_expert_question" in body and "desk-fallback" in body and "what is X?" in body)
 
+    # reports (TODO a63e115): a new report for desk/user is announced by the reporting Desk; outcomes by the reporter's
+    nr = reg.report("desk", "News", "something", "", "agent", origin="/desk/a")
+    got_b = [i for i in cb.poll_once() if "report" in i]
+    got_a = [i for i in ca.poll_once() if "report" in i]
+    check("a new report is announced once, by the reporting Desk",
+          got_b == [] and [(i["kind"], i["report"]["report_id"]) for i in got_a] == [("report", nr["report_id"])])
+    reg.review_report(nr["report_id"], "rejected", "no", "someone")
+    out_b = [i for i in cb.poll_once() if "report" in i]
+    out_a = [i for i in ca.poll_once() if "report" in i]
+    check("the outcome is announced once, to the reporter's Desk",
+          out_b == [] and [(i["kind"], i["report"]["status"]) for i in out_a] == [("report_outcome", "rejected")])
+    check("nothing repeats", [i for i in ca.poll_once() + cb.poll_once() if "report" in i] == [])
+    reg.register_expert("listener", "Listener", "", "agent", "t", listens_for="things")
+    lr = reg.report("listener", "Not for the human", "f", origin="/desk/a")
+    check("a report to another expert does not banner the user", [i for i in ca.poll_once() if "report" in i] == [])
+    reg.review_report(lr["report_id"], "accepted")
+    check("accepting (not final) gives the reporter no banner yet", [i for i in ca.poll_once() if "report" in i] == [])
+    reg.integrate_report(lr["report_id"], "in docs")
+    check("integrating does", [i["kind"] for i in ca.poll_once() if "report" in i] == ["report_outcome"])
     reg.withdraw(dq["question_id"])  # keep the widget checks below about their own questions
 
     # ---- the window glue (real methods on a stand-in) ----
@@ -195,6 +214,13 @@ try:
           len(win.view.notes) == 2 and texts[0].startswith("Answer from bot: answered one?")
           and texts[1].startswith("New question for you: for the human"))
     check("banner keys are distinct per question and kind", len({n[0] for n in win.view.notes}) == 2)
+    win._on_expert_announcements([
+        {"kind": "report", "report": {"report_id": "r1", "expert_id": "desk", "title": "Zoom drops focus"}},
+        {"kind": "report_outcome", "report": {"report_id": "r2", "expert_id": "x", "title": "T", "status": "integrated"}},
+    ])
+    texts2 = [n[1] for n in win.view.notes[2:]]
+    check("report and outcome banners", texts2 == ["New finding for desk: Zoom drops focus", "Your report was integrated: T"]
+          and len({n[0] for n in win.view.notes}) == 4)
     iid = win.start_expert_session("do the thing")
     check("start_expert_session places a claude_desk widget seeded through an instructions file",
           iid == "claude-1" and win.placed[0][0] == "claude_desk" and win.placed[0][1]["claude_extra_instructions"] == " read it"
@@ -264,6 +290,43 @@ try:
     reg.ask("user", "yet another", "agent")
     w._subscription._poll()
     check("a desk.experts.changed event reloads the list", spin(lambda: w._list.count() == 2))
+
+    # ---- reports (TODO a63e115) ----
+    rep = reg.report("desk", "Zoom drops focus", "after zoom the editor loses focus", "saw it twice", "agent", "/desk/a")
+    w._filter.setCurrentIndex(3)
+    check("the Reports to review mode lists the report",
+          spin(lambda: w._list.count() == 1 and "Zoom drops focus" in w._list.item(0).text() and w._kind == "reports"))
+    w._list.setCurrentRow(0)
+    detail = w._detail.toPlainText()
+    check("the detail shows the finding and evidence", "after zoom the editor loses focus" in detail and "saw it twice" in detail)
+    check("review buttons replace Answer", not w._answer_button.isVisibleTo(w) and w._review_buttons["rejected"].isVisibleTo(w)
+          and all(b.isEnabled() for b in w._review_buttons.values()))
+    w._review("rejected")
+    check("rejecting without a note shows the registry's error", "note" in w._status_label.text().lower()
+          and reg.get_report(rep["report_id"])["status"] == "new")
+    w._answer_box.setPlainText("cannot reproduce")
+    w._review("rejected")
+    got = reg.get_report(rep["report_id"])
+    check("rejecting with a note records it as you", got["status"] == "rejected" and got["review_note"] == "cannot reproduce" and got["reviewed_by"] == "you")
+    check("it leaves the to-review list", spin(lambda: w._list.count() == 0))
+    rep2 = reg.report("desk", "Second", "another thing", "", "agent", "/desk/a")
+    w.refresh()
+    spin(lambda: w._list.count() == 1)
+    w._list.setCurrentRow(0)
+    w._review("accepted")
+    check("accepting needs no note", reg.get_report(rep2["report_id"])["status"] == "accepted")
+    w._filter.setCurrentIndex(3)
+    spin(lambda: w._list.count() == 1)
+    w._list.setCurrentRow(0)
+    before = len(main.sessions)
+    w._agent_button.click()
+    prompt = main.sessions[-1] if len(main.sessions) > before else ""
+    check("Send to agent starts a session told to verify and record against the report",
+          len(main.sessions) == before + 1 and rep2["report_id"] in prompt and "desk_integrate_expert_report" in prompt
+          and "desk_review_expert_report" in prompt and "lead, not a fact" in prompt)
+    w._filter.setCurrentIndex(0)
+    spin(lambda: w._kind == "questions")
+    check("switching back to questions restores the Answer button", w._answer_button.isVisibleTo(w) and not w._review_buttons["accepted"].isVisibleTo(w))
 finally:
     current_context.set_main_window(previous_window) if previous_window is not None else current_context.set_main_window(None)
     er.set_registry(None)
