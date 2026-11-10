@@ -936,6 +936,12 @@ Desk Bridge API.
     `ExpertNotifier` thread that turns unannounced answers / new questions for the built-in `user`
     expert into top-right banners; the built-in `experts` python widget (answer, or send to a new
     Claude session via `DeskWindow.start_expert_session`). Changes publish `desk.experts.changed`.
+    **Reports** (`plans/expert-reports.md`, TODOs `0f506f7`/`7ebb24f`/`a63e115`): experts that set
+    `listens_for` receive findings agents file with `desk_report_to_expert`; the expert reviews
+    (accept/reject/duplicate) and integrates them (`expert_reports` table, five more MCP tools,
+    Bridge `experts_reports*`), banners go to the reporting Desk, and the Experts widget has a
+    Reports mode. Announcement and the `desk` expert's 20s fallback session are routed to the
+    asking Desk (`origin`, `desk_presence`).
     See `plans/expert-registry.md`.
 
 

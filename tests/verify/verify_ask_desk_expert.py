@@ -132,11 +132,49 @@ with tempfile.TemporaryDirectory() as d:
     window = type("W", (), {"ask_desk_expert": lambda s, q: calls.append(q) or "iid-9"})()
     current_context.set_main_window(window)
     current_context.set_gui_thread_caller(lambda fn: fn())
+    from desk import expert_registry as er  # noqa: E402
+    real_find = er.find_pg_bin
+    er.find_pg_bin = lambda: None
+    er.set_registry(er.ExpertRegistry(Path("/nonexistent/pgdata")))  # no PostgreSQL: the old fire-and-forget path
     res = asyncio.run(_ask_desk_expert.handler({"question": "  hello  "}))
+    er.find_pg_bin = real_find
+    er.set_registry(None)
     check("handler passes the stripped question and reports the id",
           calls == ["hello"] and "iid-9" in res["content"][0]["text"] and not res["is_error"])
     res = asyncio.run(_ask_desk_expert.handler({"question": "   "}))
     check("empty question is an error", res["is_error"] is True)
+
+    # ---- with the expert registry (TODO 86a837e) ----
+    if er.find_pg_bin() is None:
+        print("SKIP: no PostgreSQL installation found; the registry-backed checks were not run")
+    else:
+        import shutil
+        root = Path(tempfile.mkdtemp(prefix="pgd", dir="/tmp"))
+        reg = er.ExpertRegistry(root / "pgdata")
+        er.set_registry(reg)
+        try:
+            started = []
+            window = type("W", (), {"start_registry_desk_expert": lambda s, q: started.append(q) or "iid-7"})()
+            current_context.set_main_window(window)
+            res = asyncio.run(_ask_desk_expert.handler({"question": "how does X work?"}))
+            text = res["content"][0]["text"]
+            q = started[0] if started else {}
+            check("asks the desk expert, claims it and starts the session at once",
+                  not res["is_error"] and q.get("question") == "how does X work?" and "iid-7" in text and q.get("question_id", "?") in text)
+            row = reg.get_question(q["question_id"])
+            check("the question is accepted by desk-fallback in the registry", row["status"] == "accepted" and row["accepted_by"] == "desk-fallback")
+
+            class _Failing:
+                def start_registry_desk_expert(self, question):
+                    raise ValueError("no widget")
+            current_context.set_main_window(_Failing())
+            res = asyncio.run(_ask_desk_expert.handler({"question": "second?"}))
+            second = [x for x in reg.list_questions("desk", ["open", "accepted"]) if x["question"] == "second?"]
+            check("if the session cannot start, the question is handed back open", res["is_error"] and second and second[0]["status"] == "open")
+        finally:
+            er.set_registry(None)
+            reg.stop()
+            shutil.rmtree(root, ignore_errors=True)
     current_context.set_main_window(None)
     current_context.set_gui_thread_caller(None)
     current_context.set_current_desk_directory(None)

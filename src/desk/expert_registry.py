@@ -31,9 +31,15 @@ from pathlib import Path
 EXPERTS_CHANGED_EVENT = "desk.experts.changed"
 DEFAULT_PGDATA = Path.home() / ".desk" / "experts" / "pgdata"
 DBNAME = "desk_experts"
+DESK_EXPERT_ID = "desk"  # questions about Desk itself; a local Claude (Desk) session answers if nobody does
+FALLBACK_ACCEPTED_BY = "desk-fallback"
+FALLBACK_AFTER_SECONDS = 20
 USER_EXPERT_ID = "user"  # the built-in human expert, answered through the Experts widget
 KINDS = ("human", "hmsvc", "agent")
 STATUSES = ("open", "accepted", "answered", "withdrawn")
+REPORT_STATUSES = ("new", "accepted", "rejected", "duplicate", "integrated")
+REVIEW_DECISIONS = ("accepted", "rejected", "duplicate")
+OPEN_REPORT_STATUSES = ("new", "accepted")
 OPEN_STATUSES = ("open", "accepted")
 EXPERT_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 MAX_TEXT_CHARS = 20000
@@ -55,6 +61,7 @@ CREATE TABLE IF NOT EXISTS experts (
   registered_by text NOT NULL DEFAULT '',
   registered_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE experts ADD COLUMN IF NOT EXISTS listens_for text NOT NULL DEFAULT '';
 CREATE TABLE IF NOT EXISTS expert_questions (
   question_id        text PRIMARY KEY DEFAULT left(replace(gen_random_uuid()::text, '-', ''), 12),
   expert_id          text NOT NULL REFERENCES experts (expert_id) ON DELETE CASCADE,
@@ -73,6 +80,26 @@ CREATE TABLE IF NOT EXISTS expert_questions (
   origin             text NOT NULL DEFAULT ''
 );
 ALTER TABLE expert_questions ADD COLUMN IF NOT EXISTS origin text NOT NULL DEFAULT '';
+CREATE TABLE IF NOT EXISTS expert_reports (
+  report_id          text PRIMARY KEY DEFAULT left(replace(gen_random_uuid()::text, '-', ''), 12),
+  expert_id          text NOT NULL REFERENCES experts (expert_id) ON DELETE CASCADE,
+  reporter           text NOT NULL DEFAULT '',
+  title              text NOT NULL,
+  finding            text NOT NULL,
+  evidence           text NOT NULL DEFAULT '',
+  status             text NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'accepted', 'rejected', 'duplicate', 'integrated')),
+  reviewed_by        text,
+  review_note        text,
+  integration_note   text,
+  integrated_by      text,
+  reported_at        timestamptz NOT NULL DEFAULT now(),
+  reviewed_at        timestamptz,
+  integrated_at      timestamptz,
+  origin             text NOT NULL DEFAULT '',
+  expert_notified_at timestamptz,
+  outcome_notified_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS expert_reports_status_idx ON expert_reports (status, reported_at);
 CREATE TABLE IF NOT EXISTS desk_presence (
   origin  text PRIMARY KEY,
   seen_at timestamptz NOT NULL DEFAULT now()
@@ -81,8 +108,18 @@ CREATE INDEX IF NOT EXISTS expert_questions_status_idx ON expert_questions (stat
 INSERT INTO experts (expert_id, name, description, kind, registered_by)
 VALUES ('user', 'You', 'The person using this Desk; questions are answered in the Experts widget.', 'human', 'desk')
 ON CONFLICT (expert_id) DO NOTHING;
+INSERT INTO experts (expert_id, name, description, kind, registered_by)
+VALUES ('desk', 'Desk', 'Questions about Desk itself or the running Desk session. If nobody answers within about 20 seconds, Desk starts a local Claude (Desk) session that reads its own source and docs and answers.', 'agent', 'desk')
+ON CONFLICT (expert_id) DO NOTHING;
+UPDATE experts SET listens_for = 'Findings about how Desk itself behaves: quirks, undocumented behavior, workarounds that worked, things the docs get wrong.'
+WHERE expert_id = 'desk' AND registered_by = 'desk' AND listens_for = '';
 """
 
+_EXPERT_COLUMNS = "expert_id, name, description, kind, registered_by, registered_at, listens_for"
+_REPORT_COLUMNS = (
+    "report_id, expert_id, reporter, title, finding, evidence, status, reviewed_by, review_note, "
+    "integration_note, integrated_by, reported_at, reviewed_at, integrated_at"
+)
 _PUBLIC_COLUMNS = (
     "question_id, expert_id, asker, question, status, accepted_by, answer, answered_by, "
     "asked_at, answered_at, handed_off_at"
@@ -238,24 +275,25 @@ class ExpertRegistry:
     def list_experts(self) -> list[dict]:
         return self._json(
             "SELECT coalesce(json_agg(e ORDER BY e.registered_at, e.expert_id), '[]'::json) "
-            "FROM (SELECT expert_id, name, description, kind, registered_by, registered_at FROM experts) e;"
+            f"FROM (SELECT {_EXPERT_COLUMNS} FROM experts) e;"
         )
 
     def get_expert(self, expert_id: str) -> dict | None:
         rows = self._json(
-            "SELECT coalesce(json_agg(e), '[]'::json) FROM (SELECT expert_id, name, description, kind, registered_by, "
-            "registered_at FROM experts WHERE expert_id = :'id') e;",
+            f"SELECT coalesce(json_agg(e), '[]'::json) FROM (SELECT {_EXPERT_COLUMNS} FROM experts WHERE expert_id = :'id') e;",
             id=self._expert_id(expert_id),
         )
         return rows[0] if rows else None
 
-    def register_expert(self, expert_id: str, name: str, description: str = "", kind: str = "agent", registered_by: str = "") -> dict:
+    def register_expert(self, expert_id: str, name: str, description: str = "", kind: str = "agent", registered_by: str = "",
+                        listens_for: str = "") -> dict:
         """Registers or updates an expert. The built-in `user` expert cannot be
         changed, and an expert can only be updated by whoever registered it."""
         expert_id = self._expert_id(expert_id)
         name = self._text(name, "name")
         description = self._text(description, "description", required=False)
         registered_by = self._text(registered_by, "registered_by", required=False)
+        listens_for = self._text(listens_for, "listens_for", required=False)
         if kind not in KINDS:
             raise ExpertRegistryError(f"kind must be one of {', '.join(KINDS)}.")
         existing = self.get_expert(expert_id)
@@ -265,12 +303,13 @@ class ExpertRegistry:
             if existing["registered_by"] != registered_by:
                 raise ExpertRegistryError(f"Expert {expert_id!r} was registered by someone else and cannot be changed from here.")
         rows = self._json(
-            "WITH r AS (INSERT INTO experts (expert_id, name, description, kind, registered_by) "
-            "VALUES (:'id', :'name', :'description', :'kind', :'by') "
-            "ON CONFLICT (expert_id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, kind = EXCLUDED.kind "
-            "RETURNING expert_id, name, description, kind, registered_by, registered_at) "
+            "WITH r AS (INSERT INTO experts (expert_id, name, description, kind, registered_by, listens_for) "
+            "VALUES (:'id', :'name', :'description', :'kind', :'by', :'listens') "
+            "ON CONFLICT (expert_id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, "
+            "kind = EXCLUDED.kind, listens_for = EXCLUDED.listens_for "
+            f"RETURNING {_EXPERT_COLUMNS}) "
             "SELECT coalesce(json_agg(r), '[]'::json) FROM r;",
-            id=expert_id, name=name, description=description, kind=kind, by=registered_by,
+            id=expert_id, name=name, description=description, kind=kind, by=registered_by, listens=listens_for,
         )
         self._changed("expert", expert_id)
         return rows[0]
@@ -362,6 +401,100 @@ class ExpertRegistry:
 
     # -- what the notifier still has to announce --------------------------
 
+    # -- reports: findings agents send to listening experts (TODO 0f506f7) --
+
+    def listening_experts(self) -> list[dict]:
+        return [e for e in self.list_experts() if e.get("listens_for")]
+
+    def report(self, expert_id: str, title: str, finding: str, evidence: str = "", reporter: str = "", origin: str = "") -> dict:
+        """Files a finding with an expert that has said what it listens for. Never waits for a review."""
+        expert_id = self._expert_id(expert_id)
+        title = self._text(title, "title")
+        finding = self._text(finding, "finding")
+        evidence = self._text(evidence, "evidence", required=False)
+        reporter = self._text(reporter, "reporter", required=False)
+        origin = self._text(origin, "origin", required=False)
+        expert = self.get_expert(expert_id)
+        if expert is None:
+            known = ", ".join(e["expert_id"] for e in self.list_experts()) or "(none)"
+            raise ExpertRegistryError(f"No expert {expert_id!r}. Registered experts: {known}.")
+        if not expert.get("listens_for"):
+            listening = "; ".join(f"{e['expert_id']} ({e['listens_for']})" for e in self.listening_experts()) or "(none)"
+            raise ExpertRegistryError(
+                f"Expert {expert_id!r} is not listening for reports. Experts that are: {listening}."
+            )
+        rows = self._json(
+            "WITH r AS (INSERT INTO expert_reports (expert_id, reporter, title, finding, evidence, origin) "
+            "VALUES (:'eid', :'reporter', :'title', :'finding', :'evidence', :'origin') RETURNING " + _REPORT_COLUMNS + ") "
+            "SELECT coalesce(json_agg(r), '[]'::json) FROM r;",
+            eid=expert_id, reporter=reporter, title=title, finding=finding, evidence=evidence, origin=origin,
+        )
+        self._changed("report", rows[0]["report_id"])
+        return rows[0]
+
+    def get_report(self, report_id: str) -> dict | None:
+        rows = self._json(
+            f"SELECT coalesce(json_agg(r), '[]'::json) FROM (SELECT {_REPORT_COLUMNS} FROM expert_reports "
+            "WHERE report_id = :'rid') r;",
+            rid=self._text(report_id, "report_id"),
+        )
+        return rows[0] if rows else None
+
+    def list_reports(self, expert_id: str | None = None, statuses: tuple[str, ...] | list[str] | None = None,
+                     limit: int = 200) -> list[dict]:
+        clauses, variables = ["true"], {}
+        if expert_id is not None:
+            clauses.append("expert_id = :'eid'")
+            variables["eid"] = self._expert_id(expert_id)
+        if statuses:
+            bad = [x for x in statuses if x not in REPORT_STATUSES]
+            if bad:
+                raise ExpertRegistryError(f"status must be one of {', '.join(REPORT_STATUSES)}.")
+            clauses.append("status IN (" + ", ".join(f"'{x}'" for x in statuses) + ")")
+        return self._json(
+            f"SELECT coalesce(json_agg(r), '[]'::json) FROM (SELECT {_REPORT_COLUMNS} FROM expert_reports "
+            f"WHERE {' AND '.join(clauses)} ORDER BY reported_at DESC, report_id LIMIT {int(limit)}) r;",
+            **variables,
+        )
+
+    def _report_transition(self, report_id: str, sets: str, verb: str, **variables: str) -> dict:
+        report_id = self._text(report_id, "report_id")
+        states = ", ".join(f"'{x}'" for x in OPEN_REPORT_STATUSES)
+        rows = self._json(
+            f"WITH r AS (UPDATE expert_reports SET {sets} WHERE report_id = :'rid' AND status IN ({states}) "
+            f"RETURNING {_REPORT_COLUMNS}) SELECT coalesce(json_agg(r), '[]'::json) FROM r;",
+            rid=report_id, **variables,
+        )
+        if not rows:
+            current = self.get_report(report_id)
+            if current is None:
+                raise ExpertRegistryError(f"No report {report_id!r}.")
+            raise ExpertRegistryError(f"Report {report_id!r} is {current['status']}; it cannot be {verb}.")
+        self._changed("report", report_id)
+        return rows[0]
+
+    def review_report(self, report_id: str, decision: str, note: str = "", reviewed_by: str = "") -> dict:
+        """The expert's evaluation of a `new` (or already `accepted`) report: accepted (worth keeping, not
+        folded in yet), rejected, or duplicate. A note is required for rejected/duplicate so the reporter learns why."""
+        if decision not in REVIEW_DECISIONS:
+            raise ExpertRegistryError(f"decision must be one of {', '.join(REVIEW_DECISIONS)}.")
+        note = self._text(note, "note", required=decision != "accepted")
+        return self._report_transition(
+            report_id, "status = :'decision', review_note = :'note', reviewed_by = :'by', reviewed_at = now()", "reviewed",
+            decision=decision, note=note, by=self._text(reviewed_by, "reviewed_by", required=False),
+        )
+
+    def integrate_report(self, report_id: str, integration_note: str, integrated_by: str = "") -> dict:
+        """Records that the finding has been folded into what the expert knows or maintains; the note says
+        where or how, so the reporter (and later readers) can find it."""
+        return self._report_transition(
+            report_id,
+            "status = 'integrated', integration_note = :'note', integrated_by = :'by', integrated_at = now(), "
+            "reviewed_at = coalesce(reviewed_at, now())",
+            "integrated",
+            note=self._text(integration_note, "integration_note"), by=self._text(integrated_by, "integrated_by", required=False),
+        )
+
     def heartbeat(self, origin: str) -> None:
         """Records that the Desk at `origin` (its directory) is running right now."""
         self._json(
@@ -395,6 +528,58 @@ class ExpertRegistry:
             )
             found += [{"kind": kind, "question": row} for row in rows]
         return found
+
+    def claim_report_announcements(self, origin: str) -> list[dict]:
+        """Like claim_announcements, for reports (TODO a63e115): new reports to the experts the person answers
+        for (`user`, `desk`) -- shown by the reporting Desk -- and the final outcome (rejected, duplicate or
+        integrated) of a report, shown by the Desk that reported it. Each is stamped in the claiming statement.
+        Returns [{"kind": "report" | "report_outcome", "report": {...}}]."""
+        origin = self._text(origin, "origin", required=False)
+        mine = (
+            "(origin = '' OR origin = :'origin' OR NOT EXISTS (SELECT 1 FROM desk_presence p WHERE "
+            f"p.origin = expert_reports.origin AND p.seen_at > now() - interval '{int(PRESENCE_TTL_SECONDS)} seconds'))"
+        )
+        found: list[dict] = []
+        for kind, column, condition in (
+            ("report", "expert_notified_at",
+             "status = 'new' AND expert_id IN ('user', 'desk') AND expert_notified_at IS NULL"),
+            ("report_outcome", "outcome_notified_at",
+             "status IN ('rejected', 'duplicate', 'integrated') AND outcome_notified_at IS NULL"),
+        ):
+            rows = self._json(
+                f"WITH r AS (UPDATE expert_reports SET {column} = now() WHERE {condition} AND {mine} "
+                f"RETURNING {_REPORT_COLUMNS}) SELECT coalesce(json_agg(r), '[]'::json) FROM r;",
+                origin=origin,
+            )
+            found += [{"kind": kind, "report": row} for row in rows]
+        return found
+
+    def claim_fallback(self, origin: str, question_id: str = "", min_age_seconds: float = FALLBACK_AFTER_SECONDS) -> list[dict]:
+        """Atomically takes the still-open questions to the built-in `desk` expert that the Desk at `origin`
+        should answer itself -- asked from that Desk (or with no recorded Desk) at least `min_age_seconds` ago
+        -- marking each accepted by "desk-fallback" so nobody else picks it up. A question someone has
+        already accepted is left alone. `question_id` limits the claim to one question."""
+        rows = self._json(
+            "WITH r AS (UPDATE expert_questions SET status = 'accepted', accepted_by = :'by' "
+            "WHERE expert_id = :'eid' AND status = 'open' AND (origin = '' OR origin = :'origin') "
+            "AND asked_at <= now() - (:'age')::float8 * interval '1 second' "
+            "AND (:'qid' = '' OR question_id = :'qid') RETURNING " + _PUBLIC_COLUMNS + ") "
+            "SELECT coalesce(json_agg(r), '[]'::json) FROM r;",
+            by=FALLBACK_ACCEPTED_BY, eid=DESK_EXPERT_ID, origin=self._text(origin, "origin", required=False),
+            age=str(float(min_age_seconds)), qid=question_id,
+        )
+        for row in rows:
+            self._changed("question", row["question_id"])
+        return rows
+
+    def reopen(self, question_id: str) -> None:
+        """Hands a question the fallback claimed but could not start back to `open`."""
+        self._json(
+            "WITH r AS (UPDATE expert_questions SET status = 'open', accepted_by = NULL WHERE question_id = :'qid' "
+            "AND status = 'accepted' AND accepted_by = :'by' RETURNING 1) SELECT coalesce(json_agg(r), '[]'::json) FROM r;",
+            qid=self._text(question_id, "question_id"), by=FALLBACK_ACCEPTED_BY,
+        )
+        self._changed("question", question_id)
 
     def mark_announced(self, question_id: str, kind: str) -> None:
         column = {"answer": "answer_notified_at", "question": "expert_notified_at"}.get(kind)

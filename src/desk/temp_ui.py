@@ -269,6 +269,10 @@ CURRENT_TAGS: tuple[str, ...] = (
     "hmsvc.list resolves to {services}; docs fixed #650713d",
     "discuss/expert sessions use Claude (Desk) #275381",
     "expert banners: one Desk, the asking one #983312",
+    "desk expert: local fallback answers in 20s #379639",
+    "desk_report_to_expert: findings to experts #532898",
+    "hmsvc experts receive reports #864728",
+    "Experts widget: review reports #223281",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -905,8 +909,8 @@ then**. Asking never waits.
 ## MCP tools
 
 - `desk_list_experts()` -- `[{expert_id, name, description, kind,
-  registered_by}]`; `kind` is `human`, `agent` or `hmsvc`.
-- `desk_register_expert(expert_id, name, description?, kind?, registered_by?)`
+  registered_by, listens_for}]`; `kind` is `human`, `agent` or `hmsvc`.
+- `desk_register_expert(expert_id, name, description?, kind?, registered_by?, listens_for?)`
   -- offer yourself (or a person) as an answerer. `expert_id` is lowercase
   letters, digits, `.`, `_`, `-`. An expert can only be updated by whoever
   registered it (pass the same `registered_by`).
@@ -927,6 +931,36 @@ then**. Asking never waits.
 
 Every change publishes the desk event `desk.experts.changed`.
 
+## Reporting findings to an expert
+
+Experts can also be **told** things. Sometimes an agent learns something
+about a domain it does not own (a library pitfall, a Desk quirk, a doc that
+is wrong, a workaround that worked) and the expert who maintains that
+knowledge would want to know. An expert opts in by registering with
+`listens_for` (a sentence saying what it wants to hear); `desk_list_experts`
+shows it. The built-in `desk` expert listens for findings about Desk itself.
+
+- `desk_report_to_expert(expert_id, title, finding, evidence?, reporter?)`
+  -- returns a `report_id` at once and never waits. Make it self-contained and
+  report what you actually observed, with the evidence (commands, paths, exact
+  output). Reporting to an expert that is not listening is refused, and the
+  error lists the experts that are.
+- `desk_get_expert_report(report_id)` -- your view: `status` (`new`,
+  `accepted`, `rejected`, `duplicate`, `integrated`), the expert's
+  `review_note`, and once folded in, the `integration_note` saying where.
+- `desk_list_expert_reports(expert_id, status?)` -- the expert's view; by
+  default the reports still to deal with (`new` and `accepted`).
+- `desk_review_expert_report(report_id, decision, note?, reviewed_by?)` --
+  `accepted` (worth keeping), `rejected` or `duplicate` (a note is required, so
+  the reporter learns why).
+- `desk_integrate_expert_report(report_id, integration_note, integrated_by?)`
+  -- after you have actually folded the finding into what you maintain, record
+  where. Do the integration first; this only records it.
+
+An expert that is an agent should check `desk_list_expert_reports` when it
+starts work in its domain. Treat a report as a lead, not a fact: verify it
+before integrating, and reject it if it does not hold.
+
 ## The Experts widget and notifications
 
 When an answer arrives for a question you asked, and when a new question is
@@ -945,11 +979,31 @@ Answered or All), shows one, and lets the person **answer it** or use
 
 An answer written in the widget does not produce a notification.
 
+Reports (see "Reporting findings to an expert") show up too: a new report
+for `desk` or `user` produces a notification in the Desk that reported it,
+and when a report you filed is rejected, called a duplicate or integrated,
+the Desk you filed it from shows that outcome. In the widget, pick *Reports
+to review* (or *Reports: all*) to see them, **Accept** / **Reject** /
+**Duplicate** with a note, or **Send to agent** to have a new Claude session
+verify the finding, fold it in and record where.
+
 With several Desks running on one machine, each notification is shown by
 exactly **one** Desk: the one whose session asked the question (the registry
 records the asking Desk's directory). If that Desk has been closed for a
 little while, or the question has no recorded Desk, whichever Desk is
 running announces it instead.
+
+## The built-in `desk` expert
+
+`desk` answers questions about Desk itself or the running session (how a
+feature behaves, why something timed out, what is on the canvas). A person
+or a Desk-hosted service may answer for it like any expert. If a question to
+`desk` is still `open` (nobody has accepted it) after about 20 seconds, the
+Desk it was asked from starts a Claude (Desk) session that reads Desk's own
+source and docs, answers, and records the answer as `desk-fallback`; you get
+it the usual way (`desk_get_expert_question`, plus the notification). A
+question someone has already accepted is left alone. `desk_ask_desk_expert`
+is shorthand for asking `desk` and having that session start immediately.
 
 ## A Desk-hosted service as an expert
 
@@ -958,14 +1012,25 @@ questions. Give its `service.json` the `experts` capability, then, from
 `service.py`, with `from desk.hmsvc_client import desk` (each call blocks;
 wrap it in `asyncio.to_thread` from an `async def`):
 
-- `desk.experts_register(expert_id, name, description="")` -- registers or
-  updates an expert (kind `hmsvc`) owned by this service.
+- `desk.experts_register(expert_id, name, description="", listens_for="")` --
+  registers or updates an expert (kind `hmsvc`) owned by this service.
+  `listens_for` says what findings agents may report to it (empty: none).
 - `desk.experts_pending(expert_id)` -- the open questions put to it:
   `[{question_id, question, asker, asked_at, ...}]`. The asker's private
   note is never included.
 - `desk.experts_accept(question_id)` -- claim one so nothing else starts it.
 - `desk.experts_answer(question_id, answer)` -- answer it; the asker is
   notified.
+
+To receive reports (findings agents send with `desk_report_to_expert`):
+
+- `desk.experts_reports(expert_id)` -- the reports still to deal with (status
+  `new` or `accepted`): `[{report_id, title, finding, evidence, reporter,
+  ...}]`. They are leads, not facts: verify before folding one in.
+- `desk.experts_report_review(report_id, decision, note="")` -- `"accepted"`,
+  `"rejected"` or `"duplicate"`; a note is required for the last two.
+- `desk.experts_report_integrate(report_id, integration_note)` -- after you
+  have folded the finding in, record where; the reporter can read it.
 
 A service can only act on experts it registered itself. Poll
 `experts_pending` (or subscribe to the `desk.experts.changed` desk event and
@@ -1034,9 +1099,10 @@ See `desk-temporary-ui.md` (in this same directory) for this
 directory's own overview and its current set of tags. This is not a
 tempui-DSL file type: it is one MCP tool on the `desk` server.
 
-`desk_ask_desk_expert(question)` takes a single string. Desk places a
-new Claude (Desk) widget on the canvas and starts an agent in it whose
-prompt contains:
+`desk_ask_desk_expert(question)` takes a single string. It is shorthand for
+asking the built-in `desk` expert (`tempui-experts.md`) and having Desk
+answer at once. Desk places a new Claude (Desk) widget on the canvas and
+starts an agent in it whose prompt contains:
 
 - the usual "you are running inside of Desk" orientation and tool list;
 - the location of Desk's own source checkout (the code this very Desk
@@ -1051,10 +1117,12 @@ It is told to answer your question, not to wait for the user.
 
 ## What to expect
 
-- **Fire-and-forget.** The call returns the new widget's `instance_id`
-  immediately. Nothing is returned to you later: the answer lands in the
-  new widget's own window, and the user decides what to do with it.
-  Do not wait on it or poll for it.
+- **Does not wait.** The call returns at once with a `question_id` and the
+  new widget's `instance_id`. The answer is recorded in the expert registry
+  (read it with `desk_get_expert_question`; Desk also notifies the user) and
+  appears in the new widget's window. Do not block on it. Only when the
+  expert registry is unavailable (no PostgreSQL) does it fall back to
+  fire-and-forget, where nothing comes back to you.
 - It runs as an ordinary Claude (Desk) session: the user may see
   permission prompts in that widget for reads outside the project.
 - Put everything the expert needs in the one string (what you tried,
@@ -3164,6 +3232,38 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "Experts widget: review reports #223281": """- Reports reach the person too. A new finding for the built-in `desk`
+  expert (or `user`) shows a top-right notification in the Desk that reported
+  it, and when a report you filed is rejected, called a duplicate or
+  integrated, your Desk shows that too. The **Experts** widget has a
+  *Reports to review* mode to **Accept**, **Reject** or mark **Duplicate**
+  (with a note) and to **Send to agent**: a new session told to verify the
+  finding, fold it in and record where. See `tempui-experts.md`.
+""",
+    "hmsvc experts receive reports #864728": """- A Desk-hosted service (hmsvc) with the `experts` capability can now
+  *receive* reports as an expert: `desk.experts_register(..., listens_for=
+  "what I want to hear")`, then `desk.experts_reports(expert_id)`,
+  `desk.experts_report_review(report_id, decision, note)` and
+  `desk.experts_report_integrate(report_id, integration_note)`. See
+  `tempui-experts.md`.
+""",
+    "desk_report_to_expert: findings to experts #532898": """- Experts can now be told things, not only asked. An expert registered
+  with `listens_for` ("what findings I want") receives **reports**: when you
+  learn something about a domain you do not own -- a pitfall, a workaround
+  that worked, a doc that is wrong -- call `desk_report_to_expert`
+  (`desk_list_experts` shows who listens). The expert evaluates it later with
+  `desk_review_expert_report` and folds it in with
+  `desk_integrate_expert_report`; you read the outcome with
+  `desk_get_expert_report`. The built-in `desk` expert listens for findings
+  about Desk itself. See `tempui-experts.md`.
+""",
+    "desk expert: local fallback answers in 20s #379639": """- There is now a built-in expert **`desk`** for questions about Desk itself
+  or the running session. If nobody answers one within about 20 seconds,
+  the Desk you asked from starts a Claude (Desk) session that reads Desk's
+  source and docs and records the answer, so `desk_ask_expert("desk", ...)`
+  does get an answer back. `desk_ask_desk_expert` is now shorthand for that,
+  answered at once. See `tempui-experts.md` and `tempui-ask-desk-expert.md`.
+""",
     "hmsvc.list resolves to {services}; docs fixed #650713d": """- Doc fix, no behavior change: `tempui-hmsvc.md`'s worked example treated
   `desk.hmsvc.list()` as a bare array, but it resolves to
   `{ services: [...] }` (so `services.find` threw `TypeError`). The

@@ -20,7 +20,14 @@ from desk.shell.qt_controls.painted_combo import PaintedComboBox
 
 NOT_CONNECTED_STATUS = "Not yet connected to Desk."
 EMPTY_STATUS = "Nothing here."
-FILTERS = (("Open", ("open", "accepted")), ("Answered", ("answered",)), ("All", None))
+# (label, what it lists, statuses). Questions are put to experts; reports are findings agents sent to listening ones.
+FILTERS = (
+    ("Open", "questions", ("open", "accepted")),
+    ("Answered", "questions", ("answered",)),
+    ("All", "questions", None),
+    ("Reports to review", "reports", ("new", "accepted")),
+    ("Reports: all", "reports", None),
+)
 _QID_ROLE = Qt.ItemDataRole.UserRole
 
 
@@ -55,17 +62,44 @@ def build_agent_prompt(question: dict, expert: dict | None, note: str = "") -> s
     )
 
 
+def build_report_agent_prompt(report: dict, expert: dict | None) -> str:
+    """What a new Claude session is told about a reported finding: verify it, fold it in where it belongs, and
+    record the outcome with the report tools (the reporter reads that)."""
+    expert_name = (expert or {}).get("name") or report["expert_id"]
+    listens = (expert or {}).get("listens_for") or ""
+    return (
+        "An agent reported a finding to an expert. You are acting for that expert: evaluate the report and, if it "
+        "holds, fold it in.\n\n"
+        f"Report id: {report['report_id']}\n"
+        f"Reported to: {expert_name} ({report['expert_id']})"
+        + (f", who listens for: {listens}" if listens else "")
+        + f"\nReported by: {report.get('reporter') or '(unknown)'} at {report.get('reported_at') or '?'}\n\n"
+        f"Title: {report['title']}\n\nFinding:\n{report['finding']}\n\n"
+        f"Evidence given:\n{report.get('evidence') or '(none)'}\n\n"
+        "A report is a lead, not a fact. First check it yourself, reading whatever you need from the project or "
+        "running what the evidence says it ran. Then record the outcome with the desk MCP tools:\n"
+        f"- if it is wrong, unsupported or out of scope: desk_review_expert_report with report_id \"{report['report_id']}\", "
+        "decision \"rejected\" and a note saying why;\n"
+        f"- if it is already known: decision \"duplicate\" and a note saying where;\n"
+        "- if it holds: put it where it belongs (a doc, a TODO, a FEEDBACK file, the code), then call "
+        f"desk_integrate_expert_report with report_id \"{report['report_id']}\" and an integration_note saying exactly "
+        "where, and use \"claude session\" as integrated_by / reviewed_by.\n"
+        "Tell the user what you decided."
+    )
+
+
 class _Loader(QObject):
     """Runs the registry reads on a worker thread (the first one may provision Postgres) and delivers the
     result on the GUI thread."""
 
     done = pyqtSignal(int, object, object)  # generation, (experts, questions) or None, error text or None
 
-    def load(self, generation: int, statuses) -> None:
+    def load(self, generation: int, kind: str, statuses) -> None:
         def work() -> None:
             try:
                 registry = expert_registry.get_registry()
-                result = (registry.list_experts(), registry.list_questions(None, statuses))
+                items = registry.list_reports(None, statuses) if kind == "reports" else registry.list_questions(None, statuses)
+                result = (registry.list_experts(), items)
                 self.done.emit(generation, result, None)
             except ExpertRegistryError as e:
                 self.done.emit(generation, None, str(e))
@@ -81,6 +115,7 @@ class ExpertsWidget(QWidget):
         super().__init__(parent)
         self._subscription: EventSubscription | None = None
         self._questions: list[dict] = []
+        self._kind = "questions"  # what the list shows: "questions" or "reports"
         self._experts: dict[str, dict] = {}
         self._generation = 0
         self._loader = _Loader(self)
@@ -90,8 +125,8 @@ class ExpertsWidget(QWidget):
         self._status_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         self._status_label.setWordWrap(True)
         self._filter = PaintedComboBox()
-        for label, statuses in FILTERS:
-            self._filter.addItem(label, statuses)
+        for label, kind, statuses in FILTERS:
+            self._filter.addItem(label, (kind, statuses))
         self._filter.currentIndexChanged.connect(lambda _i: self.refresh())
         self._refresh_button = QPushButton("Refresh")
         self._refresh_button.clicked.connect(self.refresh)
@@ -107,12 +142,19 @@ class ExpertsWidget(QWidget):
         self._answer_button.clicked.connect(self._answer)
         self._agent_button = QPushButton("Send to agent")
         self._agent_button.clicked.connect(self._send_to_agent)
+        self._review_buttons = {}
+        for decision, label in (("accepted", "Accept"), ("rejected", "Reject"), ("duplicate", "Duplicate")):
+            button = QPushButton(label)
+            button.clicked.connect(lambda _checked=False, d=decision: self._review(d))
+            self._review_buttons[decision] = button
 
         top = QHBoxLayout()
         top.addWidget(self._filter, stretch=1)
         top.addWidget(self._refresh_button)
         buttons = QHBoxLayout()
         buttons.addWidget(self._answer_button)
+        for button in self._review_buttons.values():
+            buttons.addWidget(button)
         buttons.addWidget(self._agent_button)
         layout = QVBoxLayout(self)
         layout.addLayout(top)
@@ -138,7 +180,8 @@ class ExpertsWidget(QWidget):
     def refresh(self) -> None:
         self._generation += 1
         self._status_label.setText("Loading…")
-        self._loader.load(self._generation, self._filter.currentData())
+        kind, statuses = self._filter.currentData()
+        self._loader.load(self._generation, kind, statuses)
 
     def _on_loaded(self, generation: int, result, error) -> None:
         if generation != self._generation:
@@ -148,6 +191,7 @@ class ExpertsWidget(QWidget):
             self._status_label.setText(error)
             return
         experts, questions = result
+        self._kind = self._filter.currentData()[0]
         self._set_questions(questions, {e["expert_id"]: e for e in experts})
 
     def _set_questions(self, questions: list[dict], experts: dict[str, dict]) -> None:
@@ -156,15 +200,19 @@ class ExpertsWidget(QWidget):
         self._list.blockSignals(True)
         self._list.clear()
         for q in self._questions:
-            first = (q["question"].strip().splitlines() or [""])[0]
             name = (experts.get(q["expert_id"]) or {}).get("name") or q["expert_id"]
+            if self._kind == "reports":
+                first = q["title"].strip()
+            else:
+                first = (q["question"].strip().splitlines() or [""])[0]
             item = QListWidgetItem(f"[{name}] {first[:80]} ({q['status']})")
-            item.setData(_QID_ROLE, q["question_id"])
+            item.setData(_QID_ROLE, self._id_of(q))
             self._list.addItem(item)
-            if q["question_id"] == selected:
+            if self._id_of(q) == selected:
                 self._list.setCurrentItem(item)
         self._list.blockSignals(False)
-        self._status_label.setText(f"{len(self._questions)} question(s)." if self._questions else EMPTY_STATUS)
+        noun = "report(s)" if self._kind == "reports" else "question(s)"
+        self._status_label.setText(f"{len(self._questions)} {noun}." if self._questions else EMPTY_STATUS)
         self._show_selected()
 
     # -- selection ----------------------------------------------------------
@@ -173,17 +221,32 @@ class ExpertsWidget(QWidget):
         item = self._list.currentItem()
         return item.data(_QID_ROLE) if item is not None else None
 
+    def _id_of(self, item: dict) -> str:
+        return item["report_id"] if self._kind == "reports" else item["question_id"]
+
     def _selected(self) -> dict | None:
         qid = self._selected_id()
-        return next((q for q in self._questions if q["question_id"] == qid), None)
+        return next((q for q in self._questions if self._id_of(q) == qid), None)
 
     def _show_selected(self) -> None:
         q = self._selected()
+        reports = self._kind == "reports"
+        self._answer_button.setVisible(not reports)
+        for button in self._review_buttons.values():
+            button.setVisible(reports)
+        self._answer_box.setPlaceholderText(
+            "Note (needed to reject or mark a duplicate)" if reports else "Your answer"
+        )
         if q is None:
             self._detail.setPlainText("")
             self._answer_button.setEnabled(False)
             self._agent_button.setEnabled(False)
             self._answer_box.setEnabled(False)
+            for button in self._review_buttons.values():
+                button.setEnabled(False)
+            return
+        if reports:
+            self._show_report(q)
             return
         expert = self._experts.get(q["expert_id"]) or {}
         lines = [
@@ -202,7 +265,45 @@ class ExpertsWidget(QWidget):
         self._agent_button.setEnabled(q["status"] in ("open", "accepted", "answered"))
         self._agent_button.setText("Send to agent" if waiting else "Send answer to agent")
 
+    def _show_report(self, r: dict) -> None:
+        expert = self._experts.get(r["expert_id"]) or {}
+        lines = [
+            f"To: {expert.get('name') or r['expert_id']} ({r['expert_id']})",
+            f"From: {r.get('reporter') or '(unknown)'}    Reported: {r.get('reported_at') or '?'}",
+            f"Status: {r['status']}",
+            "",
+            r["title"],
+            "",
+            r["finding"],
+        ]
+        if r.get("evidence"):
+            lines += ["", "--- Evidence ---", r["evidence"]]
+        if r.get("review_note"):
+            lines += ["", f"--- Review ({r.get('reviewed_by') or 'unknown'}) ---", r["review_note"]]
+        if r.get("integration_note"):
+            lines += ["", f"--- Integrated ({r.get('integrated_by') or 'unknown'}) ---", r["integration_note"]]
+        self._detail.setPlainText("\n".join(lines))
+        pending = r["status"] in ("new", "accepted")
+        self._answer_box.setEnabled(pending)
+        for button in self._review_buttons.values():
+            button.setEnabled(pending)
+        self._agent_button.setEnabled(pending)
+        self._agent_button.setText("Send to agent")
+
     # -- actions ------------------------------------------------------------
+
+    def _review(self, decision: str) -> None:
+        r = self._selected()
+        if r is None or self._kind != "reports":
+            return
+        note = self._answer_box.toPlainText().strip()
+        try:
+            expert_registry.get_registry().review_report(r["report_id"], decision, note, "you")
+        except ExpertRegistryError as e:
+            self._status_label.setText(str(e))
+            return
+        self._answer_box.clear()
+        self.refresh()
 
     def _answer(self) -> None:
         q = self._selected()
@@ -227,6 +328,14 @@ class ExpertsWidget(QWidget):
             return
         if window is None:
             self._status_label.setText(NOT_CONNECTED_STATUS)
+            return
+        if self._kind == "reports":
+            try:
+                window.start_expert_session(build_report_agent_prompt(q, self._experts.get(q["expert_id"])))
+            except ValueError as e:
+                self._status_label.setText(str(e))
+                return
+            self._status_label.setText("Started an agent session.")
             return
         try:
             registry = expert_registry.get_registry()

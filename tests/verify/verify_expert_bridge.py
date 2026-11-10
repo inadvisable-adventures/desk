@@ -113,6 +113,31 @@ try:
         check("answering twice is a 400", denied(lambda: oracle.experts_answer(q["question_id"], "again")) == "400")
         check("the asker sees it and still has the note", reg.get_question(q["question_id"], True)["note_to_self"] == "private note to self")
 
+        # -- reports (TODO 7ebb24f) --
+        try:
+            reg.report("oracle", "t", "f")
+            refused = False
+        except er.ExpertRegistryError:
+            refused = True
+        check("before listens_for is set, reports to the service are refused", refused)
+        le = in_thread(lambda: oracle.experts_register("oracle", "The oracle", "knows things", "Anything about oracles"))
+        check("registering with listens_for makes it listen", le["listens_for"] == "Anything about oracles")
+        rep = reg.report("oracle", "Oracles lie on Tuesdays", "observed twice", "log lines", "agent", "/d/a")
+        got = in_thread(lambda: oracle.experts_reports("oracle"))
+        check("reports lists the new report", [x["report_id"] for x in got] == [rep["report_id"]] and got[0]["evidence"] == "log lines")
+        check("a service cannot read another's reports", denied(lambda: other.experts_reports("oracle")) == "403")
+        check("unknown expert's reports is a 400", denied(lambda: oracle.experts_reports("ghost")) == "400")
+        check("another service cannot review it", denied(lambda: other.experts_report_review(rep["report_id"], "accepted")) == "403")
+        check("rejecting needs a note (400)", denied(lambda: oracle.experts_report_review(rep["report_id"], "rejected")) == "400")
+        rv = in_thread(lambda: oracle.experts_report_review(rep["report_id"], "accepted"))
+        check("review is recorded as the service's", rv["status"] == "accepted" and rv["reviewed_by"] == "hmsvc:oracle")
+        check("an accepted report still shows as pending", len(in_thread(lambda: oracle.experts_reports("oracle"))) == 1)
+        check("another service cannot integrate it", denied(lambda: other.experts_report_integrate(rep["report_id"], "x")) == "403")
+        ig = in_thread(lambda: oracle.experts_report_integrate(rep["report_id"], "added to the oracle table"))
+        check("integrate is recorded", ig["status"] == "integrated" and ig["integration_note"] == "added to the oracle table")
+        check("an integrated report leaves the list", in_thread(lambda: oracle.experts_reports("oracle")) == [])
+        check("integrating twice is a 400", denied(lambda: oracle.experts_report_integrate(rep["report_id"], "again")) == "400")
+
         # an html widget instance (no `experts` capability) is turned away
         import urllib.error
         import urllib.request
