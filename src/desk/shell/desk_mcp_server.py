@@ -57,7 +57,7 @@ from typing import Any
 
 from claude_agent_sdk import McpSdkServerConfig, create_sdk_mcp_server, tool
 
-from desk import expert_registry, feedback_items, handoff_requests, pipeline_dsl
+from desk import expert_registry, feedback_items, handoff_requests, hmsvc_call, pipeline_dsl
 from desk.expert_registry import ExpertRegistryError
 from desk.event_mediator import MediatedEvent
 from desk.widget_logs import RECORDING_EVENT, STOPPED_RECORDING_EVENT, format_time_iso, parse_time_ms
@@ -832,6 +832,72 @@ async def _ask_desk_expert(args: dict[str, Any]) -> dict[str, Any]:
     )
 
 @tool(
+    "desk_list_hmsvcs",
+    "List the Desk-hosted microservices (hmsvc) of the current project: name, description, status ('stopped', "
+    "'starting', 'running', 'exited', 'crashed') and, while running, the loopback `url`. Only a 'running' service can "
+    "be called with desk_call_hmsvc. Read-only; it does not start anything. See tempui-hmsvc.md.",
+    {"type": "object", "properties": {}},
+)
+async def _list_hmsvcs(args: dict[str, Any]) -> dict[str, Any]:
+    manager = _hmsvc_manager()
+    if manager is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    return _text_result(json.dumps(manager.list_services(), indent=2))
+
+
+@tool(
+    "desk_call_hmsvc",
+    "Send one HTTP request to a running Desk-hosted microservice (hmsvc) of the current project and return its "
+    "response: {status, content_type, truncated, body}. `name` picks the service (desk_list_hmsvcs); you never "
+    "pass a host or port -- they change on every launch. `path` is the route on the service, starting with '/', query "
+    "string included (e.g. '/items?limit=5'). For POST/PUT/PATCH give `json` (any JSON value) or `body` (text). An "
+    "HTTP error status such as 404 or 500 is returned as a normal result so you can read the service's own message; "
+    "only a stopped or unreachable service, or a bad request, is an error. Redirects are reported, not followed. The "
+    "response body is text, capped at 100 KB; binary responses are not shown. The service's own routes are whatever "
+    "its service.py defines (read it, or the service's docs), and it may be unauthenticated -- do not send secrets "
+    "you would not put in a local request. See tempui-hmsvc.md.",
+    {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "method": {"type": "string", "enum": list(hmsvc_call.METHODS), "description": "Default GET."},
+            "path": {"type": "string", "description": "Default '/'."},
+            "json": {"description": "A JSON body (POST/PUT/PATCH)."},
+            "body": {"type": "string", "description": "A text body instead of json (POST/PUT/PATCH)."},
+            "headers": {"type": "object", "additionalProperties": {"type": "string"}},
+            "timeout": {"type": "number", "description": "Seconds, default 30, at most 120."},
+        },
+        "required": ["name"],
+    },
+)
+async def _call_hmsvc(args: dict[str, Any]) -> dict[str, Any]:
+    manager = _hmsvc_manager()
+    if manager is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        result = await asyncio.to_thread(
+            hmsvc_call.call_service,
+            manager,
+            args.get("name", ""),
+            args.get("method") or "GET",
+            args.get("path") or "/",
+            args.get("json"),
+            args.get("body"),
+            args.get("headers"),
+            args.get("timeout") or hmsvc_call.DEFAULT_TIMEOUT_SECONDS,
+        )
+    except hmsvc_call.HmsvcCallError as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(json.dumps(result, indent=2))
+
+
+def _hmsvc_manager():
+    """This Desk's HmsvcManager (the MCP server runs inside Desk), or None before the window exists."""
+    window = current_context.get_main_window()
+    return getattr(window, "_hmsvc", None) if window is not None else None
+
+
+@tool(
     "desk_raise_event",
     "Raise a named desk event, with an optional JSON payload, on the same channel widgets use "
     "(`desk.events`), so any widget instance subscribed to that name receives it immediately -- "
@@ -1533,6 +1599,8 @@ _TOOLS = [
     _run_pipeline,
     _git_commit,
     _ask_desk_expert,
+    _list_hmsvcs,
+    _call_hmsvc,
     _raise_event,
     _wait_for_event,
     _create_handoff_request,

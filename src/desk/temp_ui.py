@@ -273,6 +273,7 @@ CURRENT_TAGS: tuple[str, ...] = (
     "desk_report_to_expert: findings to experts #532898",
     "hmsvc experts receive reports #864728",
     "Experts widget: review reports #223281",
+    "desk_call_hmsvc: agents call services #506728",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -2794,6 +2795,29 @@ Statuses: `stopped`, `starting`, `running`, `exited` (ended on its own
 with code 0), `crashed` (non-zero exit, or never became ready). A stop
 request gives the process a short grace period, then kills it.
 
+## Calling a service from an agent
+
+An agent does not need a widget to reach a service. Two MCP tools on the
+`desk` server work against the current project's services:
+
+- `desk_list_hmsvcs()` -- each service's `name`, `description`, `status` and,
+  while `running`, its loopback `url`. Read-only; it never starts anything.
+- `desk_call_hmsvc(name, method?, path?, json?, body?, headers?, timeout?)` --
+  one HTTP request to the *running* service `name`; `path` is the route on
+  that service (starting with `/`, query string included), `method` defaults
+  to `GET`. For `POST`/`PUT`/`PATCH` give `json` (any JSON value) or `body`
+  (text). It returns `{status, content_type, truncated, body}`.
+
+You never pass a host or port (the port is new on every launch), and
+redirects are reported rather than followed. An HTTP error status such as 404
+or 500 comes back as a normal result so you can read the service's own error
+message; only a stopped or unreachable service, or a malformed request, is a
+tool error. The body is text, capped at 100 KB, and binary responses are not
+shown. A stopped service has no address: ask the user to start it from the
+Microservices widget. The routes are whatever the service's `service.py`
+defines, so read it first. The port is unauthenticated unless the service adds
+its own auth, so do not send secrets.
+
 ## Reaching a service from a widget -- the networking model
 
 `desk.hmsvc.*` is **management only**; it does not proxy requests into
@@ -3232,6 +3256,13 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "desk_call_hmsvc: agents call services #506728": """- New MCP tools `desk_list_hmsvcs` and `desk_call_hmsvc` let you call a
+  Desk-hosted microservice (hmsvc) of the current project directly:
+  `desk_call_hmsvc(name, method?, path?, json?, body?, headers?, timeout?)`
+  sends one HTTP request to a *running* service and returns `{status,
+  content_type, truncated, body}`. You name the service, never a host or port
+  (the port changes on every launch). See `tempui-hmsvc.md`.
+""",
     "Experts widget: review reports #223281": """- Reports reach the person too. A new finding for the built-in `desk`
   expert (or `user`) shows a top-right notification in the Desk that reported
   it, and when a report you filed is rejected, called a duplicate or
