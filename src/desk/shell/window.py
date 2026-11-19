@@ -4445,7 +4445,7 @@ class DeskWindow(QMainWindow):
         notify/live-refresh flow.
 
         Registering never places an instance of the defined kind --
-        see the "louder docs" callout in _CUSTOM_WIDGETS_DOC (TODO
+        see the "louder docs" callout in tempui-custom-widgets.md (TODO
         dafbaab) -- a separate, keyword-only tempui file always does
         that (see "Invoking a defined widget"). TODO 5ff02d2 briefly
         auto-placed one instance the first time a brand-new keyword was

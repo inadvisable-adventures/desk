@@ -271,7 +271,9 @@ def test_mcp_tool_and_bridge_route_share_one_implementation():
 
 
 def test_changelog_and_doc_cover_this():
-    from desk.temp_ui import CURRENT_TAGS, _CUSTOM_WIDGETS_DOC, _DESK_PROC_DOC, _NEW_FEATURES
+    from desk.temp_ui import CURRENT_TAGS, _NEW_FEATURES, SPLIT_DOC_CONTENT
+    _CUSTOM_WIDGETS_DOC = SPLIT_DOC_CONTENT["tempui-custom-widgets.md"]
+    _DESK_PROC_DOC = SPLIT_DOC_CONTENT["tempui-desk-proc.md"]
 
     tag = "workspace getState exposes per-instance stale flag #157810"
     check("tag is in CURRENT_TAGS with a _NEW_FEATURES entry", tag in CURRENT_TAGS and tag in _NEW_FEATURES)

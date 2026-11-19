@@ -160,7 +160,8 @@ with tempfile.TemporaryDirectory() as d:
           and "PROJECT-COPY-MARKER" not in (REPO_ROOT / "shared-components/desk-select/desk-select.ts").read_text())
 
 # ---------------- docs ----------------
-from desk.temp_ui import CURRENT_TAGS, _CUSTOM_WIDGETS_DOC, _NEW_FEATURES  # noqa: E402
+from desk.temp_ui import CURRENT_TAGS, _NEW_FEATURES, SPLIT_DOC_CONTENT  # noqa: E402
+_CUSTOM_WIDGETS_DOC = SPLIT_DOC_CONTENT["tempui-custom-widgets.md"]
 
 for suffix in ("#5ee7493", "#b04682e"):
     tag = next((t for t in CURRENT_TAGS if t.endswith(suffix)), None)

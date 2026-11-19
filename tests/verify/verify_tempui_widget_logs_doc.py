@@ -6,10 +6,9 @@ sys.path.insert(0, "src")
 from desk import widget_logs  # noqa: E402
 from desk.server.bridge_client import BRIDGE_CLIENT_TEMPLATE  # noqa: E402
 from desk.shell.desk_mcp_server import _TOOLS  # noqa: E402
-from desk.temp_ui import (  # noqa: E402
-    CURRENT_TAGS, SPLIT_DOC_CONTENT, WIDGET_LOGS_DOC_FILENAME, _CUSTOM_WIDGETS_DOC, _NEW_FEATURES, _PORTING_DOC,
-    DOC_TEMPLATE,
-)
+from desk.temp_ui import CURRENT_TAGS, SPLIT_DOC_CONTENT, WIDGET_LOGS_DOC_FILENAME, _NEW_FEATURES, DOC_TEMPLATE
+_CUSTOM_WIDGETS_DOC = SPLIT_DOC_CONTENT["tempui-custom-widgets.md"]
+_PORTING_DOC = SPLIT_DOC_CONTENT["tempui-porting-existing-apps.md"]
 
 passed = failed = 0
 

@@ -4,9 +4,9 @@ import sys
 
 sys.path.insert(0, "src")
 
-from desk.temp_ui import (  # noqa: E402
-    CURRENT_TAGS, HMSVC_DOC_FILENAME, SPLIT_DOC_CONTENT, _CUSTOM_WIDGETS_DOC, _NEW_FEATURES, _PORTING_DOC,
-)
+from desk.temp_ui import CURRENT_TAGS, HMSVC_DOC_FILENAME, SPLIT_DOC_CONTENT, _NEW_FEATURES
+_CUSTOM_WIDGETS_DOC = SPLIT_DOC_CONTENT["tempui-custom-widgets.md"]
+_PORTING_DOC = SPLIT_DOC_CONTENT["tempui-porting-existing-apps.md"]
 import desk.hmsvc as hmsvc  # noqa: E402
 
 passed = failed = 0

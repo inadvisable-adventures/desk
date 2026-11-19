@@ -27,12 +27,8 @@ app = QApplication.instance() or QApplication(sys.argv)
 from desk.hotreload import HotReloadBroker  # noqa: E402
 from desk.server.runner import start_server  # noqa: E402
 from desk.shell.chromium_widget import ChromiumWidget  # noqa: E402
-from desk.temp_ui import (  # noqa: E402
-    NEW_FEATURES_DOC_FILENAME,
-    SPLIT_DOC_CONTENT,
-    CURRENT_TAGS,
-    _CUSTOM_WIDGETS_DOC,
-)
+from desk.temp_ui import NEW_FEATURES_DOC_FILENAME, SPLIT_DOC_CONTENT, CURRENT_TAGS
+_CUSTOM_WIDGETS_DOC = SPLIT_DOC_CONTENT["tempui-custom-widgets.md"]
 
 COMPONENT_DIR = REPO_ROOT / "shared-components" / "document-editor-base"
 

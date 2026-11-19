@@ -1102,7 +1102,9 @@ timestamp (`desk.temp_ui.generate_tag`), added by whoever changes
 `DOC_TEMPLATE`'s (or a split doc's) static content in a way that would
 matter to an agent reading it — never auto-derived, since there's no
 reliable way to detect "did this edit change the doc's *meaning*"
-automatically. `desk.temp_ui.CURRENT_TAGS` is every tag a fully
+automatically. `desk.temp_ui.CURRENT_TAGS` (derived from the changelog files in
+`src/desk/tempui_content/`, TODO `de16076`, which also holds each doc's long text as a
+`.md` file; all read when `desk.temp_ui` is imported, see `desk.tempui_content`) is every tag a fully
 up-to-date doc set has; an HTML-comment note per tag, right under the
 file's own title (`<!-- desk-temporary-ui.md tag: <id> -->`), records
 which tags a given project's doc set has already seen. A tag-suffixed

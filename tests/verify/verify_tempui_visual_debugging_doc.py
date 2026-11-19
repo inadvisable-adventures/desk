@@ -4,12 +4,8 @@ import sys
 
 sys.path.insert(0, "src")
 
-from desk.temp_ui import (  # noqa: E402
-    _CUSTOM_WIDGETS_DOC,
-    _NEW_FEATURES,
-    CURRENT_TAGS,
-    CURRENT_TAG_SET,
-)
+from desk.temp_ui import _NEW_FEATURES, CURRENT_TAGS, CURRENT_TAG_SET, SPLIT_DOC_CONTENT
+_CUSTOM_WIDGETS_DOC = SPLIT_DOC_CONTENT["tempui-custom-widgets.md"]
 
 TAG = "visual debugging of widget geometry guidance #733899"
 HEADING = "## Debugging a widget's own rendering/geometry visually"

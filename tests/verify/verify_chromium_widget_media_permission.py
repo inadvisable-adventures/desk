@@ -191,7 +191,8 @@ with tempfile.TemporaryDirectory() as d:
         handle.stop()
 
 sys.path.insert(0, "src")
-from desk.temp_ui import CURRENT_TAGS, _CUSTOM_WIDGETS_DOC, _NEW_FEATURES  # noqa: E402
+from desk.temp_ui import CURRENT_TAGS, _NEW_FEATURES, SPLIT_DOC_CONTENT  # noqa: E402
+_CUSTOM_WIDGETS_DOC = SPLIT_DOC_CONTENT["tempui-custom-widgets.md"]
 
 TAG = "media capability gates mic and camera #407103"
 check("tempui doc documents the media capability", "## Media (mic/camera) access" in _CUSTOM_WIDGETS_DOC)

@@ -1,0 +1,132 @@
+[
+  {
+    "tag": "desk_place_widget MCP places a registered widget #800488",
+    "monthstamp": "11 2026",
+    "description": "- New MCP tool `desk_place_widget(widget_id, x?, y?, width?, height?, state?)`\n  on the `desk` server: places a new instance of an already-registered\n  widget kind on the Workspace Canvas and returns its `instance_id`, with\n  no human click on a notification. Use it right after building and\n  registering a `DefineWidget` (or for any widget in the catalog) to close\n  the loop yourself: place, then `desk_reveal_widget` /\n  `desk_screenshot_widget`, tweak, rebuild, and repeat. `x`/`y` are the\n  top-left in canvas coordinates (the same ones\n  `desk_list_widget_instances` reports); omit them to center the widget in\n  the current view. An optional `state` object seeds the new instance's\n  widget-local storage, i.e. what the widget's first\n  `window.desk.self.getLocalStorage()` returns -- its shape is whatever\n  your widget stores with `setLocalStorage`. See \"Invoking a defined\n  widget\" in `tempui-custom-widgets.md`.\n"
+  },
+  {
+    "tag": "mermaid classDef/class node styling #200895",
+    "monthstamp": "11 2026",
+    "description": "- Mermaid flowcharts (a fenced ```mermaid``` block) now honor\n  `classDef`, `class`, the `A:::name` shorthand and `style` lines for\n  per-node styling (`fill`, `stroke`, `stroke-width`, `stroke-dasharray`,\n  `color`) instead of skipping them. See \"Supported Mermaid subset\" in\n  `tempui-markdown.md`.\n"
+  },
+  {
+    "tag": "mermaid subgraph containment boxes #200896",
+    "monthstamp": "11 2026",
+    "description": "- Mermaid flowcharts now draw `subgraph id [Title] ... end` as a\n  labeled box around its nodes (nestable) instead of ignoring it. Edges\n  to a subgraph itself are not supported and fall back to plain text.\n  See \"Supported Mermaid subset\" in `tempui-markdown.md`.\n"
+  },
+  {
+    "tag": "desk areas: background regions + MCP tools #377360",
+    "monthstamp": "11 2026",
+    "description": "- Desk **areas**: named rectangles drawn on the canvas background,\n  behind every widget, that mark out a region and can be jumped to. A\n  human adds one from the canvas right-click menu (\"Desk Area\"), drags its\n  title strip to move it and its border to resize it, double-clicks the\n  title to rename it, and clicks its eye button to fit the view to it. The\n  interior is click-through: an area never blocks anything inside it, and\n  moving or resizing one does not carry any widgets. Five new MCP tools on\n  the `desk` server manage them -- `desk_list_areas`, `desk_create_area`,\n  `desk_update_area`, `desk_delete_area` and `desk_view_area` -- and every\n  change publishes a `desk.areas.changed` desk event (payload\n  `{\"areas\": [...]}`) that widgets can subscribe to. Areas are saved in the\n  `.desk` file and appear in `desk.workspace.getState()` as `areas`. See\n  `tempui-areas.md`.\n"
+  },
+  {
+    "tag": "docked sidebar widgets + MCP tools #797468",
+    "monthstamp": "11 2026",
+    "description": "- A **docked sidebar** on the right of the main window, outside the\n  zoomable canvas, that hosts `kind: \"python\"` widgets. A human docks one\n  from the canvas right-click menu's collapsed \"Dock in sidebar\" group; each\n  docked widget has a title bar with \"move to canvas\" and \"remove\" buttons.\n  New MCP tools: `desk_dock_widget(widget_id, state?)`,\n  `desk_undock_widget(instance_id)` and `desk_list_docked_widgets()`. A\n  docked widget keeps its widget-local storage and is saved in the `.desk`\n  file, but it has no canvas frame: it is not listed by\n  `desk_list_widget_instances` or screenshot-able with\n  `desk_screenshot_widget`, and appears as `docked` in\n  `desk.workspace.getState()`. See `tempui-docked-widgets.md`.\n"
+  },
+  {
+    "tag": "sidebar: left, collapsible, drag-and-drop dock #046076",
+    "monthstamp": "11 2026",
+    "description": "- The docked sidebar is now on the **left** of the main window and is\n  **collapsed by default**: only a thin arrow tab shows until a human clicks\n  it. A human can also **drag a placed `kind: \"python\"` widget by its\n  titlebar onto the sidebar**; a \"Dock in sidebar\" highlight shows while the\n  drop will dock it. `desk_dock_widget` opens the sidebar so the result is\n  visible. Nothing about the tool signatures changed. See\n  `tempui-docked-widgets.md`.\n"
+  },
+  {
+    "tag": "Areas list widget for the sidebar #632760",
+    "monthstamp": "11 2026",
+    "description": "- A built-in **Areas** widget lists the desk's areas live: click a row\n  to view that area, and Add / Rename / Delete act on the selected row. Dock\n  it in the sidebar from the canvas right-click menu's \"Dock in sidebar\"\n  group (or place it on the canvas as usual). It uses the same area methods\n  as the `desk_*_area` MCP tools, so a change from either is shown in the\n  other. See `tempui-areas.md`.\n"
+  },
+  {
+    "tag": "inline area rename; labeled sidebar tab #224906",
+    "monthstamp": "11 2026",
+    "description": "- An area's title is now renamed **inline**: a human clicks the title on\n  the canvas and types (Enter saves, Escape cancels). The sidebar's tab is\n  one big click target in both states: collapsed, it shows a rotated label\n  per docked widget (long titles cut with \"...\") and opens the sidebar;\n  open, its centred arrow collapses it. See `tempui-areas.md` and\n  `tempui-docked-widgets.md`.\n"
+  },
+  {
+    "tag": "desk_*_expert MCP tools + expert registry #434481",
+    "monthstamp": "11 2026",
+    "description": "- A Desk-wide **expert registry** in a local PostgreSQL database, for\n  questions whose answers arrive long after your session is gone. New MCP\n  tools: `desk_list_experts`, `desk_register_expert`, `desk_ask_expert`\n  (returns a `question_id` at once; includes a `note_to_self` that is never\n  shown to the expert), `desk_get_expert_question`,\n  `desk_list_expert_questions`, `desk_accept_expert_question` and\n  `desk_answer_expert_question`. The built-in expert `user` is the person\n  using Desk. See `tempui-experts.md`.\n"
+  },
+  {
+    "tag": "hmsvc experts capability: answer questions #598971",
+    "monthstamp": "11 2026",
+    "description": "- A Desk-hosted service (hmsvc) can now be an **expert**: give its\n  `service.json` the `experts` capability and call\n  `desk.experts_register`, `desk.experts_pending`, `desk.experts_accept` and\n  `desk.experts_answer` from `service.py`. A service can only act on experts\n  it registered itself. See `tempui-experts.md`.\n"
+  },
+  {
+    "tag": "Experts widget + answer notifications #804805",
+    "monthstamp": "11 2026",
+    "description": "- Experts now reach the user. When an answer arrives for a question you\n  asked, or a question is put to the built-in `user` expert, Desk shows a\n  top-right notification, and the new built-in **Experts** widget lists the\n  questions, lets the person answer them, or **sends them to an agent**: a\n  new Claude session seeded with the question (and, for an answered one, the\n  answer and your private `note_to_self`). See `tempui-experts.md`.\n"
+  },
+  {
+    "tag": "desk-select replaces native select in html widgets #821015",
+    "monthstamp": "11 2026",
+    "description": "- New `shared-components/desk-select` entry: `<desk-select>`, a drop-in\n  replacement for a native `<select>` for `kind: \"html\"`/`DefineWidget`\n  widgets. A native `<select>` opens an OS-level popup that lands\n  detached from the control whenever the canvas is zoomed or panned;\n  `<desk-select>`'s list is ordinary page content, so it follows the\n  canvas transform. Works inside shadow roots and `overflow: auto`\n  ancestors, fires `change`, keyboard accessible. See \"Reusable UI\n  components\" in `tempui-custom-widgets.md` (which now also lists the\n  other native-popup controls to avoid) and the component's own\n  `README.md`.\n"
+  },
+  {
+    "tag": "shared widget file edits mark dependents stale #911413",
+    "monthstamp": "11 2026",
+    "description": "- A promoted widget's `[STALE]` watch now also follows the files its\n  `tsconfig.json` `\"files\"` array lists from *outside* its own directory\n  (a shared base class or module such as `../_shared/x.ts`). Previously\n  only edits inside `desk_widgets/<name>/` marked it stale, so editing\n  shared code left every dependent widget silently running its old\n  compiled JS. One edit now marks every widget that lists the file. See\n  \"Authoring from real source\" in `tempui-custom-widgets.md`.\n"
+  },
+  {
+    "tag": "desk.agents.launch bridge api #507b8d5",
+    "monthstamp": "11 2026",
+    "description": "- New Bridge API capability `launch_agent`:\n  `desk.agents.launch(instructions, { x, y })` lets a `kind: \"html\"`\n  widget place a fresh Claude (Desk) session whose first turn carries\n  the widget's own `instructions` (e.g. a \"chat about this result\"\n  button). Returns `{ instance_id }`; positioned right of the calling\n  widget unless x/y are given. Previously no Bridge route could seed a\n  session (`widgets.open` silently ignores extra keys). See \"The Desk\n  Bridge API\" in `tempui-custom-widgets.md`.\n"
+  },
+  {
+    "tag": "custom elements cloned from a template: set properties safely #c8bb4eb",
+    "monthstamp": "11 2026",
+    "description": "- `<desk-select>` now works when built the way a widget usually builds\n  controls -- cloned out of a `<template>`, a property set on the clone,\n  then inserted. Previously `el.value = x` on the un-upgraded clone made\n  an own property that shadowed the real accessor, so picking an option\n  never changed `value` (no error, a control that looked fine). It also\n  now honors `value`/`selectedIndex` set before the element is connected,\n  and an explicit `value` matching no option selects nothing instead of\n  silently picking the first. `tempui-custom-widgets.md` documents the\n  general trap for any custom element (and that `customElements.upgrade()`\n  cannot upgrade a template clone; use `document.createElement` or\n  `document.importNode`).\n"
+  },
+  {
+    "tag": "hmsvc.list resolves to {services}; docs fixed #650713d",
+    "monthstamp": "11 2026",
+    "description": "- Doc fix, no behavior change: `tempui-hmsvc.md`'s worked example treated\n  `desk.hmsvc.list()` as a bare array, but it resolves to\n  `{ services: [...] }` (so `services.find` threw `TypeError`). The\n  example now destructures it, the return shapes of every `desk.hmsvc.*`\n  call are documented (`logs` -> `{ lines }`, `start/stop/restart` ->\n  `{ ok, message }`), and the example for the common \"just need the URL\"\n  case now leads with `desk.state.get(\"desk.hmsvc.<name>\")`, which needs\n  no `hmsvc` capability.\n"
+  },
+  {
+    "tag": "discuss/expert sessions use Claude (Desk) #275381",
+    "monthstamp": "11 2026",
+    "description": "- The plain **Claude** widget is deprecated. Sessions Desk starts itself\n  (a `DiscussParkingLotItem` notification, a Questions-widget Discuss, the\n  Experts widget's **Send to agent**) now open a **Claude (Desk)** widget.\n"
+  },
+  {
+    "tag": "expert banners: one Desk, the asking one #983312",
+    "monthstamp": "11 2026",
+    "description": "- With several Desks running, an expert answer's notification now appears\n  in exactly one Desk: the one whose session asked (or, if that Desk is\n  closed, whichever is running), never in several. See `tempui-experts.md`.\n"
+  },
+  {
+    "tag": "desk expert: local fallback answers in 20s #379639",
+    "monthstamp": "11 2026",
+    "description": "- There is now a built-in expert **`desk`** for questions about Desk itself\n  or the running session. If nobody answers one within about 20 seconds,\n  the Desk you asked from starts a Claude (Desk) session that reads Desk's\n  source and docs and records the answer, so `desk_ask_expert(\"desk\", ...)`\n  does get an answer back. `desk_ask_desk_expert` is now shorthand for that,\n  answered at once. See `tempui-experts.md` and `tempui-ask-desk-expert.md`.\n"
+  },
+  {
+    "tag": "desk_report_to_expert: findings to experts #532898",
+    "monthstamp": "11 2026",
+    "description": "- Experts can now be told things, not only asked. An expert registered\n  with `listens_for` (\"what findings I want\") receives **reports**: when you\n  learn something about a domain you do not own -- a pitfall, a workaround\n  that worked, a doc that is wrong -- call `desk_report_to_expert`\n  (`desk_list_experts` shows who listens). The expert evaluates it later with\n  `desk_review_expert_report` and folds it in with\n  `desk_integrate_expert_report`; you read the outcome with\n  `desk_get_expert_report`. The built-in `desk` expert listens for findings\n  about Desk itself. See `tempui-experts.md`.\n"
+  },
+  {
+    "tag": "hmsvc experts receive reports #864728",
+    "monthstamp": "11 2026",
+    "description": "- A Desk-hosted service (hmsvc) with the `experts` capability can now\n  *receive* reports as an expert: `desk.experts_register(..., listens_for=\n  \"what I want to hear\")`, then `desk.experts_reports(expert_id)`,\n  `desk.experts_report_review(report_id, decision, note)` and\n  `desk.experts_report_integrate(report_id, integration_note)`. See\n  `tempui-experts.md`.\n"
+  },
+  {
+    "tag": "Experts widget: review reports #223281",
+    "monthstamp": "11 2026",
+    "description": "- Reports reach the person too. A new finding for the built-in `desk`\n  expert (or `user`) shows a top-right notification in the Desk that reported\n  it, and when a report you filed is rejected, called a duplicate or\n  integrated, your Desk shows that too. The **Experts** widget has a\n  *Reports to review* mode to **Accept**, **Reject** or mark **Duplicate**\n  (with a note) and to **Send to agent**: a new session told to verify the\n  finding, fold it in and record where. See `tempui-experts.md`.\n"
+  },
+  {
+    "tag": "desk_call_hmsvc: agents call services #506728",
+    "monthstamp": "11 2026",
+    "description": "- New MCP tools `desk_list_hmsvcs` and `desk_call_hmsvc` let you call a\n  Desk-hosted microservice (hmsvc) of the current project directly:\n  `desk_call_hmsvc(name, method?, path?, json?, body?, headers?, timeout?)`\n  sends one HTTP request to a *running* service and returns `{status,\n  content_type, truncated, body}`. You name the service, never a host or port\n  (the port changes on every launch). See `tempui-hmsvc.md`.\n"
+  },
+  {
+    "tag": "widget.json components: shared web components, two libraries #d34f8ed",
+    "monthstamp": "11 2026",
+    "description": "- Shared web components are now first-class for real-source widgets: list\n  names in `widget.json` `\"components\"` (e.g. `[\"desk-select\"]`) and the\n  build compiles each component's `.ts` ahead of the widget's own files\n  and injects its `template.html` at the top of the page -- no more\n  hand-copying a `<template>` from another widget or listing the shared\n  `.ts` in `tsconfig.json`. Two libraries: Desk's own `shared-components/`\n  (desk-wide, static) and `desk_widgets/_shared/components/<name>/`\n  (per-project, mutable, edits mark dependent promoted widgets `[STALE]`).\n  A bare name prefers the project copy; `desk:<name>` / `project:<name>`\n  pin a side. A widget that already pastes the template is left\n  alone. `.desk_temp/build_widget.py` supports the same field. See\n  \"Reusable UI components\" in `tempui-custom-widgets.md`.\n"
+  },
+  {
+    "tag": "Components widget: shared component catalog #5ee7493",
+    "monthstamp": "11 2026",
+    "description": "- New built-in **Components** widget: the catalog of shared web\n  components (see `widget.json` `\"components\"`). It lists the project's\n  mutable library and Desk's static one, shows each component's README\n  summary, files, template, and which of the project's widgets use it, opens\n  its README/source, and copies its entry. New read-only MCP tool\n  `desk_list_shared_components` returns the same catalog to agents.\n"
+  },
+  {
+    "tag": "vendor shared components into the project #b04682e",
+    "monthstamp": "11 2026",
+    "description": "- Shared components can now be vendored so a project's build no longer\n  depends on the opening Desk's library: the `desk_vendor_widget_components`\n  MCP tool (and the Components widget's \"Copy to project library\" button)\n  copies a widget's desk-wide components into\n  `desk_widgets/_shared/components/` and pins its `widget.json` entries to\n  `project:<name>`. Also changed: a bare component name now prefers the\n  project library's copy over Desk's (it used to be an error to have both),\n  so a vendored copy wins and a component a later Desk adds can't change an\n  existing project's build. See \"Reusable UI components\" in\n  `tempui-custom-widgets.md`.\n"
+  }
+]

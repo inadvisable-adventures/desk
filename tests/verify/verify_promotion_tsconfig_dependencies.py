@@ -504,7 +504,8 @@ def test_promoted_widget_still_builds_with_tsc():
 
 
 def test_changelog_and_doc_cover_this():
-    from desk.temp_ui import _CUSTOM_WIDGETS_DOC, _NEW_FEATURES
+    from desk.temp_ui import _NEW_FEATURES, SPLIT_DOC_CONTENT
+    _CUSTOM_WIDGETS_DOC = SPLIT_DOC_CONTENT["tempui-custom-widgets.md"]
 
     tag = "promotion moves shared tsconfig files #586922"
     check("tag is in CURRENT_TAGS with a _NEW_FEATURES entry", tag in CURRENT_TAGS and tag in _NEW_FEATURES)

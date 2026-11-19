@@ -146,7 +146,7 @@ def test_doc_version_and_new_features_entry():
     check("new-features doc mentions shared-components", "shared-components" in new_features_text)
     check("new-features doc mentions hsv-color-picker", "hsv-color-picker" in new_features_text)
 
-    from desk.temp_ui import _CUSTOM_WIDGETS_DOC
+    _CUSTOM_WIDGETS_DOC = SPLIT_DOC_CONTENT["tempui-custom-widgets.md"]
 
     check("custom-widgets doc has a Reusable UI components section", "Reusable UI components" in _CUSTOM_WIDGETS_DOC)
     # TODO 3fc5331: the section's own wording was revised again once

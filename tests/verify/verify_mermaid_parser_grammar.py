@@ -18,7 +18,8 @@ app = QApplication(sys.argv)
 
 import desk.mermaid as mermaid  # noqa: E402
 from desk.mermaid import MermaidParseError, build_scene, layout, parse, render_svg  # noqa: E402
-from desk.temp_ui import CURRENT_TAGS, _MARKDOWN_DOC, _NEW_FEATURES  # noqa: E402
+from desk.temp_ui import CURRENT_TAGS, _NEW_FEATURES, SPLIT_DOC_CONTENT  # noqa: E402
+_MARKDOWN_DOC = SPLIT_DOC_CONTENT["tempui-markdown.md"]
 
 passed = 0
 failed = 0

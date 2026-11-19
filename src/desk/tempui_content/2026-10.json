@@ -1,0 +1,107 @@
+[
+  {
+    "tag": "desk.documents cached byte-range reads #655544",
+    "monthstamp": "10 2026",
+    "description": "- New Bridge API `desk.documents` (capability `documents`) for reading\n  large or binary files without base64-ing the whole file through a\n  transform: `desk.documents.open(path)` returns a server-side handle (the\n  path resolves like `desk.fs.*`: relative to the current Desk's directory;\n  content is not read), `desk.documents.read(handle, {offset, length})`\n  returns `{data: <base64>, eof: <bool>}` for a raw byte range (binary-safe\n  -- unlike `desk.fs.readFile`, which decodes UTF-8 and throws on binary;\n  `length` is clamped to 8 MiB per call), and `desk.documents.close(handle)`.\n  Reads are cached Desk-side under `.desk_temp/documents_cache/`, keyed by\n  the file's path, mtime and size, so a repeated range doesn't re-hit disk\n  and a changed file is re-read rather than served stale. Raw bytes only (no\n  format awareness); editing and live change notifications are not part of\n  v1. A `kind: \"python\"` widget reaches the same service via\n  `desk.shell.current_context.get_documents_service()`.\n"
+  },
+  {
+    "tag": "porting existing apps guide doc #968159",
+    "monthstamp": "10 2026",
+    "description": "- New doc `tempui-porting-existing-apps.md` (linked from the main\n  tempui doc: \"for more information on porting existing app code to\n  Desk\"): a repeatable six-step process for figuring out how to port an\n  existing project -- inventory its current directory structure, group\n  into non-redundant porting units, gather grounded facts (what the\n  target code does with file:line, what Desk already provides) before\n  reporting any gap, parallelize read-only research but write the\n  proposals in one pass, match the destination format's conventions,\n  cross-link -- plus a \"what Desk gives you\" inventory by need (UI,\n  inter-widget communication, files and large data, computation and\n  long-running work, introspection) so \"what does Desk already provide\n  for X\" is answerable from the doc itself, and a short list of known\n  gaps (batch ingestion jobs with progress, external service\n  dependencies).\n"
+  },
+  {
+    "tag": "promoted widget rebuild re-reads widget.json #645093",
+    "monthstamp": "10 2026",
+    "description": "- A promoted widget's `[STALE]` rebuild (single instance, or \"reload\n  all stale\") now re-reads `desk_widgets/<name>/widget.json`'s\n  `\"capabilities\"` and `\"state_schema\"` and applies them to the\n  widget's stored definition, so editing them and rebuilding works\n  like any other source edit (before, the stored copy was frozen at\n  promotion and the widget reloaded cleanly, then failed at runtime\n  with a Bridge `403 ... lacks capability`). A capability you *add*\n  asks the user for confirmation first (declining keeps the old list\n  and still applies removals and schema changes); every applied change\n  also raises a notification. A missing or malformed `widget.json`\n  leaves the stored values alone. Never hand-edit the `.desk` file for\n  this.\n"
+  },
+  {
+    "tag": "dedicated hmsvc doc tempui-hmsvc.md #812810",
+    "monthstamp": "10 2026",
+    "description": "- New doc `tempui-hmsvc.md`: the full reference for Desk-hosted\n  microservices -- the `service.json` schema, the `service.py` ASGI\n  contract (and that `uvicorn` must be importable), discovery timing,\n  the management-only networking model (`desk.hmsvc.list()` gives the\n  `url`, the widget then calls `fetch()` itself), mandatory CORS,\n  in-memory logs, and a minimal worked example. Linked from\n  `tempui-custom-widgets.md` and `tempui-porting-existing-apps.md`.\n  The `Desk-hosted microservices (hmsvc) #285553` entry below remains\n  as the announcement; this doc is the reference.\n"
+  },
+  {
+    "tag": "check new-features doc for thin feature docs #888639",
+    "monthstamp": "10 2026",
+    "description": "- `desk-temporary-ui.md` gained a navigation rule: when another doc\n  covers a feature only briefly and you're about to write real code\n  against it, read that feature's tag section in `tempui-new-features.md`\n  first -- even for a tag your project has already seen -- before\n  reading Desk's source or another project's code; and if you still had\n  to read outside the doc set, say so and offer a FEEDBACK file.\n"
+  },
+  {
+    "tag": "hmsvc dir live watcher + new service alert #008485",
+    "monthstamp": "10 2026",
+    "description": "- `desk_hmsvc/` is now watched live: a service directory you add,\n  edit or remove while Desk is running is noticed without a project\n  reopen or a manual Rescan click (the Microservices widget's Rescan\n  button still works). A service not seen before in the project raises\n  a top-right notification, \"New microservice available: <name> --\n  <description>\"; clicking it places or focuses the Microservices widget\n  (it does not start the service). Nothing about authoring a service\n  changed. See `tempui-hmsvc.md`.\n"
+  },
+  {
+    "tag": "OpenWithWidget optional label field #041937",
+    "monthstamp": "10 2026",
+    "description": "- `OpenWithWidget` takes an optional fourth, tab-separated field, a\n  `label`: `OpenWithWidget<TAB>widget_id<TAB>path<TAB>label`. When\n  present, the notification reads exactly the label instead of `Open\n  <path>`, so a widget that doesn't consume a file no longer shows its\n  placeholder path to the user. Existing three-field files are\n  unchanged. See `tempui-open-with-widget.md`.\n"
+  },
+  {
+    "tag": "hmsvc service url published to desk.state #095433",
+    "monthstamp": "10 2026",
+    "description": "- Desk now mirrors each microservice's `{\"status\", \"url\"}` into the\n  shared state store as the key `desk.hmsvc.<name>`, updated on every\n  status change (including a restart's new port). A widget that only\n  holds the `state` capability can therefore learn a service's URL with\n  `desk.state.get(\"desk.hmsvc.<name>\")` (its `value`) or by subscribing to\n  `desk.state.changed`, without declaring the broader `hmsvc` capability\n  (which also grants start/stop/restart/logs on every service). A\n  stopped or crashed service keeps its key with `url` null; one removed\n  from disk gets status `removed`. These keys are runtime-only (never\n  saved to the `.desk` file). See `tempui-hmsvc.md`.\n"
+  },
+  {
+    "tag": "visual debugging of widget geometry guidance #733899",
+    "monthstamp": "10 2026",
+    "description": "- `tempui-custom-widgets.md` has a new section, \"Debugging a widget's own\n  rendering/geometry visually\": a named pattern (a build marker in the\n  widget's UI, a toggleable overlay recording real hit-test/render\n  outcomes, ground-truth markers drawn via the same projection function,\n  and closing the loop yourself with `desk_screenshot_widget`) for\n  spatial bugs where what the user sees disagrees with where the code\n  thinks something is. Guidance only; no API changed.\n"
+  },
+  {
+    "tag": "named widget logs + log query MCP tools #211800",
+    "monthstamp": "10 2026",
+    "description": "- New Bridge capability `log` (and doc `tempui-widget-logs.md`): a widget\n  calls `desk.log.append(name, [{ s, t? }])` / `desk.log.line(name, s)` --\n  fire-and-forget (returns `undefined`, never throws) -- to append\n  time-stamped strings to a named, in-memory log, and an agent reads\n  them back with two new read-only MCP tools on the `desk` server:\n  `desk_list_widget_logs` and `desk_query_widget_log` (inclusive\n  `start`/`end` as ISO-8601 or epoch ms, `limit`, `order`). A `kind:\n  \"python\"` widget appends through\n  `current_context.get_widget_log_store()`. See `tempui-widget-logs.md`.\n"
+  },
+  {
+    "tag": "recording events + timecoded transcripts #920929",
+    "monthstamp": "10 2026",
+    "description": "- Claude (Desk)'s record button now publishes the desk events\n  `recording` (`{ recording_id, started_at_ms }`) and `stopped_recording`\n  (`{ recording_id, started_at_ms, stopped_at_ms }`), which widgets can\n  subscribe to via `desk.events` to know when to log. The transcription\n  it pastes now starts with a note giving the relative path of a\n  timecoded transcript, `.desk_temp/timecoded-transcripts/<recording_id>.txt`\n  (`[mm:ss.mmm]` offsets plus the absolute `started_at_ms`), then the\n  separator line `--- transcription ---`, then the transcription itself.\n  Use the absolute times with `desk_query_widget_log` to see what a\n  widget logged while a sentence was spoken. See\n  `tempui-widget-logs.md`, \"Recording events and timecoded transcripts\".\n"
+  },
+  {
+    "tag": "desk_git_commit MCP tool for commit messages #570472",
+    "monthstamp": "10 2026",
+    "description": "- New MCP tool `desk_git_commit(message, files?)` on the `desk` server:\n  creates a git commit with the message passed as a structured parameter\n  (fed to git on stdin, never through a shell), so apostrophes, backticks,\n  `$(...)`, double quotes and newlines need no escaping -- prefer it over a\n  Bash `git commit -m \"$(cat <<EOF ...)\"` heredoc, which can fail on an odd\n  number of apostrophes. `files` is an optional list of exact paths\n  (relative to the project directory, must stay inside it) to `git add`\n  first; with none, it commits what is already staged. There is deliberately\n  no add-everything option, no amend, and no `--no-verify`. A failure\n  (nothing staged, a hook failing, not a repository) comes back as git's\n  own output.\n"
+  },
+  {
+    "tag": "python widgets use qt_controls, not QComboBox #514695",
+    "monthstamp": "10 2026",
+    "description": "- A `kind: \"python\"` widget embedded in the canvas must not use a\n  native `QComboBox` (or a raw `QTreeView`/`QTreeWidget`'s branch arrows,\n  or `QToolButton.setArrowType`): they paint with the platform style and\n  open popups from untransformed screen coordinates, so under canvas zoom\n  they scale oddly and a dropdown's list lands detached from its control.\n  Use `from desk.shell.qt_controls import PaintedComboBox` (supports\n  `addItem(text, userData)`, `currentIndex`, `currentData`, `itemText`,\n  `currentIndexChanged`) and `PaintedBranchTreeView`/`PaintedBranchTreeWidget`\n  instead. See \"Project widgets\" in this directory's own top-level doc.\n"
+  },
+  {
+    "tag": "desk_ask_desk_expert MCP asks a Desk expert agent #748083",
+    "monthstamp": "10 2026",
+    "description": "- New MCP tool `desk_ask_desk_expert(question)` on the `desk` server:\n  places a new Claude (Desk) widget whose agent knows Desk's own source\n  checkout and docs and is told to answer your question *about Desk and\n  this running session* (it may write diagnostic `kind: \"python\"` widgets\n  to find out). Fire-and-forget: it returns the new widget's instance_id\n  at once and nothing is sent back to you -- the answer appears in that\n  widget for the user to read. Ask only when Desk's own behavior is the\n  problem, not your project's. See `tempui-ask-desk-expert.md`.\n"
+  },
+  {
+    "tag": "agent-raised desk events via MCP tool #028808",
+    "monthstamp": "10 2026",
+    "description": "- New MCP tool `desk_raise_event(name, payload?)` on the `desk` server:\n  publishes a named desk event, with an optional JSON payload, onto the\n  same `desk.events` channel widgets use, so a widget subscribed to that\n  name receives it immediately -- no file for the widget to poll. The\n  payload may be omitted (a bare signal) or carry what a file would have\n  held; over about 1 KB, prefer a file and announce it with the event\n  (hard limit 64 KiB). Names starting with `desk.` and `recording`/\n  `stopped_recording` are reserved. The result reports how many widget\n  instances were subscribed at publish time. See `tempui-agent-events.md`.\n"
+  },
+  {
+    "tag": "agent waits for a desk event via MCP tool #196353",
+    "monthstamp": "10 2026",
+    "description": "- New MCP tool `desk_wait_for_event(name, timeout_seconds?)` on the\n  `desk` server: blocks until a desk event with that name arrives and\n  returns `{ status: \"event\", name, payload, sender, timestamp }` (or\n  `\"timeout\"`, or `\"ended\"` if Desk was switched). With no timeout it\n  waits indefinitely, so it is for a *background sub-agent* only: a call\n  from the main conversation is refused by a hook (a foreground\n  sub-agent is not detectable and is not refused). It is the receiving\n  half of `desk_raise_event`: a widget publishes the user's answer with\n  `desk.events.publish`, and the waiting sub-agent gets it with no file to\n  poll. Listening lasts only while a call is in flight, so an event\n  published between two calls is missed. See `tempui-agent-events.md`.\n"
+  },
+  {
+    "tag": "events: bare signal or payload, file past 1 KB #504112",
+    "monthstamp": "10 2026",
+    "description": "- `tempui-custom-widgets.md` has a new subsection, \"A signal, or the\n  data itself\", under \"Sending and receiving named messages\": a desk\n  event can carry no payload at all (a message meaning \"I updated the\n  file\") or can carry in its payload what you would otherwise have\n  written to a file, so no file is needed; past about 1 KB, use a file\n  and let the event announce it. It also notes that events are not kept\n  for widgets that subscribe later. Guidance only; no API changed.\n"
+  },
+  {
+    "tag": "[RELOAD] titlebar button on web widgets #696254",
+    "monthstamp": "10 2026",
+    "description": "- Every placed `kind: \"html\"` widget now has a `[RELOAD]` titlebar\n  button that re-navigates just that instance's page (no rebuild, no\n  confirmation). It occupies the slot the `[STALE]` badge uses: when an\n  instance is stale `[STALE]` shows instead (that one rebuilds and\n  reloads). You still cannot click either yourself -- but when a user\n  needs a page re-run for a reason unrelated to a code change (a\n  `desk.hmsvc` service that was not up yet, a changed `desk.state`\n  value), point them at `[RELOAD]` instead of hand-building retry\n  machinery into the widget.\n"
+  },
+  {
+    "tag": "handoff request MCP tools #070658",
+    "monthstamp": "10 2026",
+    "description": "- New MCP tools on the `desk` server for handing a task to another\n  agent or project without editing it yourself: `desk_create_handoff_request`,\n  `desk_list_handoff_requests`, `desk_claim_handoff_request` and\n  `desk_complete_handoff_request`. Requests move new -> in-progress ->\n  complete and are stored as one markdown file each, so there is no\n  directory-and-`mv` convention to invent. See `tempui-handoff-requests.md`.\n"
+  },
+  {
+    "tag": "feedback item MCP tools #156881",
+    "monthstamp": "10 2026",
+    "description": "- New MCP tools on the `desk` server for Desk feedback:\n  `desk_create_feedback`, `desk_list_feedback` and `desk_get_feedback`.\n  Filing no longer needs the `../FEEDBACK/` filename convention, and a\n  keyword list shows whether something is already filed (and its triage\n  state: open, parkinglot, implemented, external). See\n  `tempui-feedback-items.md`.\n"
+  },
+  {
+    "tag": "installed job version hash skips .venv #284781",
+    "monthstamp": "10 2026",
+    "description": "- An Installed Job's version hash no longer reads the job's own\n  top-level `.venv/` directory. A job with a large self-managed venv used\n  to take seconds to hash and time out `desk_install_job` /\n  `desk_run_installed_job`. Dependency versions still count: keep them\n  pinned in `requirements.txt` (or a lockfile) outside `.venv/`. **Every\n  python-kind job that has a `.venv/` gets a new version hash once, so\n  call `desk_install_job` again before its next run.** See\n  `tempui-installed-jobs.md`, \"Self-managed venvs\".\n"
+  }
+]

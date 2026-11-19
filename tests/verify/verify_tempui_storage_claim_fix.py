@@ -7,19 +7,19 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 sys.path.insert(0, "src")
 
-from desk.temp_ui import (  # noqa: E402
+from desk.temp_ui import (
     CUSTOM_WIDGETS_DOC_FILENAME,
     NEW_FEATURES_DOC_FILENAME,
     SPLIT_DOC_CONTENT,
     CURRENT_TAG_SET,
     CURRENT_TAGS,
-    _CUSTOM_WIDGETS_DOC,
     _canonicalize_tags,
     _legacy_version_tags,
     ensure_docs_current,
     parse_doc_tags,
     write_tempui_docs,
 )
+_CUSTOM_WIDGETS_DOC = SPLIT_DOC_CONTENT["tempui-custom-widgets.md"]
 
 from PyQt6.QtWidgets import QApplication  # noqa: E402
 

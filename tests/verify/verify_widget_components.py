@@ -219,7 +219,8 @@ with tempfile.TemporaryDirectory() as d:
           and not (plain / "tsconfig.components.json").exists())
 
 # ---------------- docs ----------------
-from desk.temp_ui import CURRENT_TAGS, SPLIT_DOC_CONTENT, _CUSTOM_WIDGETS_DOC, _NEW_FEATURES  # noqa: E402
+from desk.temp_ui import CURRENT_TAGS, SPLIT_DOC_CONTENT, _NEW_FEATURES  # noqa: E402
+_CUSTOM_WIDGETS_DOC = SPLIT_DOC_CONTENT["tempui-custom-widgets.md"]
 
 doc = _CUSTOM_WIDGETS_DOC
 check("doc explains the widget.json field, both libraries and the precedence rule",

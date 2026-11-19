@@ -280,7 +280,8 @@ def test_deskprocapi_passes_max_width_through():
 
 
 def test_changelog_and_doc_cover_max_width():
-    from desk.temp_ui import CURRENT_TAGS, _DESK_PROC_DOC, _NEW_FEATURES
+    from desk.temp_ui import CURRENT_TAGS, _NEW_FEATURES, SPLIT_DOC_CONTENT
+    _DESK_PROC_DOC = SPLIT_DOC_CONTENT["tempui-desk-proc.md"]
 
     tag = "screenshot tools accept max_width downsampling #600160"
     check("tag is in CURRENT_TAGS with a _NEW_FEATURES entry", tag in CURRENT_TAGS and tag in _NEW_FEATURES)

@@ -260,7 +260,8 @@ test_omitting_path_reproduces_existing_callers_unchanged()
 
 
 def test_changelog_and_doc_cover_this():
-    from desk.temp_ui import CURRENT_TAGS, _CUSTOM_WIDGETS_DOC, _NEW_FEATURES
+    from desk.temp_ui import CURRENT_TAGS, _NEW_FEATURES, SPLIT_DOC_CONTENT
+    _CUSTOM_WIDGETS_DOC = SPLIT_DOC_CONTENT["tempui-custom-widgets.md"]
 
     tag = "self.getOpenedFile for html widgets #003325"
     check("tag is in CURRENT_TAGS with a _NEW_FEATURES entry", tag in CURRENT_TAGS and tag in _NEW_FEATURES)

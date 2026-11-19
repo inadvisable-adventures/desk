@@ -511,7 +511,8 @@ def test_real_tsc_rebuild_succeeds_after_normalization():
 
 
 def test_changelog_and_doc_cover_this():
-    from desk.temp_ui import _CUSTOM_WIDGETS_DOC, _NEW_FEATURES
+    from desk.temp_ui import _NEW_FEATURES, SPLIT_DOC_CONTENT
+    _CUSTOM_WIDGETS_DOC = SPLIT_DOC_CONTENT["tempui-custom-widgets.md"]
 
     tag = "promotion normalizes tsconfig outDir to .build #941549"
     check("tag is in CURRENT_TAGS with a _NEW_FEATURES entry", tag in CURRENT_TAGS and tag in _NEW_FEATURES)

@@ -16,7 +16,8 @@ app = QApplication(sys.argv)
 
 from desk.shell import current_context  # noqa: E402
 from desk.svg_view import SvgView  # noqa: E402
-from desk.temp_ui import CURRENT_TAGS, DOC_TEMPLATE, _MARKDOWN_DOC, _NEW_FEATURES  # noqa: E402
+from desk.temp_ui import CURRENT_TAGS, DOC_TEMPLATE, _NEW_FEATURES, SPLIT_DOC_CONTENT  # noqa: E402
+_MARKDOWN_DOC = SPLIT_DOC_CONTENT["tempui-markdown.md"]
 from desk_services.transforms.service import TransformError, TransformsService  # noqa: E402
 
 _spec = importlib.util.spec_from_file_location("markdown_widget_mermaid_test", REPO_ROOT / "widgets/markdown/widget.py")

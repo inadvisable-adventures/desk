@@ -87,12 +87,16 @@ Whenever a change made to Desk itself is a breaking change or a new
 feature from the perspective of an agent running *inside* Desk (in
 some other project) — i.e. anything that would change what such an
 agent needs to know about `.desk_temp`'s tempui DSL or Bridge API —
-mint a fresh tag (`desk.temp_ui.generate_tag`), add it to
-`CURRENT_TAGS`, and add a matching entry to the `_BREAKING_CHANGES`/
-`_NEW_FEATURES` dicts in `src/desk/temp_ui.py`, which render to
-`tempui-breaking-changes.md`/`tempui-new-features.md` in `.desk_temp/`
-at runtime (not checked-in files), all in the same commit as the
-change. This is a standing part of the Desk-development workflow, not
+add a changelog entry, all in the same commit as the change: run
+`python3 scripts/new_tempui_changelog_entry.py "short summary" --description "..."`
+(add `--breaking` for a breaking change), which mints a fresh tag
+(`desk.temp_ui.generate_tag`) and writes it as its own file in
+`src/desk/tempui_content/` -- one new file per change, so concurrent branches
+never conflict in `src/desk/temp_ui.py`. Entries render to
+`tempui-breaking-changes.md`/`tempui-new-features.md` in `.desk_temp/` at
+runtime (not checked-in files); the long text of each agent-facing doc is a
+`.md` file in the same directory. See the docstring of
+`src/desk/tempui_content.py` for the file format. This is a standing part of the Desk-development workflow, not
 a one-off backfill.
 
 ### Give agent-visible features a real doc, not a one-line mention
@@ -101,8 +105,9 @@ The changelog (`tempui-new-features.md`) *announces* a feature once; it
 is not meant to be the only place an agent can learn how to use it. Any
 new agent-visible feature that needs more than a one-line mention gets
 its own dedicated doc file in `.desk_temp/` (the `tempui-installed-jobs.md`/
-`tempui-hmsvc.md`/`tempui-lightning-round.md` pattern: register it in
-`SPLIT_DOC_CONTENT`), written in the same commit as the feature and linked
+`tempui-hmsvc.md`/`tempui-lightning-round.md` pattern: add it to
+`src/desk/tempui_content/` as a `.md` file named as it is written into a project; it is picked up into
+`SPLIT_DOC_CONTENT` automatically), written in the same commit as the feature and linked
 from **both** its changelog entry **and** whichever higher-level doc
 (`tempui-custom-widgets.md`'s Bridge API list,
 `tempui-porting-existing-apps.md`'s "What Desk gives you", the overview in
