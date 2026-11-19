@@ -130,7 +130,8 @@ with tempfile.TemporaryDirectory() as d:
     clash = root / "desk_widgets/_shared/components/desk-select"
     clash.mkdir(parents=True)
     (clash / "desk-select.ts").write_text("// project override\n")
-    check("a name in both libraries is ambiguous", fails(["desk-select"], "write desk:desk-select or project:desk-select"))
+    shadow = resolve_components(["desk-select"], root)[0]
+    check("a bare name in both libraries resolves to the project copy", shadow.scope == "project" and shadow.directory == clash)
     pinned = resolve_components(["desk:desk-select", "project:desk-select"], root)
     check("prefixes pin each scope", [(c.name, c.scope) for c in pinned] == [("desk-select", "desk"), ("desk-select", "project")])
     shutil.rmtree(clash)
@@ -221,7 +222,7 @@ with tempfile.TemporaryDirectory() as d:
 from desk.temp_ui import CURRENT_TAGS, SPLIT_DOC_CONTENT, _CUSTOM_WIDGETS_DOC, _NEW_FEATURES  # noqa: E402
 
 doc = _CUSTOM_WIDGETS_DOC
-check("doc explains the widget.json field, both libraries and the ambiguity rule",
+check("doc explains the widget.json field, both libraries and the precedence rule",
       '"components"' in doc and "desk_widgets/_shared/components/<name>/" in doc and "desk:<name>" in doc and "project:<name>" in doc)
 check("doc covers the placement marker and the authoring contract",
       "BUILD:COMPONENT_TEMPLATES" in doc and "Authoring a component" in doc and "innerHTML" in doc)

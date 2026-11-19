@@ -130,10 +130,13 @@ def resolve_components(
 ) -> list[Component]:
     """TODO d34f8ed: names -> Components, in declared order, duplicates dropped.
     A name is `desk:<name>` (Desk's shared-components/), `project:<name>`
-    (<project>/desk_widgets/_shared/components/), or a bare `<name>`, which
-    must exist in exactly one of the two -- found in both is an error (no
-    silent shadowing; say which you mean). A component is a directory
-    holding `<name>.ts` and, optionally, `template.html`."""
+    (<project>/desk_widgets/_shared/components/), or a bare `<name>`: the
+    project library's copy if it has one, else the desk-wide one. So a
+    project copy (e.g. one vendored from the desk-wide library, TODO
+    b04682e) takes precedence over Desk's, and a component Desk adds later
+    can never change what an existing project builds; `desk:`/`project:`
+    pin a side. A component is a directory holding `<name>.ts` and,
+    optionally, `template.html`."""
     if desk_library_dir is None:
         desk_library_dir = _repo_shared_components_dir()
     project_library = project_dir / PROJECT_COMPONENTS_RELPATH
@@ -146,18 +149,13 @@ def resolve_components(
             )
         in_desk = _library_component(desk_library_dir, name) if scope in ("", "desk") else None
         in_project = _library_component(project_library, name) if scope in ("", "project") else None
-        if in_desk is not None and in_project is not None:
-            raise SourceBuildError(
-                f"component {name!r} exists in both the desk-wide and the project library -- "
-                f"write desk:{name} or project:{name} to say which"
-            )
-        found = in_desk or in_project
+        found = in_project or in_desk
         if found is None:
             raise SourceBuildError(
                 f"component {raw!r} not found (looked for {name}/{name}.ts in {desk_library_dir}"
                 f"{'' if scope == 'desk' else f' and {project_library}'})"
             )
-        component = Component(name, "desk" if found is in_desk else "project", found)
+        component = Component(name, "project" if found is in_project else "desk", found)
         if all((c.scope, c.name) != (component.scope, component.name) for c in resolved):
             resolved.append(component)
     return resolved

@@ -274,6 +274,8 @@ CURRENT_TAGS: tuple[str, ...] = (
     "hmsvc experts receive reports #864728",
     "Experts widget: review reports #223281",
     "widget.json components: shared web components, two libraries #d34f8ed",
+    "Components widget: shared component catalog #5ee7493",
+    "vendor shared components into the project #b04682e",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1942,12 +1944,39 @@ migrate.
   lists marks that widget `[STALE]`, like any shared source (a
   `widget.json` edit re-arms the watch).
 
-A bare name resolves to whichever library has it; if **both** do, the
-build fails and asks you to write `desk:<name>` or `project:<name>` --
-nothing is silently shadowed. An unknown name fails the build with the
-places it looked. The build writes `.build/tsconfig.components.json` (an
+A bare name resolves to the **project** library's copy if it has one,
+else the desk-wide one -- so a copy you keep in the project (e.g. one
+vendored from Desk's library, below) wins, and a component a later Desk
+adds can never change what an existing project builds. Write `desk:<name>`
+or `project:<name>` to pin a side (`project:` fails the build, rather than
+falling back, if the copy is missing). An unknown name fails the build
+with the places it looked. The build writes `.build/tsconfig.components.json` (an
 `extends` of your `tsconfig.json`) and compiles into `.build/js/`; the
 `outDir` in your own tsconfig is not used for such a widget.
+
+**Seeing what's available.** The **Components** widget (a built-in; place
+it from the widget menu) lists both libraries -- each component's README
+summary, files, whether it ships a template, and which of this project's
+widgets use it -- and can open its README/source or copy its `"components"`
+entry. Agents get the same catalog from the `desk_list_shared_components`
+MCP tool.
+
+**Deploying a project: vendor the components.** A real-source widget is
+rebuilt from source whenever Desk opens the project, so the *opening Desk's*
+`shared-components/` is part of its build input -- fine on your machine, but
+a project opened under a different Desk (or one whose library later changes)
+no longer builds from what is in the repository alone. To make a widget
+self-contained, copy the desk-wide components it uses into the project:
+call the `desk_vendor_widget_components(source_path)` MCP tool (e.g.
+`desk_widgets/my-widget`), or use the Components widget's **Copy to project
+library** button on a component. The tool copies each desk-wide component
+into `desk_widgets/_shared/components/<name>/` and rewrites the widget's
+`"components"` entries to `project:<name>`, so the build reads only project
+files -- and fails loudly, instead of silently falling back to Desk's copy,
+if one goes missing. Idempotent; a project copy that differs from Desk's is
+never overwritten unless you pass `overwrite`. Commit
+`desk_widgets/_shared/components/` with the widget. What still must exist
+wherever the project is opened: Desk itself and `tsc` on `PATH`.
 
 **Authoring a component** (the contract the build relies on): the
 template is a top-level `<template id="<name>-template">` that the
@@ -3283,6 +3312,24 @@ _BREAKING_CHANGES: dict[str, str] = {
 }
 
 _NEW_FEATURES: dict[str, str] = {
+    "Components widget: shared component catalog #5ee7493": """- New built-in **Components** widget: the catalog of shared web
+  components (see `widget.json` `"components"`). It lists the project's
+  mutable library and Desk's static one, shows each component's README
+  summary, files, template, and which of the project's widgets use it, opens
+  its README/source, and copies its entry. New read-only MCP tool
+  `desk_list_shared_components` returns the same catalog to agents.
+""",
+    "vendor shared components into the project #b04682e": """- Shared components can now be vendored so a project's build no longer
+  depends on the opening Desk's library: the `desk_vendor_widget_components`
+  MCP tool (and the Components widget's "Copy to project library" button)
+  copies a widget's desk-wide components into
+  `desk_widgets/_shared/components/` and pins its `widget.json` entries to
+  `project:<name>`. Also changed: a bare component name now prefers the
+  project library's copy over Desk's (it used to be an error to have both),
+  so a vendored copy wins and a component a later Desk adds can't change an
+  existing project's build. See "Reusable UI components" in
+  `tempui-custom-widgets.md`.
+""",
     "widget.json components: shared web components, two libraries #d34f8ed": """- Shared web components are now first-class for real-source widgets: list
   names in `widget.json` `"components"` (e.g. `["desk-select"]`) and the
   build compiles each component's `.ts` ahead of the widget's own files
@@ -3291,8 +3338,8 @@ _NEW_FEATURES: dict[str, str] = {
   `.ts` in `tsconfig.json`. Two libraries: Desk's own `shared-components/`
   (desk-wide, static) and `desk_widgets/_shared/components/<name>/`
   (per-project, mutable, edits mark dependent promoted widgets `[STALE]`).
-  A name in both is an error until you write `desk:<name>` /
-  `project:<name>`. A widget that already pastes the template is left
+  A bare name prefers the project copy; `desk:<name>` / `project:<name>`
+  pin a side. A widget that already pastes the template is left
   alone. `.desk_temp/build_widget.py` supports the same field. See
   "Reusable UI components" in `tempui-custom-widgets.md`.
 """,
@@ -4497,8 +4544,8 @@ def _library_component(directory: Path, name: str):
 def _resolve_components(manifest: dict, project_dir: Path) -> list:
     """The manifest's "components" as (name, scope, directory) tuples, in
     declared order. A name is `desk:<name>` (Desk's shared-components/),
-    `project:<name>` (desk_widgets/_shared/components/), or a bare `<name>`
-    that must exist in exactly one of the two."""
+    `project:<name>` (desk_widgets/_shared/components/), or a bare `<name>`:
+    the project library's copy if there is one, else the desk-wide one."""
     names = manifest.get("components", [])
     if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
         raise BuildError('widget.json: "components" must be a list of component names')
@@ -4512,18 +4559,13 @@ def _resolve_components(manifest: dict, project_dir: Path) -> list:
             )
         in_desk = _library_component(DESK_COMPONENTS_DIR, name) if scope in ("", "desk") else None
         in_project = _library_component(project_library, name) if scope in ("", "project") else None
-        if in_desk is not None and in_project is not None:
-            raise BuildError(
-                f"component {name!r} exists in both the desk-wide and the project library -- "
-                f"write desk:{name} or project:{name} to say which"
-            )
-        found = in_desk or in_project
+        found = in_project or in_desk
         if found is None:
             raise BuildError(
                 f"component {raw!r} not found (looked for {name}/{name}.ts in {DESK_COMPONENTS_DIR}"
                 f"{'' if scope == 'desk' else f' and {project_library}'})"
             )
-        entry = (name, "desk" if found is in_desk else "project", found)
+        entry = (name, "project" if found is in_project else "desk", found)
         if all(e[:2] != entry[:2] for e in resolved):
             resolved.append(entry)
     return resolved

@@ -18,8 +18,10 @@ mutable) and desk-wide (static, immutable except by changing Desk source).
   - **desk-wide**: Desk's `shared-components/` (mirrored at
     `.desk_temp/shared-components/`) -- static.
   - **per-project**: `desk_widgets/_shared/components/<name>/` -- mutable.
-- Names: `desk:<name>`, `project:<name>`, or bare. Bare must exist in
-  exactly one library; in both is an error (no silent shadowing).
+- Names: `desk:<name>`, `project:<name>`, or bare. Bare prefers the
+  project library's copy, else the desk-wide one (changed from "error if in
+  both" by TODO b04682e: a vendored project copy must win, and a component a
+  later Desk adds must not change an existing build).
 - Build: component `.ts` compiled ahead of the widget's own files (via a
   generated `.build/tsconfig.components.json` that `extends` the widget's,
   compiling into a wiped `.build/js/` since tsc's output layout follows the

@@ -1,0 +1,7 @@
+{
+  "name": "Components",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": [],
+  "default_size": { "width": 700, "height": 440 }
+}
