@@ -17,6 +17,15 @@ runtime beyond what's inlined into its own HTML (see
 of this directory is a canonical, already-debugged starting point, not
 a package to install.
 
+**To use one in a real-source widget, list it in `widget.json`:**
+`"components": ["desk-select"]`. The build compiles its `.ts` and injects
+its `template.html` for you (see "Reusable UI components" in
+`tempui-custom-widgets.md`). A project can keep its own, mutable
+components in `desk_widgets/_shared/components/<name>/` (same layout;
+this directory is the desk-wide, static library). The manual ways in each
+component's README remain for a hand-authored `DefineWidget` with no
+source directory.
+
 This directory (the source of truth, checked into this repo) is
 mirrored automatically into every project's own `.desk_temp/
 shared-components/` on every Desk open/switch (see

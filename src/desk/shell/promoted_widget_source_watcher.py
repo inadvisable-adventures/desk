@@ -54,11 +54,13 @@ class PromotedWidgetSourceWatcher(QObject):
         so a `source_path` relocation (promotion, or any future
         re-relocation) is automatically picked up on the very next
         registration, with no separate invalidation step needed. An edit
-        to the widget's own `tsconfig.json` re-arms the watch too, so a
-        newly added shared file is followed without a re-registration."""
+        to the widget's own `tsconfig.json` or `widget.json` re-arms the watch too, so a
+        newly added shared file or component is followed without a re-registration."""
         self.stop_watching(keyword)
         exclusions = source_watch_exclusions(widget_dir)
-        tsconfig_path = (widget_dir / "tsconfig.json").resolve()
+        # Edits to either re-arm: tsconfig.json lists shared files, and
+        # widget.json (TODO d34f8ed) lists shared components.
+        rearm_paths = {(widget_dir / "tsconfig.json").resolve(), (widget_dir / "widget.json").resolve()}
 
         # Sticky across debounce restarts: a tsconfig save usually comes
         # with other writes that restart the timer, and the re-arm must
@@ -86,7 +88,7 @@ class PromotedWidgetSourceWatcher(QObject):
         def _on_change(path: Path) -> None:
             if any(path == excluded or excluded in path.parents for excluded in exclusions):
                 return
-            _trigger(path == tsconfig_path)
+            _trigger(path in rearm_paths)
 
         handles = [get_service().watch(widget_dir, _on_change, recursive=True)]
 

@@ -6,6 +6,27 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+5ee7493. COMPLETED: Add a widget to view the catalog of shared components: a built-in Components widget listing the project's mutable library and Desk's static one (README summary, files, template, which widgets use each), plus a read-only `desk_list_shared_components` MCP tool. Prioritized to the top.
+
+   [planned: components-catalog-widget.md (COMPLETED)]
+
+   COMPLETED 2026-11-18: `widgets/components/`, `desk.widget_components` (`list_catalog`, `catalog_signature`), MCP tool. Tag `#5ee7493`, changelog, doc section.
+   `verify_components_widget.py` (17 checks). Headless-verified only.
+
+b04682e. COMPLETED: Ensure there is a means of including the required shared components in a deployed build: vendor a widget's desk-wide components into the project (`desk_vendor_widget_components` MCP tool, and "Copy to project library" in the Components widget) and pin them as `project:<name>`, so the build needs nothing from the opening Desk's library. Bare names now prefer the project copy. Prioritized to the top.
+
+   [planned: vendor-shared-components.md (COMPLETED)]
+
+   COMPLETED 2026-11-18: `vendor_component`/`vendor_widget_components`, resolution change in `desk.custom_widgets` and the generated `build_widget.py`, tag `#b04682e`, changelog, doc section "Deploying a project: vendor the components". Interpretation of "deployed build" is mine (the project carries everything its widgets need); not defined elsewhere in the repo.
+   `verify_widget_components_vendor.py` (27 checks). Headless-verified only.
+
+d34f8ed. COMPLETED: Shared web components as a first-class thing: a real-source widget lists `"components"` in `widget.json` and the build compiles each component's `.ts` ahead of its own files and injects its `template.html`, instead of hand-copying a `<template>` from another widget. Two libraries, per the user: desk-wide (Desk's `shared-components/`, static) and per-project (`desk_widgets/_shared/components/`, mutable) (`../FEEDBACK/FEEDBACK-DESK-no-way-to-share-a-real-web-component-across-widgets-only-the-2026-11-13-0052.md`). Prioritized to the top.
+
+   [planned: shared-web-components.md (COMPLETED)]
+
+   COMPLETED 2026-11-18: `desk.custom_widgets` (`resolve_components`, injection, generated `.build/tsconfig.components.json`) and an independent copy in the generated `build_widget.py` (test requires identical HTML); project-library files watched for `[STALE]`; `widget.json` edits re-arm the watch. Tag `#d34f8ed`, changelog, `tempui-custom-widgets.md` section, component READMEs.
+   `verify_widget_components.py` (29 checks, incl. a real page). Headless-verified only.
+
 80de4d4. COMPLETED: TODO.md items written as markdown bullets (`- 4f9f415. ...`) parsed as zero items, so `desk_list_todo_items`, `desk_get_next_todo_item` and the TODO widget silently saw an empty list: accept `- `/`* `/`+ ` bullets, report item-shaped-but-unreadable files loudly, and add a `canonicalize` reformat command (`../FEEDBACK/FEEDBACK-DESK-todo-md-items-with-a-leading-markdown-bullet-4f9f415-parse-a-2026-11-08-1138.md`). Prioritized to the top.
 
    [planned: todo-bullet-items.md (COMPLETED)]

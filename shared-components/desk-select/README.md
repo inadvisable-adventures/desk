@@ -27,7 +27,10 @@ browser's own context menu. For color, see `../hsv-color-picker/`.
 
 ## How to use it
 
-Same two ways as the other components:
+For a real-source widget, the easiest way is `"components":
+["desk-select"]` in its `widget.json` -- the build compiles the element
+and injects the template for you, and you can skip the steps below. Otherwise,
+the same two ways as the other components:
 
 1. **Import it as-is.** Copy this directory next to your widget's
    source and `import "../shared-components/desk-select/desk-select";`

@@ -63,6 +63,8 @@ from desk.event_mediator import MediatedEvent
 from desk.widget_logs import RECORDING_EVENT, STOPPED_RECORDING_EVENT, format_time_iso, parse_time_ms
 from desk.record_store import RecordConflict, RecordNotFound, RecordStore
 from desk.shell import current_context
+from desk.custom_widgets import SourceBuildError
+from desk.widget_components import list_catalog, vendor_widget_components
 from desk.todo_file import TodoItem, find_nearest_todo_file, parse_todo_file, unrecognized_items_message
 
 DESK_MCP_SERVER_NAME = "desk"
@@ -619,6 +621,62 @@ async def _install_job(args: dict[str, Any]) -> dict[str, Any]:
     except RuntimeError as e:
         return _text_result(str(e), is_error=True)
     return _text_result(message, is_error=not ok)
+
+
+@tool(
+    "desk_list_shared_components",
+    "List the shared web components available to a real-source widget's widget.json \"components\" "
+    "list (TODO 5ee7493): name, scope (\"desk\" = Desk's own static library, \"project\" = this "
+    "project's mutable desk_widgets/_shared/components/), summary, whether it ships a template, its "
+    "files, which of this project's source widgets use it, and (desk-wide ones) whether the project "
+    "already holds a vendored copy. Read-only. See \"Reusable UI components\" in "
+    "tempui-custom-widgets.md.",
+    {},
+)
+async def _list_shared_components(args: dict[str, Any]) -> dict[str, Any]:
+    directory = current_context.get_current_desk_directory()
+    if directory is None:
+        return _text_result("No current Desk directory known.", is_error=True)
+    entries = [
+        {
+            "name": e.name,
+            "scope": e.scope,
+            "summary": e.summary,
+            "has_template": e.has_template,
+            "files": e.files,
+            "used_by": e.used_by,
+            "vendored": e.vendored,
+            "path": str(e.directory),
+        }
+        for e in list_catalog(directory)
+    ]
+    return _text_result(json.dumps(entries))
+
+
+@tool(
+    "desk_vendor_widget_components",
+    "Make a real-source widget self-contained for a deployed build (TODO b04682e): copy every "
+    "desk-wide shared component its widget.json \"components\" list uses into the project's own "
+    "library (desk_widgets/_shared/components/) and pin those entries to \"project:<name>\", so the "
+    "build reads only project files instead of whichever Desk opens the project. source_path is the "
+    "widget's source directory relative to the project, e.g. \"desk_widgets/my-widget\". An existing "
+    "project copy that differs from Desk's is never replaced unless overwrite is true. Idempotent. "
+    "Commit the copied directory with the widget.",
+    {
+        "type": "object",
+        "properties": {"source_path": {"type": "string"}, "overwrite": {"type": "boolean"}},
+        "required": ["source_path"],
+    },
+)
+async def _vendor_widget_components(args: dict[str, Any]) -> dict[str, Any]:
+    directory = current_context.get_current_desk_directory()
+    if directory is None:
+        return _text_result("No current Desk directory known.", is_error=True)
+    try:
+        result = vendor_widget_components(directory, args["source_path"], overwrite=bool(args.get("overwrite", False)))
+    except SourceBuildError as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(result.describe())
 
 
 @tool(
@@ -1595,6 +1653,8 @@ _TOOLS = [
     _list_widget_logs,
     _query_widget_log,
     _install_job,
+    _list_shared_components,
+    _vendor_widget_components,
     _run_installed_job_tool,
     _run_pipeline,
     _git_commit,

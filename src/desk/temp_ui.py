@@ -274,6 +274,9 @@ CURRENT_TAGS: tuple[str, ...] = (
     "hmsvc experts receive reports #864728",
     "Experts widget: review reports #223281",
     "desk_call_hmsvc: agents call services #506728",
+    "widget.json components: shared web components, two libraries #d34f8ed",
+    "Components widget: shared component catalog #5ee7493",
+    "vendor shared components into the project #b04682e",
 )
 CURRENT_TAG_SET: frozenset[str] = frozenset(CURRENT_TAGS)
 _DOC_TAGS_PLACEHOLDER = "{{TEMPUI_DOC_TAGS}}"
@@ -1908,6 +1911,83 @@ suits the component. Importing a base class a widget's own file
 widget's own file (see "Authoring from real source" above) so
 `build_widget.py` concatenates it first.
 
+### Using a component: `"components"` in `widget.json`
+
+For a real-source widget (`.desk_temp/widgets/<name>/` or promoted
+`desk_widgets/<name>/`), the easy way is one line in its `widget.json`:
+
+```json
+{ "keyword": "...", "label": "...", "width": 400, "height": 300,
+  "components": ["desk-select", "drop-cap-text"] }
+```
+
+The build (Desk's own, and `build_widget.py`) then compiles each
+component's `<name>.ts` **ahead of** your own files (so your classes may
+extend a component's, and `tsconfig.json` `"files"` need not list it) and
+injects the component's `template.html` as a top-level sibling right after
+`<body>` -- exactly where the element's `document.getElementById(...)`
+lookup needs it. No copying a `<template>` out of another widget. To put
+the templates somewhere else, add a `<!-- BUILD:COMPONENT_TEMPLATES -->`
+line to `widget.html`. A template your `widget.html` already contains
+(the old hand-pasted way) is left alone, not duplicated, so existing
+widgets keep working; delete your copy and your `"files"` entry when you
+migrate.
+
+**Two libraries.** A component is a directory `<name>/` holding
+`<name>.ts` and, optionally, `template.html` (plus a `README.md`):
+
+- **Desk-wide** (static): Desk's own `shared-components/`, mirrored at
+  `.desk_temp/shared-components/`. Immutable from a project -- it changes
+  only when Desk's source does.
+- **Per-project** (mutable): `desk_widgets/_shared/components/<name>/` in
+  *your* project. Author components here for reuse across this project's
+  widgets; edit freely. Saving a file of a component a promoted widget
+  lists marks that widget `[STALE]`, like any shared source (a
+  `widget.json` edit re-arms the watch).
+
+A bare name resolves to the **project** library's copy if it has one,
+else the desk-wide one -- so a copy you keep in the project (e.g. one
+vendored from Desk's library, below) wins, and a component a later Desk
+adds can never change what an existing project builds. Write `desk:<name>`
+or `project:<name>` to pin a side (`project:` fails the build, rather than
+falling back, if the copy is missing). An unknown name fails the build
+with the places it looked. The build writes `.build/tsconfig.components.json` (an
+`extends` of your `tsconfig.json`) and compiles into `.build/js/`; the
+`outDir` in your own tsconfig is not used for such a widget.
+
+**Seeing what's available.** The **Components** widget (a built-in; place
+it from the widget menu) lists both libraries -- each component's README
+summary, files, whether it ships a template, and which of this project's
+widgets use it -- and can open its README/source or copy its `"components"`
+entry. Agents get the same catalog from the `desk_list_shared_components`
+MCP tool.
+
+**Deploying a project: vendor the components.** A real-source widget is
+rebuilt from source whenever Desk opens the project, so the *opening Desk's*
+`shared-components/` is part of its build input -- fine on your machine, but
+a project opened under a different Desk (or one whose library later changes)
+no longer builds from what is in the repository alone. To make a widget
+self-contained, copy the desk-wide components it uses into the project:
+call the `desk_vendor_widget_components(source_path)` MCP tool (e.g.
+`desk_widgets/my-widget`), or use the Components widget's **Copy to project
+library** button on a component. The tool copies each desk-wide component
+into `desk_widgets/_shared/components/<name>/` and rewrites the widget's
+`"components"` entries to `project:<name>`, so the build reads only project
+files -- and fails loudly, instead of silently falling back to Desk's copy,
+if one goes missing. Idempotent; a project copy that differs from Desk's is
+never overwritten unless you pass `overwrite`. Commit
+`desk_widgets/_shared/components/` with the widget. What still must exist
+wherever the project is opened: Desk itself and `tsc` on `PATH`.
+
+**Authoring a component** (the contract the build relies on): the
+template is a top-level `<template id="<name>-template">` that the
+element looks up with `document.getElementById` in its constructor;
+write the class in global mode (no import/export); and make attributes,
+not just properties, the way to configure it, so it works when a widget
+builds markup as an HTML *string* (`innerHTML`) -- a property can only
+be set on a live element afterwards. Put a `README.md` next to it saying
+what it is for.
+
 **Don't use a native `<select>` (or any other control that opens an
 OS-level popup) in a `kind: "html"`/`DefineWidget` widget.** Your page
 is embedded in the zoomable, pannable canvas, and a native `<select>`
@@ -3263,6 +3343,37 @@ _NEW_FEATURES: dict[str, str] = {
   content_type, truncated, body}`. You name the service, never a host or port
   (the port changes on every launch). See `tempui-hmsvc.md`.
 """,
+    "Components widget: shared component catalog #5ee7493": """- New built-in **Components** widget: the catalog of shared web
+  components (see `widget.json` `"components"`). It lists the project's
+  mutable library and Desk's static one, shows each component's README
+  summary, files, template, and which of the project's widgets use it, opens
+  its README/source, and copies its entry. New read-only MCP tool
+  `desk_list_shared_components` returns the same catalog to agents.
+""",
+    "vendor shared components into the project #b04682e": """- Shared components can now be vendored so a project's build no longer
+  depends on the opening Desk's library: the `desk_vendor_widget_components`
+  MCP tool (and the Components widget's "Copy to project library" button)
+  copies a widget's desk-wide components into
+  `desk_widgets/_shared/components/` and pins its `widget.json` entries to
+  `project:<name>`. Also changed: a bare component name now prefers the
+  project library's copy over Desk's (it used to be an error to have both),
+  so a vendored copy wins and a component a later Desk adds can't change an
+  existing project's build. See "Reusable UI components" in
+  `tempui-custom-widgets.md`.
+""",
+    "widget.json components: shared web components, two libraries #d34f8ed": """- Shared web components are now first-class for real-source widgets: list
+  names in `widget.json` `"components"` (e.g. `["desk-select"]`) and the
+  build compiles each component's `.ts` ahead of the widget's own files
+  and injects its `template.html` at the top of the page -- no more
+  hand-copying a `<template>` from another widget or listing the shared
+  `.ts` in `tsconfig.json`. Two libraries: Desk's own `shared-components/`
+  (desk-wide, static) and `desk_widgets/_shared/components/<name>/`
+  (per-project, mutable, edits mark dependent promoted widgets `[STALE]`).
+  A bare name prefers the project copy; `desk:<name>` / `project:<name>`
+  pin a side. A widget that already pastes the template is left
+  alone. `.desk_temp/build_widget.py` supports the same field. See
+  "Reusable UI components" in `tempui-custom-widgets.md`.
+""",
     "Experts widget: review reports #223281": """- Reports reach the person too. A new finding for the built-in `desk`
   expert (or `user`) shows a top-right notification in the Desk that reported
   it, and when a report you filed is rejected, called a duplicate or
@@ -4377,12 +4488,16 @@ Expects, in that directory:
     tsconfig.json   -- must set compilerOptions.outDir.
     widget.json     -- {"keyword": str, "label": str, "width": int,
                         "height": int, "capabilities": list[str]
-                        (optional, defaults to [])}.
+                        (optional, defaults to []), "components":
+                        list[str] (optional: shared web components --
+                        see "Shared components" in tempui-custom-
+                        widgets.md)}.
 
 Writes a fresh `.desk_temp/<uuid>` tempui file and prints its path.
 """
 import base64
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -4393,6 +4508,13 @@ BUILD_MARKER = "/* BUILD:COMPILED_JS */"
 REQUIRED_MANIFEST_KEYS = ("keyword", "label", "width", "height")
 HTML_CHUNK_SIZE = 2000
 TEMP_UI_DIRNAME = ".desk_temp"
+# TODO d34f8ed: shared web components -- an independent copy of the logic in
+# desk.custom_widgets (this file can't import `desk`); keep them in step.
+PROJECT_COMPONENTS_RELPATH = "desk_widgets/_shared/components"
+DESK_COMPONENTS_DIR = Path(__file__).resolve().parent / "shared-components"  # mirrored from Desk
+COMPONENT_NAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+TEMPLATE_ID_RE = re.compile(r"<template\\b[^>]*?\\bid\\s*=\\s*[\\"']([^\\"']+)[\\"']", re.IGNORECASE)
+TEMPLATES_MARKER = "<!-- BUILD:COMPONENT_TEMPLATES -->"
 
 
 class BuildError(Exception):
@@ -4445,7 +4567,42 @@ def _read_ordered_stems(tsconfig: dict) -> list | None:
     return [Path(entry).stem for entry in files]
 
 
-def _compile_typescript(widget_dir: Path) -> None:
+def _library_component(directory: Path, name: str):
+    candidate = directory / name
+    return candidate if (candidate / f"{name}.ts").is_file() else None
+
+
+def _resolve_components(manifest: dict, project_dir: Path) -> list:
+    """The manifest's "components" as (name, scope, directory) tuples, in
+    declared order. A name is `desk:<name>` (Desk's shared-components/),
+    `project:<name>` (desk_widgets/_shared/components/), or a bare `<name>`:
+    the project library's copy if there is one, else the desk-wide one."""
+    names = manifest.get("components", [])
+    if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+        raise BuildError('widget.json: "components" must be a list of component names')
+    project_library = project_dir / PROJECT_COMPONENTS_RELPATH
+    resolved = []
+    for raw in names:
+        scope, _, name = raw.rpartition(":")
+        if scope not in ("", "desk", "project") or not COMPONENT_NAME_RE.match(name):
+            raise BuildError(
+                f"invalid component {raw!r}: use a lowercase-kebab name, optionally prefixed desk: or project:"
+            )
+        in_desk = _library_component(DESK_COMPONENTS_DIR, name) if scope in ("", "desk") else None
+        in_project = _library_component(project_library, name) if scope in ("", "project") else None
+        found = in_project or in_desk
+        if found is None:
+            raise BuildError(
+                f"component {raw!r} not found (looked for {name}/{name}.ts in {DESK_COMPONENTS_DIR}"
+                f"{'' if scope == 'desk' else f' and {project_library}'})"
+            )
+        entry = (name, "project" if found is in_project else "desk", found)
+        if all(e[:2] != entry[:2] for e in resolved):
+            resolved.append(entry)
+    return resolved
+
+
+def _compile_typescript(widget_dir: Path, components: list | None = None) -> None:
     ts_source = widget_dir / f"{widget_dir.name}.ts"
     if not ts_source.is_file():
         raise BuildError(f"{ts_source} not found -- expected a file matching the directory's own name")
@@ -4455,9 +4612,74 @@ def _compile_typescript(widget_dir: Path) -> None:
     # worth avoiding entirely by only ever invoking a real `tsc` on PATH.
     if shutil.which("tsc") is None:
         raise BuildError("`tsc` not found on PATH -- install TypeScript to build this widget")
-    result = subprocess.run(["tsc", "-p", str(widget_dir)], capture_output=True, text=True)
+    project = widget_dir
+    if components:
+        # An `extends` config next to the build output: the widget's own
+        # tsconfig keeps governing every compiler option, while `files`
+        # gains the component sources.
+        tsconfig = _read_tsconfig(widget_dir)
+        own = [str((widget_dir / f).resolve()) for f in (tsconfig.get("files") or [])]
+        files = [str((d / f"{n}.ts").resolve()) for n, _scope, d in components]
+        files += [f for f in own if f not in files]
+        # Compiled into its own wiped directory: tsc lays output out
+        # relative to the inputs' common root, which differs with components.
+        out = widget_dir / ".build" / "js"
+        shutil.rmtree(out, ignore_errors=True)
+        config = {
+            "extends": "../tsconfig.json",
+            "compilerOptions": {"outDir": str(out.resolve())},
+            "files": files,
+        }
+        if not own:
+            config["include"] = [str(widget_dir.resolve()) + "/**/*.ts"]
+        build_dir = widget_dir / ".build"
+        build_dir.mkdir(parents=True, exist_ok=True)
+        project = build_dir / "tsconfig.components.json"
+        project.write_text(json.dumps(config, indent=2))
+    result = subprocess.run(["tsc", "-p", str(project)], capture_output=True, text=True)
     if result.returncode != 0:
         raise BuildError(f"tsc failed:\\n{result.stdout}{result.stderr}")
+
+
+def _component_stem_order(out_dir: Path, ordered_stems: list | None, components: list) -> list | None:
+    """Concatenation order once components are involved: their compiled files
+    first (a widget's classes may extend them), then the widget's own -- in
+    its tsconfig "files" order if given, else alphabetical."""
+    if not components:
+        return ordered_stems
+    first = [name for name, _scope, _dir in components]
+    rest = ordered_stems if ordered_stems is not None else sorted({p.stem for p in out_dir.rglob("*.js")})
+    return first + [stem for stem in rest if stem not in first]
+
+
+def _inject_component_templates(html: str, components: list, html_path: Path) -> str:
+    blocks = []
+    for name, scope, directory in components:
+        template = directory / "template.html"
+        if not template.is_file():
+            continue
+        text = template.read_text()
+        ids = TEMPLATE_ID_RE.findall(text)
+        # A widget that already hand-pasted this template keeps working: a
+        # second copy would duplicate its id.
+        if ids and all(re.search(r"id\\s*=\\s*[\\"']" + re.escape(i) + r"[\\"']", html) for i in ids):
+            print(f"note: {html_path} already contains {scope}:{name}'s template; not injecting a second copy", file=sys.stderr)
+            continue
+        blocks.append(f"<!-- component {scope}:{name} -->\\n{text.rstrip()}\\n")
+    if not blocks:
+        return html
+    block = "".join(blocks)
+    if html.count(TEMPLATES_MARKER) > 1:
+        raise BuildError(f"{html_path} must contain at most one {TEMPLATES_MARKER!r} marker")
+    if TEMPLATES_MARKER in html:
+        return html.replace(TEMPLATES_MARKER, block)
+    body = re.search(r"<body\\b[^>]*>", html, re.IGNORECASE)
+    if body is None:
+        raise BuildError(
+            f"{html_path} has no <body> to put component templates after; add one, "
+            f"or a {TEMPLATES_MARKER} line where they should go"
+        )
+    return html[: body.end()] + "\\n" + block + html[body.end() :]
 
 
 def _concatenate_compiled_js(out_dir: Path, ordered_stems: list | None) -> str:
@@ -4499,11 +4721,14 @@ def _concatenate_compiled_js(out_dir: Path, ordered_stems: list | None) -> str:
     return "".join(by_stem[stem].read_text() for stem in ordered_stems)
 
 
-def _substitute_marker(widget_dir: Path, compiled_js: str) -> str:
+def _substitute_marker(widget_dir: Path, compiled_js: str, components: list | None = None) -> str:
     html_path = widget_dir / "widget.html"
     if not html_path.is_file():
         raise BuildError(f"{html_path} not found")
     html = html_path.read_text()
+    if components:
+        # Before the JS goes in, so the search for <body> only sees markup.
+        html = _inject_component_templates(html, components, html_path)
     if html.count(BUILD_MARKER) != 1:
         raise BuildError(f"{html_path} must contain exactly one {BUILD_MARKER!r} marker line")
     return html.replace(BUILD_MARKER, compiled_js)
@@ -4521,9 +4746,12 @@ def build_widget(widget_dir: Path) -> tuple[str, str]:
     tsconfig = _read_tsconfig(widget_dir)
     out_dir = _read_out_dir(widget_dir, tsconfig)
     ordered_stems = _read_ordered_stems(tsconfig)
-    _compile_typescript(widget_dir)
-    compiled_js = _concatenate_compiled_js(out_dir, ordered_stems)
-    html = _substitute_marker(widget_dir, compiled_js)
+    components = _resolve_components(manifest, Path.cwd())
+    if components:
+        out_dir = widget_dir / ".build" / "js"
+    _compile_typescript(widget_dir, components)
+    compiled_js = _concatenate_compiled_js(out_dir, _component_stem_order(out_dir, ordered_stems, components))
+    html = _substitute_marker(widget_dir, compiled_js, components)
     html_b64 = base64.b64encode(html.encode("utf-8")).decode("ascii")
 
     lines = [
