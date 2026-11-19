@@ -24,7 +24,10 @@ sliders).
 
 ## How to use it
 
-Two supported ways — pick whichever fits:
+For a real-source widget, the easiest way is `"components":
+["hsv-color-picker"]` in its `widget.json` — the build compiles the element
+and injects the template for you; skip the steps below. Otherwise, two
+supported ways — pick whichever fits:
 
 1. **Import it as-is.** Copy this whole `hsv-color-picker/` directory
    into your project (e.g. next to `custom_widget_src/shared/`), then:

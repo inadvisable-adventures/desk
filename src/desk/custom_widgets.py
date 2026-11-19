@@ -18,7 +18,14 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from desk.temp_ui import CUSTOM_WIDGET_SRC_DIRNAME, SOURCE_BUILD_CACHE_DIRNAME, TEMP_UI_DIRNAME, CustomWidgetDefinition
+from desk.temp_ui import (
+    CUSTOM_WIDGET_SRC_DIRNAME,
+    PROMOTED_WIDGET_SRC_DIRNAME,
+    SOURCE_BUILD_CACHE_DIRNAME,
+    TEMP_UI_DIRNAME,
+    CustomWidgetDefinition,
+    _repo_shared_components_dir,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +39,36 @@ CUSTOM_WIDGETS_CACHE_DIRNAME = "custom_widgets"
 # not here -- see that module's own comment (TODO 1c67fe5) for why.
 
 _BUILD_MARKER = "/* BUILD:COMPILED_JS */"
+
+# TODO d34f8ed: shared web components. A widget lists component names in its
+# widget.json "components"; the build compiles each component's <name>.ts
+# ahead of the widget's own files and injects its template.html at the top of
+# the page. Two libraries: the desk-wide one (this Desk's own shared-components/,
+# static -- changes only with Desk's source) and a per-project one (mutable,
+# authored in the project). The generated .desk_temp/build_widget.py carries
+# an independent copy of this logic (it must be self-contained); keep them in
+# step -- verify_widget_components.py runs both and compares the HTML.
+PROJECT_COMPONENTS_RELPATH = "desk_widgets/_shared/components"
+_COMPONENT_NAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+_TEMPLATE_ID_RE = re.compile(r"<template\b[^>]*?\bid\s*=\s*[\"']([^\"']+)[\"']", re.IGNORECASE)
+_TEMPLATES_MARKER = "<!-- BUILD:COMPONENT_TEMPLATES -->"
+_COMPONENTS_BUILD_CONFIG = "tsconfig.components.json"
+
+
+@dataclass
+class Component:
+    name: str
+    scope: str  # "desk" (Desk's own shared-components/) or "project"
+    directory: Path
+
+    @property
+    def ts(self) -> Path:
+        return self.directory / f"{self.name}.ts"
+
+    @property
+    def template(self) -> Path | None:
+        path = self.directory / "template.html"
+        return path if path.is_file() else None
 
 
 class SourceBuildError(Exception):
@@ -68,6 +105,64 @@ def materialize(desk_temp_dir: Path, definition: CustomWidgetDefinition) -> Path
     return target_dir
 
 
+def read_component_names(widget_dir: Path) -> list[str]:
+    """The `"components"` list in a source widget's widget.json, as written
+    (empty if absent). Raises SourceBuildError if present but not a list of
+    strings. See resolve_components."""
+    manifest_path = widget_dir / "widget.json"
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (OSError, ValueError):
+        return []
+    names = manifest.get("components", []) if isinstance(manifest, dict) else []
+    if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+        raise SourceBuildError(f'{manifest_path}: "components" must be a list of component names')
+    return names
+
+
+def _library_component(directory: Path, name: str) -> Path | None:
+    candidate = directory / name
+    return candidate if (candidate / f"{name}.ts").is_file() else None
+
+
+def resolve_components(
+    names: list[str], project_dir: Path, desk_library_dir: Path | None = None
+) -> list[Component]:
+    """TODO d34f8ed: names -> Components, in declared order, duplicates dropped.
+    A name is `desk:<name>` (Desk's shared-components/), `project:<name>`
+    (<project>/desk_widgets/_shared/components/), or a bare `<name>`, which
+    must exist in exactly one of the two -- found in both is an error (no
+    silent shadowing; say which you mean). A component is a directory
+    holding `<name>.ts` and, optionally, `template.html`."""
+    if desk_library_dir is None:
+        desk_library_dir = _repo_shared_components_dir()
+    project_library = project_dir / PROJECT_COMPONENTS_RELPATH
+    resolved: list[Component] = []
+    for raw in names:
+        scope, _, name = raw.rpartition(":")
+        if scope not in ("", "desk", "project") or not _COMPONENT_NAME_RE.match(name):
+            raise SourceBuildError(
+                f"invalid component {raw!r}: use a lowercase-kebab name, optionally prefixed desk: or project:"
+            )
+        in_desk = _library_component(desk_library_dir, name) if scope in ("", "desk") else None
+        in_project = _library_component(project_library, name) if scope in ("", "project") else None
+        if in_desk is not None and in_project is not None:
+            raise SourceBuildError(
+                f"component {name!r} exists in both the desk-wide and the project library -- "
+                f"write desk:{name} or project:{name} to say which"
+            )
+        found = in_desk or in_project
+        if found is None:
+            raise SourceBuildError(
+                f"component {raw!r} not found (looked for {name}/{name}.ts in {desk_library_dir}"
+                f"{'' if scope == 'desk' else f' and {project_library}'})"
+            )
+        component = Component(name, "desk" if found is in_desk else "project", found)
+        if all((c.scope, c.name) != (component.scope, component.name) for c in resolved):
+            resolved.append(component)
+    return resolved
+
+
 def _read_tsconfig(widget_dir: Path) -> dict:
     tsconfig_path = widget_dir / "tsconfig.json"
     if not tsconfig_path.is_file():
@@ -102,15 +197,90 @@ def _read_ordered_stems(tsconfig: dict) -> list[str] | None:
     return [Path(entry).stem for entry in files]
 
 
-def _compile_typescript(widget_dir: Path) -> None:
+def components_out_dir(widget_dir: Path) -> Path:
+    """Where a widget *with components* has its TypeScript compiled."""
+    return widget_dir / SOURCE_BUILD_CACHE_DIRNAME / "js"
+
+
+def _compile_typescript(widget_dir: Path, components: list[Component] | None = None) -> None:
     ts_source = widget_dir / f"{widget_dir.name}.ts"
     if not ts_source.is_file():
         raise SourceBuildError(f"{ts_source} not found -- expected a file matching the directory's own name")
     if shutil.which("tsc") is None:
         raise SourceBuildError("`tsc` not found on PATH -- install TypeScript to build this widget")
-    result = subprocess.run(["tsc", "-p", str(widget_dir)], capture_output=True, text=True)
+    project = widget_dir
+    if components:
+        # An `extends` config next to the build output: the widget's own
+        # tsconfig keeps governing every compiler option (and its own
+        # relative paths), while `files` gains the component sources.
+        tsconfig = _read_tsconfig(widget_dir)
+        own = [str((widget_dir / f).resolve()) for f in _read_files_entries(tsconfig)]
+        files = [str(c.ts.resolve()) for c in components]
+        files += [f for f in own if f not in files]
+        # Compiled into its own wiped directory: tsc lays output out relative
+        # to the inputs' common root, which differs between a widget with
+        # components and one without (or between libraries), so reusing the
+        # widget's outDir would leave stale, differently-nested copies.
+        out = components_out_dir(widget_dir)
+        shutil.rmtree(out, ignore_errors=True)
+        config: dict = {
+            "extends": "../tsconfig.json",
+            "compilerOptions": {"outDir": str(out.resolve())},
+            "files": files,
+        }
+        if not own:
+            config["include"] = [str(widget_dir.resolve()) + "/**/*.ts"]
+        build_dir = widget_dir / SOURCE_BUILD_CACHE_DIRNAME
+        build_dir.mkdir(parents=True, exist_ok=True)
+        project = build_dir / _COMPONENTS_BUILD_CONFIG
+        project.write_text(json.dumps(config, indent=2))
+    result = subprocess.run(["tsc", "-p", str(project)], capture_output=True, text=True)
     if result.returncode != 0:
         raise SourceBuildError(f"tsc failed:\n{result.stdout}{result.stderr}")
+
+
+def _component_stem_order(out_dir: Path, ordered_stems: list[str] | None, components: list[Component]) -> list[str] | None:
+    """The concatenation order once components are involved: their compiled
+    files first (a widget's classes may extend them), then the widget's own
+    -- in its tsconfig "files" order if given, else alphabetical."""
+    if not components:
+        return ordered_stems
+    first = [c.name for c in components]
+    rest = ordered_stems if ordered_stems is not None else sorted({p.stem for p in out_dir.rglob("*.js")})
+    return first + [stem for stem in rest if stem not in first]
+
+
+def _inject_component_templates(html: str, components: list[Component], html_path: Path) -> str:
+    blocks = []
+    for component in components:
+        template = component.template
+        if template is None:
+            continue
+        text = template.read_text()
+        ids = _TEMPLATE_ID_RE.findall(text)
+        # A widget that already hand-pasted this template (the old way) keeps
+        # working: a second copy would duplicate its id.
+        if ids and all(re.search(r"id\s*=\s*[\"']" + re.escape(i) + r"[\"']", html) for i in ids):
+            logger.warning(
+                "%s already contains the template(s) of component %s:%s; not injecting a second copy",
+                html_path, component.scope, component.name,
+            )
+            continue
+        blocks.append(f"<!-- component {component.scope}:{component.name} -->\n{text.rstrip()}\n")
+    if not blocks:
+        return html
+    block = "".join(blocks)
+    if html.count(_TEMPLATES_MARKER) > 1:
+        raise SourceBuildError(f"{html_path} must contain at most one {_TEMPLATES_MARKER!r} marker")
+    if _TEMPLATES_MARKER in html:
+        return html.replace(_TEMPLATES_MARKER, block)
+    body = re.search(r"<body\b[^>]*>", html, re.IGNORECASE)
+    if body is None:
+        raise SourceBuildError(
+            f"{html_path} has no <body> to put component templates after; add one, "
+            f"or a {_TEMPLATES_MARKER} line where they should go"
+        )
+    return html[: body.end()] + "\n" + block + html[body.end() :]
 
 
 def _concatenate_compiled_js(out_dir: Path, ordered_stems: list[str] | None) -> str:
@@ -148,11 +318,14 @@ def _concatenate_compiled_js(out_dir: Path, ordered_stems: list[str] | None) -> 
     return "".join(by_stem[stem].read_text() for stem in ordered_stems)
 
 
-def _substitute_marker(widget_dir: Path, compiled_js: str) -> str:
+def _substitute_marker(widget_dir: Path, compiled_js: str, components: list[Component] | None = None) -> str:
     html_path = widget_dir / "widget.html"
     if not html_path.is_file():
         raise SourceBuildError(f"{html_path} not found")
     html = html_path.read_text()
+    if components:
+        # Before the JS goes in, so the search for <body> only sees markup.
+        html = _inject_component_templates(html, components, html_path)
     if html.count(_BUILD_MARKER) != 1:
         raise SourceBuildError(f"{html_path} must contain exactly one {_BUILD_MARKER!r} marker line")
     return html.replace(_BUILD_MARKER, compiled_js)
@@ -179,9 +352,12 @@ def build_from_source(project_dir: Path, source_path: str) -> Path | None:
         tsconfig = _read_tsconfig(widget_dir)
         out_dir = _read_out_dir(widget_dir, tsconfig)
         ordered_stems = _read_ordered_stems(tsconfig)
-        _compile_typescript(widget_dir)
-        compiled_js = _concatenate_compiled_js(out_dir, ordered_stems)
-        html = _substitute_marker(widget_dir, compiled_js)
+        components = resolve_components(read_component_names(widget_dir), project_dir)
+        if components:
+            out_dir = components_out_dir(widget_dir)
+        _compile_typescript(widget_dir, components)
+        compiled_js = _concatenate_compiled_js(out_dir, _component_stem_order(out_dir, ordered_stems, components))
+        html = _substitute_marker(widget_dir, compiled_js, components)
     except SourceBuildError as e:
         logger.error("Failed to build source-backed custom widget at %s: %s", widget_dir, e)
         return None
@@ -256,7 +432,34 @@ def external_source_files(widget_dir: Path) -> list[Path]:
         path = Path(os.path.normpath(base / entry))
         if path != base and base not in path.parents and path not in external:
             external.append(path)
+    # TODO d34f8ed: files of the project-library components the widget lists
+    # (the mutable library). Desk-wide components are static, not watched.
+    project = _project_dir_of(widget_dir)
+    if project is not None:
+        try:
+            components = resolve_components(read_component_names(widget_dir), project)
+        except SourceBuildError:
+            components = []
+        for component in components:
+            if component.scope == "project":
+                for path in (component.ts, component.template):
+                    if path is not None:
+                        path = Path(os.path.normpath(path))
+                        if path not in external:
+                            external.append(path)
     return external
+
+
+def _project_dir_of(widget_dir: Path) -> Path | None:
+    """The project directory a source widget directory belongs to, from its
+    conventional location (`<project>/desk_widgets/<name>` once promoted,
+    `<project>/.desk_temp/widgets/<name>` before), else None."""
+    parent = widget_dir.parent
+    if parent.name == PROMOTED_WIDGET_SRC_DIRNAME:
+        return parent.parent
+    if parent.name == CUSTOM_WIDGET_SRC_DIRNAME and parent.parent.name == TEMP_UI_DIRNAME:
+        return parent.parent.parent
+    return None
 
 
 _NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
