@@ -57,7 +57,8 @@ from typing import Any
 
 from claude_agent_sdk import McpSdkServerConfig, create_sdk_mcp_server, tool
 
-from desk import expert_registry, feedback_items, handoff_requests, hmsvc_call, pipeline_dsl
+from desk import expert_registry, feedback_items, handoff_requests, hmsvc_call, pipeline_dsl, recorder_protocol, transcript_pool
+from desk.recorder_service import RecorderError
 from desk.expert_registry import ExpertRegistryError
 from desk.event_mediator import MediatedEvent
 from desk.widget_logs import RECORDING_EVENT, STOPPED_RECORDING_EVENT, format_time_iso, parse_time_ms
@@ -955,6 +956,96 @@ def _hmsvc_manager():
     return getattr(window, "_hmsvc", None) if window is not None else None
 
 
+def _recorder_service():
+    """This Desk's RecorderService (the MCP server runs inside Desk), or None before the window exists."""
+    window = current_context.get_main_window()
+    return getattr(window, "_recorder", None) if window is not None else None
+
+
+@tool(
+    "desk_recorder_status",
+    "State of DeskRecorder.app, the stand-alone recorder Desk controls: whether it is running and, for each of its "
+    "three features (transcribe, screen, camera), state ('idle', 'starting', 'running', 'stopping', 'error', "
+    "'denied' = macOS permission refused, 'disconnected'), detail, output file path and dropped-frame count. "
+    "Read-only; it does not start the app.",
+    {"type": "object", "properties": {}},
+)
+async def _recorder_status(args: dict[str, Any]) -> dict[str, Any]:
+    service = _recorder_service()
+    if service is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    return _text_result(json.dumps(service.status(), indent=2))
+
+
+@tool(
+    "desk_recorder_control",
+    "Start or stop one DeskRecorder feature: 'transcribe' (microphone -> the transcript pool, read it with "
+    "desk_read_transcript), 'screen' (video of the screen or one window) or 'camera' (video). THIS RECORDS THE "
+    "USER'S MICROPHONE, SCREEN OR CAMERA: only start one when the user asked you to. For 'screen', `target` is "
+    "'screen' (default) or 'window:<percent-quoted window title>'; for 'camera', `device` is 'default' or a "
+    "percent-quoted device name. A feature whose macOS permission was refused reports state 'denied'. Returns the "
+    "feature's status; poll desk_recorder_status for the outcome.",
+    {
+        "type": "object",
+        "properties": {
+            "feature": {"type": "string", "enum": list(recorder_protocol.FEATURES)},
+            "action": {"type": "string", "enum": ["start", "stop"]},
+            "target": {"type": "string"},
+            "device": {"type": "string"},
+        },
+        "required": ["feature", "action"],
+    },
+)
+async def _recorder_control(args: dict[str, Any]) -> dict[str, Any]:
+    service = _recorder_service()
+    if service is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        if args["action"] == "start":
+            result = await asyncio.to_thread(service.start, args["feature"], args.get("target"), args.get("device"), 3.0)
+        else:
+            result = await asyncio.to_thread(service.stop, args["feature"])
+    except RecorderError as e:
+        return _text_result(str(e), is_error=True)
+    return _text_result(json.dumps(result, indent=2))
+
+
+@tool(
+    "desk_read_transcript",
+    "Read transcribed speech from the shared transcript pool (written while DeskRecorder's 'transcribe' feature "
+    "runs). With no `session`, lists the sessions, newest last. With a `session`, returns its segments, the latest "
+    "version of each, as lines '[<ISO time>] <text>' (a '~' marks a provisional segment that may still change); "
+    "`limit` (default 200) keeps the LAST that many. Times are the same clock as desk_query_widget_log, where "
+    "finished segments are also mirrored under the log name 'transcript'.",
+    {
+        "type": "object",
+        "properties": {"session": {"type": "string"}, "limit": {"type": "integer", "minimum": 1}},
+    },
+)
+async def _read_transcript(args: dict[str, Any]) -> dict[str, Any]:
+    service = _recorder_service()
+    if service is None:
+        return _text_result(_NOT_READY_MESSAGE, is_error=True)
+    try:
+        pool = service.pool_dir()
+    except RecorderError as e:
+        return _text_result(str(e), is_error=True)
+    session = args.get("session")
+    if not session:
+        sessions = transcript_pool.list_sessions(pool)
+        if not sessions:
+            return _text_result("No transcript sessions yet (start the 'transcribe' feature).")
+        return _text_result("\n".join(info.session for info in sessions))
+    if not transcript_pool.valid_session_id(session):
+        return _text_result(f"Invalid session id: {session!r}", is_error=True)
+    segments = transcript_pool.read_collapsed(pool, session)
+    if not segments:
+        return _text_result(f"No segments in session {session!r}.", is_error=True)
+    limit = max(1, int(args.get("limit") or 200))
+    lines = [f"[{format_time_iso(s.start_ms)}]{'' if s.final else '~'} {s.text}" for s in segments[-limit:]]
+    return _text_result("\n".join(lines))
+
+
 @tool(
     "desk_raise_event",
     "Raise a named desk event, with an optional JSON payload, on the same channel widgets use "
@@ -1661,6 +1752,9 @@ _TOOLS = [
     _ask_desk_expert,
     _list_hmsvcs,
     _call_hmsvc,
+    _recorder_status,
+    _recorder_control,
+    _read_transcript,
     _raise_event,
     _wait_for_event,
     _create_handoff_request,

@@ -163,6 +163,35 @@ BRIDGE_CLIENT_TEMPLATE = """
       append: (name, entries) => sendLog(name, entries),
       line: (name, s) => sendLog(name, [{ s }]),
     },
+    // recorder (TODO b9689cd): requires the "recorder" capability. Controls
+    // DeskRecorder.app: feature is "transcribe", "screen" or "camera". start
+    // resolves to that feature's status ({ state, detail, path, ... });
+    // pass opts.wait (seconds) to wait for the outcome (a permission prompt
+    // can take a while). Requires the app to be installed.
+    recorder: {
+      status: () => call("GET", "/api/bridge/recorder/status"),
+      start: (feature, opts) => call("POST", "/api/bridge/recorder/start", { feature, ...(opts || {}) }),
+      stop: (feature) => call("POST", "/api/bridge/recorder/stop", { feature }),
+      sources: () => call("GET", "/api/bridge/recorder/sources"),
+    },
+    // transcripts (TODO b9689cd): requires the "transcripts" capability.
+    // The shared transcript pool: list() -> { sessions: [{ session, size,
+    // modified_ms }] }. read(session, opts) -> { segments, next_offset };
+    // opts.collapsed gives the whole session with the latest version of
+    // each segment; otherwise only records after opts.offset (pass back the
+    // previous next_offset to tail; a segment seen again with the same seq
+    // replaces the earlier one).
+    transcripts: {
+      list: () => call("GET", "/api/bridge/transcripts/list"),
+      read: (session, opts) => {
+        const o = opts || {};
+        return call(
+          "GET",
+          "/api/bridge/transcripts/read?session=" + encodeURIComponent(session) +
+            (o.offset ? "&offset=" + o.offset : "") + (o.collapsed ? "&collapsed=true" : ""),
+        );
+      },
+    },
     hmsvc: {
       list: () => call("GET", "/api/bridge/hmsvc/list"),
       logs: (name, limit) =>

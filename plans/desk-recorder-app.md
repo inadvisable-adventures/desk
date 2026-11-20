@@ -1,4 +1,4 @@
-# Plan: TODO `b9689cd` -- DeskRecorder, a stand-alone recorder app with a shared transcript pool
+# Plan: TODO `b9689cd` -- DeskRecorder, a stand-alone recorder app with a shared transcript pool (COMPLETED)
 
 ## Summary
 
@@ -127,3 +127,47 @@ the video.
 - Compositing the camera into the screen video; one multi-track file.
 - Checking that popups are captured with the Desk window.
 - Developer-ID signing and notarization.
+
+## As built (2026-11-20) -- where it differs from the plan above
+
+- **Desk listens, the app connects.** `RecorderService` creates the Unix
+  socket and starts the app with `--socket <path>`; a connection means the
+  app is up and a closed one means it died. (The plan had the app create it.)
+- **Permissions go through the launcher over a socket pair.** The Python
+  child cannot ask (no Info.plist), so it writes `camera|microphone|screen`
+  to `DESK_RECORDER_PERM_FD` and the Objective-C launcher answers `granted`,
+  `denied` or `restart`. They are requested when the feature starts, off the
+  Qt main thread so the heartbeat keeps going during a prompt.
+- **The pool is plain files plus the existing widget logs.** `final`
+  protocol events (a notification only; the text is also in the pool) are
+  mirrored into the existing `WidgetLogStore` under the log name
+  `transcript`, so `desk_query_widget_log` already works on them. No new
+  store was invented; `desk.transcripts` reads the files.
+- **Qt quirks found:** PyQt6 cannot connect `QMediaRecorder`'s
+  `errorOccurred` or `recorderStateChanged` to a Python callable, so the
+  recorder state is polled every 100 ms and `errorChanged` is used.
+- **`dropped`** counts stalls (gaps over 100 ms between frames reaching the
+  sink), not frames known to be missing from the file.
+- **Segments:** energy-based pause detection, pre-roll, provisional every
+  2 s, forced cut at 25 s; a whisper guard drops segments whisper itself
+  rates as not speech and low confidence.
+- **MCP tools** `desk_recorder_status`, `desk_recorder_control` (records the
+  user's microphone, screen or camera; its description says to use it only
+  when asked) and `desk_read_transcript`.
+- **Install:** `scripts/build_desk_recorder_app.sh` builds into `build/` and
+  installs to `~/Applications/DeskRecorder.app` (`--no-install`,
+  `--output DIR`). The checkout path and `.venv` python are baked in.
+- **Cosmetic:** the app is `LSUIElement` (no Dock icon) but the Python child
+  is a Qt GUI process and may still show one.
+
+## Not verified
+
+- A real recording of screen or camera, and real transcription through the
+  app (whisper plus the microphone). The pipeline is tested with a synthetic
+  WAV and a stub transcriber; the real app was started through
+  LaunchServices and listed sources, but its first microphone request
+  waited for a permission answer that never came during the attempt.
+- Any macOS permission prompt for `local.desk.recorder`; that grants survive
+  a rebuild; Screen Recording after the required restart.
+- Transcript times lining up with the video; popups in window capture; a
+  long recording.

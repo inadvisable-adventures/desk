@@ -101,6 +101,15 @@ class PaintedComboBox(QWidget):
         self.updateGeometry()
         self.update()
 
+    def clear(self) -> None:
+        """Removes every item (no `currentIndexChanged`, like QComboBox.clear's
+        index going to -1; callers repopulate and pick one)."""
+        self._items.clear()
+        self._data.clear()
+        self._current = -1
+        self.updateGeometry()
+        self.update()
+
     def count(self) -> int:
         return len(self._items)
 

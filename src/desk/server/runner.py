@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from desk.event_mediator import EventMediator
 from desk.hmsvc import HmsvcManager
+from desk.recorder_service import RecorderService
 from desk.schema_registry import SchemaRegistry
 from desk.server.app import DEFAULT_WIDGETS_DIR, create_app
 from desk.server.credentials import CredentialRegistry
@@ -36,6 +37,7 @@ class ServerHandle:
     widget_logs: WidgetLogStore
     schema_registry: SchemaRegistry
     hmsvc_manager: HmsvcManager
+    recorder_service: RecorderService
     credentials: CredentialRegistry
     _server: uvicorn.Server
     _thread: threading.Thread
@@ -102,6 +104,7 @@ class ServerHandle:
 
     def stop(self, timeout: float = 5.0) -> None:
         self.hmsvc_manager.stop_all()
+        self.recorder_service.shutdown()
         self._server.should_exit = True
         self._thread.join(timeout=timeout)
 
@@ -134,6 +137,9 @@ def start_server(
     hmsvc_manager.configure_bridge(f"http://{host}:{port}", token)
     # TODO 929e730: per-instance Bridge credentials. Services get one per
     # start (revoked when the process ends).
+    # TODO b9689cd: DeskRecorder.app's controller; the window points it at
+    # the current Desk's directory (RecorderService.configure).
+    recorder_service = RecorderService()
     credentials = CredentialRegistry()
     hmsvc_manager.configure_credentials(credentials.issue_service, credentials.revoke_service)
     app = create_app(
@@ -143,6 +149,7 @@ def start_server(
         event_mediator=event_mediator,
         widget_logs=widget_logs,
         hmsvc_manager=hmsvc_manager,
+        recorder_service=recorder_service,
         credentials=credentials,
     )
 
@@ -178,6 +185,7 @@ def start_server(
         widget_logs=widget_logs,
         schema_registry=schema_registry,
         hmsvc_manager=hmsvc_manager,
+        recorder_service=recorder_service,
         credentials=credentials,
         _server=server,
         _thread=thread,

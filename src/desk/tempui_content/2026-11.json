@@ -128,5 +128,10 @@
     "tag": "vendor shared components into the project #b04682e",
     "monthstamp": "11 2026",
     "description": "- Shared components can now be vendored so a project's build no longer\n  depends on the opening Desk's library: the `desk_vendor_widget_components`\n  MCP tool (and the Components widget's \"Copy to project library\" button)\n  copies a widget's desk-wide components into\n  `desk_widgets/_shared/components/` and pins its `widget.json` entries to\n  `project:<name>`. Also changed: a bare component name now prefers the\n  project library's copy over Desk's (it used to be an error to have both),\n  so a vendored copy wins and a component a later Desk adds can't change an\n  existing project's build. See \"Reusable UI components\" in\n  `tempui-custom-widgets.md`.\n"
+  },
+  {
+    "tag": "DeskRecorder: transcription, screen and camera recording, shared transcript pool #b9689cd",
+    "monthstamp": "11 2026",
+    "description": "- New stand-alone app `DeskRecorder.app` (build and install it with\n  `scripts/build_desk_recorder_app.sh`) that Desk starts and controls. It has\n  three independent features, each asking macOS for its own permission only\n  when first turned on: **transcription** (Microphone), **screen recording**\n  of the screen or one window (Screen Recording, plus Microphone for an audio\n  track) and **camera video** (Camera). Any combination can run, including\n  just one; a refused permission affects only its own feature.\n- Transcription writes **segments** (cut at pauses; the trailing one is\n  provisional until it is final) to a shared **transcript pool**, one\n  append-only file per session under `.desk_temp/transcript-pool/`, that any\n  widget can read. New Bridge capabilities: `recorder` (`desk.recorder.status\n  / start / stop / sources`) and `transcripts` (`desk.transcripts.list /\n  read`). Finished segments are also mirrored into the widget log\n  `transcript`. New built-in Recorder widget, and MCP tools\n  `desk_recorder_status`, `desk_recorder_control` and `desk_read_transcript`.\n  See \"The Desk Bridge API\" in `tempui-custom-widgets.md`.\n"
   }
 ]

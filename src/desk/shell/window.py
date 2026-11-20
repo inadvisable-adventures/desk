@@ -515,6 +515,15 @@ class DeskWindow(QMainWindow):
         # current Desk's directory in _refresh_picker; stopped on quit
         # by ServerHandle.stop.
         self._hmsvc = handle.hmsvc_manager
+        # TODO b9689cd: DeskRecorder.app's controller. Its transcript pool and
+        # recordings live in whichever Desk directory is current, and its
+        # finished transcript segments are mirrored into the widget logs.
+        self._recorder = handle.recorder_service
+        self._recorder.configure(
+            lambda: self.current_desk.directory if self.current_desk is not None else None,
+            self._widget_logs,
+        )
+        current_context.set_recorder_service(self._recorder)
         self._hmsvc.add_listener(
             lambda: self._event_mediator.publish(
                 HMSVC_CHANGED_EVENT,

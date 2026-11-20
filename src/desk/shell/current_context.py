@@ -739,3 +739,18 @@ def set_hmsvc_manager(manager) -> None:
 
 def get_hmsvc_manager():
     return _hmsvc_manager
+
+
+_recorder_service = None
+
+
+def set_recorder_service(service) -> None:
+    """TODO b9689cd: the shared `desk.recorder_service.RecorderService`
+    (DeskRecorder.app's controller) -- thread-safe and Qt-free, so a
+    `python` widget can call it directly."""
+    global _recorder_service
+    _recorder_service = service
+
+
+def get_recorder_service():
+    return _recorder_service

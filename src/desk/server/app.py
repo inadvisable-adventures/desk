@@ -17,6 +17,8 @@ from desk.deprecations import DeprecationRegistry, format_error, get_registry as
 from desk.server.credentials import CredentialRegistry
 from desk.file_type_registry import FILE_TYPE_REGISTRY_UPDATED_EVENT
 from desk.hmsvc import HmsvcManager, service_name_from_caller_id
+from desk import transcript_pool
+from desk.recorder_service import RecorderError, RecorderService
 from desk.installed_jobs import INSTALLED_JOB_RUN_TIMEOUT_SECONDS
 from desk.shell.bridge import GuiBridge
 from desk.widgets import WidgetInfo, discover_widgets
@@ -161,6 +163,17 @@ class LaunchAgentRequest(BaseModel):
     y: float | None = None
 
 
+class RecorderStartRequest(BaseModel):
+    feature: str
+    target: str | None = None  # screen: "screen" or "window:<quoted title>"
+    device: str | None = None  # camera: "default" or a quoted device name
+    wait: float = 0.0  # seconds to wait for the outcome (permission prompts can take long)
+
+
+class RecorderStopRequest(BaseModel):
+    feature: str
+
+
 class CloseWidgetRequest(BaseModel):
     instance_id: str
 
@@ -300,6 +313,7 @@ def create_app(
     event_mediator: EventMediator | None = None,
     widget_logs: WidgetLogStore | None = None,
     hmsvc_manager: HmsvcManager | None = None,
+    recorder_service: RecorderService | None = None,
     credentials: CredentialRegistry | None = None,
     deprecations: DeprecationRegistry | None = None,
 ) -> FastAPI:
@@ -865,6 +879,77 @@ def create_app(
                 for log in require_widget_logs().list_logs()
             ]
         }
+
+    # --- recorder + transcripts (TODO b9689cd): DeskRecorder.app's three
+    # features (transcription, screen, camera) and the shared transcript
+    # pool. Two capabilities on purpose: `recorder` controls capture,
+    # `transcripts` only reads what transcription wrote. start/stop can
+    # launch the app and wait on it, so they run off the event loop.
+
+    def require_recorder() -> RecorderService:
+        if recorder_service is None:
+            raise HTTPException(503, "Recorder service not available")
+        return recorder_service
+
+    @app.get("/api/bridge/recorder/status")
+    async def recorder_status(widget: WidgetInfo = Depends(require_caller("recorder"))):
+        return await asyncio.to_thread(require_recorder().status)
+
+    @app.post("/api/bridge/recorder/start")
+    async def recorder_start(body: RecorderStartRequest, widget: WidgetInfo = Depends(require_caller("recorder"))):
+        service = require_recorder()
+        try:
+            return await asyncio.to_thread(
+                service.start, body.feature, body.target, body.device, min(max(body.wait, 0.0), 60.0)
+            )
+        except RecorderError as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.post("/api/bridge/recorder/stop")
+    async def recorder_stop(body: RecorderStopRequest, widget: WidgetInfo = Depends(require_caller("recorder"))):
+        try:
+            return await asyncio.to_thread(require_recorder().stop, body.feature)
+        except RecorderError as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.get("/api/bridge/recorder/sources")
+    async def recorder_sources(widget: WidgetInfo = Depends(require_caller("recorder"))):
+        try:
+            return {"sources": await asyncio.to_thread(require_recorder().request_sources)}
+        except RecorderError as e:
+            raise HTTPException(400, str(e)) from e
+
+    def _pool_dir() -> Path:
+        try:
+            return require_recorder().pool_dir()
+        except RecorderError as e:
+            raise HTTPException(503, str(e)) from e
+
+    @app.get("/api/bridge/transcripts/list")
+    async def transcripts_list(widget: WidgetInfo = Depends(require_caller("transcripts"))):
+        return {
+            "sessions": [
+                {"session": info.session, "size": info.size, "modified_ms": info.modified_ms}
+                for info in transcript_pool.list_sessions(_pool_dir())
+            ]
+        }
+
+    @app.get("/api/bridge/transcripts/read")
+    async def transcripts_read(
+        session: str,
+        offset: int = 0,
+        collapsed: bool = False,
+        widget: WidgetInfo = Depends(require_caller("transcripts")),
+    ):
+        pool = _pool_dir()
+        if not transcript_pool.valid_session_id(session):
+            raise HTTPException(400, f"Invalid session id: {session!r}")
+        if collapsed:
+            records, next_offset = transcript_pool.read_records(pool, session, 0)
+            records = transcript_pool.collapse(records)
+        else:
+            records, next_offset = transcript_pool.read_records(pool, session, max(offset, 0))
+        return {"segments": [transcript_pool.segment_dict(r) for r in records], "next_offset": next_offset}
 
     # --- hmsvc (TODO e75b165) -- Desk-hosted microservices. The manager
     # is plain thread-safe Python, so these run directly on the request
