@@ -6,6 +6,10 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+b9689cd. Add DeskRecorder: a stand-alone macOS app (`DeskRecorder.app`) that Desk controls, with three independent features, each asking for its own permission only when enabled: transcription (Microphone), screen recording (Screen Recording, plus mic audio), and camera video (Camera). Any combination can run, including just one. Transcription writes segments to a shared pool that individual Desk widgets can read (Python module plus a `desk.transcripts` Bridge API). Based on the spike in `.desk_temp/recording-discussion.2026-11-19.md`. Prioritized to the top.
+
+   [planned: desk-recorder-app.md]
+
 5ee7493. COMPLETED: Add a widget to view the catalog of shared components: a built-in Components widget listing the project's mutable library and Desk's static one (README summary, files, template, which widgets use each), plus a read-only `desk_list_shared_components` MCP tool. Prioritized to the top.
 
    [planned: components-catalog-widget.md (COMPLETED)]
