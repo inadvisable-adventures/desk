@@ -147,7 +147,13 @@ from desk.temp_ui import (
     parse_temp_ui,
     sync_custom_widgets_doc_section,
 )
-from desk.widgets import WidgetInfo, WidgetWatcher, discover_project_widgets, discover_widgets
+from desk.widgets import (
+    WidgetInfo,
+    WidgetWatcher,
+    discover_project_widgets,
+    discover_widgets,
+    project_widget_content_hash,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -722,6 +728,11 @@ class DeskWindow(QMainWindow):
                 continue
             self._widgets[widget_id] = info
             self._project_widget_ids.add(widget_id)
+            # TODO f143ce4: content hash of the source on disk, compared
+            # against each placed instance's placed_content_hash.
+            self._custom_widget_content_hash[widget_id] = project_widget_content_hash(info.path)
+        for widget_id in self._project_widget_ids:
+            self._refresh_stale_indicators_for(widget_id)
 
     def _load_desk_widgets(self, desk: Desk) -> None:
         if desk.widgets:
@@ -766,6 +777,11 @@ class DeskWindow(QMainWindow):
                 self._bind_widget_local_storage(frame, state.state)
                 if state.locked:
                     frame.set_locked(True)
+                if state.placed_content_hash is None and state.widget_id in self._project_widget_ids:
+                    # TODO f143ce4: saved before project widgets were
+                    # hashed -- nothing to compare, so adopt the current
+                    # source as this instance's baseline.
+                    frame.placed_content_hash = self._custom_widget_content_hash.get(state.widget_id)
                 if state.placed_content_hash is not None:
                     # TODO 5995ffd: apply the hash this instance was
                     # placed with, then compare against whatever's
@@ -831,7 +847,15 @@ class DeskWindow(QMainWindow):
             # plans/claude-widget-session-resume.md.
             instance_id = str(uuid.uuid4())
         if widget.kind == "python":
-            host = PythonWidgetHost(widget_id, widget.path, widget.entry, self._broker)
+            # TODO f143ce4: a project widget goes [STALE] on an edit
+            # instead of auto-reloading (see _load_project_widgets).
+            host = PythonWidgetHost(
+                widget_id,
+                widget.path,
+                widget.entry,
+                self._broker,
+                auto_reload=widget_id not in self._project_widget_ids,
+            )
             proxy = self.view.add_widget(
                 host, title=widget.name, pos=pos, size=size, instance_id=instance_id
             )
@@ -1615,7 +1639,11 @@ class DeskWindow(QMainWindow):
         """TODO 53779f4: after ONE confirmation, does for every [STALE]
         instance what clicking its [STALE] tag does (_reload_stale_frame);
         returns how many were reloaded (0 if none, or declined)."""
-        stale = [frame for frame in self.view._frames if frame.is_stale() and isinstance(frame.content, ChromiumWidget)]
+        stale = [
+            frame
+            for frame in self.view._frames
+            if frame.is_stale() and isinstance(frame.content, (ChromiumWidget, PythonWidgetHost))
+        ]
         if not stale or not self._confirm_reload_all_stale(len(stale)):
             return 0
         rebuilt: set[str] = set()
@@ -1638,7 +1666,10 @@ class DeskWindow(QMainWindow):
         """Reloads one stale instance onto its keyword's current content and
         clears its [STALE] bit (shared by the per-instance click and the
         batch reload)."""
-        frame.content.reload()
+        if isinstance(frame.content, PythonWidgetHost):
+            frame.content.rebuild()  # TODO f143ce4: a project python widget
+        else:
+            frame.content.reload()
         frame.placed_content_hash = self._custom_widget_content_hash.get(frame.content.widget_id)
         frame.set_stale(False)
 
@@ -3253,6 +3284,7 @@ class DeskWindow(QMainWindow):
         # _load_project_widgets below, not here.
         for widget_id in list(self._project_widget_ids):
             self._widgets.pop(widget_id, None)
+            self._custom_widget_content_hash.pop(widget_id, None)  # TODO f143ce4
         self._project_widget_ids.clear()
         # Per-instance state (TODO 5734529), meaningless once
         # view.clear_widgets() above already destroyed the frames it
@@ -4200,7 +4232,7 @@ class DeskWindow(QMainWindow):
         hash-diff check below can't represent "stale, but no fresh
         hash exists yet to diff against" (current_hash would still
         equal frame.placed_content_hash, since nothing has rebuilt)."""
-        if not isinstance(frame.content, ChromiumWidget):
+        if not isinstance(frame.content, (ChromiumWidget, PythonWidgetHost)):
             return
         keyword = frame.content.widget_id
         if keyword in self._promoted_widget_source_dirty:

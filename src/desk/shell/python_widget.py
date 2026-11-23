@@ -63,6 +63,8 @@ class PythonWidgetHost(QWidget):
         entry: str,
         broker: HotReloadBroker,
         parent=None,
+        *,
+        auto_reload: bool = True,
     ) -> None:
         super().__init__(parent)
         self.widget_id = widget_id
@@ -81,7 +83,13 @@ class PythonWidgetHost(QWidget):
         self.build_error: str = ""
 
         self._rebuild()
-        broker.widget_changed.connect(self._on_widget_changed)
+        # TODO f143ce4: a project widget (desk_widgets/<name>/) is not
+        # swapped out from under the user on every save -- DeskWindow
+        # marks its instances [STALE] by content hash instead, and calls
+        # rebuild() when the user accepts. Built-in widgets keep the
+        # live reload (Desk's own development loop depends on it).
+        if auto_reload:
+            broker.widget_changed.connect(self._on_widget_changed)
 
     def _rebuild(self) -> None:
         # A broken rebuild must never propagate out of here: this runs
@@ -118,6 +126,13 @@ class PythonWidgetHost(QWidget):
         self._current = widget
         self.build_error = ""
         self.build_error_changed.emit(False, "")
+
+    def rebuild(self) -> None:
+        """Re-imports the widget module and swaps in a freshly built
+        widget now -- what accepting a `[STALE]` prompt does for a
+        project widget whose auto-reload is off. Same failure behaviour
+        as a hot reload (keeps the previous version, sets build_error)."""
+        self._rebuild()
 
     @property
     def current(self) -> QWidget | None:

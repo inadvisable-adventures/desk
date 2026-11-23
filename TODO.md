@@ -20,6 +20,13 @@ b9689cd. COMPLETED: Add DeskRecorder: a stand-alone macOS app (`DeskRecorder.app
    COMPLETED 2026-11-20: `desk.recorder_protocol`, `desk.transcript_pool`, `desk.recorder_service`, `desk.recorder_app` (segmenter, whisper, features, main loop), `desk_recorder/launcher.m` + `scripts/build_desk_recorder_app.sh`, Bridge `desk.recorder` / `desk.transcripts` (capabilities `recorder`, `transcripts`), MCP tools `desk_recorder_status` / `desk_recorder_control` / `desk_read_transcript`, the Recorder widget, finals mirrored into the widget log `transcript`. Tag `#b9689cd`, changelog, doc section.
    Tests: `verify_recorder_protocol_and_pool.py` (43), `verify_recorder_service.py` (37), `verify_bridge_recorder.py` (21), `verify_recorder_segmenter.py` (26), `verify_recorder_app_pipeline.py` (18: the real app process, real service, fake audio file and stub whisper), `verify_desk_recorder_app_build.py` (17), `verify_recorder_widget.py` (23), `verify_tempui_recorder_doc.py` (16). The real signed app was launched through LaunchServices and connected, beat, listed sources and quit. NOT verified: a real recording of any feature, real whisper through the app, or any macOS permission prompt (an attempt at the microphone prompt waited with no answer; see the plan's "Not verified").
 
+f143ce4. COMPLETED: Add stale detection and notification with content hashing for project-specific python-kind widgets, and disconnect the old auto-refresh for them (`../FEEDBACK/FEEDBACK-DESK-a-placed-instance-of-a-kind-python-project-widget-desk-widge-2026-11-20-1706.md`). Prioritized to the top.
+
+   [planned: project-python-widget-staleness.md (COMPLETED)]
+
+   COMPLETED 2026-11-23: `project_widget_content_hash`, `PythonWidgetHost(auto_reload=False)` + `rebuild()` for project widgets, `[STALE]` click / reload-all / restore handling in `DeskWindow`. Docked project widgets keep live reload (no titlebar). Only the widget directory is hashed. Tag `Project python widgets go [STALE] #937578` (breaking), `desk-temporary-ui.md` wording.
+   `verify_project_python_widget_staleness.py` (18 checks); 11 scripts with hand-built fake windows got a `_project_widget_ids` attribute. Headless-verified only.
+
 5ee7493. COMPLETED: Add a widget to view the catalog of shared components: a built-in Components widget listing the project's mutable library and Desk's static one (README summary, files, template, which widgets use each), plus a read-only `desk_list_shared_components` MCP tool. Prioritized to the top.
 
    [planned: components-catalog-widget.md (COMPLETED)]

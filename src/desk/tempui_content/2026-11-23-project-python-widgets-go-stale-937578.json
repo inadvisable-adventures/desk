@@ -1,0 +1,8 @@
+[
+  {
+    "tag": "Project python widgets go [STALE] #937578",
+    "monthstamp": "11 2026",
+    "description": "A placed instance of a `kind: \"python\"` project widget (`desk_widgets/<name>/widget.py`) no longer hot-reloads when you edit its source. Its titlebar shows `[STALE]` instead (a content hash of the whole widget directory differs from the one it was placed with, and it survives a Desk restart); the user clicks it to rebuild that instance, which also discards the instance's in-memory state. Built-in widgets still hot-reload. Edits to modules outside `desk_widgets/<name>/` are not hashed.\n",
+    "breaking": true
+  }
+]

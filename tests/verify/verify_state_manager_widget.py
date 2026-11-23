@@ -66,6 +66,7 @@ class _FakeWindow:
         self._schema_file_watcher = _FakeSchemaFileWatcher()
         self._custom_widget_sources = {}
         self._custom_widget_content_hash = {}
+        self._project_widget_ids = set()  # TODO f143ce4
         # _ensure_state_manager_placed (called automatically whenever a
         # schema registers) needs a real WorkspaceView, not a bare
         # stand-in -- it can genuinely place a real state_manager

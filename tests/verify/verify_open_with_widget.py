@@ -110,6 +110,7 @@ class _FakeWindow:
         self._custom_widget_sources = {}
         self._custom_widget_source_paths = {}
         self._custom_widget_content_hash = {}
+        self._project_widget_ids = set()  # TODO f143ce4
         self._promoted_widget_source_watcher = PromotedWidgetSourceWatcher()
         self._promoted_widget_source_dirty = set()
         self._html_widget_local_storage = {}

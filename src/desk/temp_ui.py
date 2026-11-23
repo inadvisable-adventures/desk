@@ -364,9 +364,14 @@ directly in Desk's own process -- see `tempui-custom-widgets.md`'s
 "Authoring from real source" if you'd rather build a `kind: "html"`
 widget instead via `DefineWidget`/promote; a `kind: "html"` entry
 written directly here isn't served yet). No tempui file, no promote
-step -- it's picked up automatically (and hot-reloads on further
-edits) the next time this Desk is opened or switched to, or shortly
-after you save it if this Desk is already open on this project.
+step -- it's picked up automatically the next time this Desk is
+opened or switched to, or shortly after you save it if this Desk is
+already open on this project. An edit to a *placed* instance does not
+swap it out from under the user: its titlebar gains `[STALE]` (a content
+hash of the whole `desk_widgets/<name>/` directory no longer matches the
+one it was placed with), and the user clicks it to rebuild that
+instance. So after editing, tell the user to click `[STALE]` -- no need
+to close and re-place it.
 `desk_widgets/` also durably holds a *promoted* `DefineWidget`
 widget's own source (that `widget.json` shape has no `"kind"` key);
 the two coexist in the same directory without conflict. **Same trust
