@@ -12,7 +12,7 @@ from PyQt6.QtGui import QGuiApplication
 from PyQt6.QtMultimedia import QMediaDevices, QWindowCapture
 
 from desk import recorder_protocol as proto
-from desk.recorder_app.features import CameraFeature, Feature, ScreenFeature, TranscribeFeature
+from desk.recorder_app.features import AudioFeature, CameraFeature, Feature, ScreenFeature, TranscribeFeature
 
 HEARTBEAT_MS = 1000
 
@@ -35,6 +35,7 @@ class RecorderApp(QObject):
             "transcribe": TranscribeFeature(*args),
             "screen": ScreenFeature(*args),
             "camera": CameraFeature(*args),
+            "audio": AudioFeature(*args),
         }
         self._heartbeat = QTimer(self)
         self._heartbeat.timeout.connect(lambda: self.send("heartbeat", str(int(time.time() * 1000))))
@@ -90,6 +91,8 @@ class RecorderApp(QObject):
                 self.features["screen"].start(f[0], f[1])
             elif name == "start-camera":
                 self.features["camera"].start(f[0], f[1])
+            elif name == "start-audio":
+                self.features["audio"].start(f[0], f[1])
             elif name == "stop":
                 feature = self.features.get(f[0])
                 if feature is None:
@@ -113,6 +116,8 @@ class RecorderApp(QObject):
             self.send("source", "screen", screen.name())
         for camera in QMediaDevices.videoInputs():
             self.send("source", "camera", camera.description())
+        for microphone in QMediaDevices.audioInputs():
+            self.send("source", "microphone", microphone.description())
         self.send("sources-end")
 
     def shutdown(self) -> None:

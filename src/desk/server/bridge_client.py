@@ -164,8 +164,10 @@ BRIDGE_CLIENT_TEMPLATE = """
       line: (name, s) => sendLog(name, [{ s }]),
     },
     // recorder (TODO b9689cd): requires the "recorder" capability. Controls
-    // DeskRecorder.app: feature is "transcribe", "screen" or "camera". start
-    // resolves to that feature's status ({ state, detail, path, ... });
+    // DeskRecorder.app: feature is "transcribe", "screen", "camera" or
+    // "audio" (a standalone, timestamped recording of one picked input
+    // device, independent of transcribe's own mic use). start resolves to
+    // that feature's status ({ state, detail, path, ... });
     // pass opts.wait (seconds) to wait for the outcome (a permission prompt
     // can take a while). Requires the app to be installed.
     recorder: {

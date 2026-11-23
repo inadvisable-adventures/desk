@@ -980,11 +980,13 @@ async def _recorder_status(args: dict[str, Any]) -> dict[str, Any]:
 @tool(
     "desk_recorder_control",
     "Start or stop one DeskRecorder feature: 'transcribe' (microphone -> the transcript pool, read it with "
-    "desk_read_transcript), 'screen' (video of the screen or one window) or 'camera' (video). THIS RECORDS THE "
-    "USER'S MICROPHONE, SCREEN OR CAMERA: only start one when the user asked you to. For 'screen', `target` is "
-    "'screen' (default) or 'window:<percent-quoted window title>'; for 'camera', `device` is 'default' or a "
-    "percent-quoted device name. A feature whose macOS permission was refused reports state 'denied'. Returns the "
-    "feature's status; poll desk_recorder_status for the outcome.",
+    "desk_read_transcript), 'screen' (video of the screen or one window), 'camera' (video) or 'audio' (a "
+    "standalone, timestamped recording of one picked input device -- independent of 'transcribe''s own mic use, "
+    "for when the saved audio track itself matters, e.g. compositing). THIS RECORDS THE USER'S MICROPHONE, SCREEN "
+    "OR CAMERA: only start one when the user asked you to. For 'screen', `target` is 'screen' (default) or "
+    "'window:<percent-quoted window title>'; for 'camera' or 'audio', `device` is 'default' or a percent-quoted "
+    "device name. A feature whose macOS permission was refused reports state 'denied'. Returns the feature's "
+    "status; poll desk_recorder_status for the outcome.",
     {
         "type": "object",
         "properties": {

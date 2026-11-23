@@ -87,7 +87,7 @@ svc._app_locator = lambda: Path("/fake/DeskRecorder.app")
 svc.configure(lambda: desk_dir, handle.widget_logs)
 try:
     status, body = request(handle, "GET", "/api/bridge/recorder/status")
-    check("status works before the app runs", status == 200 and body["connected"] is False and set(body["features"]) == {"transcribe", "screen", "camera"})
+    check("status works before the app runs", status == 200 and body["connected"] is False and set(body["features"]) == {"transcribe", "screen", "camera", "audio"})
 
     status, body = request(handle, "POST", "/api/bridge/recorder/start", {"feature": "transcribe", "wait": 5})
     check("start transcribe -> running", status == 200 and body["state"] == "running")

@@ -44,6 +44,7 @@ for name, fields in [
     ("stopped", ("screen", "")),
     ("state", ("transcribe", "running", "")),
     ("heartbeat", ("1700000000000",)),
+    ("preview-frame", ("screen", "/9j/4AAQSkZJRgABAQAAAQABAAD//gA7Q1JFQVRP")),  # TODO d95a323
 ]:
     check(f"round trip {name}", proto.decode(proto.encode(name, *fields)) == proto.Message(name, tuple(fields)))
 check("trailing free text keeps its spaces", proto.decode("final s 1 2 a  b c").fields[3] == "a  b c")

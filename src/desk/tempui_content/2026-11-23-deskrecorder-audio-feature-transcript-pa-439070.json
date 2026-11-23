@@ -1,0 +1,7 @@
+[
+  {
+    "tag": "DeskRecorder: audio feature, transcript parts #439070",
+    "monthstamp": "11 2026",
+    "description": "- New DeskRecorder feature `\"audio\"`: a standalone, timestamped recording\n  of one picked input device, independent of `\"transcribe\"`'s own\n  microphone use -- for when the saved audio track itself matters (e.g.\n  compositing it with a screen/camera recording). `desk.recorder.start`/\n  `desk_recorder_control` take `feature: \"audio\"` with `{device}` opts\n  (`\"default\"` or a name from `sources()`, which now also returns\n  `{ sources: { microphone: [...] } }`).\n- `desk.transcripts.read`/`desk_read_transcript` segments now also carry\n  `parts`: `[{ text, start_ms, end_ms }, ...]`, whisper's own finer\n  timestamps inside that segment -- each more accurate than the whole\n  segment's own span. `[]` for a transcript pool written before `parts`\n  existed.\n"
+  }
+]

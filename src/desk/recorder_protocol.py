@@ -8,22 +8,23 @@ the line, so it may contain spaces but never a newline. A field that is not
 last and may contain spaces (a window title, a camera name) is percent-
 quoted with `quote_token`. No JSON: the protocol is small and fixed.
 
-Desk -> recorder: start-transcribe, start-screen, start-camera, stop,
-status, sources, quit.
+Desk -> recorder: start-transcribe, start-screen, start-camera,
+start-audio, stop, status, sources, quit.
 Recorder -> Desk: hello, started, stopped, error, status, dropped,
-heartbeat, source, sources-end, final, preview-frame. (Transcript text
-itself lives in the transcript pool; `final` is only a notification so
-Desk can mirror it into the widget-log store. `preview-frame` (TODO
+heartbeat, source, sources-end, final, preview-frame, level. (Transcript
+text itself lives in the transcript pool; `final` is only a notification
+so Desk can mirror it into the widget-log store. `preview-frame` (TODO
 d95a323) is a low-fps JPEG snapshot of what a video feature -- screen or
 camera -- is actually capturing, base64-encoded as its own last field;
 no `quote_token` needed, since base64's alphabet never contains a space
-or newline.)
+or newline. `level` is `AudioFeature`'s live input level, 0.0-1.0, sent a
+few times a second while it runs, for the widget's meter.)
 """
 from dataclasses import dataclass
 from urllib.parse import quote, unquote
 
 PROTOCOL_VERSION = 1
-FEATURES = ("transcribe", "screen", "camera")
+FEATURES = ("transcribe", "screen", "camera", "audio")
 # `status` states a feature can report.
 STATES = ("idle", "starting", "running", "stopping", "error", "denied", "disconnected")
 
@@ -34,6 +35,7 @@ _ARITY: dict[str, int] = {
     "start-transcribe": 2,  # <session_id> <pool_dir...>
     "start-screen": 2,  # <target> <path...>   target: `screen` or `window:<quoted title>`
     "start-camera": 2,  # <device> <path...>   device: `default` or `<quoted name>`
+    "start-audio": 2,  # <device> <path...>   device: `default` or `<quoted name>`
     "stop": 1,  # <feature>
     "status": 0,
     "sources": 0,
@@ -46,10 +48,11 @@ _ARITY: dict[str, int] = {
     "state": 3,  # <feature> <state> <detail...>  (`status` replies are `state` lines)
     "dropped": 2,  # <feature> <count>
     "heartbeat": 1,  # <epoch ms>
-    "source": 2,  # <kind: window|screen|camera> <name...>
+    "source": 2,  # <kind: window|screen|camera|microphone> <name...>
     "sources-end": 0,
     "final": 4,  # <session> <start_ms> <end_ms> <text...>
     "preview-frame": 2,  # <feature> <base64-jpeg...>
+    "level": 2,  # <feature> <level 0.0-1.0...>
 }
 
 

@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory() as tmp:
     current_context.set_recorder_service(service)
     w = module.build()
     w.show()
-    check("three feature rows with start buttons", set(w._buttons) == {"transcribe", "screen", "camera"} and all(b.text() == "Start" for b in w._buttons.values()))
+    check("four feature rows with start buttons", set(w._buttons) == {"transcribe", "screen", "camera", "audio"} and all(b.text() == "Start" for b in w._buttons.values()))
     check("all states start as off", all(l.text() == "off" for l in w._state_labels.values()))
     check("no raw QComboBox is used", not w.findChildren(QComboBox))
     labels = w.findChildren(QLabel)

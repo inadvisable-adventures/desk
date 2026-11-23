@@ -673,29 +673,36 @@ built for genuine cross-widget signaling:
   stand-alone recorder Desk starts for you (install it with
   `scripts/build_desk_recorder_app.sh`; without it these calls are an HTTP
   400 saying so). `feature` is `"transcribe"` (microphone → the transcript
-  pool, below), `"screen"` (video of the whole screen or one window) or
-  `"camera"` (video); each runs independently and macOS asks for its
+  pool, below), `"screen"` (video of the whole screen or one window),
+  `"camera"` (video) or `"audio"` (a standalone, timestamped recording of
+  one picked input device, independent of `"transcribe"`'s own mic use --
+  for when the saved audio track itself matters, e.g. compositing it with
+  `"screen"`/`"camera"`); each runs independently and macOS asks for its
   permission the first time it is started. `opts`: `{ target }` for screen
   (`"screen"`, the default, or `"window:" + encodeURIComponent(title)`),
-  `{ device }` for camera (`"default"` or `encodeURIComponent(name)`; both
-  names come from `sources()` → `{ sources: { window, screen, camera } }`),
-  and `{ wait }` seconds to wait for the outcome (a first-time permission
-  prompt can take a while; the default does not wait). `start`/`stop` resolve
-  to that feature's status `{ feature, state, detail, path, dropped,
-  session }`; `state` is `idle`, `starting`, `running`, `stopping`, `error`
-  (see `detail`), `denied` (macOS permission refused; Screen Recording takes
-  effect only after DeskRecorder is quit and reopened) or `disconnected`.
-  `status()` → `{ connected, app, heartbeat_age_seconds, stale, features }`
-  with all three features. **This records the user's microphone, screen or
-  camera**: declare `recorder` only for a widget whose job is that, and show
-  when it is recording.
+  `{ device }` for camera or audio (`"default"` or `encodeURIComponent(name)`;
+  names come from `sources()` → `{ sources: { window, screen, camera,
+  microphone } }`), and `{ wait }` seconds to wait for the outcome (a
+  first-time permission prompt can take a while; the default does not
+  wait). `start`/`stop` resolve to that feature's status `{ feature, state,
+  detail, path, dropped, session }`; `state` is `idle`, `starting`,
+  `running`, `stopping`, `error` (see `detail`), `denied` (macOS permission
+  refused; Screen Recording takes effect only after DeskRecorder is quit
+  and reopened) or `disconnected`. `status()` → `{ connected, app,
+  heartbeat_age_seconds, stale, features }` with all four features. **This
+  records the user's microphone, screen or camera** (`"audio"` is just the
+  microphone, saved on its own): declare `recorder` only for a widget whose
+  job is that, and show when it is recording.
 - `desk.transcripts.list()` / `.read(session, opts)` (capability
   `transcripts`) — read the shared **transcript pool** that transcription
   writes, so any number of widgets can show or use what was said. `list()` →
   `{ sessions: [{ session, size, modified_ms }] }`, oldest first. `read` →
   `{ segments, next_offset }`; a segment is `{ session, seq, start_ms,
-  end_ms, text, final }` (times are epoch ms, the same clock as
-  `desk.log`). `{ collapsed: true }` returns the whole session with the
+  end_ms, text, final, parts }` (times are epoch ms, the same clock as
+  `desk.log`). `parts` is whisper's own finer timestamps inside that
+  segment -- `[{ text, start_ms, end_ms }, ...]`, each more accurate than
+  the whole segment's own span -- or `[]` for a transcript written before
+  `parts` existed. `{ collapsed: true }` returns the whole session with the
   latest version of each `seq`; otherwise it returns only the records after
   `{ offset }`, so tail by passing back the previous `next_offset` — a
   segment you see again with the same `seq` (a provisional one that became

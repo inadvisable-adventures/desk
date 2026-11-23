@@ -77,6 +77,24 @@ with tempfile.TemporaryDirectory() as tmp:
     check("screen command carried the target and path", fake.received[-1].name == "start-screen" and fake.received[-1].fields[0] == "window:Desk%20x")
     check("starting a running feature is a no-op", service.start("screen")["state"] == "running" and len([m for m in fake.received if m.name == "start-screen"]) == 1)
 
+    # --- preview frames (TODO d95a323) ---
+    check("no preview yet for a feature that hasn't sent one", service.latest_preview("screen") is None)
+    check("an unknown-to-the-protocol feature name is simply not stored", service.latest_preview("bogus") is None)
+    changes_before_preview = len(changes)
+    fake.send("preview-frame", "screen", "/9j/sample-jpeg-bytes-base64==")
+    check(
+        "a preview-frame updates latest_preview",
+        wait_for(lambda: service.latest_preview("screen") == "/9j/sample-jpeg-bytes-base64=="),
+    )
+    fake.send("preview-frame", "screen", "/9j/second-frame==")
+    check("a later preview-frame replaces the earlier one", wait_for(lambda: service.latest_preview("screen") == "/9j/second-frame=="))
+    check("camera's own preview is untouched by screen's", service.latest_preview("camera") is None)
+    time.sleep(0.2)  # give a stray extra notify a moment to show up, if there were one
+    check(
+        "preview-frame does not trigger the generic change-notify (same as heartbeat)",
+        len(changes) == changes_before_preview,
+    )
+
     st = service.stop("screen")
     check("stop reports stopping or idle", st["state"] in ("stopping", "idle"))
     check("screen returns to idle with its file path", wait_for(lambda: service.feature_status("screen")["state"] == "idle" and service.feature_status("screen")["path"] == "/some/file.mp4"))
@@ -90,7 +108,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
     st = service.status()
     check("status shows a fresh heartbeat", st["heartbeat_age_seconds"] is not None and not st["stale"])
-    check("status lists all three features", set(st["features"]) == {"transcribe", "screen", "camera"})
+    check("status lists all four features", set(st["features"]) == {"transcribe", "screen", "camera", "audio"})
 
     # --- died app ---
     service.start("camera", wait=3)
@@ -110,6 +128,7 @@ with tempfile.TemporaryDirectory() as tmp:
     r = service.start("screen", wait=3)
     check("a denied permission reports denied", r["state"] == "denied" and "denied" in r["detail"])
     check("the app was restarted after dying", service.status()["connected"])
+    check("a fresh connect clears old preview frames", service.latest_preview("screen") is None)
     c = service.start("camera", wait=3)
     check("a failing feature reports error with its reason", c["state"] == "error" and c["detail"] == "no such device")
     t = service.start("transcribe", wait=3)

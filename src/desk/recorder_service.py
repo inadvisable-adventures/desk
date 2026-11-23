@@ -79,6 +79,10 @@ class RecorderService:
         # loop); every caller of those would pay for a multi-KB image
         # they didn't ask for otherwise. See `latest_preview`.
         self._previews: dict[str, str] = {}
+        # `AudioFeature`'s live input level (0.0-1.0), feature name ->
+        # latest value -- same "poll-driven, not change-notification"
+        # reasoning as `_previews`, see `latest_level`.
+        self._levels: dict[str, float] = {}
         self._hello = threading.Event()
         self._last_heartbeat: float | None = None
         self._sources: dict[str, list[str]] = {}
@@ -172,6 +176,7 @@ class RecorderService:
                 # feature that's merely stopped (see latest_preview's own
                 # docstring for why that case keeps its last frame).
                 self._previews = {}
+                self._levels = {}
             threading.Thread(target=self._read_loop, args=(conn,), daemon=True, name="recorder-reader").start()
             if not self._hello.wait(timeout):
                 raise RecorderError(f"{APP_NAME} connected but did not say hello")
@@ -249,15 +254,20 @@ class RecorderService:
                 self._sources_done.set()
             elif name == "preview-frame" and fields[0] in self._features:
                 self._previews[fields[0]] = fields[1]
+            elif name == "level" and fields[0] in self._features:
+                try:
+                    self._levels[fields[0]] = float(fields[1])
+                except ValueError:
+                    pass
         if name == "final":
             self._record_final(fields)
-        # preview-frame arrives at the same ~once-per-second-ish order of
-        # frequency as heartbeat (TODO d95a323) -- excluded from _notify()
-        # for the same reason heartbeat already is: a poll-driven consumer
-        # (see latest_preview) doesn't need a change-notification storm at
-        # preview-frame rate, and every *other* listener would otherwise
-        # get woken for an update it doesn't care about.
-        if name not in ("heartbeat", "preview-frame"):
+        # preview-frame/level arrive at a few-times-a-second rate (TODO
+        # d95a323) -- excluded from _notify() for the same reason heartbeat
+        # already is: a poll-driven consumer (see latest_preview,
+        # latest_level) doesn't need a change-notification storm at that
+        # rate, and every *other* listener would otherwise get woken for an
+        # update it doesn't care about.
+        if name not in ("heartbeat", "preview-frame", "level"):
             self._notify()
 
     def _record_final(self, fields: tuple[str, ...]) -> None:
@@ -295,10 +305,15 @@ class RecorderService:
                 path = self.recordings_dir() / f"screen-{stamp}.mp4"
                 self._features[feature]["path"] = str(path)
                 self._send("start-screen", target or "screen", str(path))
-            else:
+            elif feature == "camera":
                 path = self.recordings_dir() / f"camera-{stamp}.mp4"
                 self._features[feature]["path"] = str(path)
                 self._send("start-camera", device or "default", str(path))
+            else:
+                assert feature == "audio"  # the only one left, given the proto.FEATURES check above
+                path = self.recordings_dir() / f"audio-{stamp}.wav"
+                self._features[feature]["path"] = str(path)
+                self._send("start-audio", device or "default", str(path))
         except Exception:
             with self._lock:
                 self._features[feature]["state"] = "error"
@@ -353,6 +368,16 @@ class RecorderService:
         instance would be actively misleading, not just stale."""
         with self._lock:
             return self._previews.get(feature)
+
+    def latest_level(self, feature: str) -> float | None:
+        """`AudioFeature`'s most recent input level (0.0-1.0), or `None` if
+        none has arrived yet this connection. Unlike `latest_preview`, a
+        caller should treat this as meaningless once that feature is no
+        longer `running` (a frozen non-zero level reads as "still live",
+        unlike a frozen video frame) -- `feature_status`'s own `state`
+        already says so; this method doesn't duplicate that check."""
+        with self._lock:
+            return self._levels.get(feature)
 
     def status(self) -> dict:
         with self._lock:

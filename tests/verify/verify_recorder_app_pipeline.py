@@ -105,6 +105,21 @@ with tempfile.TemporaryDirectory() as tmp:
         check("camera fails on its own with a reason (headless)", r3["state"] in ("error", "denied") and r3["detail"])
         r4 = service.start("screen", target="window:NoSuchWindowTitle", wait=15)
         check("screen fails on its own with a reason (headless)", r4["state"] in ("error", "denied") and r4["detail"])
+        # audio, unlike camera/screen, has nothing offscreen-mode blocks --
+        # on a machine with a real default microphone (e.g. this one) it
+        # actually runs, so check whichever outcome this environment gives.
+        r5 = service.start("audio", wait=15)
+        if r5["state"] == "running":
+            time.sleep(1.0)
+            audio_path = service.feature_status("audio")["path"]
+            service.stop("audio")
+            check("audio stops on request", wait_for(lambda: service.feature_status("audio")["state"] == "idle", 10))
+            check("a real microphone produced a WAV file",
+                  bool(audio_path) and Path(audio_path).is_file() and Path(audio_path).stat().st_size > 44)
+            check("the audio recording got a frame0_ms sidecar", Path(f"{audio_path}.frame0_ms").is_file())
+        else:
+            check("audio fails on its own with a reason (no microphone available here)",
+                  r5["state"] in ("error", "denied") and r5["detail"])
         check("transcription was not disturbed by the failures",
               service.feature_status("transcribe")["state"] in ("running", "idle") and service.status()["connected"])
         sources = service.request_sources()
