@@ -105,11 +105,19 @@ check("results do not depend on the feed chunk size", a == b)
 seg = UtteranceSegmenter()
 check("sample_to_ms maps stream positions to wall time", seg.sample_to_ms(16000, 1_000_000) == 1_001_000)
 
-# whisper output filter
-check("filter keeps real speech", filter_segments([{"text": " hello there", "no_speech_prob": 0.01, "avg_logprob": -0.2}]) == "hello there")
-check("filter drops a likely hallucination", filter_segments([{"text": " Thank you.", "no_speech_prob": 0.9, "avg_logprob": -1.8}]) == "")
-check("filter keeps a low-confidence but speech-like segment", filter_segments([{"text": " mumble", "no_speech_prob": 0.1, "avg_logprob": -1.4}]) == "mumble")
-check("filter joins segments", filter_segments([{"text": " a"}, {"text": " b"}]) == "a b")
+# whisper output filter -- now returns Phrases (text plus whisper's own
+# start_s/end_s), not a joined string, so the sync fix can stamp each one
+# with its own timestamp instead of the whole utterance's span.
+check("filter keeps real speech",
+      [p.text for p in filter_segments([{"text": " hello there", "no_speech_prob": 0.01, "avg_logprob": -0.2}])] == ["hello there"])
+check("filter drops a likely hallucination",
+      filter_segments([{"text": " Thank you.", "no_speech_prob": 0.9, "avg_logprob": -1.8}]) == [])
+check("filter keeps a low-confidence but speech-like segment",
+      [p.text for p in filter_segments([{"text": " mumble", "no_speech_prob": 0.1, "avg_logprob": -1.4}])] == ["mumble"])
+check("filter joins segments",
+      [p.text for p in filter_segments([{"text": " a"}, {"text": " b"}])] == ["a", "b"])
+check("filter keeps whisper's own start/end offsets",
+      [(p.start_s, p.end_s) for p in filter_segments([{"text": " hi", "start": 1.5, "end": 2.25}])] == [(1.5, 2.25)])
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

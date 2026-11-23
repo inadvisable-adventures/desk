@@ -34,7 +34,7 @@ from PyQt6.QtGui import QGuiApplication
 from desk import transcript_pool
 from desk.recorder_app import permissions
 from desk.recorder_app.segmenter import SAMPLE_RATE, Job, UtteranceSegmenter
-from desk.recorder_app.transcriber import Transcriber
+from desk.recorder_app.transcriber import Phrase, Transcriber
 
 Send = Callable[..., None]
 RunOnMain = Callable[[Callable[[], None]], None]
@@ -59,9 +59,10 @@ class StubTranscriber:
     def load(self) -> None:
         pass
 
-    def transcribe(self, audio: np.ndarray) -> str:
+    def transcribe(self, audio: np.ndarray) -> list[Phrase]:
         self.count += 1
-        return f"utterance {self.count} ({len(audio) / SAMPLE_RATE:.1f}s)"
+        duration = len(audio) / SAMPLE_RATE
+        return [Phrase(text=f"utterance {self.count} ({duration:.1f}s)", start_s=0.0, end_s=duration)]
 
 
 class Feature(QObject):
@@ -232,17 +233,32 @@ class TranscribeFeature(Feature):
             if job.kind == "provisional" and not self._jobs.empty():
                 continue  # busy: a provisional is only a preview, drop it
             try:
-                text = self._transcriber.transcribe(job.audio)
+                phrases = self._transcriber.transcribe(job.audio)
             except Exception as e:  # noqa: BLE001
                 self.send("error", self.name, f"transcription failed: {e}")
                 continue
-            if not text:
+            if not phrases:
                 continue
             start_ms = seg.sample_to_ms(job.start_sample, self._t0_ms)
             end_ms = seg.sample_to_ms(job.end_sample, self._t0_ms)
+            text = " ".join(p.text for p in phrases)
+            # `start_ms` is this chunk's own epoch anchor (sample 0 of
+            # `job.audio`); each phrase's start_s/end_s is whisper's own
+            # offset into that same chunk, so adding them gives every
+            # phrase its own accurate wall-clock stamp instead of every
+            # phrase in the utterance sharing one span (TODO: transcript
+            # sync drift investigation).
+            parts = tuple(
+                transcript_pool.Part(
+                    text=p.text,
+                    start_ms=start_ms + round(p.start_s * 1000),
+                    end_ms=start_ms + round(p.end_s * 1000),
+                )
+                for p in phrases
+            )
             final = job.kind == "final"
             transcript_pool.append_segment(
-                self._pool, transcript_pool.Segment(self._session, job.seq, start_ms, end_ms, text, final)
+                self._pool, transcript_pool.Segment(self._session, job.seq, start_ms, end_ms, text, final, parts)
             )
             if final:
                 self.send("final", self._session, str(start_ms), str(end_ms), text.replace("\n", " "))

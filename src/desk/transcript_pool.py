@@ -12,6 +12,17 @@ provisional one becoming final), and the LAST line for a `seq` wins
 
 `read_records` tails a file by byte offset, returning only complete lines,
 so a reader never sees a half-written line and keeps its own position.
+
+A `Segment` is one VAD-delimited utterance (TranscribeFeature's own `seq`).
+`start_ms`/`end_ms`/`text` are that whole utterance's span and full text,
+kept for any reader that only wants "roughly when, roughly what". `parts`
+holds whisper's own finer sub-chunks within that utterance (each with its
+own accurate `start_ms`/`end_ms`, not just the whole utterance's span) --
+see `desk.recorder_app.transcriber`'s `Phrase`, which this is the
+wall-clock-epoch version of. A caller that cares about tight sync (burning
+in captions) should prefer `parts` and only fall back to the whole-segment
+span when `parts` is empty (older recordings, or a `final` with no speech
+whisper was confident enough to keep).
 """
 import json
 import re
@@ -23,6 +34,17 @@ _SESSION_RE = re.compile(r"^[A-Za-z0-9_.-]{1,100}$")
 
 
 @dataclass(frozen=True)
+class Part:
+    """One of whisper's own sub-chunks, stamped with a wall-clock epoch
+    (`desk.recorder_app.transcriber.Phrase`'s `start_s`/`end_s` plus the
+    enclosing utterance's own epoch anchor)."""
+
+    text: str
+    start_ms: int
+    end_ms: int
+
+
+@dataclass(frozen=True)
 class Segment:
     session: str
     seq: int
@@ -30,6 +52,7 @@ class Segment:
     end_ms: int
     text: str
     final: bool
+    parts: tuple[Part, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -78,6 +101,10 @@ def list_sessions(pool: Path) -> list[SessionInfo]:
 def _parse_line(raw: bytes) -> Segment | None:
     try:
         data = json.loads(raw.decode("utf-8"))
+        parts = tuple(
+            Part(text=str(p["text"]), start_ms=int(p["start_ms"]), end_ms=int(p["end_ms"]))
+            for p in data.get("parts") or ()
+        )
         return Segment(
             session=str(data["session"]),
             seq=int(data["seq"]),
@@ -85,6 +112,7 @@ def _parse_line(raw: bytes) -> Segment | None:
             end_ms=int(data["end_ms"]),
             text=str(data["text"]),
             final=bool(data["final"]),
+            parts=parts,
         )
     except (ValueError, KeyError, TypeError):
         return None  # a corrupt line is skipped, never fatal to a reader
