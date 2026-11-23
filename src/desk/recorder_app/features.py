@@ -301,6 +301,7 @@ class VideoFeature(Feature):
         self._sink: QVideoSink | None = None
         self._path = ""
         self._last_frame = 0.0
+        self._first_frame_ms: int | None = None
         self._stalls = 0
         self._report_timer: QTimer | None = None
         self._state_timer: QTimer | None = None
@@ -355,6 +356,7 @@ class VideoFeature(Feature):
         self._recorder = recorder
         self._stalls = 0
         self._last_frame = 0.0
+        self._first_frame_ms = None
         self._source.errorOccurred.connect(lambda *a: self._on_source_error(a[-1] if a else "capture error"))
         self._start_source()
         recorder.record()
@@ -376,10 +378,34 @@ class VideoFeature(Feature):
         return "Camera access is not allowed for DeskRecorder (System Settings > Privacy & Security > Camera)."
 
     def _on_frame(self, _frame) -> None:
+        if self._first_frame_ms is None:
+            # TODO (transcript sync drift): the first frame actually
+            # reaching this QVideoSink -- the same session the
+            # QMediaRecorder is encoding -- is the one real, measured
+            # wall-clock moment "recording started" exists for this
+            # feature. Everything before this (permission prompt,
+            # QMediaRecorder.record() being called, the output file being
+            # created) can take an unpredictable extra beat on top, so the
+            # file's own birthtime is only a guess at this timestamp, not
+            # a measurement of it. Recorded here and handed to whoever
+            # composites captions onto the video later (compositor.py's
+            # `recording_start_epoch_ms`) via a sidecar file next to the
+            # output, since this app and that job never run at the same
+            # time and share no other channel.
+            self._first_frame_ms = int(time.time() * 1000)
+            self._write_frame0_sidecar()
         now = time.monotonic()
         if self._last_frame and now - self._last_frame > 0.1:
             self._stalls += 1  # a gap of over 100 ms between frames: a visible hitch
         self._last_frame = now
+
+    def _write_frame0_sidecar(self) -> None:
+        """Best-effort: a missing sidecar just means whoever composites
+        this recording falls back to the birthtime guess."""
+        try:
+            Path(f"{self._path}.frame0_ms").write_text(str(self._first_frame_ms), encoding="utf-8")
+        except OSError:
+            pass
 
     def _on_source_error(self, message: str) -> None:
         if self.state in ("starting", "running"):
