@@ -1,0 +1,7 @@
+{
+  "name": "Recordings",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": [],
+  "default_size": { "width": 820, "height": 600 }
+}

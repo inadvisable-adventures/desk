@@ -16,13 +16,20 @@ locally) if one is missing.
 - `PaintedBranchTreeView`/`PaintedBranchTreeWidget` -- replace the
   native branch arrows of `QTreeView`/`QTreeWidget` (TODO b927389,
   333bebf).
+- `canvas_popup_point` -- not a replacement control, but the shared
+  "where does a popup opened from a point inside embedded content
+  actually belong on screen" math `PaintedComboBox`'s own popup already
+  needed (generalized from a whole control's rect to an arbitrary
+  point), for anything else that opens a `Qt.WindowType.Popup`-style
+  window (a `QMenu`, say) from inside a widget embedded in the canvas.
 
 See LEARNINGS.md for the history behind each, and
 `python-widget-conventions.md` (once written; TODO d4c0d68) for the
 rule. `zoom_control.py` is unrelated and deliberately not here.
 """
 
+from desk.shell.qt_controls.canvas_popup import canvas_popup_point
 from desk.shell.qt_controls.painted_branches import PaintedBranchTreeView, PaintedBranchTreeWidget
 from desk.shell.qt_controls.painted_combo import PaintedComboBox
 
-__all__ = ["PaintedBranchTreeView", "PaintedBranchTreeWidget", "PaintedComboBox"]
+__all__ = ["PaintedBranchTreeView", "PaintedBranchTreeWidget", "PaintedComboBox", "canvas_popup_point"]
