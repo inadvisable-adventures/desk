@@ -6,6 +6,7 @@ A feature talks to Desk only through `send(name, *fields)` (a thread-safe
 callable that writes a protocol line) and runs its Qt objects on the main
 thread. `run_on_main(fn)` is how a worker thread hands work back.
 """
+import base64
 import os
 import queue
 import threading
@@ -15,7 +16,7 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
-from PyQt6.QtCore import QObject, QTimer, QUrl
+from PyQt6.QtCore import QBuffer, QIODeviceBase, QObject, Qt, QTimer, QUrl
 from PyQt6.QtMultimedia import (
     QAudioFormat,
     QAudioInput,
@@ -48,6 +49,14 @@ SCREEN_DENIED_MESSAGE = (
     "Screen Recording is not allowed for DeskRecorder. Allow it in System Settings > Privacy & Security > "
     "Screen Recording, then quit and reopen DeskRecorder (macOS only applies it after a restart)."
 )
+
+# TODO d95a323: `preview-frame` tuning -- low-fps/small/lossy on purpose.
+# The protocol is plain, buffered-on-newline text (see recorder_protocol.py's
+# own docstring); a few-KB base64 JPEG per line needs no new framing, a full
+# raw frame stream at recording fps/resolution would.
+PREVIEW_INTERVAL_SECONDS = 0.5  # ~2 fps
+PREVIEW_MAX_WIDTH = 320
+PREVIEW_JPEG_QUALITY = 60
 
 
 class StubTranscriber:
@@ -301,6 +310,7 @@ class VideoFeature(Feature):
         self._sink: QVideoSink | None = None
         self._path = ""
         self._last_frame = 0.0
+        self._last_preview_sent = 0.0
         self._first_frame_ms: int | None = None
         self._stalls = 0
         self._report_timer: QTimer | None = None
@@ -356,6 +366,7 @@ class VideoFeature(Feature):
         self._recorder = recorder
         self._stalls = 0
         self._last_frame = 0.0
+        self._last_preview_sent = 0.0
         self._first_frame_ms = None
         self._source.errorOccurred.connect(lambda *a: self._on_source_error(a[-1] if a else "capture error"))
         self._start_source()
@@ -377,7 +388,7 @@ class VideoFeature(Feature):
             return SCREEN_DENIED_MESSAGE
         return "Camera access is not allowed for DeskRecorder (System Settings > Privacy & Security > Camera)."
 
-    def _on_frame(self, _frame) -> None:
+    def _on_frame(self, frame) -> None:
         if self._first_frame_ms is None:
             # TODO (transcript sync drift): the first frame actually
             # reaching this QVideoSink -- the same session the
@@ -398,6 +409,9 @@ class VideoFeature(Feature):
         if self._last_frame and now - self._last_frame > 0.1:
             self._stalls += 1  # a gap of over 100 ms between frames: a visible hitch
         self._last_frame = now
+        if now - self._last_preview_sent >= PREVIEW_INTERVAL_SECONDS:
+            self._last_preview_sent = now
+            self._send_preview(frame)
 
     def _write_frame0_sidecar(self) -> None:
         """Best-effort: a missing sidecar just means whoever composites
@@ -406,6 +420,28 @@ class VideoFeature(Feature):
             Path(f"{self._path}.frame0_ms").write_text(str(self._first_frame_ms), encoding="utf-8")
         except OSError:
             pass
+
+    def _send_preview(self, frame) -> None:
+        """TODO d95a323: a low-fps JPEG snapshot of this feature's own
+        `QVideoSink` -- the exact frames this session is already handing
+        to its `QMediaRecorder` -- sent to Desk over the existing control
+        socket so a widget can show a live-ish preview without opening a
+        second, independent camera/screen session of its own (which, in
+        Desk's own process, hits the exact permission problem this whole
+        app was built to solve -- see plans/deskrecorder-live-preview-frames.md)."""
+        image = frame.toImage()
+        if image.isNull():
+            return
+        if image.width() > PREVIEW_MAX_WIDTH:
+            image = image.scaledToWidth(PREVIEW_MAX_WIDTH, Qt.TransformationMode.SmoothTransformation)
+        buffer = QBuffer()
+        buffer.open(QIODeviceBase.OpenModeFlag.WriteOnly)
+        if not image.save(buffer, "JPEG", PREVIEW_JPEG_QUALITY):
+            buffer.close()
+            return
+        encoded = base64.b64encode(bytes(buffer.data())).decode("ascii")
+        buffer.close()
+        self.send("preview-frame", self.name, encoded)
 
     def _on_source_error(self, message: str) -> None:
         if self.state in ("starting", "running"):

@@ -71,6 +71,14 @@ class RecorderService:
         self._start_lock = threading.Lock()
         self._conn: socket.socket | None = None
         self._features = {name: _blank_feature() for name in proto.FEATURES}
+        # TODO d95a323: latest base64 JPEG per video feature ("screen"/
+        # "camera" -- never "transcribe", which has no video) -- kept
+        # separate from `_features` rather than folded in, since that
+        # dict is returned verbatim as JSON by `status()`/`feature_status()`
+        # (and so `desk_recorder_status`/the Recorder widget's own poll
+        # loop); every caller of those would pay for a multi-KB image
+        # they didn't ask for otherwise. See `latest_preview`.
+        self._previews: dict[str, str] = {}
         self._hello = threading.Event()
         self._last_heartbeat: float | None = None
         self._sources: dict[str, list[str]] = {}
@@ -159,6 +167,11 @@ class RecorderService:
                 self._conn = conn
                 self._last_heartbeat = time.monotonic()
                 self._features = {name: _blank_feature() for name in proto.FEATURES}
+                # A fresh app instance: an old preview frame from before
+                # this (re)connect would be actively misleading, unlike a
+                # feature that's merely stopped (see latest_preview's own
+                # docstring for why that case keeps its last frame).
+                self._previews = {}
             threading.Thread(target=self._read_loop, args=(conn,), daemon=True, name="recorder-reader").start()
             if not self._hello.wait(timeout):
                 raise RecorderError(f"{APP_NAME} connected but did not say hello")
@@ -234,9 +247,17 @@ class RecorderService:
                 self._sources.setdefault(fields[0], []).append(fields[1])
             elif name == "sources-end":
                 self._sources_done.set()
+            elif name == "preview-frame" and fields[0] in self._features:
+                self._previews[fields[0]] = fields[1]
         if name == "final":
             self._record_final(fields)
-        if name != "heartbeat":
+        # preview-frame arrives at the same ~once-per-second-ish order of
+        # frequency as heartbeat (TODO d95a323) -- excluded from _notify()
+        # for the same reason heartbeat already is: a poll-driven consumer
+        # (see latest_preview) doesn't need a change-notification storm at
+        # preview-frame rate, and every *other* listener would otherwise
+        # get woken for an update it doesn't care about.
+        if name not in ("heartbeat", "preview-frame"):
             self._notify()
 
     def _record_final(self, fields: tuple[str, ...]) -> None:
@@ -321,6 +342,17 @@ class RecorderService:
     def feature_status(self, feature: str) -> dict:
         with self._lock:
             return {"feature": feature, **self._features[feature]}
+
+    def latest_preview(self, feature: str) -> str | None:
+        """TODO d95a323: the most recent base64 JPEG `feature` ("screen" or
+        "camera") has sent, or `None` if none has arrived yet this
+        connection. Deliberately keeps returning the last frame after that
+        feature stops recording (like a paused video's last frame) rather
+        than clearing it -- only a fresh `ensure_running()` connect clears
+        `_previews` outright, since an old frame from a since-replaced app
+        instance would be actively misleading, not just stale."""
+        with self._lock:
+            return self._previews.get(feature)
 
     def status(self) -> dict:
         with self._lock:

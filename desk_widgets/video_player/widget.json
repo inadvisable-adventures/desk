@@ -1,0 +1,7 @@
+{
+  "name": "Video Player",
+  "kind": "python",
+  "entry": "widget.py",
+  "capabilities": [],
+  "default_size": { "width": 640, "height": 520 }
+}

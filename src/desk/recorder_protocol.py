@@ -11,9 +11,13 @@ quoted with `quote_token`. No JSON: the protocol is small and fixed.
 Desk -> recorder: start-transcribe, start-screen, start-camera, stop,
 status, sources, quit.
 Recorder -> Desk: hello, started, stopped, error, status, dropped,
-heartbeat, source, sources-end, final. (Transcript text itself lives in
-the transcript pool; `final` is only a notification so Desk can mirror it
-into the widget-log store.)
+heartbeat, source, sources-end, final, preview-frame. (Transcript text
+itself lives in the transcript pool; `final` is only a notification so
+Desk can mirror it into the widget-log store. `preview-frame` (TODO
+d95a323) is a low-fps JPEG snapshot of what a video feature -- screen or
+camera -- is actually capturing, base64-encoded as its own last field;
+no `quote_token` needed, since base64's alphabet never contains a space
+or newline.)
 """
 from dataclasses import dataclass
 from urllib.parse import quote, unquote
@@ -45,6 +49,7 @@ _ARITY: dict[str, int] = {
     "source": 2,  # <kind: window|screen|camera> <name...>
     "sources-end": 0,
     "final": 4,  # <session> <start_ms> <end_ms> <text...>
+    "preview-frame": 2,  # <feature> <base64-jpeg...>
 }
 
 
