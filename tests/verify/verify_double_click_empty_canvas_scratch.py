@@ -66,6 +66,7 @@ class _FakeWindow:
         self._custom_widget_definitions = {}
         self._custom_widget_sources = {}
         self._custom_widget_content_hash = {}
+        self._project_widget_ids = set()  # TODO f143ce4
         # TODO 4eb3d9e: _register_custom_widget/_place_widget/
         # _on_widget_stale_clicked now also touch these.
         self._promoted_widget_source_watcher = PromotedWidgetSourceWatcher()

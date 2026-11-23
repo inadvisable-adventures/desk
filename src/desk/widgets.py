@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import threading
@@ -95,6 +96,31 @@ def discover_widgets(widgets_dir: Path) -> dict[str, WidgetInfo]:
             continue
         widgets[path.name] = _parse_manifest(manifest_path)
     return widgets
+
+
+def project_widget_content_hash(widget_dir: Path) -> str:
+    """TODO f143ce4 (see plans/project-python-widget-staleness.md): a
+    short content hash of a project widget's whole directory -- every
+    file's relative path and bytes, in sorted order -- so
+    DeskWindow can tell a placed instance from the source now on disk.
+    Skips `__pycache__`, `.pyc` files and dot-entries (editor/VCS
+    litter, and the bytecode the host itself might write), none of which
+    is the widget's source. Unreadable files are skipped rather than
+    raising: this runs on every debounced change event."""
+    digest = hashlib.sha256()
+    for path in sorted(widget_dir.rglob("*")):
+        relative = path.relative_to(widget_dir)
+        if any(part == "__pycache__" or part.startswith(".") for part in relative.parts) or path.suffix == ".pyc":
+            continue
+        if not path.is_file():
+            continue
+        try:
+            data = path.read_bytes()
+        except OSError:
+            continue
+        digest.update(relative.as_posix().encode("utf-8") + b"\0")
+        digest.update(data + b"\0")
+    return digest.hexdigest()[:12]
 
 
 def discover_project_widgets(

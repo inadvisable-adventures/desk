@@ -113,6 +113,7 @@ class _FakeWindow:
         self._custom_widget_definitions = {}
         self._custom_widget_source_paths = {}
         self._custom_widget_content_hash = {}
+        self._project_widget_ids = set()  # TODO f143ce4
         # TODO 4eb3d9e: _place_widget now also touches this.
         self._promoted_widget_source_dirty = set()
         self._schema_registry = SchemaRegistry()

@@ -6,6 +6,13 @@ content-derived id (7 lowercase hex digits); ids carry no ordering
 information and are never reused or reassigned, even if an item is later
 reordered or its description edited.
 
+f143ce4. COMPLETED: Add stale detection and notification with content hashing for project-specific python-kind widgets, and disconnect the old auto-refresh for them (`../FEEDBACK/FEEDBACK-DESK-a-placed-instance-of-a-kind-python-project-widget-desk-widge-2026-11-20-1706.md`). Prioritized to the top.
+
+   [planned: project-python-widget-staleness.md (COMPLETED)]
+
+   COMPLETED 2026-11-23: `project_widget_content_hash`, `PythonWidgetHost(auto_reload=False)` + `rebuild()` for project widgets, `[STALE]` click / reload-all / restore handling in `DeskWindow`. Docked project widgets keep live reload (no titlebar). Only the widget directory is hashed. Tag `Project python widgets go [STALE] #937578` (breaking), `desk-temporary-ui.md` wording.
+   `verify_project_python_widget_staleness.py` (18 checks); 11 scripts with hand-built fake windows got a `_project_widget_ids` attribute. Headless-verified only.
+
 5ee7493. COMPLETED: Add a widget to view the catalog of shared components: a built-in Components widget listing the project's mutable library and Desk's static one (README summary, files, template, which widgets use each), plus a read-only `desk_list_shared_components` MCP tool. Prioritized to the top.
 
    [planned: components-catalog-widget.md (COMPLETED)]

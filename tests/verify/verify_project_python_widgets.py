@@ -113,7 +113,11 @@ class _FakeWindow:
         self._broker = HotReloadBroker()
         self._project_widget_ids = set()
         self._project_widget_watcher = None
+        self._custom_widget_content_hash = {}  # TODO f143ce4
         self.view = _FakeView()
+
+    def _refresh_stale_indicators_for(self, keyword):
+        pass
 
 
 _FakeWindow._load_project_widgets = DeskWindow._load_project_widgets
