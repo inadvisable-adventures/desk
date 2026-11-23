@@ -37,3 +37,9 @@ MEDIATED-EVENT-LOG.tsv
 # under the Hugging Face Hub cache instead. This is a defensive
 # backstop only, in case a manual download ever lands here by mistake.
 /whisper-*/
+
+# Desk-specific
+desk-installed-jobs/**/target/
+
+# Desk-specific
+desk_widgets/**/.build/
